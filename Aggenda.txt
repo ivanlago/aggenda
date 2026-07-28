@@ -1,8 +1,0 @@
-Configuração local
-
-As credenciais da aplicação devem ser armazenadas somente no arquivo `.env`,
-que não é versionado. Use `.env.example` como referência para os nomes das
-variáveis necessárias.
-
-Nunca registre neste arquivo chaves de banco de dados, segredos OAuth, segredos
-de autenticação ou senhas de usuários.

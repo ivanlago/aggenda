@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "admin:create": "tsx scripts/create-initial-admin.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio"
@@ -23,6 +24,7 @@
     "pg": "^8.22.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "stripe": "^22.3.2",
     "tailwind-merge": "^3.6.0",
     "zod": "^4.4.3"
   },

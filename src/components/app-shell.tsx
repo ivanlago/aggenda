@@ -4,6 +4,7 @@ import {
   CalendarDays,
   LayoutDashboard,
   UsersRound,
+  UserRoundCog,
   Wrench,
 } from "lucide-react";
 import Link from "next/link";
@@ -18,6 +19,8 @@ const navigation = [
   { href: "/clientes", label: "Clientes", icon: UsersRound },
   { href: "/profissionais", label: "Profissionais", icon: BriefcaseBusiness },
   { href: "/servicos", label: "Serviços", icon: Wrench },
+  { href: "/equipe", label: "Equipe e acesso", icon: UserRoundCog },
+  { href: "/assinatura", label: "Plano e cobrança", icon: BriefcaseBusiness },
 ];
 
 export async function AppShell({ children }: { children: React.ReactNode }) {

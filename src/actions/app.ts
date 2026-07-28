@@ -9,6 +9,7 @@ import {
   appointments,
   clients,
   organizationMembers,
+  organizationSubscriptions,
   organizations,
   professionals,
   services,
@@ -65,6 +66,13 @@ export async function createOrganization(formData: FormData) {
       organizationId: organization.id,
       userId: session.user.id,
       role: "owner",
+    });
+
+    await tx.insert(organizationSubscriptions).values({
+      organizationId: organization.id,
+      plan: "trial",
+      status: "trialing",
+      trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
     });
   });
 

@@ -6,6 +6,7 @@ import { cache } from "react";
 import { db } from "@/db";
 import {
   organizationMembers,
+  organizationSubscriptions,
   organizations,
 } from "@/db/schema";
 import { auth } from "@/lib/auth";
@@ -28,11 +29,19 @@ export const getCurrentOrganization = cache(async (userId: string) => {
       slug: organizations.slug,
       timezone: organizations.timezone,
       role: organizationMembers.role,
+      subscriptionStatus: organizationSubscriptions.status,
+      subscriptionPlan: organizationSubscriptions.plan,
+      trialEndsAt: organizationSubscriptions.trialEndsAt,
+      currentPeriodEnd: organizationSubscriptions.currentPeriodEnd,
     })
     .from(organizationMembers)
     .innerJoin(
       organizations,
       eq(organizations.id, organizationMembers.organizationId)
+    )
+    .leftJoin(
+      organizationSubscriptions,
+      eq(organizationSubscriptions.organizationId, organizations.id)
     )
     .where(eq(organizationMembers.userId, userId))
     .limit(1);
@@ -40,9 +49,38 @@ export const getCurrentOrganization = cache(async (userId: string) => {
   return membership;
 });
 
-export async function requireOrganization() {
+export async function requireOrganizationMembership() {
   const session = await requireSession();
   const organization = await getCurrentOrganization(session.user.id);
   if (!organization) redirect("/onboarding");
   return { session, organization };
+}
+
+export function hasActiveSubscription(organization: {
+  subscriptionStatus: "trialing" | "active" | "past_due" | "canceled" | "incomplete" | null;
+  trialEndsAt: Date | null;
+  currentPeriodEnd: Date | null;
+}) {
+  if (organization.subscriptionStatus === "active") return true;
+  if (
+    organization.subscriptionStatus === "trialing" &&
+    organization.trialEndsAt &&
+    organization.trialEndsAt > new Date()
+  ) {
+    return true;
+  }
+  if (
+    organization.subscriptionStatus === "canceled" &&
+    organization.currentPeriodEnd &&
+    organization.currentPeriodEnd > new Date()
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export async function requireOrganization() {
+  const context = await requireOrganizationMembership();
+  if (!hasActiveSubscription(context.organization)) redirect("/assinatura");
+  return context;
 }

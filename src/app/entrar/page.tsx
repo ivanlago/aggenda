@@ -4,13 +4,22 @@ import { redirect } from "next/navigation";
 
 import { getSession } from "@/lib/session";
 
-import { GoogleSignIn } from "./google-sign-in";
+import { AuthForm } from "./auth-form";
 
 export const metadata = { title: "Entrar" };
 
-export default async function SignInPage() {
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ callbackURL?: string }>;
+}) {
   const session = await getSession();
-  if (session?.user) redirect("/dashboard");
+  const requestedCallback = (await searchParams).callbackURL;
+  const callbackURL =
+    requestedCallback?.startsWith("/") && !requestedCallback.startsWith("//")
+      ? requestedCallback
+      : undefined;
+  if (session?.user) redirect(callbackURL || "/dashboard");
 
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
@@ -49,9 +58,14 @@ export default async function SignInPage() {
             Entre para organizar sua rotina
           </h2>
           <p className="mt-3 mb-8 leading-7 text-muted">
-            Use sua conta Google para acessar ou criar seu espaço.
+            Acesse com e-mail e senha ou crie seu espaço.
           </p>
-          <GoogleSignIn />
+          <AuthForm
+            callbackURL={callbackURL}
+            googleEnabled={Boolean(
+              process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+            )}
+          />
           <p className="mt-6 text-center text-xs leading-5 text-muted">
             Ao continuar, você concorda com os termos e a política de privacidade do Aggenda.
           </p>

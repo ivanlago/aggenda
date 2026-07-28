@@ -17,6 +17,17 @@ export const organizationRoleEnum = pgEnum("organization_role", [
   "admin",
   "member",
 ]);
+export const subscriptionStatusEnum = pgEnum("subscription_status", [
+  "trialing",
+  "active",
+  "past_due",
+  "canceled",
+  "incomplete",
+]);
+export const subscriptionPlanEnum = pgEnum("subscription_plan", [
+  "trial",
+  "essential",
+]);
 export const appointmentStatusEnum = pgEnum("appointment_status", [
   "scheduled",
   "confirmed",
@@ -118,6 +129,64 @@ export const organizationMembers = pgTable(
     index("organization_members_user_idx").on(table.userId),
   ]
 );
+
+export const organizationSubscriptions = pgTable(
+  "organization_subscriptions",
+  {
+    organizationId: uuid("organization_id")
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    plan: subscriptionPlanEnum("plan").default("trial").notNull(),
+    status: subscriptionStatusEnum("status").default("trialing").notNull(),
+    stripeCustomerId: text("stripe_customer_id").unique(),
+    stripeSubscriptionId: text("stripe_subscription_id").unique(),
+    stripePriceId: text("stripe_price_id"),
+    trialEndsAt: timestamp("trial_ends_at"),
+    currentPeriodEnd: timestamp("current_period_end"),
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("organization_subscriptions_customer_idx").on(table.stripeCustomerId),
+    index("organization_subscriptions_subscription_idx").on(
+      table.stripeSubscriptionId
+    ),
+  ]
+);
+
+export const organizationInvitations = pgTable(
+  "organization_invitations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    invitedByUserId: text("invited_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    role: organizationRoleEnum("role").default("member").notNull(),
+    token: text("token").notNull().unique(),
+    expiresAt: timestamp("expires_at").notNull(),
+    acceptedAt: timestamp("accepted_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("organization_invitations_org_idx").on(table.organizationId),
+    index("organization_invitations_email_idx").on(table.email),
+    uniqueIndex("organization_invitations_pending_unique").on(
+      table.organizationId,
+      table.email
+    ),
+  ]
+);
+
+export const stripeWebhookEvents = pgTable("stripe_webhook_events", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(),
+  processedAt: timestamp("processed_at").defaultNow().notNull(),
+});
 
 export const professionals = pgTable(
   "professionals",

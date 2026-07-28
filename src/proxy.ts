@@ -18,5 +18,7 @@ export const config = {
     "/clientes/:path*",
     "/servicos/:path*",
     "/agendamentos/:path*",
+    "/equipe/:path*",
+    "/assinatura/:path*",
   ],
 };

@@ -1,2 +1,8 @@
-chave Neon DB:  postgresql://neondb_owner:npg_Oz5T8QhAgFtb@ep-weathered-sun-auek2y9q-pooler.c-10.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+Configuração local
 
+As credenciais da aplicação devem ser armazenadas somente no arquivo `.env`,
+que não é versionado. Use `.env.example` como referência para os nomes das
+variáveis necessárias.
+
+Nunca registre neste arquivo chaves de banco de dados, segredos OAuth, segredos
+de autenticação ou senhas de usuários.

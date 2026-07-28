@@ -9,6 +9,7 @@ import {
   UsersRound,
   Wrench,
 } from "lucide-react";
+import Link from "next/link";
 
 const audiences = [
   { label: "Estética", icon: Sparkles },
@@ -39,12 +40,20 @@ export default function Home() {
           <a href="#para-quem" className="transition hover:text-brand">Para quem</a>
           <a href="#comecar" className="transition hover:text-brand">Como funciona</a>
         </nav>
-        <a
-          href="/entrar"
-          className="rounded-full bg-foreground px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand"
-        >
-          Começar agora
-        </a>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/entrar"
+            className="rounded-full border bg-white/70 px-5 py-2.5 text-sm font-bold text-brand transition hover:border-brand hover:bg-white"
+          >
+            Login
+          </Link>
+          <Link
+            href="/entrar"
+            className="hidden rounded-full bg-foreground px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand sm:inline-flex"
+          >
+            Começar agora
+          </Link>
+        </div>
       </header>
 
       <section className="relative mx-auto grid max-w-7xl gap-14 px-6 pb-24 pt-14 lg:grid-cols-[1.05fr_.95fr] lg:px-10 lg:pb-32 lg:pt-24">

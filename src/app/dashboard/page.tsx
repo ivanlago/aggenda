@@ -1,59 +1,91 @@
-import { ArrowLeft, CalendarDays, Clock3, UsersRound } from "lucide-react";
+import { and, count, eq, gte, lte } from "drizzle-orm";
+import { CalendarDays, Clock3, UsersRound, Wrench } from "lucide-react";
 import Link from "next/link";
+
+import { AppShell } from "@/components/app-shell";
+import { PageHeader } from "@/components/page-header";
+import { db } from "@/db";
+import { appointments, clients, professionals, services } from "@/db/schema";
+import { requireOrganization } from "@/lib/session";
 
 export const metadata = { title: "Visão geral" };
 
-export default function DashboardPreview() {
+const statusLabel = {
+  scheduled: "Agendado",
+  confirmed: "Confirmado",
+  cancelled: "Cancelado",
+  completed: "Concluído",
+  no_show: "Não compareceu",
+};
+
+export default async function DashboardPage() {
+  const { session, organization } = await requireOrganization();
+  const today = new Date();
+  const start = new Date(today);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(today);
+  end.setHours(23, 59, 59, 999);
+
+  const [[clientTotal], [professionalTotal], [serviceTotal], [appointmentTotal], next] =
+    await Promise.all([
+      db.select({ value: count() }).from(clients).where(eq(clients.organizationId, organization.id)),
+      db.select({ value: count() }).from(professionals).where(eq(professionals.organizationId, organization.id)),
+      db.select({ value: count() }).from(services).where(eq(services.organizationId, organization.id)),
+      db.select({ value: count() }).from(appointments).where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, start), lte(appointments.startsAt, end))),
+      db.select({
+        id: appointments.id,
+        startsAt: appointments.startsAt,
+        status: appointments.status,
+        client: clients.name,
+        service: services.name,
+      }).from(appointments)
+        .innerJoin(clients, eq(clients.id, appointments.clientId))
+        .innerJoin(services, eq(services.id, appointments.serviceId))
+        .where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, start)))
+        .orderBy(appointments.startsAt)
+        .limit(6),
+    ]);
+
   return (
-    <main className="min-h-screen bg-[#f3f5f1] p-5 sm:p-8">
-      <div className="mx-auto max-w-6xl">
-        <Link href="/" className="inline-flex items-center gap-2 text-sm font-bold text-brand">
-          <ArrowLeft className="size-4" /> Voltar
-        </Link>
-        <div className="mt-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-          <div>
-            <p className="text-sm font-bold text-brand">Visão geral</p>
-            <h1 className="mt-1 text-3xl font-extrabold tracking-tight">Bom dia, Ivan.</h1>
-            <p className="mt-2 text-muted">Esta é a primeira fundação visual do Aggenda.</p>
-          </div>
-          <button className="rounded-full bg-brand px-5 py-3 text-sm font-bold text-white">Novo agendamento</button>
-        </div>
-        <div className="mt-9 grid gap-4 sm:grid-cols-3">
+    <AppShell>
+      <div className="page-wrap">
+        <PageHeader
+          eyebrow={organization.name}
+          title={`Olá, ${session.user.name.split(" ")[0]}.`}
+          description="Acompanhe o movimento do seu negócio e os próximos atendimentos."
+        />
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
-            { icon: CalendarDays, value: "6", label: "Agendamentos hoje" },
-            { icon: UsersRound, value: "42", label: "Clientes ativos" },
-            { icon: Clock3, value: "87%", label: "Ocupação da semana" },
+            { icon: CalendarDays, value: appointmentTotal.value, label: "Agendamentos hoje" },
+            { icon: UsersRound, value: clientTotal.value, label: "Clientes" },
+            { icon: Clock3, value: professionalTotal.value, label: "Profissionais" },
+            { icon: Wrench, value: serviceTotal.value, label: "Serviços" },
           ].map(({ icon: Icon, value, label }) => (
-            <div key={label} className="rounded-3xl border bg-white p-6">
+            <article key={label} className="panel">
               <Icon className="size-5 text-brand" />
               <p className="mt-7 text-3xl font-extrabold">{value}</p>
               <p className="mt-1 text-sm text-muted">{label}</p>
-            </div>
+            </article>
           ))}
-        </div>
-        <div className="mt-5 rounded-3xl border bg-white p-6">
+        </section>
+        <section className="panel mt-5">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-extrabold">Próximos atendimentos</h2>
-            <span className="text-sm font-bold text-brand">Hoje</span>
+            <Link className="text-sm font-bold text-brand" href="/agendamentos">Ver agenda</Link>
           </div>
-          <div className="mt-6 divide-y">
-            {[
-              ["09:00", "Marina Souza", "Atendimento"],
-              ["10:30", "Carlos Lima", "Serviço recorrente"],
-              ["14:00", "Ana Ferreira", "Avaliação"],
-            ].map(([time, client, service]) => (
-              <div key={time} className="grid grid-cols-[70px_1fr_auto] items-center gap-3 py-4">
-                <span className="font-extrabold text-brand">{time}</span>
-                <div>
-                  <p className="font-bold">{client}</p>
-                  <p className="text-sm text-muted">{service}</p>
-                </div>
-                <span className="rounded-full bg-[#edf7f1] px-3 py-1 text-xs font-bold text-brand">Confirmado</span>
+          <div className="mt-5 divide-y">
+            {next.length ? next.map((item) => (
+              <div key={item.id} className="grid gap-2 py-4 sm:grid-cols-[100px_1fr_auto] sm:items-center">
+                <span className="font-extrabold text-brand">
+                  {item.startsAt.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                </span>
+                <div><p className="font-bold">{item.client}</p><p className="text-sm text-muted">{item.service}</p></div>
+                <span className="status-pill">{statusLabel[item.status]}</span>
               </div>
-            ))}
+            )) : <p className="py-10 text-center text-muted">Nenhum agendamento futuro ainda.</p>}
           </div>
-        </div>
+        </section>
       </div>
-    </main>
+    </AppShell>
   );
 }

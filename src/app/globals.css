@@ -37,3 +37,41 @@ body {
   background: var(--accent);
   color: var(--brand-dark);
 }
+
+@layer components {
+  .page-wrap {
+    @apply mx-auto w-full max-w-7xl p-5 sm:p-8 lg:p-10;
+  }
+
+  .panel {
+    @apply rounded-3xl border bg-white p-6;
+  }
+
+  .content-grid {
+    @apply grid items-start gap-5 xl:grid-cols-[360px_1fr];
+  }
+
+  .form-stack {
+    @apply grid gap-4;
+  }
+
+  .field {
+    @apply w-full rounded-xl border bg-white px-4 py-3 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/10;
+  }
+
+  .primary-button {
+    @apply rounded-xl bg-brand px-5 py-3 text-sm font-extrabold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .icon-button {
+    @apply grid size-9 place-items-center rounded-lg text-muted transition hover:bg-red-50 hover:text-red-600;
+  }
+
+  .status-pill {
+    @apply w-fit rounded-full bg-[#edf7f1] px-3 py-1 text-xs font-bold text-brand;
+  }
+
+  .empty-state {
+    @apply py-10 text-center text-sm text-muted;
+  }
+}

@@ -40,7 +40,7 @@ export default function Home() {
           <a href="#comecar" className="transition hover:text-brand">Como funciona</a>
         </nav>
         <a
-          href="#comecar"
+          href="/entrar"
           className="rounded-full bg-foreground px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand"
         >
           Começar agora
@@ -63,7 +63,7 @@ export default function Home() {
           </p>
           <div id="comecar" className="mt-9 flex flex-col gap-3 sm:flex-row">
             <a
-              href="/dashboard"
+              href="/entrar"
               className="inline-flex items-center justify-center gap-2 rounded-full bg-brand px-7 py-4 font-bold text-white shadow-[0_16px_40px_-18px_#18664a] transition hover:-translate-y-0.5 hover:bg-brand-dark"
             >
               Conhecer a experiência <ArrowRight className="size-4" />

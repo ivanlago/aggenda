@@ -42,6 +42,34 @@ export const appointmentSourceEnum = pgEnum("appointment_source", [
   "integration",
 ]);
 
+export const professions = pgTable("professions", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+});
+
+export const specialties = pgTable(
+  "specialties",
+  {
+    id: text("id").primaryKey(),
+    professionId: text("profession_id")
+      .notNull()
+      .references(() => professions.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+  },
+  (table) => [index("specialties_profession_idx").on(table.professionId)]
+);
+
+export const honorifics = pgTable("honorifics", {
+  id: text("id").primaryKey(),
+  label: text("label").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+});
+
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -107,6 +135,18 @@ export const organizations = pgTable("organizations", {
   businessType: text("business_type"),
   phone: text("phone"),
   timezone: text("timezone").default("America/Bahia").notNull(),
+  clientLabel: text("client_label").default("Cliente").notNull(),
+  clientLabelPlural: text("client_label_plural").default("Clientes").notNull(),
+  professionalLabel: text("professional_label").default("Profissional").notNull(),
+  professionalLabelPlural: text("professional_label_plural")
+    .default("Profissionais")
+    .notNull(),
+  serviceLabel: text("service_label").default("Serviço").notNull(),
+  serviceLabelPlural: text("service_label_plural").default("Serviços").notNull(),
+  appointmentLabel: text("appointment_label").default("Agendamento").notNull(),
+  appointmentLabelPlural: text("appointment_label_plural")
+    .default("Agendamentos")
+    .notNull(),
   bookingEnabled: boolean("booking_enabled").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -141,6 +181,11 @@ export const organizationSubscriptions = pgTable(
     stripeCustomerId: text("stripe_customer_id").unique(),
     stripeSubscriptionId: text("stripe_subscription_id").unique(),
     stripePriceId: text("stripe_price_id"),
+    billingProvider: text("billing_provider"),
+    billingCustomerId: text("billing_customer_id").unique(),
+    billingSubscriptionId: text("billing_subscription_id").unique(),
+    billingCheckoutId: text("billing_checkout_id"),
+    lastPaymentId: text("last_payment_id"),
     trialEndsAt: timestamp("trial_ends_at"),
     currentPeriodEnd: timestamp("current_period_end"),
     cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false).notNull(),
@@ -151,6 +196,12 @@ export const organizationSubscriptions = pgTable(
     index("organization_subscriptions_customer_idx").on(table.stripeCustomerId),
     index("organization_subscriptions_subscription_idx").on(
       table.stripeSubscriptionId
+    ),
+    index("organization_subscriptions_billing_customer_idx").on(
+      table.billingCustomerId
+    ),
+    index("organization_subscriptions_billing_subscription_idx").on(
+      table.billingSubscriptionId
     ),
   ]
 );
@@ -188,6 +239,13 @@ export const stripeWebhookEvents = pgTable("stripe_webhook_events", {
   processedAt: timestamp("processed_at").defaultNow().notNull(),
 });
 
+export const billingWebhookEvents = pgTable("billing_webhook_events", {
+  id: text("id").primaryKey(),
+  provider: text("provider").notNull(),
+  type: text("type").notNull(),
+  processedAt: timestamp("processed_at").defaultNow().notNull(),
+});
+
 export const professionals = pgTable(
   "professionals",
   {
@@ -198,13 +256,70 @@ export const professionals = pgTable(
     name: text("name").notNull(),
     email: text("email"),
     phone: text("phone"),
+    professionId: text("profession_id").references(() => professions.id, {
+      onDelete: "set null",
+    }),
+    honorificId: text("honorific_id").references(() => honorifics.id, {
+      onDelete: "set null",
+    }),
+    customProfession: text("custom_profession"),
+    customHonorific: text("custom_honorific"),
     title: text("title"),
+    bio: text("bio"),
     color: text("color").default("#18664a").notNull(),
+    isBookable: boolean("is_bookable").default(true).notNull(),
     isActive: boolean("is_active").default(true).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [index("professionals_organization_idx").on(table.organizationId)]
+  (table) => [
+    index("professionals_organization_idx").on(table.organizationId),
+    index("professionals_profession_idx").on(table.professionId),
+  ]
+);
+
+export const professionalSpecialties = pgTable(
+  "professional_specialties",
+  {
+    professionalId: uuid("professional_id")
+      .notNull()
+      .references(() => professionals.id, { onDelete: "cascade" }),
+    specialtyId: text("specialty_id")
+      .notNull()
+      .references(() => specialties.id, { onDelete: "restrict" }),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.professionalId, table.specialtyId] }),
+    index("professional_specialties_organization_idx").on(table.organizationId),
+  ]
+);
+
+export const professionalRegistrations = pgTable(
+  "professional_registrations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    professionalId: uuid("professional_id")
+      .notNull()
+      .references(() => professionals.id, { onDelete: "cascade" }),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    council: text("council").notNull(),
+    registrationNumber: text("registration_number").notNull(),
+    state: text("state"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("professional_registrations_professional_idx").on(
+      table.professionalId
+    ),
+    index("professional_registrations_organization_idx").on(
+      table.organizationId
+    ),
+  ]
 );
 
 export const clients = pgTable(

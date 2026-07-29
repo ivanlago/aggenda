@@ -34,9 +34,11 @@ export default async function OnboardingPage() {
             Segmento
             <select className="field" name="businessType" defaultValue="">
               <option value="">Selecione</option>
+              <option value="saude">Saúde e clínicas</option>
               <option value="estetica">Estética</option>
               <option value="salao">Salão</option>
               <option value="barbearia">Barbearia</option>
+              <option value="juridico">Jurídico</option>
               <option value="oficina">Oficina</option>
               <option value="escritorio">Escritório</option>
               <option value="outro">Outro</option>

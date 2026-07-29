@@ -2,7 +2,7 @@ import { and, eq, gte, lt } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 import { db } from "@/db";
-import { appointments, services } from "@/db/schema";
+import { appointments, professionals, services } from "@/db/schema";
 import { requireN8nOrganization } from "@/lib/n8n-api";
 
 export async function GET(request: NextRequest) {
@@ -27,6 +27,27 @@ export async function GET(request: NextRequest) {
     ))
     .limit(1);
   if (!service) return NextResponse.json({ error: "Service not found" }, { status: 404 });
+
+  if (professionalId) {
+    const [professional] = await db
+      .select({ id: professionals.id })
+      .from(professionals)
+      .where(
+        and(
+          eq(professionals.id, professionalId),
+          eq(professionals.organizationId, auth.organization.id),
+          eq(professionals.isActive, true),
+          eq(professionals.isBookable, true)
+        )
+      )
+      .limit(1);
+    if (!professional) {
+      return NextResponse.json(
+        { error: "Professional is not available for booking" },
+        { status: 404 }
+      );
+    }
+  }
 
   const dayStart = new Date(`${date}T00:00:00-03:00`);
   const dayEnd = new Date(`${date}T23:59:59-03:00`);

@@ -56,10 +56,26 @@ export default async function DashboardPage() {
         />
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
-            { icon: CalendarDays, value: appointmentTotal.value, label: "Agendamentos hoje" },
-            { icon: UsersRound, value: clientTotal.value, label: "Clientes" },
-            { icon: Clock3, value: professionalTotal.value, label: "Profissionais" },
-            { icon: Wrench, value: serviceTotal.value, label: "Serviços" },
+            {
+              icon: CalendarDays,
+              value: appointmentTotal.value,
+              label: `${organization.appointmentLabelPlural} hoje`,
+            },
+            {
+              icon: UsersRound,
+              value: clientTotal.value,
+              label: organization.clientLabelPlural,
+            },
+            {
+              icon: Clock3,
+              value: professionalTotal.value,
+              label: organization.professionalLabelPlural,
+            },
+            {
+              icon: Wrench,
+              value: serviceTotal.value,
+              label: organization.serviceLabelPlural,
+            },
           ].map(({ icon: Icon, value, label }) => (
             <article key={label} className="panel">
               <Icon className="size-5 text-brand" />
@@ -70,7 +86,9 @@ export default async function DashboardPage() {
         </section>
         <section className="panel mt-5">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-extrabold">Próximos atendimentos</h2>
+            <h2 className="text-xl font-extrabold">
+              Próximos {organization.appointmentLabelPlural.toLowerCase()}
+            </h2>
             <Link className="text-sm font-bold text-brand" href="/agendamentos">Ver agenda</Link>
           </div>
           <div className="mt-5 divide-y">
@@ -82,7 +100,11 @@ export default async function DashboardPage() {
                 <div><p className="font-bold">{item.client}</p><p className="text-sm text-muted">{item.service}</p></div>
                 <span className="status-pill">{statusLabel[item.status]}</span>
               </div>
-            )) : <p className="py-10 text-center text-muted">Nenhum agendamento futuro ainda.</p>}
+            )) : (
+              <p className="py-10 text-center text-muted">
+                Nenhum {organization.appointmentLabel.toLowerCase()} futuro ainda.
+              </p>
+            )}
           </div>
         </section>
       </div>

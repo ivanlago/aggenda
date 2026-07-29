@@ -36,7 +36,19 @@ export async function requireN8nOrganization(request: NextRequest) {
   }
 
   const [organization] = await db
-    .select({ id: organizations.id, name: organizations.name, timezone: organizations.timezone })
+    .select({
+      id: organizations.id,
+      name: organizations.name,
+      timezone: organizations.timezone,
+      clientLabel: organizations.clientLabel,
+      clientLabelPlural: organizations.clientLabelPlural,
+      professionalLabel: organizations.professionalLabel,
+      professionalLabelPlural: organizations.professionalLabelPlural,
+      serviceLabel: organizations.serviceLabel,
+      serviceLabelPlural: organizations.serviceLabelPlural,
+      appointmentLabel: organizations.appointmentLabel,
+      appointmentLabelPlural: organizations.appointmentLabelPlural,
+    })
     .from(organizations)
     .where(eq(organizations.id, organizationId))
     .limit(1);

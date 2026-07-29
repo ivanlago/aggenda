@@ -3,6 +3,7 @@ import {
   CalendarCheck,
   CalendarDays,
   LayoutDashboard,
+  Settings2,
   UsersRound,
   UserRoundCog,
   Wrench,
@@ -13,18 +14,26 @@ import { requireOrganization } from "@/lib/session";
 
 import { SignOutButton } from "./sign-out-button";
 
-const navigation = [
-  { href: "/dashboard", label: "Visão geral", icon: LayoutDashboard },
-  { href: "/agendamentos", label: "Agendamentos", icon: CalendarDays },
-  { href: "/clientes", label: "Clientes", icon: UsersRound },
-  { href: "/profissionais", label: "Profissionais", icon: BriefcaseBusiness },
-  { href: "/servicos", label: "Serviços", icon: Wrench },
-  { href: "/equipe", label: "Equipe e acesso", icon: UserRoundCog },
-  { href: "/assinatura", label: "Plano e cobrança", icon: BriefcaseBusiness },
-];
-
 export async function AppShell({ children }: { children: React.ReactNode }) {
   const { session, organization } = await requireOrganization();
+  const navigation = [
+    { href: "/dashboard", label: "Visão geral", icon: LayoutDashboard },
+    {
+      href: "/agendamentos",
+      label: organization.appointmentLabelPlural,
+      icon: CalendarDays,
+    },
+    { href: "/clientes", label: organization.clientLabelPlural, icon: UsersRound },
+    {
+      href: "/profissionais",
+      label: organization.professionalLabelPlural,
+      icon: BriefcaseBusiness,
+    },
+    { href: "/servicos", label: organization.serviceLabelPlural, icon: Wrench },
+    { href: "/equipe", label: "Equipe e acesso", icon: UserRoundCog },
+    { href: "/configuracoes", label: "Configurações", icon: Settings2 },
+    { href: "/assinatura", label: "Plano e cobrança", icon: BriefcaseBusiness },
+  ];
 
   return (
     <div className="min-h-screen bg-[#f3f5f1] lg:grid lg:grid-cols-[250px_1fr]">

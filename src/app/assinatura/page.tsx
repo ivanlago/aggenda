@@ -1,7 +1,7 @@
 import { CheckCircle2, CreditCard, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
-import { openBillingPortal, startCheckout } from "@/actions/billing";
+import { cancelSubscription, startCheckout } from "@/actions/billing";
 import { db } from "@/db";
 import { organizationSubscriptions } from "@/db/schema";
 import {
@@ -37,9 +37,7 @@ export default async function SubscriptionPage({
     trialEndsAt: subscription.trialEndsAt,
     currentPeriodEnd: subscription.currentPeriodEnd,
   }) : false;
-  const stripeConfigured = Boolean(
-    process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRICE_ESSENTIAL
-  );
+  const asaasConfigured = Boolean(process.env.ASAAS_API_KEY);
 
   return (
     <main className="min-h-screen px-6 py-12">
@@ -75,7 +73,7 @@ export default async function SubscriptionPage({
               {[
                 ["Organização isolada", "Seus dados separados de outras empresas."],
                 ["Equipe com permissões", "Contas individuais para cada pessoa."],
-                ["Cobrança segura", "Pagamento e notas gerenciados pela Stripe."],
+                ["Cobrança segura", "Pagamento recorrente processado pelo Asaas."],
                 ["Histórico preservado", "Seus dados permanecem vinculados à empresa."],
               ].map(([title, description]) => (
                 <div key={title} className="flex gap-3">
@@ -101,21 +99,25 @@ export default async function SubscriptionPage({
               <li>Confirmações e integrações</li>
             </ul>
 
-            {subscription?.stripeCustomerId && subscription.plan !== "trial" ? (
-              <form action={openBillingPortal} className="mt-7">
-                <button className="primary-button w-full">Gerenciar assinatura</button>
+            {subscription?.billingSubscriptionId &&
+            subscription.billingProvider === "asaas" &&
+            subscription.plan !== "trial" ? (
+              <form action={cancelSubscription} className="mt-7">
+                <button className="w-full rounded-xl border border-red-200 px-4 py-3 font-extrabold text-red-700 transition hover:bg-red-50">
+                  Cancelar renovação
+                </button>
               </form>
-            ) : stripeConfigured ? (
+            ) : asaasConfigured ? (
               <form action={startCheckout} className="mt-7">
                 <button className="primary-button w-full">Assinar agora</button>
               </form>
             ) : (
               <div className="mt-7 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">
-                Checkout aguardando configuração das chaves Stripe.
+                Checkout aguardando configuração da chave Asaas.
               </div>
             )}
             <p className="mt-4 flex items-center justify-center gap-2 text-xs text-muted">
-              <ShieldCheck className="size-4" /> Pagamento processado pela Stripe
+              <ShieldCheck className="size-4" /> Pagamento processado pelo Asaas
             </p>
           </aside>
         </section>

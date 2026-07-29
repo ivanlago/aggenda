@@ -17,18 +17,37 @@ export default async function ServicesPage() {
 
   return (
     <div className="page-wrap">
-      <PageHeader eyebrow="Catálogo" title="Serviços" description="Defina duração e preço dos serviços oferecidos." />
+      <PageHeader
+        eyebrow="Catálogo"
+        title={organization.serviceLabelPlural}
+        description={`Defina duração e preço dos ${organization.serviceLabelPlural.toLowerCase()} oferecidos.`}
+      />
       <div className="content-grid">
         <form action={createService} className="panel form-stack">
-          <h2 className="text-lg font-extrabold">Novo serviço</h2>
-          <input className="field" name="name" required placeholder="Nome do serviço" />
+          <h2 className="text-lg font-extrabold">
+            Novo {organization.serviceLabel.toLowerCase()}
+          </h2>
+          <input
+            className="field"
+            name="name"
+            required
+            placeholder={`Nome do ${organization.serviceLabel.toLowerCase()}`}
+          />
           <textarea className="field min-h-20" name="description" placeholder="Descrição" />
           <input className="field" name="durationMinutes" type="number" min="5" step="5" required placeholder="Duração em minutos" />
           <input className="field" name="priceInCents" type="number" min="0" placeholder="Preço em centavos (ex.: 15000)" />
-          <button className="primary-button">Adicionar serviço</button>
+          <button className="primary-button">
+            Adicionar {organization.serviceLabel.toLowerCase()}
+          </button>
         </form>
         <section className="panel">
-          <h2 className="text-lg font-extrabold">{items.length} serviços</h2>
+          <h2 className="text-lg font-extrabold">
+            {items.length}{" "}
+            {(items.length === 1
+              ? organization.serviceLabel
+              : organization.serviceLabelPlural
+            ).toLowerCase()}
+          </h2>
           <div className="mt-5 divide-y">
             {items.map((item) => (
               <div key={item.id} className="flex items-center gap-4 py-4">
@@ -45,7 +64,11 @@ export default async function ServicesPage() {
                 </form>
               </div>
             ))}
-            {!items.length && <p className="empty-state">Nenhum serviço cadastrado.</p>}
+            {!items.length && (
+              <p className="empty-state">
+                Nenhum {organization.serviceLabel.toLowerCase()} cadastrado.
+              </p>
+            )}
           </div>
         </section>
       </div>

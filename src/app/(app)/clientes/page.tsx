@@ -17,18 +17,32 @@ export default async function ClientsPage() {
 
   return (
     <div className="page-wrap">
-      <PageHeader eyebrow="Relacionamento" title="Clientes" description="Mantenha contatos e observações importantes organizados." />
+      <PageHeader
+        eyebrow="Relacionamento"
+        title={organization.clientLabelPlural}
+        description={`Mantenha ${organization.clientLabelPlural.toLowerCase()} e observações importantes organizados.`}
+      />
       <div className="content-grid">
         <form action={createClient} className="panel form-stack">
-          <h2 className="text-lg font-extrabold">Novo cliente</h2>
+          <h2 className="text-lg font-extrabold">
+            Novo {organization.clientLabel.toLowerCase()}
+          </h2>
           <input className="field" name="name" required placeholder="Nome completo" />
           <input className="field" name="phone" type="tel" placeholder="Telefone" />
           <input className="field" name="email" type="email" placeholder="E-mail" />
           <textarea className="field min-h-24" name="notes" placeholder="Observações" />
-          <button className="primary-button">Adicionar cliente</button>
+          <button className="primary-button">
+            Adicionar {organization.clientLabel.toLowerCase()}
+          </button>
         </form>
         <section className="panel">
-          <h2 className="text-lg font-extrabold">{items.length} clientes</h2>
+          <h2 className="text-lg font-extrabold">
+            {items.length}{" "}
+            {(items.length === 1
+              ? organization.clientLabel
+              : organization.clientLabelPlural
+            ).toLowerCase()}
+          </h2>
           <div className="mt-5 divide-y">
             {items.map((item) => (
               <div key={item.id} className="flex items-center gap-4 py-4">
@@ -43,7 +57,11 @@ export default async function ClientsPage() {
                 </form>
               </div>
             ))}
-            {!items.length && <p className="empty-state">Nenhum cliente cadastrado.</p>}
+            {!items.length && (
+              <p className="empty-state">
+                Nenhum {organization.clientLabel.toLowerCase()} cadastrado.
+              </p>
+            )}
           </div>
         </section>
       </div>

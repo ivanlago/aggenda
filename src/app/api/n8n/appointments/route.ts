@@ -58,6 +58,41 @@ export async function POST(request: NextRequest) {
     )).limit(1);
     if (!service) return NextResponse.json({ error: "Service not found" }, { status: 404 });
 
+    if (input.professionalId) {
+      const [professional] = await db
+        .select({ id: professionals.id })
+        .from(professionals)
+        .where(
+          and(
+            eq(professionals.id, input.professionalId),
+            eq(professionals.organizationId, auth.organization.id),
+            eq(professionals.isActive, true),
+            eq(professionals.isBookable, true)
+          )
+        )
+        .limit(1);
+      if (!professional) {
+        return NextResponse.json(
+          { error: "Professional is not available for booking" },
+          { status: 404 }
+        );
+      }
+    }
+
+    const [client] = await db
+      .select({ id: clients.id })
+      .from(clients)
+      .where(
+        and(
+          eq(clients.id, input.clientId),
+          eq(clients.organizationId, auth.organization.id)
+        )
+      )
+      .limit(1);
+    if (!client) {
+      return NextResponse.json({ error: "Client not found" }, { status: 404 });
+    }
+
     const [appointment] = await db.insert(appointments).values({
       organizationId: auth.organization.id,
       clientId: input.clientId,

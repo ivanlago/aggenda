@@ -20,7 +20,13 @@ export default async function AppointmentsPage() {
   const { organization } = await requireOrganization();
   const [clientItems, professionalItems, serviceItems, items] = await Promise.all([
     db.select().from(clients).where(eq(clients.organizationId, organization.id)).orderBy(clients.name),
-    db.select().from(professionals).where(eq(professionals.organizationId, organization.id)).orderBy(professionals.name),
+    db.select().from(professionals).where(
+      and(
+        eq(professionals.organizationId, organization.id),
+        eq(professionals.isBookable, true),
+        eq(professionals.isActive, true)
+      )
+    ).orderBy(professionals.name),
     db.select().from(services).where(eq(services.organizationId, organization.id)).orderBy(services.name),
     db.select({
       id: appointments.id,
@@ -39,27 +45,46 @@ export default async function AppointmentsPage() {
 
   return (
     <div className="page-wrap">
-      <PageHeader eyebrow="Operação" title="Agendamentos" description="Crie atendimentos e acompanhe cada etapa da agenda." />
+      <PageHeader
+        eyebrow="Operação"
+        title={organization.appointmentLabelPlural}
+        description={`Crie ${organization.appointmentLabelPlural.toLowerCase()} e acompanhe cada etapa da operação.`}
+      />
       <div className="content-grid">
         <form action={createAppointment} className="panel form-stack">
-          <h2 className="text-lg font-extrabold">Novo agendamento</h2>
+          <h2 className="text-lg font-extrabold">
+            Novo {organization.appointmentLabel.toLowerCase()}
+          </h2>
           <select className="field" name="clientId" required defaultValue="">
-            <option value="" disabled>Selecione o cliente</option>
+            <option value="" disabled>
+              Selecione o {organization.clientLabel.toLowerCase()}
+            </option>
             {clientItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
           <select className="field" name="serviceId" required defaultValue="">
-            <option value="" disabled>Selecione o serviço</option>
+            <option value="" disabled>
+              Selecione o {organization.serviceLabel.toLowerCase()}
+            </option>
             {serviceItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
           <select className="field" name="professionalId" defaultValue="">
-            <option value="">Sem profissional específico</option>
+            <option value="">
+              Sem {organization.professionalLabel.toLowerCase()} específico
+            </option>
             {professionalItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
           <input className="field" name="startsAt" type="datetime-local" required />
           <input className="field" name="priceInCents" type="number" min="0" placeholder="Preço em centavos (opcional)" />
           <textarea className="field min-h-20" name="notes" placeholder="Observações" />
-          <button className="primary-button" disabled={!clientItems.length || !serviceItems.length}>Agendar</button>
-          {(!clientItems.length || !serviceItems.length) && <p className="text-xs text-muted">Cadastre ao menos um cliente e um serviço.</p>}
+          <button className="primary-button" disabled={!clientItems.length || !serviceItems.length}>
+            Criar {organization.appointmentLabel.toLowerCase()}
+          </button>
+          {(!clientItems.length || !serviceItems.length) && (
+            <p className="text-xs text-muted">
+              Cadastre ao menos um {organization.clientLabel.toLowerCase()} e um{" "}
+              {organization.serviceLabel.toLowerCase()}.
+            </p>
+          )}
         </form>
         <section className="panel">
           <h2 className="text-lg font-extrabold">{items.length} próximos</h2>
@@ -82,7 +107,11 @@ export default async function AppointmentsPage() {
                 </div>
               </article>
             ))}
-            {!items.length && <p className="empty-state">Nenhum agendamento futuro.</p>}
+            {!items.length && (
+              <p className="empty-state">
+                Nenhum {organization.appointmentLabel.toLowerCase()} futuro.
+              </p>
+            )}
           </div>
         </section>
       </div>

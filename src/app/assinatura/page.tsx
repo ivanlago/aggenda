@@ -57,7 +57,7 @@ export default async function SubscriptionPage({
           </div>
         )}
 
-        <section className="mt-10 grid gap-8 lg:grid-cols-[1fr_360px]">
+        <section className="mt-10 grid gap-8 lg:grid-cols-[1fr_420px]">
           <div>
             <p className="text-sm font-extrabold uppercase tracking-widest text-brand">
               Plano e cobrança
@@ -108,7 +108,90 @@ export default async function SubscriptionPage({
                 </button>
               </form>
             ) : asaasConfigured ? (
-              <form action={startCheckout} className="mt-7">
+              <form action={startCheckout} className="mt-7 grid gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-bold" htmlFor="cpfCnpj">
+                    CPF ou CNPJ
+                  </label>
+                  <input
+                    className="field"
+                    id="cpfCnpj"
+                    name="cpfCnpj"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    placeholder="Somente números"
+                    required
+                  />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-bold" htmlFor="phoneNumber">
+                      Telefone
+                    </label>
+                    <input
+                      className="field"
+                      id="phoneNumber"
+                      name="phoneNumber"
+                      type="tel"
+                      autoComplete="tel"
+                      placeholder="DDD + número"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-bold" htmlFor="postalCode">
+                      CEP
+                    </label>
+                    <input
+                      className="field"
+                      id="postalCode"
+                      name="postalCode"
+                      inputMode="numeric"
+                      autoComplete="postal-code"
+                      placeholder="Somente números"
+                      required
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold" htmlFor="address">
+                    Endereço
+                  </label>
+                  <input
+                    className="field"
+                    id="address"
+                    name="address"
+                    autoComplete="street-address"
+                    placeholder="Rua ou avenida"
+                    required
+                  />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-bold" htmlFor="addressNumber">
+                      Número
+                    </label>
+                    <input
+                      className="field"
+                      id="addressNumber"
+                      name="addressNumber"
+                      autoComplete="off"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-bold" htmlFor="province">
+                      Bairro
+                    </label>
+                    <input
+                      className="field"
+                      id="province"
+                      name="province"
+                      autoComplete="address-level3"
+                      required
+                    />
+                  </div>
+                </div>
                 <button className="primary-button w-full">Assinar agora</button>
               </form>
             ) : (

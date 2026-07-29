@@ -25,16 +25,49 @@ function asaasDate(date: Date) {
   return date.toISOString().slice(0, 19).replace("T", " ");
 }
 
+function requiredText(formData: FormData, key: string, label: string) {
+  const value = String(formData.get(key) ?? "").trim();
+  if (!value) throw new Error(`Informe ${label}.`);
+  return value;
+}
+
+function digits(formData: FormData, key: string, label: string) {
+  return requiredText(formData, key, label).replace(/\D/g, "");
+}
+
 type CheckoutResponse = {
   id: string;
   link?: string | null;
 };
 
-export async function startCheckout() {
+export async function startCheckout(formData: FormData) {
   const { session, organization } = await requireOrganizationMembership();
   if (organization.role !== "owner") {
     throw new Error("Somente o proprietário pode contratar um plano.");
   }
+
+  const cpfCnpj = digits(formData, "cpfCnpj", "o CPF ou CNPJ");
+  if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) {
+    throw new Error("Informe um CPF ou CNPJ válido.");
+  }
+
+  const phoneNumber = digits(formData, "phoneNumber", "o telefone");
+  if (phoneNumber.length < 10 || phoneNumber.length > 11) {
+    throw new Error("Informe um telefone válido com DDD.");
+  }
+
+  const postalCode = digits(formData, "postalCode", "o CEP");
+  if (postalCode.length !== 8) {
+    throw new Error("Informe um CEP válido.");
+  }
+
+  const address = requiredText(formData, "address", "o endereço");
+  const addressNumber = requiredText(
+    formData,
+    "addressNumber",
+    "o número do endereço"
+  );
+  const province = requiredText(formData, "province", "o bairro");
 
   const now = new Date();
   const checkout = await asaasRequest<CheckoutResponse>("/checkouts", {
@@ -61,6 +94,12 @@ export async function startCheckout() {
       customerData: {
         name: session.user.name,
         email: session.user.email,
+        cpfCnpj,
+        phoneNumber,
+        postalCode,
+        address,
+        addressNumber,
+        province,
       },
       subscription: {
         cycle: "MONTHLY",

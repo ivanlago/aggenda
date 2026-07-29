@@ -41,6 +41,10 @@ export const appointmentSourceEnum = pgEnum("appointment_source", [
   "whatsapp",
   "integration",
 ]);
+export const availabilityExceptionTypeEnum = pgEnum(
+  "availability_exception_type",
+  ["blocked", "available"]
+);
 
 export const professions = pgTable("professions", {
   id: text("id").primaryKey(),
@@ -148,6 +152,9 @@ export const organizations = pgTable("organizations", {
     .default("Agendamentos")
     .notNull(),
   bookingEnabled: boolean("booking_enabled").default(false).notNull(),
+  bookingNoticeHours: integer("booking_notice_hours").default(2).notNull(),
+  bookingHorizonDays: integer("booking_horizon_days").default(60).notNull(),
+  slotIntervalMinutes: integer("slot_interval_minutes").default(30).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -403,6 +410,29 @@ export const weeklyAvailability = pgTable(
   ]
 );
 
+export const availabilityExceptions = pgTable(
+  "availability_exceptions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    professionalId: uuid("professional_id").references(() => professionals.id, {
+      onDelete: "cascade",
+    }),
+    type: availabilityExceptionTypeEnum("type").default("blocked").notNull(),
+    startsAt: timestamp("starts_at").notNull(),
+    endsAt: timestamp("ends_at").notNull(),
+    reason: text("reason"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("availability_exceptions_organization_idx").on(table.organizationId),
+    index("availability_exceptions_professional_idx").on(table.professionalId),
+    index("availability_exceptions_start_idx").on(table.startsAt),
+  ]
+);
+
 export const appointments = pgTable(
   "appointments",
   {
@@ -425,6 +455,7 @@ export const appointments = pgTable(
     source: appointmentSourceEnum("source").default("dashboard").notNull(),
     priceInCents: integer("price_in_cents"),
     notes: text("notes"),
+    cancellationReason: text("cancellation_reason"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
     confirmedAt: timestamp("confirmed_at"),
     reminderClaimedAt: timestamp("reminder_claimed_at"),
@@ -442,5 +473,25 @@ export const appointments = pgTable(
       table.startsAt
     ),
     index("appointments_client_idx").on(table.clientId),
+  ]
+);
+
+export const auditLogs = pgTable(
+  "audit_logs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+    action: text("action").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id"),
+    details: jsonb("details").$type<Record<string, unknown>>().default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("audit_logs_organization_idx").on(table.organizationId),
+    index("audit_logs_created_at_idx").on(table.createdAt),
   ]
 );

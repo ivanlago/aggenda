@@ -2,11 +2,13 @@ import {
   BriefcaseBusiness,
   CalendarCheck,
   CalendarDays,
+  CalendarClock,
   LayoutDashboard,
   Settings2,
   UsersRound,
   UserRoundCog,
   Wrench,
+  ScrollText,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -23,6 +25,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       label: organization.appointmentLabelPlural,
       icon: CalendarDays,
     },
+    { href: "/disponibilidade", label: "Disponibilidade", icon: CalendarClock },
     { href: "/clientes", label: organization.clientLabelPlural, icon: UsersRound },
     {
       href: "/profissionais",
@@ -32,6 +35,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     { href: "/servicos", label: organization.serviceLabelPlural, icon: Wrench },
     { href: "/equipe", label: "Equipe e acesso", icon: UserRoundCog },
     { href: "/configuracoes", label: "Configurações", icon: Settings2 },
+    { href: "/auditoria", label: "Auditoria", icon: ScrollText },
     { href: "/assinatura", label: "Plano e cobrança", icon: BriefcaseBusiness },
   ];
 

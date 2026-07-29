@@ -5,7 +5,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
-import { appointments, clients, professionals, services } from "@/db/schema";
+import { appointments, clients, professionals, services, weeklyAvailability } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
 
 export const metadata = { title: "Visão geral" };
@@ -26,12 +26,13 @@ export default async function DashboardPage() {
   const end = new Date(today);
   end.setHours(23, 59, 59, 999);
 
-  const [[clientTotal], [professionalTotal], [serviceTotal], [appointmentTotal], next] =
+  const [[clientTotal], [professionalTotal], [serviceTotal], [appointmentTotal], [availabilityTotal], next] =
     await Promise.all([
       db.select({ value: count() }).from(clients).where(eq(clients.organizationId, organization.id)),
       db.select({ value: count() }).from(professionals).where(eq(professionals.organizationId, organization.id)),
       db.select({ value: count() }).from(services).where(eq(services.organizationId, organization.id)),
       db.select({ value: count() }).from(appointments).where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, start), lte(appointments.startsAt, end))),
+      db.select({ value: count() }).from(weeklyAvailability).where(eq(weeklyAvailability.organizationId, organization.id)),
       db.select({
         id: appointments.id,
         startsAt: appointments.startsAt,
@@ -45,6 +46,14 @@ export default async function DashboardPage() {
         .orderBy(appointments.startsAt)
         .limit(6),
     ]);
+  const onboarding = [
+    { done: professionalTotal.value > 0, label: `Cadastrar ${organization.professionalLabel.toLowerCase()}`, href: "/profissionais" },
+    { done: serviceTotal.value > 0, label: `Cadastrar ${organization.serviceLabel.toLowerCase()}`, href: "/servicos" },
+    { done: availabilityTotal.value > 0, label: "Definir disponibilidade", href: "/disponibilidade" },
+    { done: organization.bookingEnabled, label: "Publicar agendamento online", href: "/configuracoes" },
+    { done: appointmentTotal.value > 0, label: `Realizar primeiro ${organization.appointmentLabel.toLowerCase()}`, href: "/agendamentos" },
+  ];
+  const completedOnboarding = onboarding.filter((item) => item.done).length;
 
   return (
     <AppShell>
@@ -84,6 +93,36 @@ export default async function DashboardPage() {
             </article>
           ))}
         </section>
+        {completedOnboarding < onboarding.length && (
+          <section className="panel mt-5 border-brand/20 bg-[#f7fff9]">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-extrabold uppercase tracking-widest text-brand">
+                  Preparação da conta
+                </p>
+                <h2 className="mt-1 text-xl font-extrabold">
+                  {completedOnboarding} de {onboarding.length} etapas concluídas
+                </h2>
+              </div>
+              <span className="status-pill">
+                {Math.round((completedOnboarding / onboarding.length) * 100)}%
+              </span>
+            </div>
+            <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {onboarding.map((item) => (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  className="rounded-xl border bg-white p-3 text-sm font-bold transition hover:border-brand"
+                >
+                  <span className={item.done ? "text-brand" : "text-muted"}>
+                    {item.done ? "✓" : "○"} {item.label}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
         <section className="panel mt-5">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-extrabold">

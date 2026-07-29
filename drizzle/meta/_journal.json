@@ -29,6 +29,27 @@
       "when": 1785297121407,
       "tag": "0003_flippant_the_stranger",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785299818222,
+      "tag": "0004_abnormal_madelyne_pryor",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785300028676,
+      "tag": "0005_unique_zarda",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785300065957,
+      "tag": "0006_lucky_magik",
+      "breakpoints": true
     }
   ]
 }

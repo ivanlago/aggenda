@@ -1,6 +1,7 @@
 import { and, eq, gte } from "drizzle-orm";
 
 import { createAppointment, updateAppointmentStatus } from "@/actions/app";
+import { rescheduleAppointment } from "@/actions/schedule";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { appointments, clients, professionals, services } from "@/db/schema";
@@ -102,9 +103,24 @@ export default async function AppointmentsPage() {
                     <select className="field py-2" name="status" defaultValue={item.status}>
                       {statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
+                    <input
+                      className="field mt-2 py-2"
+                      name="cancellationReason"
+                      placeholder="Motivo se cancelar"
+                    />
                     <button className="mt-2 w-full text-xs font-extrabold text-brand">Atualizar</button>
                   </form>
                 </div>
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-xs font-extrabold text-brand">
+                    Reagendar
+                  </summary>
+                  <form action={rescheduleAppointment} className="mt-2 flex gap-2">
+                    <input type="hidden" name="id" value={item.id} />
+                    <input className="field py-2" name="startsAt" type="datetime-local" required />
+                    <button className="primary-button py-2">Salvar</button>
+                  </form>
+                </details>
               </article>
             ))}
             {!items.length && (

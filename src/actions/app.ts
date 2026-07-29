@@ -18,6 +18,8 @@ import {
   specialties,
 } from "@/db/schema";
 import { requireOrganization, requireSession } from "@/lib/session";
+import { isTimeAvailable } from "@/lib/availability";
+import { writeAuditLog } from "@/lib/audit";
 
 function textValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -351,38 +353,96 @@ export async function deleteService(formData: FormData) {
 }
 
 export async function createAppointment(formData: FormData) {
-  const { organization } = await requireOrganization();
+  const { session, organization } = await requireOrganization();
   const serviceId = textValue(formData, "serviceId");
   const clientId = textValue(formData, "clientId");
   const professionalId = optionalText(formData, "professionalId");
   const startsAt = new Date(textValue(formData, "startsAt"));
 
   const [service] = await db
-    .select({ durationMinutes: services.durationMinutes })
+    .select({
+      durationMinutes: services.durationMinutes,
+      requiresProfessional: services.requiresProfessional,
+      priceInCents: services.priceInCents,
+    })
     .from(services)
     .where(and(eq(services.id, serviceId), eq(services.organizationId, organization.id)))
     .limit(1);
   if (!service || !clientId || Number.isNaN(startsAt.getTime())) {
     throw new Error("Preencha cliente, serviço e horário.");
   }
+  if (service.requiresProfessional && !professionalId) {
+    throw new Error("Selecione um profissional para este serviço.");
+  }
+  const [[client], professional] = await Promise.all([
+    db
+      .select({ id: clients.id })
+      .from(clients)
+      .where(
+        and(
+          eq(clients.id, clientId),
+          eq(clients.organizationId, organization.id)
+        )
+      )
+      .limit(1),
+    professionalId
+      ? db
+          .select({ id: professionals.id })
+          .from(professionals)
+          .where(
+            and(
+              eq(professionals.id, professionalId),
+              eq(professionals.organizationId, organization.id),
+              eq(professionals.isActive, true),
+              eq(professionals.isBookable, true)
+            )
+          )
+          .limit(1)
+      : Promise.resolve([]),
+  ]);
+  if (!client || (professionalId && !professional.length)) {
+    throw new Error("Cliente ou profissional inválido.");
+  }
+  if (professionalId) {
+    const date = new Intl.DateTimeFormat("en-CA", {
+      timeZone: organization.timezone,
+    }).format(startsAt);
+    const available = await isTimeAvailable({
+      organizationId: organization.id,
+      timezone: organization.timezone,
+      date,
+      serviceId,
+      professionalId,
+      slotIntervalMinutes: organization.slotIntervalMinutes,
+      startsAt,
+    });
+    if (!available) throw new Error("O horário selecionado não está disponível.");
+  }
 
   const endsAt = new Date(startsAt.getTime() + service.durationMinutes * 60_000);
-  await db.insert(appointments).values({
+  const [created] = await db.insert(appointments).values({
     organizationId: organization.id,
     clientId,
     serviceId,
     professionalId,
     startsAt,
     endsAt,
-    priceInCents: optionalInteger(formData, "priceInCents"),
+    priceInCents: optionalInteger(formData, "priceInCents") ?? service.priceInCents,
     notes: optionalText(formData, "notes"),
+  }).returning({ id: appointments.id });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: session.user.id,
+    action: "create",
+    entityType: "appointment",
+    entityId: created.id,
   });
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
 }
 
 export async function updateAppointmentStatus(formData: FormData) {
-  const { organization } = await requireOrganization();
+  const { session, organization } = await requireOrganization();
   const status = textValue(formData, "status") as
     | "scheduled"
     | "confirmed"
@@ -393,12 +453,17 @@ export async function updateAppointmentStatus(formData: FormData) {
   if (!["scheduled", "confirmed", "cancelled", "completed", "no_show"].includes(status)) {
     throw new Error("Status inválido.");
   }
+  const cancellationReason = optionalText(formData, "cancellationReason");
+  if (status === "cancelled" && !cancellationReason) {
+    throw new Error("Informe o motivo do cancelamento.");
+  }
 
   await db
     .update(appointments)
     .set({
       status,
       confirmedAt: status === "confirmed" ? new Date() : undefined,
+      cancellationReason: status === "cancelled" ? cancellationReason : null,
       updatedAt: new Date(),
     })
     .where(
@@ -407,6 +472,14 @@ export async function updateAppointmentStatus(formData: FormData) {
         eq(appointments.organizationId, organization.id)
       )
     );
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: session.user.id,
+    action: `status:${status}`,
+    entityType: "appointment",
+    entityId: textValue(formData, "id"),
+    details: cancellationReason ? { cancellationReason } : {},
+  });
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
 }

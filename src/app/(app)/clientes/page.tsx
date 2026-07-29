@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { Trash2 } from "lucide-react";
+import Link from "next/link";
 
 import { createClient, deleteClient } from "@/actions/app";
 import { PageHeader } from "@/components/page-header";
@@ -48,7 +49,9 @@ export default async function ClientsPage() {
               <div key={item.id} className="flex items-center gap-4 py-4">
                 <span className="grid size-10 place-items-center rounded-full bg-[#edf7f1] font-extrabold text-brand">{item.name[0]}</span>
                 <div className="min-w-0 flex-1">
-                  <p className="font-bold">{item.name}</p>
+                  <Link className="font-bold hover:text-brand" href={`/clientes/${item.id}`}>
+                    {item.name}
+                  </Link>
                   <p className="truncate text-sm text-muted">{item.phone || item.email || "Sem contato informado"}</p>
                 </div>
                 <form action={deleteClient}>

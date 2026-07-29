@@ -95,7 +95,7 @@ export async function startCheckout(formData: FormData) {
         name: session.user.name,
         email: session.user.email,
         cpfCnpj,
-        phoneNumber,
+        phone: phoneNumber,
         postalCode,
         address,
         addressNumber,

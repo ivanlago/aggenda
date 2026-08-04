@@ -61,6 +61,24 @@ export const availabilityExceptionTypeEnum = pgEnum(
   "availability_exception_type",
   ["blocked", "available"]
 );
+export const outboxStatusEnum = pgEnum("outbox_status", [
+  "pending",
+  "processing",
+  "processed",
+  "failed",
+]);
+export const chatMessageDirectionEnum = pgEnum("chat_message_direction", [
+  "inbound",
+  "outbound",
+]);
+export const chatMessageStatusEnum = pgEnum("chat_message_status", [
+  "received",
+  "queued",
+  "sent",
+  "delivered",
+  "read",
+  "failed",
+]);
 
 export const professions = pgTable("professions", {
   id: text("id").primaryKey(),
@@ -574,5 +592,111 @@ export const auditLogs = pgTable(
   (table) => [
     index("audit_logs_organization_idx").on(table.organizationId),
     index("audit_logs_created_at_idx").on(table.createdAt),
+  ]
+);
+
+export const whatsappChannels = pgTable(
+  "whatsapp_channels",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    phoneNumberId: text("phone_number_id").notNull(),
+    whatsappBusinessAccountId: text("whatsapp_business_account_id"),
+    displayPhoneNumber: text("display_phone_number"),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("whatsapp_channels_phone_number_unique").on(table.phoneNumberId),
+    index("whatsapp_channels_organization_idx").on(table.organizationId),
+  ]
+);
+
+export const chatConversations = pgTable(
+  "chat_conversations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    channelId: uuid("channel_id")
+      .notNull()
+      .references(() => whatsappChannels.id, { onDelete: "cascade" }),
+    externalContactId: text("external_contact_id").notNull(),
+    contactName: text("contact_name"),
+    lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("chat_conversations_channel_contact_unique").on(
+      table.channelId,
+      table.externalContactId
+    ),
+    index("chat_conversations_organization_idx").on(table.organizationId),
+    index("chat_conversations_last_message_idx").on(table.lastMessageAt),
+  ]
+);
+
+export const chatMessages = pgTable(
+  "chat_messages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => chatConversations.id, { onDelete: "cascade" }),
+    externalMessageId: text("external_message_id").notNull(),
+    direction: chatMessageDirectionEnum("direction").notNull(),
+    status: chatMessageStatusEnum("status").notNull(),
+    messageType: text("message_type").default("text").notNull(),
+    body: text("body"),
+    rawPayload: jsonb("raw_payload").$type<Record<string, unknown>>().default({}),
+    occurredAt: timestamp("occurred_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("chat_messages_external_id_unique").on(table.externalMessageId),
+    index("chat_messages_conversation_idx").on(
+      table.conversationId,
+      table.occurredAt
+    ),
+    index("chat_messages_organization_idx").on(table.organizationId),
+  ]
+);
+
+export const outboxEvents = pgTable(
+  "outbox_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    eventKey: text("event_key").notNull(),
+    eventType: text("event_type").notNull(),
+    aggregateType: text("aggregate_type").notNull(),
+    aggregateId: text("aggregate_id").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    status: outboxStatusEnum("status").default("pending").notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    maxAttempts: integer("max_attempts").default(5).notNull(),
+    availableAt: timestamp("available_at").defaultNow().notNull(),
+    lockedAt: timestamp("locked_at"),
+    lockedBy: text("locked_by"),
+    processedAt: timestamp("processed_at"),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("outbox_events_event_key_unique").on(table.eventKey),
+    index("outbox_events_pending_idx").on(table.status, table.availableAt),
+    index("outbox_events_organization_idx").on(table.organizationId),
   ]
 );

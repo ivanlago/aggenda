@@ -9,9 +9,11 @@
     "lint": "eslint",
     "admin:create": "tsx scripts/create-initial-admin.ts",
     "platform:grant": "tsx scripts/grant-platform-access.ts",
+    "whatsapp:register": "tsx scripts/register-whatsapp-channel.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "worker:outbox": "tsx workers/outbox-worker.ts"
   },
   "dependencies": {
     "better-auth": "^1.6.25",

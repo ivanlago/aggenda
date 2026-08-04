@@ -209,10 +209,11 @@ export async function POST(request: Request) {
       checkoutId: event.checkout?.id ?? event.payment?.checkoutSession ?? null,
       paymentId: event.payment?.id ?? null,
     });
-    return Response.json(
-      { error: "Não foi possível relacionar o evento à compra." },
-      { status: 422 },
-    );
+    return Response.json({
+      received: true,
+      processed: false,
+      reason: "organization_not_found",
+    });
   }
 
   await db.transaction(async (tx) => {

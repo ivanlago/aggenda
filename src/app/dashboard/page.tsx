@@ -18,8 +18,13 @@ const statusLabel = {
   no_show: "Não compareceu",
 };
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ compra?: string }>;
+}) {
   const { session, organization } = await requireOrganization();
+  const purchaseConfirmed = (await searchParams).compra === "sucesso";
   const today = new Date();
   const start = new Date(today);
   start.setHours(0, 0, 0, 0);
@@ -63,6 +68,14 @@ export default async function DashboardPage() {
           title={`Olá, ${session.user.name.split(" ")[0]}.`}
           description="Acompanhe o movimento do seu negócio e os próximos atendimentos."
         />
+        {purchaseConfirmed && (
+          <section className="mb-5 rounded-2xl border border-brand/20 bg-[#edf7f1] p-5 text-brand">
+            <p className="font-extrabold">Pagamento confirmado — bem-vindo ao Aggenda!</p>
+            <p className="mt-1 text-sm font-medium">
+              Seu acesso está liberado. Comece pelas etapas abaixo para deixar sua agenda pronta para receber clientes.
+            </p>
+          </section>
+        )}
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
             {

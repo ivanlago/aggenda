@@ -53,7 +53,10 @@ export default async function SubscriptionPage({
 
   return (
     <main className="min-h-screen px-6 py-12">
-      <SubscriptionRefresh enabled={checkout === "sucesso" && subscription?.status !== "active"} />
+      <SubscriptionRefresh
+        enabled={checkout === "sucesso" && subscription?.status !== "active"}
+        confirmed={checkout === "sucesso" && subscription?.status === "active"}
+      />
       <div className="mx-auto max-w-4xl">
         <div className="flex items-center justify-between gap-4">
           <Link href={active ? "/dashboard" : "/"} className="font-extrabold text-brand">
@@ -64,9 +67,17 @@ export default async function SubscriptionPage({
           </span>
         </div>
 
-        {checkout === "sucesso" && (
+        {checkout === "sucesso" && subscription?.status === "active" ? (
+          <div className="mt-8 rounded-2xl bg-[#edf7f1] p-5 text-brand">
+            <p className="font-extrabold">Pagamento confirmado. Seu Aggenda já está liberado!</p>
+            <p className="mt-1 text-sm font-medium">Você será encaminhado ao painel para concluir a configuração da conta.</p>
+            <Link className="mt-4 inline-flex rounded-xl bg-brand px-4 py-2 font-extrabold text-white" href="/dashboard?compra=sucesso">
+              Acessar meu Aggenda
+            </Link>
+          </div>
+        ) : checkout === "sucesso" && (
           <div className="mt-8 rounded-2xl bg-[#edf7f1] p-4 font-bold text-brand">
-            Checkout concluído. Aguardando a confirmação do pagamento pelo Asaas.
+            Pagamento enviado. Estamos confirmando com o Asaas; esta página será atualizada automaticamente.
           </div>
         )}
         {checkout === "erro" && (

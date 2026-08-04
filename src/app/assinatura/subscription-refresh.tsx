@@ -3,9 +3,21 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-export function SubscriptionRefresh({ enabled }: { enabled: boolean }) {
+export function SubscriptionRefresh({
+  enabled,
+  confirmed,
+}: {
+  enabled: boolean;
+  confirmed: boolean;
+}) {
   const router = useRouter();
   useEffect(() => {
+    if (confirmed) {
+      const redirectTimer = window.setTimeout(() => {
+        router.replace("/dashboard?compra=sucesso");
+      }, 2500);
+      return () => window.clearTimeout(redirectTimer);
+    }
     if (!enabled) return;
     let attempts = 0;
     const timer = window.setInterval(() => {
@@ -14,6 +26,6 @@ export function SubscriptionRefresh({ enabled }: { enabled: boolean }) {
       if (attempts >= 15) window.clearInterval(timer);
     }, 2000);
     return () => window.clearInterval(timer);
-  }, [enabled, router]);
+  }, [confirmed, enabled, router]);
   return null;
 }

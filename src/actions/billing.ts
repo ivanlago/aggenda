@@ -141,8 +141,10 @@ export async function startCheckout(formData: FormData) {
     .where(eq(organizationSubscriptions.organizationId, organization.id)).limit(1);
   const trialStillActive = current?.status === "trialing" && current.trialEndsAt && current.trialEndsAt > now;
   await db
-    .update(organizationSubscriptions)
-    .set({
+    .insert(organizationSubscriptions)
+    .values({
+      organizationId: organization.id,
+      plan: current?.status === "trialing" ? "trial" : "essential",
       billingProvider: "asaas",
       billingCheckoutId: checkout.id,
       billingPlanCode: plan.id,
@@ -152,7 +154,19 @@ export async function startCheckout(formData: FormData) {
       status: trialStillActive ? "trialing" : "incomplete",
       updatedAt: new Date(),
     })
-    .where(eq(organizationSubscriptions.organizationId, organization.id));
+    .onConflictDoUpdate({
+      target: organizationSubscriptions.organizationId,
+      set: {
+        billingProvider: "asaas",
+        billingCheckoutId: checkout.id,
+        billingPlanCode: plan.id,
+        billingIntervalMonths: recurring ? 1 : null,
+        billingPaymentMethod: paymentMethod,
+        pendingPeriodMonths: plan.months,
+        status: trialStillActive ? "trialing" : "incomplete",
+        updatedAt: new Date(),
+      },
+    });
 
   redirect(asaasCheckoutLink(checkout));
 }

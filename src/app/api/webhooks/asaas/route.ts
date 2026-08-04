@@ -8,6 +8,7 @@ import {
   billingWebhookEvents,
   organizationSubscriptions,
 } from "@/db/schema";
+import { asaasRequest } from "@/lib/asaas";
 
 type AsaasSubscription = {
   id: string;
@@ -29,6 +30,7 @@ type AsaasPayment = {
   paymentDate?: string | null;
   confirmedDate?: string | null;
   status?: string;
+  checkoutSession?: string | null;
 };
 
 type AsaasCheckout = {
@@ -105,6 +107,30 @@ async function findOrganizationId(event: AsaasWebhook) {
     if (record) return record.organizationId;
   }
 
+  if (event.payment?.checkoutSession) {
+    const [record] = await db
+      .select({ organizationId: organizationSubscriptions.organizationId })
+      .from(organizationSubscriptions)
+      .where(eq(organizationSubscriptions.billingCheckoutId, event.payment.checkoutSession))
+      .limit(1);
+    if (record) return record.organizationId;
+  }
+
+  const checkoutId = event.checkout?.id || event.payment?.checkoutSession;
+  if (checkoutId) {
+    try {
+      const checkout = await asaasRequest<AsaasCheckout>(`/checkouts/${checkoutId}`);
+      const purchase = purchaseReference(checkout.externalReference);
+      const organizationId = purchase?.organizationId || validOrganizationId(checkout.externalReference);
+      if (organizationId) return organizationId;
+    } catch (error) {
+      console.error("[asaas:webhook] Falha ao consultar checkout para conciliação", {
+        checkoutId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   const subscriptionId =
     event.subscription?.id || event.payment?.subscription || undefined;
   if (subscriptionId) {
@@ -148,13 +174,36 @@ export async function POST(request: Request) {
     event.subscription?.externalReference || event.payment?.externalReference || event.checkout?.externalReference
   );
 
+  if (!organizationId) {
+    console.error("[asaas:webhook] Evento sem vínculo com uma organização", {
+      eventId: event.id,
+      eventType: event.event,
+      checkoutId: event.checkout?.id ?? event.payment?.checkoutSession ?? null,
+      paymentId: event.payment?.id ?? null,
+    });
+    return Response.json(
+      { error: "Não foi possível relacionar o evento à compra." },
+      { status: 422 },
+    );
+  }
+
   await db.transaction(async (tx) => {
-    const inserted = await tx
+    await tx
       .insert(billingWebhookEvents)
       .values({ id: event.id, provider: "asaas", type: event.event })
-      .onConflictDoNothing()
-      .returning({ id: billingWebhookEvents.id });
-    if (!inserted.length || !organizationId) return;
+      .onConflictDoNothing();
+
+    const checkoutId = event.checkout?.id || event.payment?.checkoutSession || null;
+    await tx.insert(organizationSubscriptions).values({
+      organizationId,
+      plan: "essential",
+      status: "incomplete",
+      billingProvider: "asaas",
+      billingCheckoutId: checkoutId,
+      billingPlanCode: purchase?.planCode ?? "monthly",
+      billingPaymentMethod: purchase?.paymentMethod,
+      pendingPeriodMonths: purchase?.months ?? 1,
+    }).onConflictDoNothing();
 
     const subscription = event.subscription;
     const payment = event.payment;
@@ -189,11 +238,33 @@ export async function POST(request: Request) {
     }
 
     if (checkout && event.event === "CHECKOUT_PAID") {
+      const [current] = await tx.select({
+        status: organizationSubscriptions.status,
+        currentPeriodEnd: organizationSubscriptions.currentPeriodEnd,
+        trialEndsAt: organizationSubscriptions.trialEndsAt,
+        pendingPeriodMonths: organizationSubscriptions.pendingPeriodMonths,
+        billingPlanCode: organizationSubscriptions.billingPlanCode,
+        billingPaymentMethod: organizationSubscriptions.billingPaymentMethod,
+      }).from(organizationSubscriptions)
+        .where(eq(organizationSubscriptions.organizationId, organizationId)).limit(1);
+      const now = new Date();
+      const baseCandidates = [now, current?.trialEndsAt, current?.currentPeriodEnd]
+        .filter((date): date is Date => Boolean(date && date > now));
+      const periodBase = baseCandidates.reduce((latest, date) => date > latest ? date : latest, now);
+      const months = Math.max(1, purchase?.months ?? current?.pendingPeriodMonths ?? 1);
       await tx
         .update(organizationSubscriptions)
         .set({
+          plan: "essential",
+          status: "active",
           billingProvider: "asaas",
           billingCustomerId: checkout.customer || undefined,
+          currentPeriodEnd: current?.status === "active" && current.currentPeriodEnd
+            ? current.currentPeriodEnd
+            : addMonths(periodBase, months),
+          billingPlanCode: purchase?.planCode ?? current?.billingPlanCode ?? "monthly",
+          billingPaymentMethod: purchase?.paymentMethod ?? current?.billingPaymentMethod,
+          cancelAtPeriodEnd: false,
           updatedAt: new Date(),
         })
         .where(eq(organizationSubscriptions.organizationId, organizationId));
@@ -247,6 +318,8 @@ export async function POST(request: Request) {
         event.event === "PAYMENT_RECEIVED")
     ) {
       const [current] = await tx.select({
+        status: organizationSubscriptions.status,
+        lastPaymentId: organizationSubscriptions.lastPaymentId,
         currentPeriodEnd: organizationSubscriptions.currentPeriodEnd,
         trialEndsAt: organizationSubscriptions.trialEndsAt,
         pendingPeriodMonths: organizationSubscriptions.pendingPeriodMonths,
@@ -259,6 +332,9 @@ export async function POST(request: Request) {
         .filter((date): date is Date => Boolean(date && date > now));
       const periodBase = baseCandidates.reduce((latest, date) => date > latest ? date : latest, now);
       const months = Math.max(1, purchase?.months ?? current?.pendingPeriodMonths ?? 1);
+      const periodEnd = current?.status === "active" && !current.lastPaymentId && current.currentPeriodEnd
+        ? current.currentPeriodEnd
+        : addMonths(periodBase, months);
       await tx
         .update(organizationSubscriptions)
         .set({
@@ -268,7 +344,7 @@ export async function POST(request: Request) {
           billingCustomerId: payment.customer,
           billingSubscriptionId: payment.subscription || undefined,
           lastPaymentId: payment.id,
-          currentPeriodEnd: addMonths(periodBase, months),
+          currentPeriodEnd: periodEnd,
           billingPlanCode: purchase?.planCode ?? current?.billingPlanCode ?? "monthly",
           billingPaymentMethod: purchase?.paymentMethod ?? current?.billingPaymentMethod ?? payment.billingType?.toLowerCase(),
           billingIntervalMonths: payment.subscription ? 1 : null,

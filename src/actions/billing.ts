@@ -8,18 +8,11 @@ import { headers } from "next/headers";
 import { db } from "@/db";
 import { legalAcceptances, organizationSubscriptions } from "@/db/schema";
 import { asaasCheckoutLink, asaasRequest } from "@/lib/asaas";
+import { asaasBillingType, getBillingPlan, isBillingPlanId, type BillingPaymentMethod } from "@/lib/billing-plans";
 import { requireOrganizationMembership } from "@/lib/session";
 
 function appUrl() {
   return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-}
-
-function planValue() {
-  const value = Number(process.env.ASAAS_PLAN_VALUE || "99");
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new Error("ASAAS_PLAN_VALUE deve ser um valor positivo.");
-  }
-  return value;
 }
 
 function asaasDate(date: Date) {
@@ -49,6 +42,13 @@ export async function startCheckout(formData: FormData) {
   if (formData.get("acceptTerms") !== "on") {
     throw new Error("Aceite os Termos de Uso e a Política de Privacidade.");
   }
+  const planId = requiredText(formData, "planId", "o plano");
+  if (!isBillingPlanId(planId)) throw new Error("Plano inválido.");
+  const paymentMethod = requiredText(formData, "paymentMethod", "a forma de pagamento") as BillingPaymentMethod;
+  if (paymentMethod !== "credit_card" && paymentMethod !== "pix") {
+    throw new Error("Forma de pagamento inválida.");
+  }
+  const plan = getBillingPlan(planId);
 
   const cpfCnpj = digits(formData, "cpfCnpj", "o CPF ou CNPJ");
   if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) {
@@ -74,13 +74,15 @@ export async function startCheckout(formData: FormData) {
   const province = requiredText(formData, "province", "o bairro");
 
   const now = new Date();
+  const recurring = plan.id === "monthly" && paymentMethod === "credit_card";
+  const purchaseReference = `${organization.id}:${plan.id}:${plan.months}:${paymentMethod}`;
   const checkout = await asaasRequest<CheckoutResponse>("/checkouts", {
     method: "POST",
     body: {
-      billingTypes: ["CREDIT_CARD"],
-      chargeTypes: ["RECURRENT"],
+      billingTypes: [asaasBillingType(paymentMethod)],
+      chargeTypes: [recurring ? "RECURRENT" : "DETACHED"],
       minutesToExpire: 1440,
-      externalReference: organization.id,
+      externalReference: purchaseReference,
       callback: {
         successUrl: `${appUrl()}/assinatura?checkout=sucesso`,
         cancelUrl: `${appUrl()}/assinatura?checkout=cancelado`,
@@ -88,11 +90,11 @@ export async function startCheckout(formData: FormData) {
       },
       items: [
         {
-          externalReference: "essential-monthly",
-          name: "Plano Essencial Aggenda",
-          description: "Assinatura mensal do sistema Aggenda",
+          externalReference: `essential-${plan.id}`,
+          name: `Plano Essencial ${plan.name}`,
+          description: `${plan.months} ${plan.months === 1 ? "mês" : "meses"} de acesso ao Aggenda`,
           quantity: 1,
-          value: planValue(),
+          value: plan.value,
         },
       ],
       customerData: {
@@ -105,10 +107,10 @@ export async function startCheckout(formData: FormData) {
         addressNumber,
         province,
       },
-      subscription: {
+      subscription: recurring ? {
         cycle: "MONTHLY",
         nextDueDate: asaasDate(now),
-      },
+      } : undefined,
     },
   });
 
@@ -120,12 +122,20 @@ export async function startCheckout(formData: FormData) {
     { organizationId: organization.id, userId: session.user.id, document: "privacy", version: "2026-08-04", ipAddress, userAgent },
   ]).onConflictDoNothing();
 
+  const [current] = await db.select({ status: organizationSubscriptions.status, trialEndsAt: organizationSubscriptions.trialEndsAt })
+    .from(organizationSubscriptions)
+    .where(eq(organizationSubscriptions.organizationId, organization.id)).limit(1);
+  const trialStillActive = current?.status === "trialing" && current.trialEndsAt && current.trialEndsAt > now;
   await db
     .update(organizationSubscriptions)
     .set({
       billingProvider: "asaas",
       billingCheckoutId: checkout.id,
-      status: "incomplete",
+      billingPlanCode: plan.id,
+      billingIntervalMonths: recurring ? 1 : null,
+      billingPaymentMethod: paymentMethod,
+      pendingPeriodMonths: plan.months,
+      status: trialStillActive ? "trialing" : "incomplete",
       updatedAt: new Date(),
     })
     .where(eq(organizationSubscriptions.organizationId, organization.id));

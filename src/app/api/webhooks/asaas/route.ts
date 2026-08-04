@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
+  billingPayments,
   billingWebhookEvents,
   organizationSubscriptions,
 } from "@/db/schema";
@@ -23,6 +24,11 @@ type AsaasPayment = {
   subscription?: string | null;
   externalReference?: string | null;
   dueDate?: string | null;
+  value?: number;
+  billingType?: string;
+  paymentDate?: string | null;
+  confirmedDate?: string | null;
+  status?: string;
 };
 
 type AsaasCheckout = {
@@ -57,14 +63,33 @@ function validOrganizationId(value?: string | null) {
     : null;
 }
 
-function nextMonthlyPeriod(dueDate?: string | null) {
-  const date = dueDate ? new Date(`${dueDate}T12:00:00Z`) : new Date();
+function purchaseReference(value?: string | null) {
+  if (!value) return null;
+  const [organizationId, planCode, monthsText, paymentMethod] = value.split(":");
+  const validId = validOrganizationId(organizationId);
+  const months = Number.parseInt(monthsText ?? "", 10);
+  if (!validId || !planCode || !Number.isInteger(months) || months < 1 || months > 12) return null;
+  return { organizationId: validId, planCode, months, paymentMethod: paymentMethod || null };
+}
+
+function addMonths(date: Date, months: number) {
+  const result = new Date(date);
+  result.setUTCMonth(result.getUTCMonth() + months);
+  return result;
+}
+
+function paymentDate(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(`${value}T12:00:00Z`);
   if (Number.isNaN(date.getTime())) return null;
-  date.setUTCMonth(date.getUTCMonth() + 1);
   return date;
 }
 
 async function findOrganizationId(event: AsaasWebhook) {
+  const purchase = purchaseReference(
+    event.subscription?.externalReference || event.payment?.externalReference || event.checkout?.externalReference
+  );
+  if (purchase) return purchase.organizationId;
   const externalReference =
     validOrganizationId(event.subscription?.externalReference) ||
     validOrganizationId(event.payment?.externalReference) ||
@@ -119,6 +144,9 @@ export async function POST(request: Request) {
   }
 
   const organizationId = await findOrganizationId(event);
+  const purchase = purchaseReference(
+    event.subscription?.externalReference || event.payment?.externalReference || event.checkout?.externalReference
+  );
 
   await db.transaction(async (tx) => {
     const inserted = await tx
@@ -131,6 +159,34 @@ export async function POST(request: Request) {
     const subscription = event.subscription;
     const payment = event.payment;
     const checkout = event.checkout;
+    let paymentWasAlreadyPaid = false;
+
+    if (payment) {
+      const paid = event.event === "PAYMENT_CONFIRMED" || event.event === "PAYMENT_RECEIVED";
+      const [existingPayment] = await tx.select({ status: billingPayments.status })
+        .from(billingPayments)
+        .where(eq(billingPayments.providerPaymentId, payment.id)).limit(1);
+      paymentWasAlreadyPaid = existingPayment?.status === "paid";
+      await tx.insert(billingPayments).values({
+        organizationId, provider: "asaas", providerPaymentId: payment.id,
+        paymentMethod: payment.billingType?.toLowerCase() ?? null,
+        amountInCents: payment.value == null ? null : Math.round(payment.value * 100),
+        status: paid ? "paid" : (payment.status?.toLowerCase() ?? event.event.toLowerCase()),
+        dueDate: paymentDate(payment.dueDate),
+        paidAt: paid ? paymentDate(payment.paymentDate || payment.confirmedDate) ?? new Date() : null,
+        updatedAt: new Date(),
+      }).onConflictDoUpdate({
+        target: [billingPayments.provider, billingPayments.providerPaymentId],
+        set: {
+          paymentMethod: payment.billingType?.toLowerCase() ?? null,
+          amountInCents: payment.value == null ? null : Math.round(payment.value * 100),
+          status: paid ? "paid" : (payment.status?.toLowerCase() ?? event.event.toLowerCase()),
+          dueDate: paymentDate(payment.dueDate),
+          paidAt: paid ? paymentDate(payment.paymentDate || payment.confirmedDate) ?? new Date() : null,
+          updatedAt: new Date(),
+        },
+      });
+    }
 
     if (checkout && event.event === "CHECKOUT_PAID") {
       await tx
@@ -144,9 +200,12 @@ export async function POST(request: Request) {
     }
 
     if (checkout && (event.event === "CHECKOUT_CANCELED" || event.event === "CHECKOUT_EXPIRED")) {
-      await tx.update(organizationSubscriptions)
-        .set({ status: "incomplete", updatedAt: new Date() })
-        .where(eq(organizationSubscriptions.organizationId, organizationId));
+      const [current] = await tx.select({ status: organizationSubscriptions.status, trialEndsAt: organizationSubscriptions.trialEndsAt })
+        .from(organizationSubscriptions).where(eq(organizationSubscriptions.organizationId, organizationId)).limit(1);
+      const trialActive = current?.status === "trialing" && current.trialEndsAt && current.trialEndsAt > new Date();
+      await tx.update(organizationSubscriptions).set({
+        status: trialActive ? "trialing" : "incomplete", updatedAt: new Date(),
+      }).where(eq(organizationSubscriptions.organizationId, organizationId));
     }
 
     if (
@@ -183,9 +242,23 @@ export async function POST(request: Request) {
 
     if (
       payment &&
+      !paymentWasAlreadyPaid &&
       (event.event === "PAYMENT_CONFIRMED" ||
         event.event === "PAYMENT_RECEIVED")
     ) {
+      const [current] = await tx.select({
+        currentPeriodEnd: organizationSubscriptions.currentPeriodEnd,
+        trialEndsAt: organizationSubscriptions.trialEndsAt,
+        pendingPeriodMonths: organizationSubscriptions.pendingPeriodMonths,
+        billingPlanCode: organizationSubscriptions.billingPlanCode,
+        billingPaymentMethod: organizationSubscriptions.billingPaymentMethod,
+      }).from(organizationSubscriptions)
+        .where(eq(organizationSubscriptions.organizationId, organizationId)).limit(1);
+      const now = new Date();
+      const baseCandidates = [now, current?.trialEndsAt, current?.currentPeriodEnd]
+        .filter((date): date is Date => Boolean(date && date > now));
+      const periodBase = baseCandidates.reduce((latest, date) => date > latest ? date : latest, now);
+      const months = Math.max(1, purchase?.months ?? current?.pendingPeriodMonths ?? 1);
       await tx
         .update(organizationSubscriptions)
         .set({
@@ -195,11 +268,17 @@ export async function POST(request: Request) {
           billingCustomerId: payment.customer,
           billingSubscriptionId: payment.subscription || undefined,
           lastPaymentId: payment.id,
-          currentPeriodEnd: nextMonthlyPeriod(payment.dueDate),
+          currentPeriodEnd: addMonths(periodBase, months),
+          billingPlanCode: purchase?.planCode ?? current?.billingPlanCode ?? "monthly",
+          billingPaymentMethod: purchase?.paymentMethod ?? current?.billingPaymentMethod ?? payment.billingType?.toLowerCase(),
+          billingIntervalMonths: payment.subscription ? 1 : null,
+          pendingPeriodMonths: payment.subscription ? 1 : null,
           cancelAtPeriodEnd: false,
           updatedAt: new Date(),
         })
         .where(eq(organizationSubscriptions.organizationId, organizationId));
+      await tx.update(billingPayments).set({ planCode: purchase?.planCode ?? current?.billingPlanCode ?? "monthly" })
+        .where(eq(billingPayments.providerPaymentId, payment.id));
     }
 
     if (
@@ -209,14 +288,18 @@ export async function POST(request: Request) {
         event.event === "PAYMENT_CHARGEBACK_REQUESTED" ||
         event.event === "PAYMENT_CHARGEBACK_DISPUTE")
     ) {
-      await tx
-        .update(organizationSubscriptions)
-        .set({
-          status: "past_due",
-          lastPaymentId: payment.id,
-          updatedAt: new Date(),
-        })
-        .where(eq(organizationSubscriptions.organizationId, organizationId));
+      const [current] = await tx.select({
+        lastPaymentId: organizationSubscriptions.lastPaymentId,
+        currentPeriodEnd: organizationSubscriptions.currentPeriodEnd,
+      }).from(organizationSubscriptions)
+        .where(eq(organizationSubscriptions.organizationId, organizationId)).limit(1);
+      const reversal = event.event !== "PAYMENT_OVERDUE" && current?.lastPaymentId === payment.id;
+      const accessExpired = !current?.currentPeriodEnd || current.currentPeriodEnd <= new Date();
+      if (reversal || accessExpired) {
+        await tx.update(organizationSubscriptions).set({
+          status: "past_due", updatedAt: new Date(),
+        }).where(eq(organizationSubscriptions.organizationId, organizationId));
+      }
     }
   });
 

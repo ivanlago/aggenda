@@ -244,6 +244,10 @@ export const organizationSubscriptions = pgTable(
     billingSubscriptionId: text("billing_subscription_id").unique(),
     billingCheckoutId: text("billing_checkout_id"),
     lastPaymentId: text("last_payment_id"),
+    billingPlanCode: text("billing_plan_code"),
+    billingIntervalMonths: integer("billing_interval_months"),
+    billingPaymentMethod: text("billing_payment_method"),
+    pendingPeriodMonths: integer("pending_period_months"),
     trialEndsAt: timestamp("trial_ends_at"),
     currentPeriodEnd: timestamp("current_period_end"),
     cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false).notNull(),
@@ -261,6 +265,28 @@ export const organizationSubscriptions = pgTable(
     index("organization_subscriptions_billing_subscription_idx").on(
       table.billingSubscriptionId
     ),
+  ]
+);
+
+export const billingPayments = pgTable(
+  "billing_payments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    providerPaymentId: text("provider_payment_id").notNull(),
+    planCode: text("plan_code"),
+    paymentMethod: text("payment_method"),
+    amountInCents: integer("amount_in_cents"),
+    status: text("status").notNull(),
+    dueDate: timestamp("due_date"),
+    paidAt: timestamp("paid_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("billing_payments_provider_id_unique").on(table.provider, table.providerPaymentId),
+    index("billing_payments_org_idx").on(table.organizationId),
   ]
 );
 

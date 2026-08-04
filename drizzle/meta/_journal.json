@@ -71,6 +71,13 @@
       "when": 1785870805394,
       "tag": "0009_friendly_barracuda",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785872949899,
+      "tag": "0010_panoramic_riptide",
+      "breakpoints": true
     }
   ]
 }

@@ -32,7 +32,8 @@ Para testar a cobrança recorrente pelo Asaas:
 - crie uma conta independente em `https://sandbox.asaas.com`;
 - gere uma chave de API sem permissão para saques;
 - configure `ASAAS_ENVIRONMENT=sandbox`, `ASAAS_API_KEY`,
-  `ASAAS_WEBHOOK_TOKEN` e `ASAAS_PLAN_VALUE`;
+  `ASAAS_WEBHOOK_TOKEN`, `ASAAS_PLAN_MONTHLY_VALUE`, `ASAAS_PLAN_QUARTERLY_VALUE`,
+  `ASAAS_PLAN_SEMIANNUAL_VALUE` e `ASAAS_PLAN_ANNUAL_VALUE`;
 - configure no Asaas o webhook
   `https://SEU_DOMINIO/api/webhooks/asaas`, usando o mesmo token de autenticação;
 - habilite somente eventos de cobranças, assinaturas e Checkout.

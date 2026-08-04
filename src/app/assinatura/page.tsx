@@ -1,15 +1,17 @@
-import { CheckCircle2, CreditCard, ShieldCheck } from "lucide-react";
+import { CheckCircle2, CreditCard, QrCode, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
 import { cancelSubscription, startCheckout } from "@/actions/billing";
 import { db } from "@/db";
-import { organizationSubscriptions } from "@/db/schema";
+import { billingPayments, organizationSubscriptions } from "@/db/schema";
+import { getBillingPlans } from "@/lib/billing-plans";
 import {
   hasActiveSubscription,
   requireOrganizationMembership,
 } from "@/lib/session";
 import { assertOrganizationPermission } from "@/lib/permissions";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
+import { SubscriptionRefresh } from "./subscription-refresh";
 
 export const metadata = { title: "Plano e cobrança" };
 
@@ -28,11 +30,13 @@ export default async function SubscriptionPage({
 }) {
   const { organization } = await requireOrganizationMembership();
   assertOrganizationPermission(organization.role, "billing.manage");
-  const [subscription] = await db
-    .select()
-    .from(organizationSubscriptions)
-    .where(eq(organizationSubscriptions.organizationId, organization.id))
-    .limit(1);
+  const [[subscription], payments] = await Promise.all([
+    db.select().from(organizationSubscriptions)
+      .where(eq(organizationSubscriptions.organizationId, organization.id)).limit(1),
+    db.select().from(billingPayments)
+      .where(eq(billingPayments.organizationId, organization.id))
+      .orderBy(desc(billingPayments.createdAt)).limit(10),
+  ]);
   const { checkout } = await searchParams;
   const active = subscription ? hasActiveSubscription({
     subscriptionStatus: subscription.status,
@@ -40,9 +44,15 @@ export default async function SubscriptionPage({
     currentPeriodEnd: subscription.currentPeriodEnd,
   }) : false;
   const asaasConfigured = Boolean(process.env.ASAAS_API_KEY);
+  const plans = getBillingPlans();
+  const today = new Date();
+  const trialDays = subscription?.trialEndsAt && subscription.trialEndsAt > today
+    ? Math.ceil((subscription.trialEndsAt.getTime() - today.getTime()) / 86_400_000)
+    : 0;
 
   return (
     <main className="min-h-screen px-6 py-12">
+      <SubscriptionRefresh enabled={checkout === "sucesso" && subscription?.status !== "active"} />
       <div className="mx-auto max-w-4xl">
         <div className="flex items-center justify-between gap-4">
           <Link href={active ? "/dashboard" : "/"} className="font-extrabold text-brand">
@@ -55,7 +65,12 @@ export default async function SubscriptionPage({
 
         {checkout === "sucesso" && (
           <div className="mt-8 rounded-2xl bg-[#edf7f1] p-4 font-bold text-brand">
-            Pagamento recebido. A ativação será confirmada em instantes.
+            Checkout concluído. Aguardando a confirmação do pagamento pelo Asaas.
+          </div>
+        )}
+        {subscription?.status === "trialing" && trialDays > 0 && (
+          <div className="mt-8 rounded-2xl bg-amber-50 p-4 font-bold text-amber-900">
+            Seu período gratuito termina em {trialDays} {trialDays === 1 ? "dia" : "dias"}. Ao contratar agora, esses dias serão preservados.
           </div>
         )}
 
@@ -91,10 +106,7 @@ export default async function SubscriptionPage({
             <p className="mt-6 text-sm font-extrabold uppercase tracking-widest text-brand">
               Plano Essencial
             </p>
-            <p className="mt-2 text-3xl font-extrabold">
-              {process.env.NEXT_PUBLIC_PLAN_PRICE || "R$ 99"}
-              <span className="text-sm font-semibold text-muted">/mês</span>
-            </p>
+            <p className="mt-2 text-3xl font-extrabold">Escolha seu período</p>
             <ul className="mt-6 grid gap-3 text-sm">
               <li>Agenda, clientes e serviços</li>
               <li>Profissionais e equipe</li>
@@ -103,7 +115,8 @@ export default async function SubscriptionPage({
 
             {subscription?.billingSubscriptionId &&
             subscription.billingProvider === "asaas" &&
-            subscription.plan !== "trial" ? (
+            subscription.plan !== "trial" &&
+            !subscription.cancelAtPeriodEnd ? (
               <form action={cancelSubscription} className="mt-7">
                 <button className="w-full rounded-xl border border-red-200 px-4 py-3 font-extrabold text-red-700 transition hover:bg-red-50">
                   Cancelar renovação
@@ -111,6 +124,26 @@ export default async function SubscriptionPage({
               </form>
             ) : asaasConfigured ? (
               <form action={startCheckout} className="mt-7 grid gap-3">
+                <fieldset className="grid grid-cols-2 gap-2">
+                  <legend className="mb-2 text-xs font-bold">Plano</legend>
+                  {plans.map((plan) => (
+                    <label key={plan.id} className="cursor-pointer rounded-xl border p-3 has-[:checked]:border-brand has-[:checked]:bg-[#edf7f1]">
+                      <input className="sr-only" type="radio" name="planId" value={plan.id} defaultChecked={plan.id === "monthly"} />
+                      <span className="block font-extrabold">{plan.name}</span>
+                      <span className="block text-sm">{plan.value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+                      {plan.months > 1 && <span className="text-xs text-muted">{plan.monthlyEquivalent.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/mês</span>}
+                    </label>
+                  ))}
+                </fieldset>
+                <fieldset className="grid grid-cols-2 gap-2">
+                  <legend className="mb-2 text-xs font-bold">Pagamento</legend>
+                  <label className="flex cursor-pointer items-center gap-2 rounded-xl border p-3 has-[:checked]:border-brand has-[:checked]:bg-[#edf7f1]">
+                    <input type="radio" name="paymentMethod" value="credit_card" defaultChecked /> <CreditCard className="size-4" /> Cartão
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 rounded-xl border p-3 has-[:checked]:border-brand has-[:checked]:bg-[#edf7f1]">
+                    <input type="radio" name="paymentMethod" value="pix" /> <QrCode className="size-4" /> PIX
+                  </label>
+                </fieldset>
                 <div>
                   <label className="mb-1 block text-xs font-bold" htmlFor="cpfCnpj">
                     CPF ou CNPJ
@@ -210,6 +243,17 @@ export default async function SubscriptionPage({
             </p>
           </aside>
         </section>
+        {payments.length > 0 && (
+          <section className="panel mt-8">
+            <h2 className="text-lg font-extrabold">Histórico de pagamentos</h2>
+            <div className="mt-4 divide-y">
+              {payments.map((payment) => <div key={payment.id} className="flex items-center justify-between gap-4 py-3 text-sm">
+                <div><p className="font-bold">{payment.planCode ?? "Plano Essencial"}</p><p className="text-muted">{payment.paymentMethod?.toUpperCase() ?? "Asaas"} · {payment.createdAt.toLocaleDateString("pt-BR")}</p></div>
+                <div className="text-right"><p className="font-bold">{payment.amountInCents == null ? "—" : (payment.amountInCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p><p className="text-muted">{payment.status === "paid" ? "Pago" : payment.status}</p></div>
+              </div>)}
+            </div>
+          </section>
+        )}
       </div>
     </main>
   );

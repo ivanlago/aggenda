@@ -1,12 +1,14 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
   billingPayments,
   billingWebhookEvents,
+  organizationMembers,
   organizationSubscriptions,
+  users,
 } from "@/db/schema";
 import { asaasRequest } from "@/lib/asaas";
 
@@ -38,6 +40,11 @@ type AsaasCheckout = {
   status?: string;
   customer?: string | null;
   externalReference?: string | null;
+};
+
+type AsaasCustomer = {
+  id: string;
+  email?: string | null;
 };
 
 type AsaasWebhook = {
@@ -149,7 +156,28 @@ async function findOrganizationId(event: AsaasWebhook) {
       .from(organizationSubscriptions)
       .where(eq(organizationSubscriptions.billingCustomerId, customerId))
       .limit(1);
-    return record?.organizationId;
+    if (record) return record.organizationId;
+
+    try {
+      const customer = await asaasRequest<AsaasCustomer>(`/customers/${customerId}`);
+      if (customer.email) {
+        const [owner] = await db
+          .select({ organizationId: organizationMembers.organizationId })
+          .from(organizationMembers)
+          .innerJoin(users, eq(users.id, organizationMembers.userId))
+          .where(and(
+            eq(organizationMembers.role, "owner"),
+            eq(users.email, customer.email.trim().toLowerCase()),
+          ))
+          .limit(1);
+        if (owner) return owner.organizationId;
+      }
+    } catch (error) {
+      console.error("[asaas:webhook] Falha ao conciliar cliente com proprietário", {
+        customerId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 }
 

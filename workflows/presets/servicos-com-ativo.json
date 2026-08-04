@@ -1,0 +1,18 @@
+{
+  "id": "asset-services",
+  "name": "Serviços com ativo",
+  "segments": ["oficina automotiva", "assistência técnica", "manutenção"],
+  "labels": {
+    "customer": "Cliente",
+    "customerPlural": "Clientes",
+    "provider": "Técnico",
+    "providerPlural": "Técnicos",
+    "service": "Serviço",
+    "servicePlural": "Serviços",
+    "appointment": "Avaliação",
+    "appointmentPlural": "Avaliações"
+  },
+  "menu": ["Conhecer serviços", "Solicitar avaliação", "Consultar andamento", "Horários e localização", "Falar com atendente"],
+  "leadFields": ["name", "phone", "assetType", "assetIdentifier", "reportedIssue", "preferredDate"],
+  "safety": ["no_unapproved_quote", "no_completion_promise", "human_review_for_diagnosis", "human_handoff_available"]
+}

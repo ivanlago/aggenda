@@ -1,0 +1,96 @@
+{
+  "name": "Aggenda Chat - Horizontal",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const input = $('Receber mensagem WhatsApp').item.json;\nconst text = String(input.messages?.[0]?.text?.body ?? '').trim().toLowerCase();\nconst config = {\n  companyName: 'CONFIGURE_NOME_DA_EMPRESA',\n  services: ['CONFIGURE_SERVIÇO_1', 'CONFIGURE_SERVIÇO_2'],\n  businessHours: 'CONFIGURE_HORÁRIO_DE_ATENDIMENTO',\n  address: 'CONFIGURE_ENDEREÇO_E_LINK_DO_MAPS',\n};\nconst menu = \"Olá! Seja bem-vindo(a) à {{companyName}}. Como posso ajudar você hoje? Responda com o número de uma opção:\\n\\n1. Conhecer serviços\\n2. Consultar horário de atendimento\\n3. Ver localização\\n4. Solicitar contato ou agendamento\\n5. Falar com atendente\".replace('{{companyName}}', config.companyName);\nlet reply = menu;\nif (/^(1|servi[cç]os?|procedimentos?)$/.test(text)) reply = 'Nossos serviços são:\\n\\n' + config.services.map((value, index) => `${index + 1}. ${value}`).join('\\n') + '\\n\\nDigite menu para voltar.';\nelse if (/^(2|hor[aá]rio|funcionamento)$/.test(text)) reply = config.businessHours + '\\n\\nDigite menu para voltar.';\nelse if (/^(3|endere[cç]o|localiza[cç][aã]o)$/.test(text)) reply = config.address + '\\n\\nDigite menu para voltar.';\nelse if (/^(4|agendar|agendamento|contato)$/.test(text)) reply = 'Informe seu nome, o serviço desejado e a melhor data ou turno. A equipe confirmará a disponibilidade.';\nelse if (/^(5|atendente|humano)$/.test(text)) reply = 'Certo. Pausei o atendimento automático e encaminhei sua conversa para nossa equipe.';\nreturn [{ json: { reply, product: 'chat', handoffRequested: /^(5|atendente|humano)$/.test(text) } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        16
+      ],
+      "id": "7f151057-0b92-4f99-b465-d0eef66e16a6",
+      "name": "Atendimento determinístico"
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "1172430959290272",
+        "recipientPhoneNumber": "={{ $('Receber mensagem WhatsApp').item.json.messages[0].from }}",
+        "textBody": "={{ $json.reply }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        1072,
+        0
+      ],
+      "id": "6620557b-f924-44b4-b913-241019de98d7",
+      "name": "Send message",
+      "webhookId": "158b21fd-fe2b-4baf-b757-2f7ef3f0fe07",
+      "credentials": {
+        "whatsAppApi": {
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "messages"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        16,
+        16
+      ],
+      "id": "f9538f57-cad8-4e8a-9141-1af615d5200b",
+      "name": "Receber mensagem WhatsApp",
+      "webhookId": "0758416c-8c3d-44f2-b20b-60c10c1dc94c",
+      "credentials": {
+        "whatsAppTriggerApi": {
+          "name": "WhatsApp OAuth account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Receber mensagem WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Atendimento determinístico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atendimento determinístico": {
+      "main": [
+        [
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "076381b9-617c-40f5-8482-9506182909a6",
+  "staticData": null,
+  "tags": [],
+  "description": "Produto CHAT. Recursos: chat.menus, chat.faq, chat.handoff. Gerado de Aggenda - Chatbot - corrigido.json."
+}

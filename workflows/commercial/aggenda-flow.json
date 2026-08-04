@@ -1,0 +1,244 @@
+{
+  "name": "Aggenda Flow - Horizontal",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "1172430959290272",
+        "recipientPhoneNumber": "={{ $('Receber mensagem WhatsApp').item.json.messages[0].from }}",
+        "textBody": "={{ $json.reply }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        1072,
+        0
+      ],
+      "id": "6620557b-f924-44b4-b913-241019de98d7",
+      "name": "Send message",
+      "webhookId": "158b21fd-fe2b-4baf-b757-2f7ef3f0fe07",
+      "credentials": {
+        "whatsAppApi": {
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "messages"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        16,
+        16
+      ],
+      "id": "f9538f57-cad8-4e8a-9141-1af615d5200b",
+      "name": "Receber mensagem WhatsApp",
+      "webhookId": "0758416c-8c3d-44f2-b20b-60c10c1dc94c",
+      "credentials": {
+        "whatsAppTriggerApi": {
+          "name": "WhatsApp OAuth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $('Receber mensagem WhatsApp').item.json;\nconst phone = String(input.messages?.[0]?.from ?? '');\nconst text = String(input.messages?.[0]?.text?.body ?? '').trim();\nconst data = $getWorkflowStaticData('global');\ndata.sessions ??= {};\nconst session = data.sessions[phone] ?? { step: 'menu', fields: {} };\nlet reply;\nlet execute = false;\nif (/^(menu|oi|olá|ola)$/i.test(text) || session.step === 'menu') {\n  session.step = 'name'; session.fields = {};\n  reply = 'Olá! Vou registrar sua solicitação. Qual é o seu nome?';\n} else if (session.step === 'name') {\n  session.fields.name = text; session.step = 'service'; reply = 'Qual serviço você procura?';\n} else if (session.step === 'service') {\n  session.fields.service = text; session.step = 'preference'; reply = 'Qual a melhor data, turno ou horário para contato?';\n} else if (session.step === 'preference') {\n  session.fields.preference = text; session.step = 'confirm';\n  reply = `Confirma o envio desta solicitação?\\n\\nNome: ${session.fields.name}\\nServiço: ${session.fields.service}\\nPreferência: ${session.fields.preference}\\n\\nResponda sim ou não.`;\n} else if (session.step === 'confirm' && /^(sim|confirmo|confirmar)$/i.test(text)) {\n  execute = true; reply = 'Enviando sua solicitação...'; session.step = 'done';\n} else if (session.step === 'confirm') {\n  session.step = 'menu'; reply = 'Solicitação cancelada. Digite menu para começar novamente.';\n} else {\n  session.step = 'menu'; reply = 'Solicitação concluída. Digite menu para iniciar outra.';\n}\ndata.sessions[phone] = session;\nreturn [{ json: { action: execute ? 'execute_flow' : 'reply', reply, phone, ...session.fields } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        0
+      ],
+      "id": "b94d21fe-ec9e-4f04-9255-18742b3bbe1b",
+      "name": "Coletar dados do fluxo"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "CONFIGURE_HTTPS_ENDPOINT_DA_AUTOMACAO",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        850,
+        120
+      ],
+      "id": "d4aba28a-00c8-4339-a2b8-a075f780fc5e",
+      "name": "Executar automação publicada"
+    },
+    {
+      "parameters": {
+        "jsCode": "const status = Number($json.statusCode ?? 200);\nconst success = status >= 200 && status < 300 && $json.success !== false;\nreturn [{ json: { reply: success\n  ? ($json.reply ?? 'Sua solicitação foi registrada com sucesso. Nossa equipe dará continuidade ao atendimento.')\n  : 'Não foi possível concluir a solicitação agora. Ela foi encaminhada para atendimento humano.' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1060,
+        120
+      ],
+      "id": "8631a56f-3048-4e0d-a1c9-74bb335dc12f",
+      "name": "Confirmar resultado do fluxo"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "reply",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "65e2cb0a-761f-4006-868f-0edfe6e12c03"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "daa07d4e-89f0-465e-930e-526af18b2cb2",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "execute_flow",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        650,
+        0
+      ],
+      "id": "79fe6f2f-4856-4bdb-8171-5d343e36fe73",
+      "name": "Rotear automação"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Receber mensagem WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Coletar dados do fluxo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Coletar dados do fluxo": {
+      "main": [
+        [
+          {
+            "node": "Rotear automação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rotear automação": {
+      "main": [
+        [
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Executar automação publicada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Executar automação publicada": {
+      "main": [
+        [
+          {
+            "node": "Confirmar resultado do fluxo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmar resultado do fluxo": {
+      "main": [
+        [
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "4e67423f-f3e6-429a-b5b3-46e0a5c636a8",
+  "staticData": null,
+  "tags": [],
+  "description": "Produto FLOW. Recursos: chat.menus, flow.webhooks, flow.retries. Gerado de Aggenda - Chatbot - corrigido.json."
+}

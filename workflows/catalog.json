@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "products": [
+    {
+      "id": "CHAT",
+      "workflow": "commercial/aggenda-chat.json",
+      "features": ["chat.menus", "chat.faq", "chat.handoff"]
+    },
+    {
+      "id": "CHAT_AI",
+      "workflow": "commercial/aggenda-chat-ai.json",
+      "features": ["chat.menus", "chat.faq", "chat.handoff", "ai.natural_language", "ai.knowledge_base"]
+    },
+    {
+      "id": "FLOW",
+      "workflow": "commercial/aggenda-flow.json",
+      "features": ["chat.menus", "flow.webhooks", "flow.retries"]
+    },
+    {
+      "id": "FLOW_AI",
+      "workflow": "commercial/aggenda-flow-ai.json",
+      "features": ["chat.menus", "flow.webhooks", "flow.retries", "ai.natural_language", "ai.tool_calling"]
+    },
+    {
+      "id": "CORE",
+      "workflow": "commercial/aggenda-core.json",
+      "features": ["chat.menus", "core.native_scheduling"]
+    },
+    {
+      "id": "CORE_AI",
+      "workflow": "commercial/aggenda-core-ai.json",
+      "features": ["core.native_scheduling", "ai.natural_language", "ai.tool_calling"]
+    }
+  ],
+  "presets": [
+    "presets/saude-cuidados.json",
+    "presets/estetica-beleza.json",
+    "presets/servicos-com-ativo.json",
+    "presets/servicos-profissionais.json"
+  ]
+}

@@ -1,0 +1,180 @@
+{
+  "name": "Aggenda Chat + AI - Horizontal",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Mensagem recebida:\n{{ $('Receber mensagem WhatsApp').item.json.messages[0].text.body }}",
+        "options": {
+          "systemMessage": "Você é o atendimento virtual de uma empresa que usa a plataforma Aggenda.\n\nProduto: Aggenda Chat + AI.\nCapacidades autorizadas: FAQ, informações institucionais, coleta de lead e handoff. Não consulte nem altere agenda real..\n\nAtenda em português do Brasil. Use somente informações aprovadas no prompt ou nas ferramentas. Nunca invente preços, horários, políticas ou resultados. Nunca forneça diagnóstico médico ou parecer jurídico definitivo. Quando não houver informação suficiente, apresente o menu ou encaminhe para atendimento humano.\n\nResponda sempre com JSON válido, sem bloco de código:\n{\"action\":\"reply\",\"reply\":\"mensagem\",\"intent\":\"unknown\",\"confidence\":0,\"data\":{}}\n\nPara saudação inicial, use uma mensagem completa que apresente a empresa, os serviços e ofereça atendimento ou agendamento. Para pedir humano, use action \"handoff\"."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        448,
+        16
+      ],
+      "id": "7f151057-0b92-4f99-b465-d0eef66e16a6",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        448,
+        224
+      ],
+      "id": "47d188ca-9dae-46c7-b772-613db1c6add2",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "1172430959290272",
+        "recipientPhoneNumber": "={{ $('Receber mensagem WhatsApp').item.json.messages[0].from }}",
+        "textBody": "={{ $json.reply }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        1072,
+        0
+      ],
+      "id": "6620557b-f924-44b4-b913-241019de98d7",
+      "name": "Send message",
+      "webhookId": "158b21fd-fe2b-4baf-b757-2f7ef3f0fe07",
+      "credentials": {
+        "whatsAppApi": {
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "messages"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        16,
+        16
+      ],
+      "id": "f9538f57-cad8-4e8a-9141-1af615d5200b",
+      "name": "Receber mensagem WhatsApp",
+      "webhookId": "0758416c-8c3d-44f2-b20b-60c10c1dc94c",
+      "credentials": {
+        "whatsAppTriggerApi": {
+          "name": "WhatsApp OAuth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Receber mensagem WhatsApp').item.json.messages[0].from + '-aggenda-v1' }}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        544,
+        176
+      ],
+      "id": "29e98db5-11ed-45af-8527-21addcbd3fdf",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = String($json.output ?? '').trim();\nconst cleaned = raw.replace(/^```json\\s*/i, '').replace(/^```\\s*/i, '').replace(/\\s*```$/i, '').trim();\ntry {\n  return [{ json: { ...JSON.parse(cleaned), rawOutput: raw } }];\n} catch {\n  return [{ json: { action: 'reply', reply: raw || 'Desculpe, não consegui interpretar sua solicitação. Poderia repetir?', serviceId: null, serviceName: null, professionalId: null, professionalName: null, date: null, time: null, clientName: null, clientEmail: null, rawOutput: raw, parseError: true } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        16
+      ],
+      "id": "c6bba70f-599e-44f4-afc1-8aa07e344174",
+      "name": "Interpretar decisão da IA"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Receber mensagem WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Interpretar decisão da IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interpretar decisão da IA": {
+      "main": [
+        [
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "6376e75a-9ed7-411b-99d0-9e3f099bcc69",
+  "staticData": null,
+  "tags": [],
+  "description": "Produto CHAT_AI. Recursos: chat.menus, chat.faq, chat.handoff, ai.natural_language, ai.knowledge_base. Gerado de Aggenda - Chatbot - corrigido.json."
+}

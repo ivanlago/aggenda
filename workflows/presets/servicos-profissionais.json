@@ -1,0 +1,18 @@
+{
+  "id": "professional-services",
+  "name": "Serviços profissionais",
+  "segments": ["consultoria", "escritório", "serviços B2B"],
+  "labels": {
+    "customer": "Cliente",
+    "customerPlural": "Clientes",
+    "provider": "Consultor",
+    "providerPlural": "Consultores",
+    "service": "Serviço",
+    "servicePlural": "Serviços",
+    "appointment": "Reunião ou avaliação",
+    "appointmentPlural": "Reuniões e avaliações"
+  },
+  "menu": ["Conhecer serviços", "Solicitar avaliação", "Enviar uma necessidade", "Agendar conversa", "Falar com atendente"],
+  "leadFields": ["name", "phone", "email", "company", "service", "message", "preferredPeriod"],
+  "safety": ["no_definitive_legal_advice", "no_unapproved_quote", "approved_information_only", "human_handoff_available"]
+}

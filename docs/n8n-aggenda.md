@@ -27,6 +27,11 @@ Os aliases `/clinics`, `/doctors`, `/procedures` e
 `/patients/find-or-create` foram mantidos para facilitar a transição do workflow
 do CliniHora.
 
+Para procurar automaticamente a próxima data com horários, envie
+`findNext=true`. A busca considera até 60 dias por padrão; `searchDays` permite
+alterar a janela entre 0 e 90 dias. A resposta informa `requestedDate`, `date` e
+`foundNextDate`, permitindo distinguir a data solicitada da próxima encontrada.
+
 ## Criar cliente
 
 ```json

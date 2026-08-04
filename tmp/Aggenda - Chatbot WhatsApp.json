@@ -1,0 +1,627 @@
+{
+  "name": "Aggenda - Chatbot WhatsApp",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Mensagem recebida:\n{{ $('Receber mensagem WhatsApp').item.json.messages[0].text.body }}\n\nProfissionais cadastrados:\n{{ JSON.stringify($('Buscar profissionais').item.json.professionals) }}\n\nProcedimentos cadastrados:\n{{ JSON.stringify($('Buscar procedimentos').item.json.services.map(s => ({ id: s.id, name: s.name, description: s.description, durationMinutes: s.durationMinutes, priceInCents: s.priceInCents }))) }}",
+        "options": {
+          "systemMessage": "Você é o assistente virtual de agendamentos da Clínica Aura Estética, no Aggenda.\n\nAtenda sempre em português do Brasil, com mensagens curtas e cordiais. Ajude com apresentação dos procedimentos, profissionais, consulta de horários e criação de agendamentos. Nunca faça diagnósticos, prescrições ou promessas de resultado. Nunca invente procedimentos, profissionais, IDs, preços ou horários: use somente os dados recebidos no prompt.\n\nPara agendar, obtenha: procedimento, profissional, data, horário, nome completo e email opcional. O telefone vem automaticamente do WhatsApp. Quando o cliente não souber qual profissional escolher, apresente apenas os profissionais cadastrados e peça uma escolha.\n\nQuando houver procedimento, profissional e data, use action \"check_times\". Antes de criar, apresente um resumo contendo procedimento, profissional, data e horário e peça confirmação explícita. Use \"create_appointment\" somente quando todos os dados estiverem preenchidos e a mensagem atual confirmar explicitamente o resumo imediatamente anterior. Um \"sim\" fora dessa confirmação não autoriza o agendamento.\n\nResponda sempre com JSON válido, sem bloco de código ou texto adicional:\n{\n  \"action\": \"reply\",\n  \"reply\": \"mensagem ao cliente\",\n  \"serviceId\": null,\n  \"serviceName\": null,\n  \"professionalId\": null,\n  \"professionalName\": null,\n  \"date\": null,\n  \"time\": null,\n  \"clientName\": null,\n  \"clientEmail\": null\n}\n\nActions permitidas: \"reply\", \"check_times\", \"create_appointment\" e \"handoff\". Use data YYYY-MM-DD e horário HH:mm. Preserve no JSON os dados já informados na conversa. Formate valores em reais para o cliente. Quando faltar algo, pergunte somente o próximo dado necessário. Para assunto fora do escopo, use \"handoff\"."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        80,
+        -112
+      ],
+      "id": "e46dedb8-73ed-4ff5-b46c-2001f8bdf7f3",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        80,
+        48
+      ],
+      "id": "d6c79127-1cee-471d-b6b0-7fb42cc09145",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "Z1YxB9RFEzHmprap",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "1172430959290272",
+        "recipientPhoneNumber": "={{ $('Receber mensagem WhatsApp').item.json.messages[0].from === '557191814240' ? '5571991814240' : $('Receber mensagem WhatsApp').item.json.messages[0].from }}",
+        "textBody": "={{ $json.reply }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        736,
+        -112
+      ],
+      "id": "b841a2bd-1dab-4fbc-a039-9986da8e72fe",
+      "name": "Send message",
+      "webhookId": "158b21fd-fe2b-4baf-b757-2f7ef3f0fe07",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "Yzy1CFAhQU1O7ZAB",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "messages"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        -112
+      ],
+      "id": "9d423257-f29a-48ea-b76c-7725d6bfe5ca",
+      "name": "Receber mensagem WhatsApp",
+      "webhookId": "0758416c-8c3d-44f2-b20b-60c10c1dc94c",
+      "credentials": {
+        "whatsAppTriggerApi": {
+          "id": "WOf0lBBPC2jg05kr",
+          "name": "WhatsApp OAuth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://aggenda-virid.vercel.app/api/n8n/professionals",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Clinic-Id",
+              "value": "cb69eb9f-b773-4ce6-9182-4cdb7e96c509"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -64,
+        -112
+      ],
+      "id": "d97c9950-8132-491e-80ff-8623a08ea3c2",
+      "name": "Buscar profissionais",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "1D7eXGASVuUo7D8I",
+          "name": "Aggenda API - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Receber mensagem WhatsApp').item.json.messages[0].from + '-aggenda-v1' }}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        176,
+        192
+      ],
+      "id": "97a9fd45-4ef1-4bb8-9121-080fb5e44028",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = String($json.output ?? '').trim();\nconst cleaned = raw.replace(/^```json\\s*/i, '').replace(/^```\\s*/i, '').replace(/\\s*```$/i, '').trim();\ntry {\n  return [{ json: { ...JSON.parse(cleaned), rawOutput: raw } }];\n} catch {\n  return [{ json: { action: 'reply', reply: raw || 'Desculpe, não consegui interpretar sua solicitação. Poderia repetir?', serviceId: null, serviceName: null, professionalId: null, professionalName: null, date: null, time: null, clientName: null, clientEmail: null, rawOutput: raw, parseError: true } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        -112
+      ],
+      "id": "7c5afd3f-88d2-4e3c-ab06-822247ef09c5",
+      "name": "Interpretar decisão da IA"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "reply",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "65e2cb0a-761f-4006-868f-0edfe6e12c03"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "daa07d4e-89f0-465e-930e-526af18b2cb2",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "check_times",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "0563f752-79b0-46af-89ad-d030a4ab05c3",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "create_appointment",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "1c46ef21-6f97-43a0-a37c-7bf9a4d26461",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "handoff",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        480,
+        -112
+      ],
+      "id": "5b1aaddb-e368-46bd-bd56-3d058eb857ad",
+      "name": "Rotear ação"
+    },
+    {
+      "parameters": {
+        "url": "https://aggenda-virid.vercel.app/api/n8n/available-times",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "serviceId",
+              "value": "={{ $json.serviceId }}"
+            },
+            {
+              "name": "professionalId",
+              "value": "={{ $json.professionalId }}"
+            },
+            {
+              "name": "date",
+              "value": "={{ $json.date }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Clinic-Id",
+              "value": "cb69eb9f-b773-4ce6-9182-4cdb7e96c509"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        480,
+        144
+      ],
+      "id": "9defd9b6-7b23-42fb-9542-b8b570134a5f",
+      "name": "Buscar horários",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "1D7eXGASVuUo7D8I",
+          "name": "Aggenda API - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const slots = $json.availableTimes ?? [];\nconst availableTimes = slots.map((iso) => new Intl.DateTimeFormat('pt-BR', { timeZone: $json.timezone || 'America/Bahia', hour: '2-digit', minute: '2-digit' }).format(new Date(iso)));\nconst decision = $('Interpretar decisão da IA').item.json;\nconst [year, month, day] = String(decision.date).split('-');\nconst formattedDate = `${day}/${month}/${year}`;\nconst professionalName = decision.professionalName ?? 'o profissional selecionado';\nconst reply = availableTimes.length\n  ? `Para ${formattedDate}, ${professionalName} possui estes horários disponíveis:\\n\\n${availableTimes.join(\", \")}\\n\\nQual horário você gostaria de escolher?`\n  : `Não encontrei horários disponíveis para ${professionalName} em ${formattedDate}. Deseja consultar outra data?`;\nreturn [{ json: { reply } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        336
+      ],
+      "id": "16ad9a4c-c522-42e3-b5b4-3b4f6af9d8a4",
+      "name": "Formatar horários"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://aggenda-virid.vercel.app/api/n8n/clients/find-or-create",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Clinic-Id",
+              "value": "cb69eb9f-b773-4ce6-9182-4cdb7e96c509"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "name",
+              "value": "={{ $json.clientName }}"
+            },
+            {
+              "name": "email",
+              "value": "={{ $json.clientEmail || null }}"
+            },
+            {
+              "name": "phone",
+              "value": "={{ $('Receber mensagem WhatsApp').item.json.messages[0].from === '557191814240' ? '5571991814240' : $('Receber mensagem WhatsApp').item.json.messages[0].from }}"
+            },
+            {
+              "name": "notes",
+              "value": "Atendimento iniciado pelo WhatsApp via Aggenda Chat"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        720,
+        80
+      ],
+      "id": "a5df20da-091e-4526-97b8-036927abbe54",
+      "name": "Buscar ou criar cliente",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "1D7eXGASVuUo7D8I",
+          "name": "Aggenda API - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://aggenda-virid.vercel.app/api/n8n/appointments",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Clinic-Id",
+              "value": "cb69eb9f-b773-4ce6-9182-4cdb7e96c509"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"clientId\": \"{{ $json.client.id }}\",\n  \"serviceId\": \"{{ $('Interpretar decisão da IA').item.json.serviceId }}\",\n  \"professionalId\": \"{{ $('Interpretar decisão da IA').item.json.professionalId }}\",\n  \"startsAt\": \"{{ $('Interpretar decisão da IA').item.json.date + 'T' + $('Interpretar decisão da IA').item.json.time + ':00-03:00' }}\",\n  \"notes\": \"Criado pelo atendimento no WhatsApp via Aggenda Chat\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        896,
+        80
+      ],
+      "id": "4a997cc8-0ce5-4191-a429-66d4ef469e73",
+      "name": "Criar agendamento",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "1D7eXGASVuUo7D8I",
+          "name": "Aggenda API - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const appointment = $json.appointment;\nconst decision = $('Interpretar decisão da IA').item.json;\nconst [year, month, day] = String(decision.date).split('-');\nreturn [{ json: { reply: `Agendamento confirmado! ✅\\n\\nProcedimento: ${decision.serviceName}\\nProfissional: ${decision.professionalName}\\nData: ${day}/${month}/${year} às ${decision.time}\\n\\nCódigo: ${appointment.id}` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        272
+      ],
+      "id": "a34c2f21-5432-4b43-bef3-ec085c6dc439",
+      "name": "Preparar confirmação"
+    },
+    {
+      "parameters": {
+        "url": "https://aggenda-virid.vercel.app/api/n8n/services",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Clinic-Id",
+              "value": "cb69eb9f-b773-4ce6-9182-4cdb7e96c509"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        156,
+        -112
+      ],
+      "id": "e7edb739-0a91-4890-a699-d27fcb507953",
+      "name": "Buscar procedimentos",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "1D7eXGASVuUo7D8I",
+          "name": "Aggenda API - n8n"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Interpretar decisão da IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Receber mensagem WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Buscar profissionais",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interpretar decisão da IA": {
+      "main": [
+        [
+          {
+            "node": "Rotear ação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rotear ação": {
+      "main": [
+        [
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Buscar horários",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Buscar ou criar cliente",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar horários": {
+      "main": [
+        [
+          {
+            "node": "Formatar horários",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar horários": {
+      "main": [
+        [
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar agendamento": {
+      "main": [
+        [
+          {
+            "node": "Preparar confirmação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar confirmação": {
+      "main": [
+        [
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar profissionais": {
+      "main": [
+        [
+          {
+            "node": "Buscar procedimentos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar procedimentos": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar ou criar cliente": {
+      "main": [
+        [
+          {
+            "node": "Criar agendamento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "50b4e701-db12-4a08-b9fb-364cb55474c0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8311438bd74de19dcc7b5461f32e0d4986a98796da1afe373ad14c0cbb0dea1a"
+  },
+  "id": "laWIascG7NqGsLZw",
+  "tags": []
+}

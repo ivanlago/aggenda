@@ -1,0 +1,18 @@
+{
+  "id": "beauty-wellness",
+  "name": "Estética e beleza",
+  "segments": ["clínica de estética", "salão", "barbearia", "spa"],
+  "labels": {
+    "customer": "Cliente",
+    "customerPlural": "Clientes",
+    "provider": "Profissional",
+    "providerPlural": "Profissionais",
+    "service": "Serviço ou procedimento",
+    "servicePlural": "Serviços e procedimentos",
+    "appointment": "Agendamento",
+    "appointmentPlural": "Agendamentos"
+  },
+  "menu": ["Conhecer serviços", "Consultar valores", "Agendar horário", "Localização", "Falar com atendente"],
+  "leadFields": ["name", "phone", "service", "preferredDate", "preferredPeriod"],
+  "safety": ["no_medical_diagnosis", "no_result_guarantee", "approved_prices_only", "human_handoff_available"]
+}

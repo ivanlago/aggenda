@@ -1,0 +1,18 @@
+{
+  "id": "health-care",
+  "name": "Saúde e cuidados",
+  "segments": ["clínica médica", "consultório", "odontologia", "fisioterapia", "psicologia"],
+  "labels": {
+    "customer": "Paciente",
+    "customerPlural": "Pacientes",
+    "provider": "Profissional",
+    "providerPlural": "Profissionais",
+    "service": "Serviço ou procedimento",
+    "servicePlural": "Serviços e procedimentos",
+    "appointment": "Consulta ou avaliação",
+    "appointmentPlural": "Consultas e avaliações"
+  },
+  "menu": ["Conhecer serviços", "Solicitar consulta ou avaliação", "Horários e localização", "Convênios e formas de pagamento", "Falar com atendente"],
+  "leadFields": ["name", "phone", "service", "preferredDate", "preferredPeriod"],
+  "safety": ["no_medical_diagnosis", "no_prescription", "human_handoff_on_urgency", "protect_sensitive_health_data"]
+}

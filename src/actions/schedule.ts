@@ -13,6 +13,7 @@ import {
   organizations,
 } from "@/db/schema";
 import { isTimeAvailable } from "@/lib/availability";
+import { organizationDate, parseOrganizationDateTime, withAppointmentLock } from "@/lib/appointment-safety";
 import { writeAuditLog } from "@/lib/audit";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
@@ -98,8 +99,8 @@ export async function createAvailabilityException(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "availability.manage");
   const professionalId = value(formData, "professionalId") || null;
-  const startsAt = new Date(value(formData, "startsAt"));
-  const endsAt = new Date(value(formData, "endsAt"));
+  const startsAt = parseOrganizationDateTime(value(formData, "startsAt"), organization.timezone);
+  const endsAt = parseOrganizationDateTime(value(formData, "endsAt"), organization.timezone);
   const type = value(formData, "type") === "available" ? "available" : "blocked";
   if (
     Number.isNaN(startsAt.getTime()) ||
@@ -187,7 +188,7 @@ export async function rescheduleAppointment(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "appointments.manage");
   const id = value(formData, "id");
-  const startsAt = new Date(value(formData, "startsAt"));
+  const startsAt = parseOrganizationDateTime(value(formData, "startsAt"), organization.timezone);
   const [item] = await db
     .select({
       serviceId: appointments.serviceId,
@@ -206,28 +207,19 @@ export async function rescheduleAppointment(formData: FormData) {
   if (!item || Number.isNaN(startsAt.getTime()) || !item.professionalId) {
     throw new Error("Agendamento ou horário inválido.");
   }
-  const available = await isTimeAvailable({
-    organizationId: organization.id,
-    timezone: organization.timezone,
-    date: new Intl.DateTimeFormat("en-CA", {
-      timeZone: organization.timezone,
-    }).format(startsAt),
-    serviceId: item.serviceId,
-    professionalId: item.professionalId,
-    slotIntervalMinutes: organization.slotIntervalMinutes,
-    excludeAppointmentId: id,
-    startsAt,
-  });
-  if (!available) throw new Error("O horário não está mais disponível.");
-  await db
-    .update(appointments)
-    .set({
-      startsAt,
-      endsAt: new Date(startsAt.getTime() + item.duration * 60_000),
-      status: "scheduled",
+  await withAppointmentLock(organization.id, item.professionalId, async (tx) => {
+    const available = await isTimeAvailable({
+      organizationId: organization.id, timezone: organization.timezone,
+      date: organizationDate(startsAt, organization.timezone), serviceId: item.serviceId,
+      professionalId: item.professionalId, slotIntervalMinutes: organization.slotIntervalMinutes,
+      excludeAppointmentId: id, startsAt,
+    });
+    if (!available) throw new Error("O horário não está mais disponível.");
+    await tx.update(appointments).set({ startsAt,
+      endsAt: new Date(startsAt.getTime() + item.duration * 60_000), status: "scheduled",
       updatedAt: new Date(),
-    })
-    .where(eq(appointments.id, id));
+    }).where(and(eq(appointments.id, id), eq(appointments.organizationId, organization.id)));
+  });
   await writeAuditLog({
     organizationId: organization.id,
     userId: session.user.id,

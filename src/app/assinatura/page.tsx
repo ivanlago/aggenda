@@ -194,6 +194,10 @@ export default async function SubscriptionPage({
                     />
                   </div>
                 </div>
+                <label className="flex items-start gap-2 text-xs leading-5 text-muted">
+                  <input className="mt-1" type="checkbox" name="acceptTerms" required />
+                  <span>Li e aceito os <Link className="font-bold text-brand underline" href="/termos" target="_blank">Termos de Uso</Link>{" "}e a <Link className="font-bold text-brand underline" href="/privacidade" target="_blank">Política de Privacidade</Link>.</span>
+                </label>
                 <button className="primary-button w-full">Assinar agora</button>
               </form>
             ) : (

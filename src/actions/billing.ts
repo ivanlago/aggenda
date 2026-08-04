@@ -3,9 +3,10 @@
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 
 import { db } from "@/db";
-import { organizationSubscriptions } from "@/db/schema";
+import { legalAcceptances, organizationSubscriptions } from "@/db/schema";
 import { asaasCheckoutLink, asaasRequest } from "@/lib/asaas";
 import { requireOrganizationMembership } from "@/lib/session";
 
@@ -44,6 +45,9 @@ export async function startCheckout(formData: FormData) {
   const { session, organization } = await requireOrganizationMembership();
   if (organization.role !== "owner") {
     throw new Error("Somente o proprietário pode contratar um plano.");
+  }
+  if (formData.get("acceptTerms") !== "on") {
+    throw new Error("Aceite os Termos de Uso e a Política de Privacidade.");
   }
 
   const cpfCnpj = digits(formData, "cpfCnpj", "o CPF ou CNPJ");
@@ -107,6 +111,14 @@ export async function startCheckout(formData: FormData) {
       },
     },
   });
+
+  const requestHeaders = await headers();
+  const ipAddress = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
+  const userAgent = requestHeaders.get("user-agent");
+  await db.insert(legalAcceptances).values([
+    { organizationId: organization.id, userId: session.user.id, document: "terms", version: "2026-08-04", ipAddress, userAgent },
+    { organizationId: organization.id, userId: session.user.id, document: "privacy", version: "2026-08-04", ipAddress, userAgent },
+  ]).onConflictDoNothing();
 
   await db
     .update(organizationSubscriptions)

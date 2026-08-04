@@ -19,6 +19,7 @@ import {
 } from "@/db/schema";
 import { requireOrganization, requireSession } from "@/lib/session";
 import { isTimeAvailable } from "@/lib/availability";
+import { organizationDate, parseOrganizationDateTime, withAppointmentLock } from "@/lib/appointment-safety";
 import { writeAuditLog } from "@/lib/audit";
 import { assertOrganizationPermission } from "@/lib/permissions";
 
@@ -30,9 +31,15 @@ function optionalText(formData: FormData, key: string) {
   return textValue(formData, key) || null;
 }
 
-function optionalInteger(formData: FormData, key: string) {
-  const value = textValue(formData, key);
-  return value ? Number.parseInt(value, 10) : null;
+function optionalMoneyInCents(formData: FormData, key: string) {
+  const raw = textValue(formData, key).replace(/\s/g, "");
+  if (!raw) return null;
+  const normalized = raw.includes(",")
+    ? raw.replace(/\./g, "").replace(",", ".")
+    : raw;
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount < 0) throw new Error("Informe um preço válido.");
+  return Math.round(amount * 100);
 }
 
 export async function createOrganization(formData: FormData) {
@@ -117,7 +124,8 @@ export async function createOrganization(formData: FormData) {
     });
   });
 
-  redirect("/dashboard");
+  const requestedNext = textValue(formData, "next");
+  redirect(requestedNext.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : "/dashboard");
 }
 
 export async function createProfessional(formData: FormData) {
@@ -338,7 +346,7 @@ export async function createService(formData: FormData) {
     name,
     description: optionalText(formData, "description"),
     durationMinutes,
-    priceInCents: optionalInteger(formData, "priceInCents"),
+    priceInCents: optionalMoneyInCents(formData, "price"),
   });
   revalidatePath("/servicos");
   revalidatePath("/dashboard");
@@ -359,13 +367,31 @@ export async function deleteService(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
+export async function updateService(formData: FormData) {
+  const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "services.manage");
+  const id = textValue(formData, "id");
+  const name = textValue(formData, "name");
+  const durationMinutes = Number.parseInt(textValue(formData, "durationMinutes"), 10);
+  if (!id || name.length < 2 || !Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+    throw new Error("Informe nome e duração válidos.");
+  }
+  await db.update(services).set({
+    name, description: optionalText(formData, "description"), durationMinutes,
+    priceInCents: optionalMoneyInCents(formData, "price"),
+    isActive: formData.get("isActive") === "on", updatedAt: new Date(),
+  }).where(and(eq(services.id, id), eq(services.organizationId, organization.id)));
+  revalidatePath("/servicos");
+  revalidatePath("/dashboard");
+}
+
 export async function createAppointment(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "appointments.manage");
   const serviceId = textValue(formData, "serviceId");
   const clientId = textValue(formData, "clientId");
   const professionalId = optionalText(formData, "professionalId");
-  const startsAt = new Date(textValue(formData, "startsAt"));
+  const startsAt = parseOrganizationDateTime(textValue(formData, "startsAt"), organization.timezone);
 
   const [service] = await db
     .select({
@@ -411,33 +437,23 @@ export async function createAppointment(formData: FormData) {
   if (!client || (professionalId && !professional.length)) {
     throw new Error("Cliente ou profissional inválido.");
   }
-  if (professionalId) {
-    const date = new Intl.DateTimeFormat("en-CA", {
-      timeZone: organization.timezone,
-    }).format(startsAt);
-    const available = await isTimeAvailable({
-      organizationId: organization.id,
-      timezone: organization.timezone,
-      date,
-      serviceId,
-      professionalId,
-      slotIntervalMinutes: organization.slotIntervalMinutes,
-      startsAt,
-    });
-    if (!available) throw new Error("O horário selecionado não está disponível.");
-  }
-
   const endsAt = new Date(startsAt.getTime() + service.durationMinutes * 60_000);
-  const [created] = await db.insert(appointments).values({
-    organizationId: organization.id,
-    clientId,
-    serviceId,
-    professionalId,
-    startsAt,
-    endsAt,
-    priceInCents: optionalInteger(formData, "priceInCents") ?? service.priceInCents,
-    notes: optionalText(formData, "notes"),
-  }).returning({ id: appointments.id });
+  const created = await withAppointmentLock(organization.id, professionalId, async (tx) => {
+    if (professionalId) {
+      const available = await isTimeAvailable({
+        organizationId: organization.id, timezone: organization.timezone,
+        date: organizationDate(startsAt, organization.timezone), serviceId, professionalId,
+        slotIntervalMinutes: organization.slotIntervalMinutes, startsAt,
+      });
+      if (!available) throw new Error("O horário selecionado não está disponível.");
+    }
+    const [result] = await tx.insert(appointments).values({
+      organizationId: organization.id, clientId, serviceId, professionalId, startsAt, endsAt,
+      priceInCents: optionalMoneyInCents(formData, "price") ?? service.priceInCents,
+      notes: optionalText(formData, "notes"),
+    }).returning({ id: appointments.id });
+    return result;
+  });
   await writeAuditLog({
     organizationId: organization.id,
     userId: session.user.id,

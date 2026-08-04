@@ -329,6 +329,24 @@ export const billingWebhookEvents = pgTable("billing_webhook_events", {
   processedAt: timestamp("processed_at").defaultNow().notNull(),
 });
 
+export const legalAcceptances = pgTable(
+  "legal_acceptances",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    document: text("document").notNull(),
+    version: text("version").notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    acceptedAt: timestamp("accepted_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("legal_acceptances_unique").on(table.organizationId, table.userId, table.document, table.version),
+    index("legal_acceptances_org_idx").on(table.organizationId),
+  ]
+);
+
 export const professionals = pgTable(
   "professionals",
   {

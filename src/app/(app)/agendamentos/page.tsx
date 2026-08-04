@@ -75,7 +75,7 @@ export default async function AppointmentsPage() {
             {professionalItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
           <input className="field" name="startsAt" type="datetime-local" required />
-          <input className="field" name="priceInCents" type="number" min="0" placeholder="Preço em centavos (opcional)" />
+          <input className="field" name="price" inputMode="decimal" placeholder="Preço em reais (opcional)" />
           <textarea className="field min-h-20" name="notes" placeholder="Observações" />
           <button className="primary-button" disabled={!clientItems.length || !serviceItems.length}>
             Criar {organization.appointmentLabel.toLowerCase()}

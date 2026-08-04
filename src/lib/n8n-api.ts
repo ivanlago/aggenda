@@ -40,6 +40,8 @@ export async function requireN8nOrganization(request: NextRequest) {
       id: organizations.id,
       name: organizations.name,
       timezone: organizations.timezone,
+      slotIntervalMinutes: organizations.slotIntervalMinutes,
+      bookingNoticeHours: organizations.bookingNoticeHours,
       clientLabel: organizations.clientLabel,
       clientLabelPlural: organizations.clientLabelPlural,
       professionalLabel: organizations.professionalLabel,

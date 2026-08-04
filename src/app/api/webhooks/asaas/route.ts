@@ -143,6 +143,12 @@ export async function POST(request: Request) {
         .where(eq(organizationSubscriptions.organizationId, organizationId));
     }
 
+    if (checkout && (event.event === "CHECKOUT_CANCELED" || event.event === "CHECKOUT_EXPIRED")) {
+      await tx.update(organizationSubscriptions)
+        .set({ status: "incomplete", updatedAt: new Date() })
+        .where(eq(organizationSubscriptions.organizationId, organizationId));
+    }
+
     if (
       subscription &&
       (event.event === "SUBSCRIPTION_CREATED" ||

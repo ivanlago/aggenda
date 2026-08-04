@@ -64,6 +64,13 @@
       "when": 1785825315955,
       "tag": "0008_oval_tyger_tiger",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785870805394,
+      "tag": "0009_friendly_barracuda",
+      "breakpoints": true
     }
   ]
 }

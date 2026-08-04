@@ -5,6 +5,8 @@ import { z } from "zod";
 import { db } from "@/db";
 import { appointments, clients, professionals, services } from "@/db/schema";
 import { apiError, requireN8nOrganization } from "@/lib/n8n-api";
+import { isTimeAvailable } from "@/lib/availability";
+import { organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
 
 const inputSchema = z.object({
   clientId: z.string().uuid(),
@@ -93,17 +95,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Client not found" }, { status: 404 });
     }
 
-    const [appointment] = await db.insert(appointments).values({
-      organizationId: auth.organization.id,
-      clientId: input.clientId,
-      serviceId: input.serviceId,
-      professionalId: input.professionalId,
-      startsAt: input.startsAt,
-      endsAt: new Date(input.startsAt.getTime() + service.durationMinutes * 60_000),
-      priceInCents: service.priceInCents,
-      notes: input.notes,
-      source: "whatsapp",
-    }).returning();
+    const appointment = await withAppointmentLock(auth.organization.id, input.professionalId, async (tx) => {
+      if (input.professionalId) {
+        const available = await isTimeAvailable({
+          organizationId: auth.organization.id, timezone: auth.organization.timezone,
+          date: organizationDate(input.startsAt, auth.organization.timezone),
+          serviceId: input.serviceId, professionalId: input.professionalId,
+          slotIntervalMinutes: auth.organization.slotIntervalMinutes,
+          startsAt: input.startsAt,
+        });
+        if (!available) throw new Error("O horário selecionado não está disponível.");
+      }
+      const [created] = await tx.insert(appointments).values({
+        organizationId: auth.organization.id, clientId: input.clientId,
+        serviceId: input.serviceId, professionalId: input.professionalId,
+        startsAt: input.startsAt,
+        endsAt: new Date(input.startsAt.getTime() + service.durationMinutes * 60_000),
+        priceInCents: service.priceInCents, notes: input.notes, source: "whatsapp",
+      }).returning();
+      return created;
+    });
     return NextResponse.json({ appointment }, { status: 201 });
   } catch (error) {
     return apiError(error);

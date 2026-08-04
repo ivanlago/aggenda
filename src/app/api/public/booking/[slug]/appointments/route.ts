@@ -9,6 +9,7 @@ import {
   services,
 } from "@/db/schema";
 import { isTimeAvailable } from "@/lib/availability";
+import { organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
 
 export async function POST(
   request: Request,
@@ -63,28 +64,15 @@ export async function POST(
   if (!service || !professional) {
     return Response.json({ error: "Serviço ou profissional inválido." }, { status: 400 });
   }
-  const date = new Intl.DateTimeFormat("en-CA", {
-    timeZone: organization.timezone,
-  }).format(startsAt);
-  const available = await isTimeAvailable({
-    organizationId: organization.id,
-    timezone: organization.timezone,
-    date,
-    serviceId,
-    professionalId,
-    slotIntervalMinutes: organization.slotIntervalMinutes,
-    noticeHours: organization.bookingNoticeHours,
-    startsAt,
-  });
-  if (!available) {
-    return Response.json(
-      { error: "Este horário acabou de ficar indisponível. Escolha outro." },
-      { status: 409 }
-    );
-  }
-
   try {
-    const appointment = await db.transaction(async (tx) => {
+    const appointment = await withAppointmentLock(organization.id, professionalId, async (tx) => {
+      const available = await isTimeAvailable({
+        organizationId: organization.id, timezone: organization.timezone,
+        date: organizationDate(startsAt, organization.timezone), serviceId, professionalId,
+        slotIntervalMinutes: organization.slotIntervalMinutes,
+        noticeHours: organization.bookingNoticeHours, startsAt,
+      });
+      if (!available) throw new Error("APPOINTMENT_CONFLICT");
       const [existing] = await tx
         .select({ id: clients.id })
         .from(clients)
@@ -119,7 +107,13 @@ export async function POST(
       return created;
     });
     return Response.json({ id: appointment.id }, { status: 201 });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message === "APPOINTMENT_CONFLICT") {
+      return Response.json(
+        { error: "Este horário acabou de ficar indisponível. Escolha outro." },
+        { status: 409 }
+      );
+    }
     return Response.json(
       { error: "Não foi possível concluir o agendamento." },
       { status: 500 }

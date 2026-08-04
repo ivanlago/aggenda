@@ -67,5 +67,5 @@ export function asaasCheckoutLink(checkout: {
     process.env.ASAAS_ENVIRONMENT === "production"
       ? "https://www.asaas.com"
       : "https://sandbox.asaas.com";
-  return `${host}/checkoutSession/show/${checkout.id}`;
+  return `${host}/checkoutSession/show?id=${encodeURIComponent(checkout.id)}`;
 }

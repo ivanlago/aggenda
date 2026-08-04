@@ -6,9 +6,11 @@ import { getCurrentOrganization, requireSession } from "@/lib/session";
 
 export const metadata = { title: "Configure seu negócio" };
 
-export default async function OnboardingPage() {
+export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const session = await requireSession();
-  if (await getCurrentOrganization(session.user.id)) redirect("/dashboard");
+  const requestedNext = (await searchParams).next;
+  const next = requestedNext?.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : "/dashboard";
+  if (await getCurrentOrganization(session.user.id)) redirect(next);
 
   return (
     <main className="grid min-h-screen place-items-center px-6 py-12">
@@ -26,6 +28,7 @@ export default async function OnboardingPage() {
           Criaremos seu espaço de trabalho. Você poderá ajustar tudo depois.
         </p>
         <form action={createOrganization} className="mt-8 grid gap-5">
+          <input type="hidden" name="next" value={next} />
           <label className="grid gap-2 text-sm font-bold">
             Nome do negócio
             <input className="field" name="name" required minLength={2} placeholder="Ex.: Studio Aurora" />

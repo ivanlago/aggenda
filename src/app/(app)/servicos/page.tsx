@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { Trash2 } from "lucide-react";
 
-import { createService, deleteService } from "@/actions/app";
+import { createService, deleteService, updateService } from "@/actions/app";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { services } from "@/db/schema";
@@ -35,7 +35,7 @@ export default async function ServicesPage() {
           />
           <textarea className="field min-h-20" name="description" placeholder="Descrição" />
           <input className="field" name="durationMinutes" type="number" min="5" step="5" required placeholder="Duração em minutos" />
-          <input className="field" name="priceInCents" type="number" min="0" placeholder="Preço em centavos (ex.: 15000)" />
+          <input className="field" name="price" inputMode="decimal" placeholder="Preço em reais (ex.: 150,00)" />
           <button className="primary-button">
             Adicionar {organization.serviceLabel.toLowerCase()}
           </button>
@@ -58,6 +58,18 @@ export default async function ServicesPage() {
                     {item.priceInCents != null ? ` · ${(item.priceInCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}
                   </p>
                 </div>
+                <details className="relative">
+                  <summary className="cursor-pointer text-sm font-bold text-brand">Editar</summary>
+                  <form action={updateService} className="absolute right-0 z-10 mt-2 grid w-72 gap-2 rounded-2xl border bg-white p-4 shadow-xl">
+                    <input type="hidden" name="id" value={item.id} />
+                    <input className="field" name="name" defaultValue={item.name} required />
+                    <textarea className="field" name="description" defaultValue={item.description ?? ""} placeholder="Descrição" />
+                    <input className="field" name="durationMinutes" type="number" min="5" step="5" defaultValue={item.durationMinutes} required />
+                    <input className="field" name="price" inputMode="decimal" defaultValue={item.priceInCents == null ? "" : (item.priceInCents / 100).toFixed(2).replace(".", ",")} placeholder="Preço em reais" />
+                    <label className="flex gap-2 text-sm"><input type="checkbox" name="isActive" defaultChecked={item.isActive} /> Ativo</label>
+                    <button className="primary-button">Salvar</button>
+                  </form>
+                </details>
                 <form action={deleteService}>
                   <input type="hidden" name="id" value={item.id} />
                   <button className="icon-button" aria-label={`Excluir ${item.name}`}><Trash2 className="size-4" /></button>

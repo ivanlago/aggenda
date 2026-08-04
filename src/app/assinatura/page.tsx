@@ -12,6 +12,7 @@ import {
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { desc, eq } from "drizzle-orm";
 import { SubscriptionRefresh } from "./subscription-refresh";
+import { MaskedInput } from "@/components/masked-input";
 
 export const metadata = { title: "Plano e cobrança" };
 
@@ -153,13 +154,13 @@ export default async function SubscriptionPage({
                   <label className="mb-1 block text-xs font-bold" htmlFor="cpfCnpj">
                     CPF ou CNPJ
                   </label>
-                  <input
+                  <MaskedInput
                     className="field"
+                    mask="cpfCnpj"
                     id="cpfCnpj"
                     name="cpfCnpj"
-                    inputMode="numeric"
                     autoComplete="off"
-                    placeholder="Somente números"
+                    placeholder="000.000.000-00 ou 00.000.000/0000-00"
                     required
                   />
                 </div>
@@ -168,13 +169,13 @@ export default async function SubscriptionPage({
                     <label className="mb-1 block text-xs font-bold" htmlFor="phoneNumber">
                       Telefone
                     </label>
-                    <input
+                    <MaskedInput
                       className="field"
+                      mask="phone"
                       id="phoneNumber"
                       name="phoneNumber"
-                      type="tel"
                       autoComplete="tel"
-                      placeholder="DDD + número"
+                      placeholder="(71) 99999-9999"
                       required
                     />
                   </div>
@@ -182,13 +183,13 @@ export default async function SubscriptionPage({
                     <label className="mb-1 block text-xs font-bold" htmlFor="postalCode">
                       CEP
                     </label>
-                    <input
+                    <MaskedInput
                       className="field"
+                      mask="postalCode"
                       id="postalCode"
                       name="postalCode"
-                      inputMode="numeric"
                       autoComplete="postal-code"
-                      placeholder="Somente números"
+                      placeholder="00000-000"
                       required
                     />
                   </div>

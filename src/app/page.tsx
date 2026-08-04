@@ -78,7 +78,7 @@ export default function Home() {
               Conhecer a experiência <ArrowRight className="size-4" />
             </a>
             <span className="inline-flex items-center justify-center gap-2 px-5 py-4 text-sm font-semibold text-muted">
-              <Check className="size-4 text-brand" /> Configure no seu ritmo
+              <Check className="size-4 text-brand" /> 30 dias grátis, sem cartão
             </span>
           </div>
         </div>

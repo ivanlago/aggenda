@@ -9,6 +9,7 @@ import {
   UserRoundCog,
   Wrench,
   ScrollText,
+  DatabaseBackup,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -50,6 +51,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       permission: "professionals.read",
     },
     { href: "/servicos", label: organization.serviceLabelPlural, icon: Wrench, permission: "services.read" },
+    { href: "/dados", label: "Importar e exportar", icon: DatabaseBackup, permission: "clients.read" },
     { href: "/equipe", label: "Equipe e acesso", icon: UserRoundCog, permission: "team.read" },
     { href: "/configuracoes", label: "Configurações", icon: Settings2, permission: "organization.settings.manage" },
     { href: "/auditoria", label: "Auditoria", icon: ScrollText, permission: "audit.read" },

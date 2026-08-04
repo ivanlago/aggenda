@@ -290,6 +290,46 @@ export const billingPayments = pgTable(
   ]
 );
 
+export const dataImports = pgTable(
+  "data_imports",
+  {
+    id: uuid("id").primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    entityType: text("entity_type").notNull(),
+    fileName: text("file_name").notNull(),
+    strategy: text("strategy").notNull(),
+    status: text("status").default("processing").notNull(),
+    totalRows: integer("total_rows").default(0).notNull(),
+    createdRows: integer("created_rows").default(0).notNull(),
+    updatedRows: integer("updated_rows").default(0).notNull(),
+    skippedRows: integer("skipped_rows").default(0).notNull(),
+    errorRows: integer("error_rows").default(0).notNull(),
+    completedAt: timestamp("completed_at"),
+    undoneAt: timestamp("undone_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("data_imports_org_idx").on(table.organizationId)]
+);
+
+export const dataImportRows = pgTable(
+  "data_import_rows",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    importId: uuid("import_id").notNull().references(() => dataImports.id, { onDelete: "cascade" }),
+    rowNumber: integer("row_number").notNull(),
+    entityId: uuid("entity_id"),
+    action: text("action").notNull(),
+    error: text("error"),
+    previousData: jsonb("previous_data"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("data_import_rows_import_row_unique").on(table.importId, table.rowNumber),
+    index("data_import_rows_import_idx").on(table.importId),
+  ]
+);
+
 export const supportSessions = pgTable(
   "support_sessions",
   {

@@ -19,9 +19,13 @@ function asaasDate(date: Date) {
   return date.toISOString().slice(0, 19).replace("T", " ");
 }
 
+function checkoutError(message: string): never {
+  redirect(`/assinatura?checkout=erro&message=${encodeURIComponent(message)}`);
+}
+
 function requiredText(formData: FormData, key: string, label: string) {
   const value = String(formData.get(key) ?? "").trim();
-  if (!value) throw new Error(`Informe ${label}.`);
+  if (!value) checkoutError(`Informe ${label}.`);
   return value;
 }
 
@@ -37,32 +41,35 @@ type CheckoutResponse = {
 export async function startCheckout(formData: FormData) {
   const { session, organization } = await requireOrganizationMembership();
   if (organization.role !== "owner") {
-    throw new Error("Somente o proprietário pode contratar um plano.");
+    checkoutError("Somente o proprietário pode contratar um plano.");
   }
   if (formData.get("acceptTerms") !== "on") {
-    throw new Error("Aceite os Termos de Uso e a Política de Privacidade.");
+    checkoutError("Aceite os Termos de Uso e a Política de Privacidade.");
   }
   const planId = requiredText(formData, "planId", "o plano");
-  if (!isBillingPlanId(planId)) throw new Error("Plano inválido.");
+  if (!isBillingPlanId(planId)) checkoutError("Plano inválido.");
   const paymentMethod = requiredText(formData, "paymentMethod", "a forma de pagamento") as BillingPaymentMethod;
   if (paymentMethod !== "credit_card" && paymentMethod !== "pix") {
-    throw new Error("Forma de pagamento inválida.");
+    checkoutError("Forma de pagamento inválida.");
   }
   const plan = getBillingPlan(planId);
 
   const cpfCnpj = digits(formData, "cpfCnpj", "o CPF ou CNPJ");
   if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) {
-    throw new Error("Informe um CPF ou CNPJ válido.");
+    checkoutError("Informe um CPF ou CNPJ válido.");
   }
 
-  const phoneNumber = digits(formData, "phoneNumber", "o telefone");
+  let phoneNumber = digits(formData, "phoneNumber", "o telefone");
+  if ((phoneNumber.length === 12 || phoneNumber.length === 13) && phoneNumber.startsWith("55")) {
+    phoneNumber = phoneNumber.slice(2);
+  }
   if (phoneNumber.length < 10 || phoneNumber.length > 11) {
-    throw new Error("Informe um telefone válido com DDD.");
+    checkoutError("Informe um telefone brasileiro válido com DDD. O prefixo +55 é opcional.");
   }
 
   const postalCode = digits(formData, "postalCode", "o CEP");
   if (postalCode.length !== 8) {
-    throw new Error("Informe um CEP válido.");
+    checkoutError("Informe um CEP válido.");
   }
 
   const address = requiredText(formData, "address", "o endereço");
@@ -76,9 +83,11 @@ export async function startCheckout(formData: FormData) {
   const now = new Date();
   const recurring = plan.id === "monthly" && paymentMethod === "credit_card";
   const purchaseReference = `${organization.id}:${plan.id}:${plan.months}:${paymentMethod}`;
-  const checkout = await asaasRequest<CheckoutResponse>("/checkouts", {
-    method: "POST",
-    body: {
+  let checkout: CheckoutResponse;
+  try {
+    checkout = await asaasRequest<CheckoutResponse>("/checkouts", {
+      method: "POST",
+      body: {
       billingTypes: [asaasBillingType(paymentMethod)],
       chargeTypes: [recurring ? "RECURRENT" : "DETACHED"],
       minutesToExpire: 1440,
@@ -111,8 +120,13 @@ export async function startCheckout(formData: FormData) {
         cycle: "MONTHLY",
         nextDueDate: asaasDate(now),
       } : undefined,
-    },
-  });
+      },
+    });
+  } catch (error) {
+    console.error("[billing] Falha ao criar checkout Asaas", error);
+    const message = error instanceof Error ? error.message.slice(0, 300) : "O Asaas não aceitou a criação do checkout.";
+    redirect(`/assinatura?checkout=erro&message=${encodeURIComponent(message)}`);
+  }
 
   const requestHeaders = await headers();
   const ipAddress = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() || null;

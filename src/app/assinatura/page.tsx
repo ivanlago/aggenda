@@ -26,7 +26,7 @@ const statusLabels = {
 export default async function SubscriptionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ checkout?: string }>;
+  searchParams: Promise<{ checkout?: string; message?: string }>;
 }) {
   const { organization } = await requireOrganizationMembership();
   assertOrganizationPermission(organization.role, "billing.manage");
@@ -37,7 +37,7 @@ export default async function SubscriptionPage({
       .where(eq(billingPayments.organizationId, organization.id))
       .orderBy(desc(billingPayments.createdAt)).limit(10),
   ]);
-  const { checkout } = await searchParams;
+  const { checkout, message } = await searchParams;
   const active = subscription ? hasActiveSubscription({
     subscriptionStatus: subscription.status,
     trialEndsAt: subscription.trialEndsAt,
@@ -66,6 +66,11 @@ export default async function SubscriptionPage({
         {checkout === "sucesso" && (
           <div className="mt-8 rounded-2xl bg-[#edf7f1] p-4 font-bold text-brand">
             Checkout concluído. Aguardando a confirmação do pagamento pelo Asaas.
+          </div>
+        )}
+        {checkout === "erro" && (
+          <div className="mt-8 rounded-2xl bg-red-50 p-4 font-bold text-red-800">
+            Não foi possível abrir o pagamento. {message || "Tente novamente em instantes."}
           </div>
         )}
         {subscription?.status === "trialing" && trialDays > 0 && (

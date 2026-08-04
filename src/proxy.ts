@@ -20,5 +20,6 @@ export const config = {
     "/agendamentos/:path*",
     "/equipe/:path*",
     "/assinatura/:path*",
+    "/admin/:path*",
   ],
 };

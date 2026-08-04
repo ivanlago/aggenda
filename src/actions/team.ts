@@ -14,16 +14,25 @@ import {
   requireOrganizationMembership,
   requireSession,
 } from "@/lib/session";
+import { assertOrganizationPermission } from "@/lib/permissions";
 
 export async function inviteTeamMember(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  if (!["owner", "admin"].includes(organization.role)) {
-    throw new Error("Você não tem permissão para convidar pessoas.");
-  }
+  assertOrganizationPermission(organization.role, "team.manage");
 
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const requestedRole = String(formData.get("role") ?? "member");
-  const role = requestedRole === "admin" ? "admin" : "member";
+  const requestedRole = String(formData.get("role") ?? "viewer");
+  const allowedRoles = [
+    "admin",
+    "manager",
+    "receptionist",
+    "professional",
+    "staff",
+    "viewer",
+  ] as const;
+  const role = allowedRoles.includes(requestedRole as (typeof allowedRoles)[number])
+    ? (requestedRole as (typeof allowedRoles)[number])
+    : "viewer";
   if (!email.includes("@")) throw new Error("Informe um e-mail válido.");
 
   const token = crypto.randomUUID();

@@ -1,13 +1,17 @@
 import { updateOrganizationTerminology } from "@/actions/app";
 import { updateBookingSettings } from "@/actions/schedule";
 import { PageHeader } from "@/components/page-header";
+import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
 export const metadata = { title: "Configurações" };
 
 export default async function SettingsPage() {
   const { organization } = await requireOrganization();
-  const canManage = ["owner", "admin"].includes(organization.role);
+  const canManage = hasOrganizationPermission(
+    organization.role,
+    "organization.settings.manage"
+  );
 
   return (
     <div className="page-wrap">

@@ -8,6 +8,7 @@ import {
   hasActiveSubscription,
   requireOrganizationMembership,
 } from "@/lib/session";
+import { assertOrganizationPermission } from "@/lib/permissions";
 import { eq } from "drizzle-orm";
 
 export const metadata = { title: "Plano e cobrança" };
@@ -26,6 +27,7 @@ export default async function SubscriptionPage({
   searchParams: Promise<{ checkout?: string }>;
 }) {
   const { organization } = await requireOrganizationMembership();
+  assertOrganizationPermission(organization.role, "billing.manage");
   const [subscription] = await db
     .select()
     .from(organizationSubscriptions)

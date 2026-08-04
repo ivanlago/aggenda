@@ -13,6 +13,7 @@ import {
   users,
 } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
+import { hasOrganizationPermission } from "@/lib/permissions";
 
 export const metadata = { title: "Equipe e acesso" };
 
@@ -39,8 +40,13 @@ export default async function TeamPage() {
         )
       ),
   ]);
-  const canManage = ["owner", "admin"].includes(organization.role);
+  const canManage = hasOrganizationPermission(organization.role, "team.manage");
+  const canRead = hasOrganizationPermission(organization.role, "team.read");
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+  if (!canRead) {
+    return <div className="page-wrap"><p className="panel">Acesso restrito à gestão da equipe.</p></div>;
+  }
 
   return (
     <div className="page-wrap">
@@ -58,9 +64,13 @@ export default async function TeamPage() {
           </div>
           <form action={inviteTeamMember} className="mt-5 grid gap-3 md:grid-cols-[1fr_180px_auto]">
             <input className="field" name="email" type="email" required placeholder="pessoa@empresa.com" />
-            <select className="field" name="role" defaultValue="member">
-              <option value="member">Membro</option>
+            <select className="field" name="role" defaultValue="viewer">
               <option value="admin">Administrador</option>
+              <option value="manager">Gerente</option>
+              <option value="receptionist">Recepção</option>
+              <option value="professional">Profissional</option>
+              <option value="staff">Funcionário</option>
+              <option value="viewer">Somente leitura</option>
             </select>
             <button className="primary-button">Gerar convite</button>
           </form>

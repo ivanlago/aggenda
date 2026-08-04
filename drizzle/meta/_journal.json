@@ -50,6 +50,13 @@
       "when": 1785300065957,
       "tag": "0006_lucky_magik",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785814587298,
+      "tag": "0007_smiling_king_cobra",
+      "breakpoints": true
     }
   ]
 }

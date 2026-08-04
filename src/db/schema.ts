@@ -15,7 +15,23 @@ import {
 export const organizationRoleEnum = pgEnum("organization_role", [
   "owner",
   "admin",
+  "manager",
+  "receptionist",
+  "professional",
+  "staff",
+  "viewer",
   "member",
+]);
+export const platformRoleEnum = pgEnum("platform_role", [
+  "super_admin",
+  "support",
+  "billing",
+  "operations",
+  "auditor",
+]);
+export const supportAccessLevelEnum = pgEnum("support_access_level", [
+  "read_only",
+  "operational",
 ]);
 export const subscriptionStatusEnum = pgEnum("subscription_status", [
   "trialing",
@@ -83,6 +99,23 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const platformMembers = pgTable(
+  "platform_members",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: platformRoleEnum("role").notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [index("platform_members_role_idx").on(table.role)]
+);
 
 export const sessions = pgTable(
   "sessions",
@@ -210,6 +243,31 @@ export const organizationSubscriptions = pgTable(
     index("organization_subscriptions_billing_subscription_idx").on(
       table.billingSubscriptionId
     ),
+  ]
+);
+
+export const supportSessions = pgTable(
+  "support_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    platformUserId: text("platform_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    reason: text("reason").notNull(),
+    accessLevel: supportAccessLevelEnum("access_level")
+      .default("read_only")
+      .notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("support_sessions_platform_user_idx").on(table.platformUserId),
+    index("support_sessions_organization_idx").on(table.organizationId),
+    index("support_sessions_expires_idx").on(table.expiresAt),
   ]
 );
 
@@ -349,6 +407,29 @@ export const clients = pgTable(
       table.organizationId,
       table.phone
     ),
+  ]
+);
+
+export const clientAccounts = pgTable(
+  "client_accounts",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    verificationMethod: text("verification_method"),
+    verifiedAt: timestamp("verified_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.clientId] }),
+    uniqueIndex("client_accounts_client_unique").on(table.clientId),
+    index("client_accounts_organization_idx").on(table.organizationId),
   ]
 );
 

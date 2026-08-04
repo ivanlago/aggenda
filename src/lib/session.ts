@@ -1,5 +1,5 @@
-import { eq } from "drizzle-orm";
-import { headers } from "next/headers";
+import { and, asc, eq } from "drizzle-orm";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 
@@ -8,8 +8,12 @@ import {
   organizationMembers,
   organizationSubscriptions,
   organizations,
+  platformMembers,
 } from "@/db/schema";
 import { auth } from "@/lib/auth";
+import type { PlatformRole } from "@/lib/permissions";
+
+export const activeOrganizationCookie = "aggenda_active_organization";
 
 export const getSession = cache(async () => {
   return auth.api.getSession({ headers: await headers() });
@@ -21,8 +25,8 @@ export async function requireSession() {
   return session;
 }
 
-export const getCurrentOrganization = cache(async (userId: string) => {
-  const [membership] = await db
+export const getOrganizationMemberships = cache(async (userId: string) => {
+  return db
     .select({
       id: organizations.id,
       name: organizations.name,
@@ -56,16 +60,52 @@ export const getCurrentOrganization = cache(async (userId: string) => {
       eq(organizationSubscriptions.organizationId, organizations.id)
     )
     .where(eq(organizationMembers.userId, userId))
-    .limit(1);
+    .orderBy(asc(organizations.createdAt));
+});
 
-  return membership;
+export const getCurrentOrganization = cache(async (
+  userId: string,
+  requestedOrganizationId: string | null = null
+) => {
+  const memberships = await getOrganizationMemberships(userId);
+  return (
+    memberships.find((membership) => membership.id === requestedOrganizationId) ??
+    memberships[0]
+  );
 });
 
 export async function requireOrganizationMembership() {
   const session = await requireSession();
-  const organization = await getCurrentOrganization(session.user.id);
+  const cookieStore = await cookies();
+  const organization = await getCurrentOrganization(
+    session.user.id,
+    cookieStore.get(activeOrganizationCookie)?.value ?? null
+  );
   if (!organization) redirect("/onboarding");
   return { session, organization };
+}
+
+export const getPlatformMembership = cache(async (userId: string) => {
+  const [membership] = await db
+    .select({ role: platformMembers.role })
+    .from(platformMembers)
+    .where(
+      and(
+        eq(platformMembers.userId, userId),
+        eq(platformMembers.isActive, true)
+      )
+    )
+    .limit(1);
+  return membership;
+});
+
+export async function requirePlatformMember(allowedRoles?: PlatformRole[]) {
+  const session = await requireSession();
+  const membership = await getPlatformMembership(session.user.id);
+  if (!membership || (allowedRoles && !allowedRoles.includes(membership.role))) {
+    redirect("/dashboard");
+  }
+  return { session, platform: membership };
 }
 
 export function hasActiveSubscription(organization: {

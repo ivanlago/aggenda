@@ -3,13 +3,14 @@ import { desc, eq } from "drizzle-orm";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { auditLogs, users } from "@/db/schema";
+import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
 export const metadata = { title: "Auditoria" };
 
 export default async function AuditPage() {
   const { organization } = await requireOrganization();
-  if (!["owner", "admin"].includes(organization.role)) {
+  if (!hasOrganizationPermission(organization.role, "audit.read")) {
     return (
       <div className="page-wrap">
         <p className="panel">Acesso restrito aos administradores.</p>

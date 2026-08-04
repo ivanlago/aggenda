@@ -14,21 +14,16 @@ import {
 } from "@/db/schema";
 import { isTimeAvailable } from "@/lib/availability";
 import { writeAuditLog } from "@/lib/audit";
+import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
 function value(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
 }
 
-function assertManager(role: string) {
-  if (!["owner", "admin"].includes(role)) {
-    throw new Error("Você não tem permissão para esta alteração.");
-  }
-}
-
 export async function saveWeeklyAvailability(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertManager(organization.role);
+  assertOrganizationPermission(organization.role, "availability.manage");
   const professionalId = value(formData, "professionalId");
   const dayOfWeek = Number(value(formData, "dayOfWeek"));
   const startsAt = value(formData, "startsAt");
@@ -79,7 +74,7 @@ export async function saveWeeklyAvailability(formData: FormData) {
 
 export async function deleteWeeklyAvailability(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertManager(organization.role);
+  assertOrganizationPermission(organization.role, "availability.manage");
   const id = value(formData, "id");
   await db
     .delete(weeklyAvailability)
@@ -101,7 +96,7 @@ export async function deleteWeeklyAvailability(formData: FormData) {
 
 export async function createAvailabilityException(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertManager(organization.role);
+  assertOrganizationPermission(organization.role, "availability.manage");
   const professionalId = value(formData, "professionalId") || null;
   const startsAt = new Date(value(formData, "startsAt"));
   const endsAt = new Date(value(formData, "endsAt"));
@@ -137,7 +132,7 @@ export async function createAvailabilityException(formData: FormData) {
 
 export async function deleteAvailabilityException(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertManager(organization.role);
+  assertOrganizationPermission(organization.role, "availability.manage");
   const id = value(formData, "id");
   await db
     .delete(availabilityExceptions)
@@ -159,7 +154,7 @@ export async function deleteAvailabilityException(formData: FormData) {
 
 export async function updateBookingSettings(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertManager(organization.role);
+  assertOrganizationPermission(organization.role, "organization.settings.manage");
   const notice = Math.max(0, Number(value(formData, "bookingNoticeHours") || 0));
   const horizon = Math.min(
     365,
@@ -190,6 +185,7 @@ export async function updateBookingSettings(formData: FormData) {
 
 export async function rescheduleAppointment(formData: FormData) {
   const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "appointments.manage");
   const id = value(formData, "id");
   const startsAt = new Date(value(formData, "startsAt"));
   const [item] = await db

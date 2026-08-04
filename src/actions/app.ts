@@ -20,6 +20,7 @@ import {
 import { requireOrganization, requireSession } from "@/lib/session";
 import { isTimeAvailable } from "@/lib/availability";
 import { writeAuditLog } from "@/lib/audit";
+import { assertOrganizationPermission } from "@/lib/permissions";
 
 function textValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -121,6 +122,7 @@ export async function createOrganization(formData: FormData) {
 
 export async function createProfessional(formData: FormData) {
   const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "professionals.manage");
   const name = textValue(formData, "name");
   if (name.length < 2) throw new Error("Informe o nome do profissional.");
 
@@ -205,6 +207,7 @@ export async function createProfessional(formData: FormData) {
 
 export async function addProfessionalRegistration(formData: FormData) {
   const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "professionals.manage");
   const professionalId = textValue(formData, "professionalId");
   const council = textValue(formData, "council").toUpperCase();
   const registrationNumber = textValue(formData, "registrationNumber");
@@ -237,6 +240,7 @@ export async function addProfessionalRegistration(formData: FormData) {
 
 export async function deleteProfessionalRegistration(formData: FormData) {
   const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "professionals.manage");
   await db
     .delete(professionalRegistrations)
     .where(
@@ -250,9 +254,7 @@ export async function deleteProfessionalRegistration(formData: FormData) {
 
 export async function updateOrganizationTerminology(formData: FormData) {
   const { organization } = await requireOrganization();
-  if (!["owner", "admin"].includes(organization.role)) {
-    throw new Error("Você não tem permissão para alterar a organização.");
-  }
+  assertOrganizationPermission(organization.role, "organization.settings.manage");
 
   const labels = {
     clientLabel: textValue(formData, "clientLabel"),
@@ -277,6 +279,7 @@ export async function updateOrganizationTerminology(formData: FormData) {
 
 export async function deleteProfessional(formData: FormData) {
   const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "professionals.manage");
   await db
     .delete(professionals)
     .where(
@@ -291,6 +294,7 @@ export async function deleteProfessional(formData: FormData) {
 
 export async function createClient(formData: FormData) {
   const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "clients.manage");
   const name = textValue(formData, "name");
   if (name.length < 2) throw new Error("Informe o nome do cliente.");
 
@@ -307,6 +311,7 @@ export async function createClient(formData: FormData) {
 
 export async function deleteClient(formData: FormData) {
   const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "clients.manage");
   await db
     .delete(clients)
     .where(
@@ -321,6 +326,7 @@ export async function deleteClient(formData: FormData) {
 
 export async function createService(formData: FormData) {
   const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "services.manage");
   const name = textValue(formData, "name");
   const durationMinutes = Number.parseInt(textValue(formData, "durationMinutes"), 10);
   if (name.length < 2 || !Number.isFinite(durationMinutes) || durationMinutes <= 0) {
@@ -340,6 +346,7 @@ export async function createService(formData: FormData) {
 
 export async function deleteService(formData: FormData) {
   const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "services.manage");
   await db
     .delete(services)
     .where(
@@ -354,6 +361,7 @@ export async function deleteService(formData: FormData) {
 
 export async function createAppointment(formData: FormData) {
   const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "appointments.manage");
   const serviceId = textValue(formData, "serviceId");
   const clientId = textValue(formData, "clientId");
   const professionalId = optionalText(formData, "professionalId");
@@ -443,6 +451,7 @@ export async function createAppointment(formData: FormData) {
 
 export async function updateAppointmentStatus(formData: FormData) {
   const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "appointments.manage");
   const status = textValue(formData, "status") as
     | "scheduled"
     | "confirmed"

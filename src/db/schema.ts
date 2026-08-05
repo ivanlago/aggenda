@@ -446,6 +446,34 @@ export const professionals = pgTable(
   ]
 );
 
+export const professionalGoogleCalendarAccounts = pgTable(
+  "professional_google_calendar_accounts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    professionalId: uuid("professional_id")
+      .notNull()
+      .unique()
+      .references(() => professionals.id, { onDelete: "cascade" }),
+    googleEmail: text("google_email").notNull(),
+    calendarId: text("calendar_id").default("primary").notNull(),
+    accessToken: text("access_token").notNull(),
+    refreshToken: text("refresh_token"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at"),
+    scope: text("scope"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("professional_google_calendar_org_idx").on(table.organizationId),
+    index("professional_google_calendar_professional_idx").on(
+      table.professionalId
+    ),
+  ]
+);
+
 export const professionalSpecialties = pgTable(
   "professional_specialties",
   {
@@ -663,6 +691,10 @@ export const appointments = pgTable(
     notes: text("notes"),
     cancellationReason: text("cancellation_reason"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+    googleCalendarEventId: text("google_calendar_event_id"),
+    googleCalendarId: text("google_calendar_id"),
+    googleCalendarSyncStatus: text("google_calendar_sync_status"),
+    googleCalendarSyncError: text("google_calendar_sync_error"),
     confirmedAt: timestamp("confirmed_at"),
     reminderClaimedAt: timestamp("reminder_claimed_at"),
     reminderSentAt: timestamp("reminder_sent_at"),

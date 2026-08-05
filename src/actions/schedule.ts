@@ -17,6 +17,7 @@ import { organizationDate, parseOrganizationDateTime, withAppointmentLock } from
 import { writeAuditLog } from "@/lib/audit";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
+import { syncAppointmentToGoogleCalendar } from "@/lib/google-calendar";
 
 function value(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -227,6 +228,7 @@ export async function rescheduleAppointment(formData: FormData) {
     entityType: "appointment",
     entityId: id,
   });
+  await syncAppointmentToGoogleCalendar(id);
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
 }

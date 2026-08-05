@@ -26,6 +26,8 @@ Variáveis locais obrigatórias:
 - `BETTER_AUTH_SECRET`
 - `BETTER_AUTH_URL`
 - `NEXT_PUBLIC_APP_URL`
+- `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` para conectar a agenda de cada profissional
+- `GOOGLE_TOKEN_ENCRYPTION_KEY` (recomendado em produção; segredo aleatório com 32+ caracteres)
 
 Para testar a cobrança recorrente pelo Asaas:
 

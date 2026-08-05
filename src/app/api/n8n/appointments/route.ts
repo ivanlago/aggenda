@@ -7,6 +7,7 @@ import { appointments, clients, professionals, services } from "@/db/schema";
 import { apiError, requireN8nOrganization } from "@/lib/n8n-api";
 import { isTimeAvailable } from "@/lib/availability";
 import { organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
+import { syncAppointmentToGoogleCalendar } from "@/lib/google-calendar";
 
 const inputSchema = z.object({
   clientId: z.string().uuid(),
@@ -115,6 +116,7 @@ export async function POST(request: NextRequest) {
       }).returning();
       return created;
     });
+    await syncAppointmentToGoogleCalendar(appointment.id);
     return NextResponse.json({ appointment }, { status: 201 });
   } catch (error) {
     return apiError(error);

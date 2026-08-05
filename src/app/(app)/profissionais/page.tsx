@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { CalendarClock, CalendarOff, Pencil, Trash2 } from "lucide-react";
+import { CalendarClock, CalendarDays, CalendarOff, Link2, Pencil, Trash2, Unlink } from "lucide-react";
 import Link from "next/link";
 
 import {
@@ -7,6 +7,7 @@ import {
   createProfessional,
   deleteProfessional,
   deleteProfessionalRegistration,
+  disconnectProfessionalGoogleCalendar,
   updateProfessional,
 } from "@/actions/app";
 import { ActionForm } from "@/components/action-form";
@@ -15,6 +16,7 @@ import { db } from "@/db";
 import {
   honorifics,
   professionalRegistrations,
+  professionalGoogleCalendarAccounts,
   professionals,
   professionalSpecialties,
   professions,
@@ -25,8 +27,13 @@ import { requireOrganization } from "@/lib/session";
 
 export const metadata = { title: "Profissionais" };
 
-export default async function ProfessionalsPage() {
+export default async function ProfessionalsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ googleCalendar?: string }>;
+}) {
   const { organization } = await requireOrganization();
+  const query = await searchParams;
   const [
     professionOptions,
     specialtyOptions,
@@ -35,6 +42,7 @@ export default async function ProfessionalsPage() {
     specialtyRows,
     registrationRows,
     availabilityRows,
+    googleCalendarRows,
   ] = await Promise.all([
     db.select().from(professions).where(eq(professions.isActive, true))
       .orderBy(professions.sortOrder, professions.name),
@@ -85,6 +93,11 @@ export default async function ProfessionalsPage() {
     db.select({ professionalId: weeklyAvailability.professionalId, dayOfWeek: weeklyAvailability.dayOfWeek, startsAt: weeklyAvailability.startsAt, endsAt: weeklyAvailability.endsAt })
       .from(weeklyAvailability)
       .where(eq(weeklyAvailability.organizationId, organization.id)),
+    db.select({
+      professionalId: professionalGoogleCalendarAccounts.professionalId,
+      googleEmail: professionalGoogleCalendarAccounts.googleEmail,
+    }).from(professionalGoogleCalendarAccounts)
+      .where(eq(professionalGoogleCalendarAccounts.organizationId, organization.id)),
   ]);
 
   const specialtiesByProfessional = new Map<string, string[]>();
@@ -111,6 +124,9 @@ export default async function ProfessionalsPage() {
     current.push(row);
     availabilityByProfessional.set(row.professionalId, current);
   }
+  const googleCalendarByProfessional = new Map(
+    googleCalendarRows.map((row) => [row.professionalId, row])
+  );
 
   return (
     <div className="page-wrap">
@@ -119,6 +135,16 @@ export default async function ProfessionalsPage() {
         title={organization.professionalLabelPlural}
         description="Cadastre profissões, especialidades, tratamentos e registros sem limitar a composição da equipe."
       />
+      {query.googleCalendar === "connected" && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
+          Google Agenda conectada com sucesso. Os novos agendamentos deste profissional serão sincronizados automaticamente.
+        </div>
+      )}
+      {query.googleCalendar === "error" && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">
+          Não foi possível conectar o Google Agenda. Confira as credenciais e as permissões do aplicativo Google.
+        </div>
+      )}
       <div className="content-grid">
         <form action={createProfessional} className="panel form-stack">
           <h2 className="text-lg font-extrabold">
@@ -232,6 +258,7 @@ export default async function ProfessionalsPage() {
                 item.customHonorific || item.honorific || "";
               const profession =
                 item.customProfession || item.profession || item.title;
+              const googleCalendar = googleCalendarByProfessional.get(item.id);
               return (
                 <div key={item.id} className="flex items-start gap-4 py-4">
                   <span
@@ -293,6 +320,30 @@ export default async function ProfessionalsPage() {
                       <Link className="mt-2 inline-block font-extrabold text-brand underline" href={`/disponibilidade?professionalId=${item.id}`}>
                         Editar dias e horários
                       </Link>
+                    </div>
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs">
+                      <p className="flex items-center gap-2 font-extrabold text-brand">
+                        <CalendarDays className="size-4" /> Google Agenda
+                      </p>
+                      <p className="mt-1 text-muted">
+                        {googleCalendar
+                          ? `Conectada à conta ${googleCalendar.googleEmail}`
+                          : "Não conectada para este profissional"}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-3">
+                        <Link className="inline-flex items-center gap-1 font-extrabold text-brand underline" href={`/api/google-calendar/connect?professionalId=${item.id}`}>
+                          <Link2 className="size-3" />
+                          {googleCalendar ? "Reconectar" : "Conectar Google Agenda"}
+                        </Link>
+                        {googleCalendar && (
+                          <ActionForm action={disconnectProfessionalGoogleCalendar} successMessage="Google Agenda desconectada com sucesso.">
+                            <input type="hidden" name="professionalId" value={item.id} />
+                            <button className="inline-flex items-center gap-1 font-extrabold text-red-700 underline">
+                              <Unlink className="size-3" /> Desconectar
+                            </button>
+                          </ActionForm>
+                        )}
+                      </div>
                     </div>
                     <details className="mt-3">
                       <summary className="flex w-fit items-center gap-1 text-xs font-extrabold text-brand">

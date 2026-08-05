@@ -10,6 +10,7 @@ import {
 } from "@/db/schema";
 import { isTimeAvailable } from "@/lib/availability";
 import { organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
+import { syncAppointmentToGoogleCalendar } from "@/lib/google-calendar";
 
 export async function POST(
   request: Request,
@@ -106,6 +107,7 @@ export async function POST(
         .returning({ id: appointments.id });
       return created;
     });
+    await syncAppointmentToGoogleCalendar(appointment.id);
     return Response.json({ id: appointment.id }, { status: 201 });
   } catch (error) {
     if (error instanceof Error && error.message === "APPOINTMENT_CONFLICT") {

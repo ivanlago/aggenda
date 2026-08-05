@@ -7,6 +7,10 @@ import { appointments, services } from "@/db/schema";
 import { apiError, requireN8nOrganization } from "@/lib/n8n-api";
 import { isTimeAvailable } from "@/lib/availability";
 import { organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
+import {
+  deleteAppointmentFromGoogleCalendar,
+  syncAppointmentToGoogleCalendar,
+} from "@/lib/google-calendar";
 
 const patchSchema = z.object({
   startsAt: z.coerce.date().optional(),
@@ -57,6 +61,11 @@ export async function PATCH(
       }).where(and(eq(appointments.id, id), eq(appointments.organizationId, auth.organization.id))).returning();
       return updated;
     });
+    if (input.status === "cancelled") {
+      await deleteAppointmentFromGoogleCalendar(appointment.id);
+    } else {
+      await syncAppointmentToGoogleCalendar(appointment.id);
+    }
     return NextResponse.json({ appointment });
   } catch (error) {
     return apiError(error);
@@ -78,5 +87,6 @@ export async function DELETE(
     eq(appointments.organizationId, auth.organization.id)
   )).returning();
   if (!appointment) return NextResponse.json({ error: "Appointment not found" }, { status: 404 });
+  await deleteAppointmentFromGoogleCalendar(appointment.id);
   return NextResponse.json({ appointment });
 }

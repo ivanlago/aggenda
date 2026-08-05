@@ -10,6 +10,7 @@ import {
   clients,
   clientHistoryEntries,
   professionalRegistrations,
+  professionalGoogleCalendarAccounts,
   professionalSpecialties,
   organizationMembers,
   organizationSubscriptions,
@@ -23,6 +24,10 @@ import { isTimeAvailable } from "@/lib/availability";
 import { organizationDate, parseOrganizationDateTime, withAppointmentLock } from "@/lib/appointment-safety";
 import { writeAuditLog } from "@/lib/audit";
 import { assertOrganizationPermission } from "@/lib/permissions";
+import {
+  deleteAppointmentFromGoogleCalendar,
+  syncAppointmentToGoogleCalendar,
+} from "@/lib/google-calendar";
 
 function textValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -301,6 +306,21 @@ export async function deleteProfessional(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
+export async function disconnectProfessionalGoogleCalendar(formData: FormData) {
+  const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "professionals.manage");
+  const professionalId = textValue(formData, "professionalId");
+  await db
+    .delete(professionalGoogleCalendarAccounts)
+    .where(
+      and(
+        eq(professionalGoogleCalendarAccounts.professionalId, professionalId),
+        eq(professionalGoogleCalendarAccounts.organizationId, organization.id)
+      )
+    );
+  revalidatePath("/profissionais");
+}
+
 export async function updateProfessional(formData: FormData) {
   const { organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "professionals.manage");
@@ -559,6 +579,7 @@ export async function createAppointment(formData: FormData) {
     entityType: "appointment",
     entityId: created.id,
   });
+  await syncAppointmentToGoogleCalendar(created.id);
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
 }
@@ -581,6 +602,7 @@ export async function updateAppointmentStatus(formData: FormData) {
     throw new Error("Informe o motivo do cancelamento.");
   }
 
+  const appointmentId = textValue(formData, "id");
   await db
     .update(appointments)
     .set({
@@ -591,7 +613,7 @@ export async function updateAppointmentStatus(formData: FormData) {
     })
     .where(
       and(
-        eq(appointments.id, textValue(formData, "id")),
+        eq(appointments.id, appointmentId),
         eq(appointments.organizationId, organization.id)
       )
     );
@@ -600,9 +622,14 @@ export async function updateAppointmentStatus(formData: FormData) {
     userId: session.user.id,
     action: `status:${status}`,
     entityType: "appointment",
-    entityId: textValue(formData, "id"),
+    entityId: appointmentId,
     details: cancellationReason ? { cancellationReason } : {},
   });
+  if (status === "cancelled") {
+    await deleteAppointmentFromGoogleCalendar(appointmentId);
+  } else {
+    await syncAppointmentToGoogleCalendar(appointmentId);
+  }
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
 }

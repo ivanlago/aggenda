@@ -2,6 +2,7 @@ import { and, eq, gte } from "drizzle-orm";
 
 import { createAppointment, updateAppointmentStatus } from "@/actions/app";
 import { rescheduleAppointment } from "@/actions/schedule";
+import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { appointments, clients, professionals, services } from "@/db/schema";
@@ -28,7 +29,7 @@ export default async function AppointmentsPage() {
         eq(professionals.isActive, true)
       )
     ).orderBy(professionals.name),
-    db.select().from(services).where(eq(services.organizationId, organization.id)).orderBy(services.name),
+    db.select().from(services).where(and(eq(services.organizationId, organization.id), eq(services.isActive, true))).orderBy(services.name),
     db.select({
       id: appointments.id,
       startsAt: appointments.startsAt,
@@ -43,6 +44,7 @@ export default async function AppointmentsPage() {
       .where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, new Date(new Date().setHours(0, 0, 0, 0)))))
       .orderBy(appointments.startsAt),
   ]);
+  const allServicesRequireProfessional = serviceItems.length > 0 && serviceItems.every((item) => item.requiresProfessional);
 
   return (
     <div className="page-wrap">
@@ -52,7 +54,7 @@ export default async function AppointmentsPage() {
         description={`Crie ${organization.appointmentLabelPlural.toLowerCase()} e acompanhe cada etapa da operação.`}
       />
       <div className="content-grid">
-        <form action={createAppointment} className="panel form-stack">
+        <ActionForm action={createAppointment} successMessage={`${organization.appointmentLabel} criado com sucesso.`} className="panel form-stack">
           <h2 className="text-lg font-extrabold">
             Novo {organization.appointmentLabel.toLowerCase()}
           </h2>
@@ -68,9 +70,11 @@ export default async function AppointmentsPage() {
             </option>
             {serviceItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
-          <select className="field" name="professionalId" defaultValue="">
-            <option value="">
-              Sem {organization.professionalLabel.toLowerCase()} específico
+          <select className="field" name="professionalId" defaultValue="" required={allServicesRequireProfessional}>
+            <option value="" disabled={allServicesRequireProfessional}>
+              {allServicesRequireProfessional
+                ? `Selecione o ${organization.professionalLabel.toLowerCase()}`
+                : `Sem ${organization.professionalLabel.toLowerCase()} específico`}
             </option>
             {professionalItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
@@ -86,7 +90,7 @@ export default async function AppointmentsPage() {
               {organization.serviceLabel.toLowerCase()}.
             </p>
           )}
-        </form>
+        </ActionForm>
         <section className="panel">
           <h2 className="text-lg font-extrabold">{items.length} próximos</h2>
           <div className="mt-5 divide-y">
@@ -98,7 +102,7 @@ export default async function AppointmentsPage() {
                     <p className="text-sm text-muted">{item.service}{item.professional ? ` · ${item.professional}` : ""}</p>
                     <p className="mt-1 text-sm font-bold text-brand">{item.startsAt.toLocaleString("pt-BR")}</p>
                   </div>
-                  <form action={updateAppointmentStatus}>
+                  <ActionForm action={updateAppointmentStatus} successMessage="Status atualizado com sucesso.">
                     <input type="hidden" name="id" value={item.id} />
                     <select className="field py-2" name="status" defaultValue={item.status}>
                       {statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -109,17 +113,17 @@ export default async function AppointmentsPage() {
                       placeholder="Motivo se cancelar"
                     />
                     <button className="mt-2 w-full text-xs font-extrabold text-brand">Atualizar</button>
-                  </form>
+                  </ActionForm>
                 </div>
                 <details className="mt-3">
                   <summary className="cursor-pointer text-xs font-extrabold text-brand">
                     Reagendar
                   </summary>
-                  <form action={rescheduleAppointment} className="mt-2 flex gap-2">
+                  <ActionForm action={rescheduleAppointment} successMessage="Agendamento remarcado com sucesso." className="mt-2 flex gap-2">
                     <input type="hidden" name="id" value={item.id} />
                     <input className="field py-2" name="startsAt" type="datetime-local" required />
                     <button className="primary-button py-2">Salvar</button>
-                  </form>
+                  </ActionForm>
                 </details>
               </article>
             ))}

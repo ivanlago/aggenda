@@ -1,5 +1,5 @@
-import { eq } from "drizzle-orm";
-import { Pencil, Trash2 } from "lucide-react";
+import { and, eq, ilike } from "drizzle-orm";
+import { Pencil, Search, Trash2, X } from "lucide-react";
 import Link from "next/link";
 
 import { createClient, deleteClient, updateClient } from "@/actions/app";
@@ -11,10 +11,21 @@ import { requireOrganization } from "@/lib/session";
 
 export const metadata = { title: "Clientes" };
 
-export default async function ClientsPage() {
+export default async function ClientsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ busca?: string }>;
+}) {
   const { organization } = await requireOrganization();
+  const query = await searchParams;
+  const search = String(query.busca ?? "").trim().slice(0, 100);
   const items = await db.select().from(clients)
-    .where(eq(clients.organizationId, organization.id))
+    .where(
+      and(
+        eq(clients.organizationId, organization.id),
+        search ? ilike(clients.name, `%${search}%`) : undefined
+      )
+    )
     .orderBy(clients.name);
 
   return (
@@ -46,13 +57,43 @@ export default async function ClientsPage() {
           </button>
         </form>
         <section className="panel">
-          <h2 className="text-lg font-extrabold">
-            {items.length}{" "}
-            {(items.length === 1
-              ? organization.clientLabel
-              : organization.clientLabelPlural
-            ).toLowerCase()}
-          </h2>
+          <div className="flex flex-col gap-4">
+            <h2 className="text-lg font-extrabold">
+              {items.length}{" "}
+              {(items.length === 1
+                ? organization.clientLabel
+                : organization.clientLabelPlural
+              ).toLowerCase()}
+              {search ? " encontrados" : ""}
+            </h2>
+            <form method="get" className="flex gap-2" role="search">
+              <label className="relative min-w-0 flex-1">
+                <span className="sr-only">Buscar por nome</span>
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+                <input
+                  className="field w-full pl-10"
+                  name="busca"
+                  defaultValue={search}
+                  placeholder={`Buscar ${organization.clientLabel.toLowerCase()} por nome`}
+                  maxLength={100}
+                  autoComplete="off"
+                />
+              </label>
+              <button className="primary-button px-4" type="submit">
+                Buscar
+              </button>
+              {search && (
+                <Link
+                  className="icon-button"
+                  href="/clientes"
+                  aria-label="Limpar busca"
+                  title="Limpar busca"
+                >
+                  <X className="size-4" />
+                </Link>
+              )}
+            </form>
+          </div>
           <div className="mt-5 divide-y">
             {items.map((item) => (
               <div key={item.id} className="flex items-center gap-4 py-4">
@@ -89,7 +130,9 @@ export default async function ClientsPage() {
             ))}
             {!items.length && (
               <p className="empty-state">
-                Nenhum {organization.clientLabel.toLowerCase()} cadastrado.
+                {search
+                  ? `Nenhum ${organization.clientLabel.toLowerCase()} encontrado para “${search}”.`
+                  : `Nenhum ${organization.clientLabel.toLowerCase()} cadastrado.`}
               </p>
             )}
           </div>

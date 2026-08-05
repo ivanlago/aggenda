@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
-import { CalendarOff, Trash2 } from "lucide-react";
+import { CalendarClock, CalendarOff, Trash2 } from "lucide-react";
+import Link from "next/link";
 
 import {
   addProfessionalRegistration,
@@ -16,6 +17,7 @@ import {
   professionalSpecialties,
   professions,
   specialties,
+  weeklyAvailability,
 } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
 
@@ -30,6 +32,7 @@ export default async function ProfessionalsPage() {
     items,
     specialtyRows,
     registrationRows,
+    availabilityRows,
   ] = await Promise.all([
     db.select().from(professions).where(eq(professions.isActive, true))
       .orderBy(professions.sortOrder, professions.name),
@@ -71,6 +74,9 @@ export default async function ProfessionalsPage() {
       .from(professionalRegistrations)
       .where(eq(professionalRegistrations.organizationId, organization.id))
       .orderBy(professionalRegistrations.createdAt),
+    db.select({ professionalId: weeklyAvailability.professionalId, dayOfWeek: weeklyAvailability.dayOfWeek, startsAt: weeklyAvailability.startsAt, endsAt: weeklyAvailability.endsAt })
+      .from(weeklyAvailability)
+      .where(eq(weeklyAvailability.organizationId, organization.id)),
   ]);
 
   const specialtiesByProfessional = new Map<string, string[]>();
@@ -85,6 +91,13 @@ export default async function ProfessionalsPage() {
     const current = registrationsByProfessional.get(row.professionalId) ?? [];
     current.push(row);
     registrationsByProfessional.set(row.professionalId, current);
+  }
+  const availabilityByProfessional = new Map<string, typeof availabilityRows>();
+  for (const row of availabilityRows) {
+    if (!row.professionalId) continue;
+    const current = availabilityByProfessional.get(row.professionalId) ?? [];
+    current.push(row);
+    availabilityByProfessional.set(row.professionalId, current);
   }
 
   return (
@@ -255,6 +268,19 @@ export default async function ProfessionalsPage() {
                         <CalendarOff className="size-3" /> Não aparece na agenda
                       </span>
                     )}
+                    <div className="mt-3 rounded-xl bg-[#f3f5f1] p-3 text-xs">
+                      <p className="flex items-center gap-2 font-extrabold text-brand">
+                        <CalendarClock className="size-4" /> Disponibilidade
+                      </p>
+                      <p className="mt-1 text-muted">
+                        {(availabilityByProfessional.get(item.id)?.length ?? 0) > 0
+                          ? `${availabilityByProfessional.get(item.id)?.length} jornadas semanais configuradas`
+                          : "Nenhuma jornada semanal configurada"}
+                      </p>
+                      <Link className="mt-2 inline-block font-extrabold text-brand underline" href={`/disponibilidade?professionalId=${item.id}`}>
+                        Editar dias e horários
+                      </Link>
+                    </div>
                     <details className="mt-3">
                       <summary className="cursor-pointer text-xs font-extrabold text-brand">
                         Adicionar registro profissional

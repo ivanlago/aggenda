@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAvailableTimes } from "@/lib/availability";
+import { organizationDate } from "@/lib/appointment-safety";
 import { requireN8nOrganization } from "@/lib/n8n-api";
 
 const DEFAULT_SEARCH_DAYS = 60;
@@ -31,6 +32,20 @@ export async function GET(request: NextRequest) {
       { error: "date, serviceId and professionalId are required" },
       { status: 400 }
     );
+  }
+  const normalizedDate = addDays(date, 0);
+  if (!normalizedDate) {
+    return NextResponse.json({ error: "Invalid date", code: "invalid_date" }, { status: 400 });
+  }
+  const today = organizationDate(new Date(), auth.organization.timezone);
+  if (normalizedDate < today) {
+    return NextResponse.json({
+      requestedDate: date,
+      date: today,
+      code: "past_date",
+      message: "A data informada já passou. Informe uma data a partir de hoje.",
+      availableTimes: [],
+    });
   }
   let availableDate = date;
   let times: string[] | null = null;

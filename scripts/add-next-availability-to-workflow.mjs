@@ -46,7 +46,9 @@ const requestedDate = formatDate($json.requestedDate ?? decision.date);
 const availableDate = formatDate($json.date ?? decision.date);
 const professionalName = decision.professionalName ?? 'o profissional selecionado';
 let reply;
-if (availableTimes.length && $json.foundNextDate) {
+if ($json.code === 'past_date') {
+  reply = 'A data informada já passou. Por favor, informe uma data a partir de hoje.';
+} else if (availableTimes.length && $json.foundNextDate) {
   reply = \`Não encontrei horários para ${"${professionalName}"} em ${"${requestedDate}"}. A próxima data disponível é ${"${availableDate}"}, com estes horários:\\n\\n${"${availableTimes.join(', ')}"}\\n\\nQual horário você gostaria de escolher?\`;
 } else if (availableTimes.length) {
   reply = \`Para ${"${availableDate}"}, ${"${professionalName}"} possui estes horários disponíveis:\\n\\n${"${availableTimes.join(', ')}"}\\n\\nQual horário você gostaria de escolher?\`;

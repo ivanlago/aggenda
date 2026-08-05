@@ -28,8 +28,9 @@ const days = [
   "Sábado",
 ];
 
-export default async function AvailabilityPage() {
+export default async function AvailabilityPage({ searchParams }: { searchParams: Promise<{ professionalId?: string }> }) {
   const { organization } = await requireOrganization();
+  const selectedProfessionalId = (await searchParams).professionalId ?? "";
   const [professionalItems, ranges, exceptions] = await Promise.all([
     db
       .select()
@@ -97,7 +98,7 @@ export default async function AvailabilityPage() {
             action={saveWeeklyAvailability}
             className="mt-5 grid gap-3 sm:grid-cols-2"
           >
-            <select className="field sm:col-span-2" name="professionalId" required>
+            <select className="field sm:col-span-2" name="professionalId" required defaultValue={selectedProfessionalId}>
               <option value="">Selecione o profissional</option>
               {professionalItems.map((item) => (
                 <option key={item.id} value={item.id}>

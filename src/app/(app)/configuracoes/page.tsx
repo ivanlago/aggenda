@@ -1,5 +1,6 @@
 import { updateOrganizationTerminology } from "@/actions/app";
 import { updateBookingSettings } from "@/actions/schedule";
+import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
@@ -26,7 +27,11 @@ export default async function SettingsPage() {
           Exemplos: cliente ou paciente; serviço ou procedimento; agendamento,
           consulta ou reunião.
         </p>
-        <form action={updateOrganizationTerminology} className="mt-6 grid gap-4 sm:grid-cols-2">
+        <ActionForm
+          action={updateOrganizationTerminology}
+          successMessage="Terminologia salva com sucesso."
+          className="mt-6 grid gap-4 sm:grid-cols-2"
+        >
           <label className="grid gap-2 text-sm font-bold">
             Cliente, no singular
             <input
@@ -112,14 +117,18 @@ export default async function SettingsPage() {
               Salvar terminologia
             </button>
           )}
-        </form>
+        </ActionForm>
       </section>
       <section className="panel mt-5 max-w-3xl">
         <h2 className="text-xl font-extrabold">Agendamento público</h2>
         <p className="mt-2 text-sm text-muted">
           Link público: /agendar/{organization.slug}
         </p>
-        <form action={updateBookingSettings} className="mt-6 grid gap-4 sm:grid-cols-3">
+        <ActionForm
+          action={updateBookingSettings}
+          successMessage="Configurações do agendamento público salvas."
+          className="mt-6 grid gap-4 sm:grid-cols-3"
+        >
           <label className="flex items-center gap-3 text-sm font-bold sm:col-span-3">
             <input
               name="bookingEnabled"
@@ -170,7 +179,7 @@ export default async function SettingsPage() {
               Salvar agendamento público
             </button>
           )}
-        </form>
+        </ActionForm>
       </section>
     </div>
   );

@@ -8,6 +8,7 @@ import { apiError, requireN8nOrganization } from "@/lib/n8n-api";
 import { isTimeAvailable } from "@/lib/availability";
 import { organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
 import { syncAppointmentToGoogleCalendar } from "@/lib/google-calendar";
+import { reservePackageSession } from "@/lib/package-balance";
 
 const inputSchema = z.object({
   clientId: z.string().uuid(),
@@ -15,6 +16,7 @@ const inputSchema = z.object({
   professionalId: z.string().uuid().optional().nullable(),
   startsAt: z.coerce.date(),
   notes: z.string().optional().nullable(),
+  clientPackageId: z.string().uuid().optional().nullable(),
 });
 
 export async function GET(request: NextRequest) {
@@ -116,6 +118,21 @@ export async function POST(request: NextRequest) {
       }).returning();
       return created;
     });
+    if (input.clientPackageId) {
+      try {
+        await reservePackageSession({
+          appointmentId: appointment.id,
+          organizationId: auth.organization.id,
+          clientId: input.clientId,
+          serviceId: input.serviceId,
+          clientPackageId: input.clientPackageId,
+        });
+        await db.update(appointments).set({ priceInCents: 0 }).where(eq(appointments.id, appointment.id));
+      } catch (error) {
+        await db.delete(appointments).where(eq(appointments.id, appointment.id));
+        throw error;
+      }
+    }
     await syncAppointmentToGoogleCalendar(appointment.id);
     return NextResponse.json({ appointment }, { status: 201 });
   } catch (error) {

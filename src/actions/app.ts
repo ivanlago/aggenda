@@ -8,6 +8,8 @@ import { db } from "@/db";
 import {
   appointments,
   clients,
+  clientPackageBalances,
+  clientPackages,
   clientHistoryEntries,
   professionalRegistrations,
   professionalGoogleCalendarAccounts,
@@ -16,6 +18,8 @@ import {
   organizationSubscriptions,
   organizations,
   professionals,
+  servicePackageItems,
+  servicePackages,
   services,
   specialties,
 } from "@/db/schema";
@@ -28,6 +32,7 @@ import {
   deleteAppointmentFromGoogleCalendar,
   syncAppointmentToGoogleCalendar,
 } from "@/lib/google-calendar";
+import { reconcilePackageUsage, reservePackageSession } from "@/lib/package-balance";
 
 function textValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -503,12 +508,131 @@ export async function updateService(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
+export async function createServicePackage(formData: FormData) {
+  const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "services.manage");
+  const name = textValue(formData, "name");
+  const priceInCents = optionalMoneyInCents(formData, "price");
+  const validityRaw = optionalText(formData, "validityDays");
+  const validityDays = validityRaw ? Number.parseInt(validityRaw, 10) : null;
+  const selectedItems = [...formData.entries()]
+    .filter(([key]) => key.startsWith("quantity:"))
+    .map(([key, value]) => ({
+      serviceId: key.slice("quantity:".length),
+      quantity: Number.parseInt(String(value), 10),
+    }))
+    .filter((item) => Number.isInteger(item.quantity) && item.quantity > 0);
+  if (name.length < 2 || priceInCents == null || !selectedItems.length) {
+    throw new Error("Informe nome, preço e ao menos um serviço com quantidade.");
+  }
+  if (validityDays != null && (!Number.isInteger(validityDays) || validityDays <= 0)) {
+    throw new Error("Informe uma validade em dias maior que zero.");
+  }
+  const validServices = await db
+    .select({ id: services.id })
+    .from(services)
+    .where(
+      and(
+        eq(services.organizationId, organization.id),
+        inArray(services.id, selectedItems.map((item) => item.serviceId))
+      )
+    );
+  if (validServices.length !== selectedItems.length) {
+    throw new Error("Um ou mais serviços do pacote são inválidos.");
+  }
+  await db.transaction(async (tx) => {
+    const [created] = await tx.insert(servicePackages).values({
+      organizationId: organization.id,
+      name,
+      description: optionalText(formData, "description"),
+      priceInCents,
+      validityDays,
+    }).returning({ id: servicePackages.id });
+    await tx.insert(servicePackageItems).values(selectedItems.map((item) => ({
+      organizationId: organization.id,
+      packageId: created.id,
+      serviceId: item.serviceId,
+      quantity: item.quantity,
+    })));
+  });
+  revalidatePath("/pacotes");
+}
+
+export async function toggleServicePackage(formData: FormData) {
+  const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "services.manage");
+  await db.update(servicePackages).set({
+    isActive: formData.get("isActive") === "true",
+    updatedAt: new Date(),
+  }).where(and(
+    eq(servicePackages.id, textValue(formData, "id")),
+    eq(servicePackages.organizationId, organization.id)
+  ));
+  revalidatePath("/pacotes");
+}
+
+export async function assignPackageToClient(formData: FormData) {
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "clients.manage");
+  const clientId = textValue(formData, "clientId");
+  const packageId = textValue(formData, "packageId");
+  const [[client], [template], items] = await Promise.all([
+    db.select({ id: clients.id }).from(clients).where(and(
+      eq(clients.id, clientId), eq(clients.organizationId, organization.id)
+    )).limit(1),
+    db.select().from(servicePackages).where(and(
+      eq(servicePackages.id, packageId),
+      eq(servicePackages.organizationId, organization.id),
+      eq(servicePackages.isActive, true)
+    )).limit(1),
+    db.select().from(servicePackageItems).where(and(
+      eq(servicePackageItems.packageId, packageId),
+      eq(servicePackageItems.organizationId, organization.id)
+    )),
+  ]);
+  if (!client || !template || !items.length) throw new Error("Cliente ou pacote inválido.");
+  const purchasedAt = new Date();
+  const expiresAt = template.validityDays
+    ? new Date(purchasedAt.getTime() + template.validityDays * 86_400_000)
+    : null;
+  const priceInCents = optionalMoneyInCents(formData, "price") ?? template.priceInCents;
+  const [assigned] = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(clientPackages).values({
+      organizationId: organization.id,
+      clientId,
+      packageId,
+      priceInCents,
+      purchasedAt,
+      expiresAt,
+      notes: optionalText(formData, "notes"),
+    }).returning({ id: clientPackages.id });
+    await tx.insert(clientPackageBalances).values(items.map((item) => ({
+      organizationId: organization.id,
+      clientPackageId: created.id,
+      serviceId: item.serviceId,
+      totalQuantity: item.quantity,
+    })));
+    return [created];
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: session.user.id,
+    action: "assign",
+    entityType: "client_package",
+    entityId: assigned.id,
+    details: { clientId, packageId, priceInCents },
+  });
+  revalidatePath("/pacotes");
+  revalidatePath(`/clientes/${clientId}`);
+}
+
 export async function createAppointment(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "appointments.manage");
   const serviceId = textValue(formData, "serviceId");
   const clientId = textValue(formData, "clientId");
   const professionalId = optionalText(formData, "professionalId");
+  const clientPackageId = optionalText(formData, "clientPackageId");
   const startsAt = parseOrganizationDateTime(textValue(formData, "startsAt"), organization.timezone);
 
   const [service] = await db
@@ -572,6 +696,21 @@ export async function createAppointment(formData: FormData) {
     }).returning({ id: appointments.id });
     return result;
   });
+  if (clientPackageId) {
+    try {
+      await reservePackageSession({
+        appointmentId: created.id,
+        organizationId: organization.id,
+        clientId,
+        serviceId,
+        clientPackageId,
+      });
+      await db.update(appointments).set({ priceInCents: 0 }).where(eq(appointments.id, created.id));
+    } catch (error) {
+      await db.delete(appointments).where(eq(appointments.id, created.id));
+      throw error;
+    }
+  }
   await writeAuditLog({
     organizationId: organization.id,
     userId: session.user.id,
@@ -630,6 +769,7 @@ export async function updateAppointmentStatus(formData: FormData) {
   } else {
     await syncAppointmentToGoogleCalendar(appointmentId);
   }
+  await reconcilePackageUsage(appointmentId, status);
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
 }

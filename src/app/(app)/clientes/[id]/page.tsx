@@ -6,7 +6,7 @@ import { createClientHistoryEntry } from "@/actions/app";
 import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
-import { appointments, clientHistoryEntries, clients, professionals, services, users } from "@/db/schema";
+import { appointments, clientHistoryEntries, clientPackageBalances, clientPackages, clients, professionals, servicePackages, services, users } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
 
 const statusLabels = {
@@ -32,7 +32,7 @@ export default async function ClientHistoryPage({
     )
     .limit(1);
   if (!client) notFound();
-  const [history, entries] = await Promise.all([db
+  const [history, entries, packageRows] = await Promise.all([db
     .select({
       id: appointments.id,
       startsAt: appointments.startsAt,
@@ -64,7 +64,28 @@ export default async function ClientHistoryPage({
       .innerJoin(users, eq(users.id, clientHistoryEntries.authorUserId))
       .where(and(eq(clientHistoryEntries.clientId, client.id), eq(clientHistoryEntries.organizationId, organization.id)))
       .orderBy(desc(clientHistoryEntries.occurredAt)),
+    db.select({
+      id: clientPackages.id,
+      packageName: servicePackages.name,
+      serviceName: services.name,
+      total: clientPackageBalances.totalQuantity,
+      used: clientPackageBalances.usedQuantity,
+      purchasedAt: clientPackages.purchasedAt,
+      expiresAt: clientPackages.expiresAt,
+      status: clientPackages.status,
+    }).from(clientPackages)
+      .innerJoin(servicePackages, eq(servicePackages.id, clientPackages.packageId))
+      .innerJoin(clientPackageBalances, eq(clientPackageBalances.clientPackageId, clientPackages.id))
+      .innerJoin(services, eq(services.id, clientPackageBalances.serviceId))
+      .where(and(eq(clientPackages.clientId, client.id), eq(clientPackages.organizationId, organization.id)))
+      .orderBy(desc(clientPackages.purchasedAt)),
   ]);
+  const packages = new Map<string, { name: string; purchasedAt: Date; expiresAt: Date | null; status: string; balances: typeof packageRows }>();
+  for (const row of packageRows) {
+    const current = packages.get(row.id) ?? { name: row.packageName, purchasedAt: row.purchasedAt, expiresAt: row.expiresAt, status: row.status, balances: [] };
+    current.balances.push(row);
+    packages.set(row.id, current);
+  }
   const isHealth = organization.businessType === "saude";
   const recordLabel = isHealth ? "Prontuário" : "Histórico do cliente";
   const genderLabels: Record<string, string> = { female: "Feminino", male: "Masculino", other: "Outro", not_informed: "Prefere não informar" };
@@ -81,6 +102,24 @@ export default async function ClientHistoryPage({
           <div><p className="text-muted">Data de nascimento</p><p className="font-bold">{client.birthDate ? new Date(`${client.birthDate}T12:00:00Z`).toLocaleDateString("pt-BR") : "Não informada"}</p></div>
           <div><p className="text-muted">Sexo</p><p className="font-bold">{client.gender ? genderLabels[client.gender] ?? client.gender : "Não informado"}</p></div>
           <div><p className="text-muted">Contato</p><p className="font-bold">{client.phone || client.email || "Não informado"}</p></div>
+        </div>
+      </section>
+      <section className="panel mb-5">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-extrabold">Pacotes e saldos</h2>
+          <Link href="/pacotes" className="text-sm font-bold text-brand">Gerenciar pacotes</Link>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {[...packages.entries()].map(([packageId, item]) => (
+            <article key={packageId} className="rounded-2xl border p-4">
+              <p className="font-extrabold">{item.name}</p>
+              <p className="mt-1 text-xs text-muted">Adquirido em {item.purchasedAt.toLocaleDateString("pt-BR")}{item.expiresAt ? ` · válido até ${item.expiresAt.toLocaleDateString("pt-BR")}` : ""}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {item.balances.map((balance) => <span key={balance.serviceName} className="status-pill">{balance.serviceName}: {balance.total - balance.used} de {balance.total}</span>)}
+              </div>
+            </article>
+          ))}
+          {!packages.size && <p className="empty-state md:col-span-2">Este {organization.clientLabel.toLowerCase()} ainda não possui pacotes.</p>}
         </div>
       </section>
       <section className="panel mb-5">

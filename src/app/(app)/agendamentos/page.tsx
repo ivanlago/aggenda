@@ -6,7 +6,7 @@ import { ActionForm } from "@/components/action-form";
 import { AppointmentCreateForm } from "@/components/appointment-create-form";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
-import { appointments, clients, professionals, services, servicesToProfessionals } from "@/db/schema";
+import { appointments, clientPackageBalances, clientPackages, clients, packageUsages, professionals, servicePackages, services, servicesToProfessionals } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
 
 export const metadata = { title: "Agendamentos" };
@@ -21,7 +21,7 @@ const statuses = [
 
 export default async function AppointmentsPage() {
   const { organization } = await requireOrganization();
-  const [clientItems, professionalItems, serviceItems, serviceProfessionalLinks, items] = await Promise.all([
+  const [clientItems, professionalItems, serviceItems, serviceProfessionalLinks, packageBalanceRows, items] = await Promise.all([
     db.select().from(clients).where(eq(clients.organizationId, organization.id)).orderBy(clients.name),
     db.select().from(professionals).where(
       and(
@@ -35,16 +35,36 @@ export default async function AppointmentsPage() {
       .from(servicesToProfessionals)
       .where(eq(servicesToProfessionals.organizationId, organization.id)),
     db.select({
+      clientPackageId: clientPackages.id,
+      clientId: clientPackages.clientId,
+      serviceId: clientPackageBalances.serviceId,
+      packageName: servicePackages.name,
+      total: clientPackageBalances.totalQuantity,
+      used: clientPackageBalances.usedQuantity,
+      expiresAt: clientPackages.expiresAt,
+    }).from(clientPackageBalances)
+      .innerJoin(clientPackages, eq(clientPackages.id, clientPackageBalances.clientPackageId))
+      .innerJoin(servicePackages, eq(servicePackages.id, clientPackages.packageId))
+      .where(and(
+        eq(clientPackageBalances.organizationId, organization.id),
+        eq(clientPackages.status, "active")
+      )),
+    db.select({
       id: appointments.id,
       startsAt: appointments.startsAt,
       status: appointments.status,
       client: clients.name,
       service: services.name,
       professional: professionals.name,
+      packageName: servicePackages.name,
+      packageUsageStatus: packageUsages.status,
     }).from(appointments)
       .innerJoin(clients, eq(clients.id, appointments.clientId))
       .innerJoin(services, eq(services.id, appointments.serviceId))
       .leftJoin(professionals, eq(professionals.id, appointments.professionalId))
+      .leftJoin(packageUsages, eq(packageUsages.appointmentId, appointments.id))
+      .leftJoin(clientPackages, eq(clientPackages.id, packageUsages.clientPackageId))
+      .leftJoin(servicePackages, eq(servicePackages.id, clientPackages.packageId))
       .where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, new Date(new Date().setHours(0, 0, 0, 0)))))
       .orderBy(appointments.startsAt),
   ]);
@@ -63,6 +83,9 @@ export default async function AppointmentsPage() {
           services={serviceItems}
           professionals={professionalItems}
           serviceProfessionalLinks={serviceProfessionalLinks}
+          packageBalances={packageBalanceRows
+            .filter((item) => item.used < item.total && (!item.expiresAt || item.expiresAt > new Date()))
+            .map((item) => ({ ...item, remaining: item.total - item.used, expiresAt: item.expiresAt?.toISOString() ?? null }))}
           labels={{ client: organization.clientLabel, service: organization.serviceLabel, professional: organization.professionalLabel, appointment: organization.appointmentLabel }}
         />
         <section className="panel">
@@ -74,6 +97,7 @@ export default async function AppointmentsPage() {
                   <div>
                     <p className="font-extrabold">{item.client}</p>
                     <p className="text-sm text-muted">{item.service}{item.professional ? ` · ${item.professional}` : ""}</p>
+                    {item.packageName && <p className="mt-1 text-xs font-bold text-brand">Pacote: {item.packageName} · {item.packageUsageStatus === "consumed" ? "sessão utilizada" : item.packageUsageStatus === "reversed" ? "sessão devolvida" : "sessão reservada"}</p>}
                     <p className="mt-1 text-sm font-bold text-brand">{item.startsAt.toLocaleString("pt-BR")}</p>
                   </div>
                   <ActionForm action={updateAppointmentStatus} successMessage="Status atualizado com sucesso.">

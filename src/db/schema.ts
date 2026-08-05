@@ -624,6 +624,98 @@ export const servicesToProfessionals = pgTable(
   ]
 );
 
+export const servicePackages = pgTable(
+  "service_packages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    priceInCents: integer("price_in_cents").notNull(),
+    validityDays: integer("validity_days"),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [index("service_packages_organization_idx").on(table.organizationId)]
+);
+
+export const servicePackageItems = pgTable(
+  "service_package_items",
+  {
+    packageId: uuid("package_id")
+      .notNull()
+      .references(() => servicePackages.id, { onDelete: "cascade" }),
+    serviceId: uuid("service_id")
+      .notNull()
+      .references(() => services.id, { onDelete: "restrict" }),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    quantity: integer("quantity").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.packageId, table.serviceId] }),
+    index("service_package_items_org_idx").on(table.organizationId),
+  ]
+);
+
+export const clientPackages = pgTable(
+  "client_packages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "restrict" }),
+    packageId: uuid("package_id")
+      .notNull()
+      .references(() => servicePackages.id, { onDelete: "restrict" }),
+    priceInCents: integer("price_in_cents").notNull(),
+    status: text("status").default("active").notNull(),
+    purchasedAt: timestamp("purchased_at").defaultNow().notNull(),
+    expiresAt: timestamp("expires_at"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("client_packages_org_idx").on(table.organizationId),
+    index("client_packages_client_idx").on(table.clientId),
+  ]
+);
+
+export const clientPackageBalances = pgTable(
+  "client_package_balances",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    clientPackageId: uuid("client_package_id")
+      .notNull()
+      .references(() => clientPackages.id, { onDelete: "cascade" }),
+    serviceId: uuid("service_id")
+      .notNull()
+      .references(() => services.id, { onDelete: "restrict" }),
+    totalQuantity: integer("total_quantity").notNull(),
+    usedQuantity: integer("used_quantity").default(0).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("client_package_balances_package_service_unique").on(
+      table.clientPackageId,
+      table.serviceId
+    ),
+    index("client_package_balances_org_idx").on(table.organizationId),
+  ]
+);
+
 export const weeklyAvailability = pgTable(
   "weekly_availability",
   {
@@ -711,6 +803,35 @@ export const appointments = pgTable(
       table.startsAt
     ),
     index("appointments_client_idx").on(table.clientId),
+  ]
+);
+
+export const packageUsages = pgTable(
+  "package_usages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    clientPackageId: uuid("client_package_id")
+      .notNull()
+      .references(() => clientPackages.id, { onDelete: "restrict" }),
+    balanceId: uuid("balance_id")
+      .notNull()
+      .references(() => clientPackageBalances.id, { onDelete: "restrict" }),
+    appointmentId: uuid("appointment_id")
+      .notNull()
+      .unique()
+      .references(() => appointments.id, { onDelete: "cascade" }),
+    quantity: integer("quantity").default(1).notNull(),
+    status: text("status").default("reserved").notNull(),
+    reservedAt: timestamp("reserved_at").defaultNow().notNull(),
+    consumedAt: timestamp("consumed_at"),
+    reversedAt: timestamp("reversed_at"),
+  },
+  (table) => [
+    index("package_usages_org_idx").on(table.organizationId),
+    index("package_usages_client_package_idx").on(table.clientPackageId),
   ]
 );
 

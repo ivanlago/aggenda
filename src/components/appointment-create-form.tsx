@@ -12,6 +12,7 @@ export function AppointmentCreateForm({
   services,
   professionals,
   serviceProfessionalLinks,
+  packageBalances,
   labels,
 }: {
   action: (formData: FormData) => Promise<void>;
@@ -19,9 +20,11 @@ export function AppointmentCreateForm({
   services: Item[];
   professionals: Item[];
   serviceProfessionalLinks: Array<{ serviceId: string; professionalId: string }>;
+  packageBalances: Array<{ clientPackageId: string; clientId: string; serviceId: string; packageName: string; remaining: number; expiresAt: string | null }>;
   labels: { client: string; service: string; professional: string; appointment: string };
 }) {
   const [serviceId, setServiceId] = useState("");
+  const [clientId, setClientId] = useState("");
   const [professionalId, setProfessionalId] = useState("");
   const [date, setDate] = useState("");
   const [times, setTimes] = useState<string[]>([]);
@@ -38,6 +41,10 @@ export function AppointmentCreateForm({
       ? professionals.filter((professional) => linkedIds.has(professional.id))
       : professionals;
   }, [professionals, serviceId, serviceProfessionalLinks]);
+  const eligiblePackages = useMemo(
+    () => packageBalances.filter((item) => item.clientId === clientId && item.serviceId === serviceId),
+    [clientId, packageBalances, serviceId]
+  );
 
   function loadAvailability(nextServiceId: string, nextProfessionalId: string, nextDate: string) {
     requestController.current?.abort();
@@ -68,7 +75,7 @@ export function AppointmentCreateForm({
   return (
     <ActionForm action={action} successMessage={`${labels.appointment} criado com sucesso.`} className="panel form-stack">
       <h2 className="text-lg font-extrabold">Novo {labels.appointment.toLowerCase()}</h2>
-      <select className="field" name="clientId" required defaultValue="">
+      <select className="field" name="clientId" required value={clientId} onChange={(event) => setClientId(event.target.value)}>
         <option value="" disabled>Selecione o {labels.client.toLowerCase()}</option>
         {clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
       </select>
@@ -76,6 +83,18 @@ export function AppointmentCreateForm({
         <option value="">Selecione o {labels.service.toLowerCase()}</option>
         {services.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
       </select>
+      <label className="grid gap-2 text-sm font-bold">
+        Usar saldo de pacote (opcional)
+        <select className="field" name="clientPackageId" defaultValue="" key={`${clientId}:${serviceId}`}>
+          <option value="">Atendimento avulso</option>
+          {eligiblePackages.map((item) => (
+            <option key={item.clientPackageId} value={item.clientPackageId}>
+              {item.packageName} · {item.remaining} {item.remaining === 1 ? "sessão disponível" : "sessões disponíveis"}
+            </option>
+          ))}
+        </select>
+        {clientId && serviceId && !eligiblePackages.length && <span className="text-xs font-normal text-muted">Este cliente não possui saldo de pacote para o serviço selecionado.</span>}
+      </label>
       <select className="field" name="professionalId" required value={professionalId} onChange={(event) => { const next = event.target.value; setProfessionalId(next); loadAvailability(serviceId, next, date); }}>
         <option value="">Selecione o {labels.professional.toLowerCase()}</option>
         {eligibleProfessionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}

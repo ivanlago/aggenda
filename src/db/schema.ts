@@ -1,5 +1,6 @@
 import {
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -499,6 +500,8 @@ export const clients = pgTable(
     name: text("name").notNull(),
     email: text("email"),
     phone: text("phone"),
+    birthDate: date("birth_date", { mode: "string" }),
+    gender: text("gender"),
     notes: text("notes"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -509,6 +512,26 @@ export const clients = pgTable(
       table.organizationId,
       table.phone
     ),
+  ]
+);
+
+export const clientHistoryEntries = pgTable(
+  "client_history_entries",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    authorUserId: text("author_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    entryType: text("entry_type").default("note").notNull(),
+    title: text("title"),
+    content: text("content").notNull(),
+    occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("client_history_entries_client_idx").on(table.clientId, table.occurredAt),
+    index("client_history_entries_org_idx").on(table.organizationId),
   ]
 );
 

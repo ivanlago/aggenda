@@ -8,6 +8,7 @@ import { db } from "@/db";
 import {
   appointments,
   clients,
+  clientHistoryEntries,
   professionalRegistrations,
   professionalSpecialties,
   organizationMembers,
@@ -359,6 +360,8 @@ export async function createClient(formData: FormData) {
     name,
     email: optionalText(formData, "email"),
     phone: optionalText(formData, "phone"),
+    birthDate: optionalText(formData, "birthDate"),
+    gender: optionalText(formData, "gender"),
     notes: optionalText(formData, "notes"),
   });
   revalidatePath("/clientes");
@@ -390,6 +393,8 @@ export async function updateClient(formData: FormData) {
     name,
     email: optionalText(formData, "email"),
     phone: optionalText(formData, "phone"),
+    birthDate: optionalText(formData, "birthDate"),
+    gender: optionalText(formData, "gender"),
     notes: optionalText(formData, "notes"),
     updatedAt: new Date(),
   }).where(and(eq(clients.id, id), eq(clients.organizationId, organization.id))).returning({ id: clients.id });
@@ -397,6 +402,32 @@ export async function updateClient(formData: FormData) {
   revalidatePath("/clientes");
   revalidatePath(`/clientes/${id}`);
   revalidatePath("/dashboard");
+}
+
+export async function createClientHistoryEntry(formData: FormData) {
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "clients.manage");
+  const clientId = textValue(formData, "clientId");
+  const content = textValue(formData, "content");
+  if (!clientId || content.length < 2) throw new Error("Informe o conteúdo do registro.");
+  const [client] = await db.select({ id: clients.id }).from(clients).where(and(
+    eq(clients.id, clientId), eq(clients.organizationId, organization.id)
+  )).limit(1);
+  if (!client) throw new Error("Cliente não encontrado.");
+  const occurredAtRaw = optionalText(formData, "occurredAt");
+  const occurredAt = occurredAtRaw ? new Date(occurredAtRaw) : new Date();
+  if (Number.isNaN(occurredAt.getTime())) throw new Error("Data do registro inválida.");
+  const [entry] = await db.insert(clientHistoryEntries).values({
+    organizationId: organization.id,
+    clientId,
+    authorUserId: session.user.id,
+    entryType: textValue(formData, "entryType") || "note",
+    title: optionalText(formData, "title"),
+    content,
+    occurredAt,
+  }).returning({ id: clientHistoryEntries.id });
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "client_history_entry", entityId: entry.id });
+  revalidatePath(`/clientes/${clientId}`);
 }
 
 export async function createService(formData: FormData) {

@@ -30,6 +30,7 @@ export const getOrganizationMemberships = cache(async (userId: string) => {
     .select({
       id: organizations.id,
       name: organizations.name,
+      businessType: organizations.businessType,
       slug: organizations.slug,
       timezone: organizations.timezone,
       bookingEnabled: organizations.bookingEnabled,

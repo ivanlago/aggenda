@@ -32,6 +32,14 @@ export default async function ClientsPage() {
           <input className="field" name="name" required placeholder="Nome completo" />
           <input className="field" name="phone" type="tel" placeholder="Telefone" />
           <input className="field" name="email" type="email" placeholder="E-mail" />
+          <label className="grid gap-2 text-sm font-bold">Data de nascimento<input className="field" name="birthDate" type="date" /></label>
+          <select className="field" name="gender" defaultValue="">
+            <option value="">Sexo não informado</option>
+            <option value="female">Feminino</option>
+            <option value="male">Masculino</option>
+            <option value="other">Outro</option>
+            <option value="not_informed">Prefere não informar</option>
+          </select>
           <textarea className="field min-h-24" name="notes" placeholder="Observações" />
           <button className="primary-button">
             Adicionar {organization.clientLabel.toLowerCase()}
@@ -63,6 +71,11 @@ export default async function ClientsPage() {
                       <input className="field py-2" name="name" defaultValue={item.name} required />
                       <input className="field py-2" name="phone" type="tel" defaultValue={item.phone ?? ""} placeholder="Telefone" />
                       <input className="field py-2" name="email" type="email" defaultValue={item.email ?? ""} placeholder="E-mail" />
+                      <input className="field py-2" name="birthDate" type="date" defaultValue={item.birthDate ?? ""} aria-label="Data de nascimento" />
+                      <select className="field py-2" name="gender" defaultValue={item.gender ?? ""} aria-label="Sexo">
+                        <option value="">Sexo não informado</option>
+                        <option value="female">Feminino</option><option value="male">Masculino</option><option value="other">Outro</option><option value="not_informed">Prefere não informar</option>
+                      </select>
                       <textarea className="field min-h-20 py-2" name="notes" defaultValue={item.notes ?? ""} placeholder="Observações" />
                       <button className="primary-button py-2">Salvar alterações</button>
                     </ActionForm>

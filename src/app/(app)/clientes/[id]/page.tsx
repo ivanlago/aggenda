@@ -2,9 +2,11 @@ import { and, desc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { createClientHistoryEntry } from "@/actions/app";
+import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
-import { appointments, clients, professionals, services } from "@/db/schema";
+import { appointments, clientHistoryEntries, clients, professionals, services, users } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
 
 const statusLabels = {
@@ -30,7 +32,7 @@ export default async function ClientHistoryPage({
     )
     .limit(1);
   if (!client) notFound();
-  const history = await db
+  const [history, entries] = await Promise.all([db
     .select({
       id: appointments.id,
       startsAt: appointments.startsAt,
@@ -49,7 +51,23 @@ export default async function ClientHistoryPage({
         eq(appointments.organizationId, organization.id)
       )
     )
-    .orderBy(desc(appointments.startsAt));
+    .orderBy(desc(appointments.startsAt)),
+    db.select({
+      id: clientHistoryEntries.id,
+      entryType: clientHistoryEntries.entryType,
+      title: clientHistoryEntries.title,
+      content: clientHistoryEntries.content,
+      occurredAt: clientHistoryEntries.occurredAt,
+      createdAt: clientHistoryEntries.createdAt,
+      author: users.name,
+    }).from(clientHistoryEntries)
+      .innerJoin(users, eq(users.id, clientHistoryEntries.authorUserId))
+      .where(and(eq(clientHistoryEntries.clientId, client.id), eq(clientHistoryEntries.organizationId, organization.id)))
+      .orderBy(desc(clientHistoryEntries.occurredAt)),
+  ]);
+  const isHealth = organization.businessType === "saude";
+  const recordLabel = isHealth ? "Prontuário" : "Histórico do cliente";
+  const genderLabels: Record<string, string> = { female: "Feminino", male: "Masculino", other: "Outro", not_informed: "Prefere não informar" };
   return (
     <div className="page-wrap">
       <PageHeader
@@ -57,6 +75,44 @@ export default async function ClientHistoryPage({
         title={client.name}
         description={[client.phone, client.email].filter(Boolean).join(" · ") || "Sem contato informado"}
       />
+      <section className="panel mb-5">
+        <h2 className="text-lg font-extrabold">Dados cadastrais</h2>
+        <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+          <div><p className="text-muted">Data de nascimento</p><p className="font-bold">{client.birthDate ? new Date(`${client.birthDate}T12:00:00Z`).toLocaleDateString("pt-BR") : "Não informada"}</p></div>
+          <div><p className="text-muted">Sexo</p><p className="font-bold">{client.gender ? genderLabels[client.gender] ?? client.gender : "Não informado"}</p></div>
+          <div><p className="text-muted">Contato</p><p className="font-bold">{client.phone || client.email || "Não informado"}</p></div>
+        </div>
+      </section>
+      <section className="panel mb-5">
+        <h2 className="text-lg font-extrabold">{recordLabel}</h2>
+        <p className="mt-1 text-sm text-muted">Registre evoluções e informações relevantes com autoria e data.</p>
+        <ActionForm action={createClientHistoryEntry} successMessage={`${recordLabel} atualizado com sucesso.`} className="mt-5 grid gap-3">
+          <input type="hidden" name="clientId" value={client.id} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <select className="field" name="entryType" defaultValue={isHealth ? "evolution" : "note"}>
+              <option value="note">Anotação</option>
+              {isHealth && <option value="evolution">Evolução</option>}
+              {isHealth && <option value="anamnesis">Anamnese</option>}
+              <option value="document">Documento/registro</option>
+            </select>
+            <input className="field" name="occurredAt" type="datetime-local" aria-label="Data e hora do registro" />
+          </div>
+          <input className="field" name="title" placeholder="Título (opcional)" />
+          <textarea className="field min-h-28" name="content" required placeholder={isHealth ? "Evolução, observações clínicas e conduta" : "Informações relevantes do atendimento"} />
+          <button className="primary-button sm:w-fit">Adicionar ao {recordLabel.toLowerCase()}</button>
+        </ActionForm>
+        <div className="mt-6 divide-y">
+          {entries.map((entry) => <article key={entry.id} className="py-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-extrabold">{entry.title || (entry.entryType === "evolution" ? "Evolução" : entry.entryType === "anamnesis" ? "Anamnese" : "Anotação")}</p>
+              <span className="text-xs font-bold text-muted">{entry.occurredAt.toLocaleString("pt-BR")}</span>
+            </div>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{entry.content}</p>
+            <p className="mt-2 text-xs text-muted">Registrado por {entry.author} em {entry.createdAt.toLocaleString("pt-BR")}</p>
+          </article>)}
+          {!entries.length && <p className="empty-state">Nenhum registro adicionado.</p>}
+        </div>
+      </section>
       <section className="panel">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-extrabold">

@@ -17,16 +17,16 @@ export async function GET(request: Request) {
   assertOrganizationPermission(organization.role, type === "clients" ? "clients.read" : "services.read");
 
   const headers = type === "clients"
-    ? ["nome", "telefone", "email", "observacoes"]
+    ? ["nome", "telefone", "email", "data_nascimento", "sexo", "observacoes"]
     : ["nome", "descricao", "duracao_minutos", "preco", "ativo", "exige_profissional"];
   let rows: Array<Array<string | number | null>> = [];
   if (template) {
     rows = type === "clients"
-      ? [["Maria Silva", "(71) 99999-9999", "maria@email.com", "Exemplo — apague esta linha"]]
+      ? [["Maria Silva", "(71) 99999-9999", "maria@email.com", "1990-05-20", "feminino", "Exemplo — apague esta linha"]]
       : [["Avaliação", "Avaliação inicial", 30, "50,00", "sim", "sim"]];
   } else if (type === "clients") {
     const data = await db.select().from(clients).where(eq(clients.organizationId, organization.id));
-    rows = data.map((item) => [item.name, item.phone, item.email, item.notes]);
+    rows = data.map((item) => [item.name, item.phone, item.email, item.birthDate, item.gender, item.notes]);
   } else {
     const data = await db.select().from(services).where(eq(services.organizationId, organization.id));
     rows = data.map((item) => [item.name, item.description, item.durationMinutes, item.priceInCents == null ? null : (item.priceInCents / 100).toFixed(2), item.isActive ? "sim" : "não", item.requiresProfessional ? "sim" : "não"]);

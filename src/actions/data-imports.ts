@@ -24,7 +24,7 @@ export async function undoDataImport(formData: FormData) {
         else await tx.delete(services).where(and(eq(services.id, row.entityId), eq(services.organizationId, organization.id)));
       } else if (row.action === "updated" && row.previousData) {
         const previous = row.previousData as Record<string, unknown>;
-        if (item.entityType === "clients") await tx.update(clients).set({ name: String(previous.name), phone: previous.phone as string | null, email: previous.email as string | null, notes: previous.notes as string | null, updatedAt: new Date() }).where(and(eq(clients.id, row.entityId), eq(clients.organizationId, organization.id)));
+        if (item.entityType === "clients") await tx.update(clients).set({ name: String(previous.name), phone: previous.phone as string | null, email: previous.email as string | null, birthDate: previous.birthDate as string | null, gender: previous.gender as string | null, notes: previous.notes as string | null, updatedAt: new Date() }).where(and(eq(clients.id, row.entityId), eq(clients.organizationId, organization.id)));
         else await tx.update(services).set({ name: String(previous.name), description: previous.description as string | null, durationMinutes: Number(previous.durationMinutes), priceInCents: previous.priceInCents as number | null, isActive: Boolean(previous.isActive), requiresProfessional: Boolean(previous.requiresProfessional), updatedAt: new Date() }).where(and(eq(services.id, row.entityId), eq(services.organizationId, organization.id)));
       }
     }

@@ -60,9 +60,15 @@ export async function POST(request: Request) {
         try {
           if (input.entityType === "clients") {
             const name = text(row.name), normalizedPhone = phone(row.phone), email = text(row.email).toLowerCase() || null;
+            const birthDate = text(row.birthDate) || null;
+            const genderRaw = text(row.gender).toLowerCase();
+            const genderMap: Record<string, string> = { feminino: "female", female: "female", masculino: "male", male: "male", outro: "other", other: "other", "prefere não informar": "not_informed", not_informed: "not_informed" };
+            const gender = genderRaw ? genderMap[genderRaw] : null;
             if (name.length < 2) throw new Error("Nome não informado.");
             if (normalizedPhone && normalizedPhone.length < 10) throw new Error("Telefone inválido.");
             if (email && !z.string().email().safeParse(email).success) throw new Error("E-mail inválido.");
+            if (birthDate && !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) throw new Error("Data de nascimento deve estar em AAAA-MM-DD.");
+            if (genderRaw && !gender) throw new Error("Sexo inválido.");
             const found = existingClients.find((item) =>
               (normalizedPhone && item.phone === normalizedPhone) || (email && item.email?.toLowerCase() === email));
             if (found && input.strategy === "skip") {
@@ -71,12 +77,12 @@ export async function POST(request: Request) {
               continue;
             }
             if (found) {
-              await tx.update(clients).set({ name, phone: normalizedPhone || null, email, notes: text(row.notes) || null, updatedAt: new Date() }).where(eq(clients.id, found.id));
+              await tx.update(clients).set({ name, phone: normalizedPhone || null, email, birthDate, gender, notes: text(row.notes) || null, updatedAt: new Date() }).where(eq(clients.id, found.id));
               updatedRows += 1; results.push({ row: rowNumber, action: "updated" });
               await tx.insert(dataImportRows).values({ importId: input.importId, rowNumber, entityId: found.id, action: "updated", previousData: found });
             } else {
-              const [created] = await tx.insert(clients).values({ organizationId: organization.id, name, phone: normalizedPhone || null, email, notes: text(row.notes) || null }).returning({ id: clients.id });
-              existingClients.push({ id: created.id, organizationId: organization.id, name, phone: normalizedPhone || null, email, notes: text(row.notes) || null, createdAt: new Date(), updatedAt: new Date() });
+              const [created] = await tx.insert(clients).values({ organizationId: organization.id, name, phone: normalizedPhone || null, email, birthDate, gender, notes: text(row.notes) || null }).returning({ id: clients.id });
+              existingClients.push({ id: created.id, organizationId: organization.id, name, phone: normalizedPhone || null, email, birthDate, gender, notes: text(row.notes) || null, createdAt: new Date(), updatedAt: new Date() });
               createdRows += 1; results.push({ row: rowNumber, action: "created" });
               await tx.insert(dataImportRows).values({ importId: input.importId, rowNumber, entityId: created.id, action: "created" });
             }

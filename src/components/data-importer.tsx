@@ -7,7 +7,7 @@ type EntityType = "clients" | "services";
 type Matrix = string[][];
 const fields = {
   clients: [
-    ["name", "Nome *"], ["phone", "Telefone"], ["email", "E-mail"], ["notes", "Observações"],
+    ["name", "Nome *"], ["phone", "Telefone"], ["email", "E-mail"], ["birthDate", "Data de nascimento"], ["gender", "Sexo"], ["notes", "Observações"],
   ],
   services: [
     ["name", "Nome *"], ["description", "Descrição"], ["durationMinutes", "Duração em minutos *"],
@@ -17,6 +17,8 @@ const fields = {
 const aliases: Record<string, string[]> = {
   name: ["nome", "nome completo", "nome do cliente", "nome do paciente", "servico", "serviço", "procedimento"],
   phone: ["telefone", "celular", "whatsapp", "fone", "contato"], email: ["email", "e-mail", "e mail"],
+  birthDate: ["data de nascimento", "nascimento", "data_nascimento", "birthdate"],
+  gender: ["sexo", "genero", "gênero", "gender"],
   notes: ["observacoes", "observações", "anotacoes", "anotações", "notas"],
   description: ["descricao", "descrição", "detalhes"], durationMinutes: ["duracao", "duração", "duracao minutos", "duração minutos", "tempo", "minutos"],
   price: ["preco", "preço", "valor"], isActive: ["ativo", "status"], requiresProfessional: ["exige profissional", "requer profissional", "profissional obrigatorio"],

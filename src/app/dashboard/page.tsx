@@ -31,12 +31,13 @@ export default async function DashboardPage({
   const end = new Date(today);
   end.setHours(23, 59, 59, 999);
 
-  const [[clientTotal], [professionalTotal], [serviceTotal], [appointmentTotal], [availabilityTotal], next] =
+  const [[clientTotal], [professionalTotal], [serviceTotal], [todayAppointmentTotal], [allAppointmentTotal], [availabilityTotal], next] =
     await Promise.all([
       db.select({ value: count() }).from(clients).where(eq(clients.organizationId, organization.id)),
       db.select({ value: count() }).from(professionals).where(eq(professionals.organizationId, organization.id)),
       db.select({ value: count() }).from(services).where(eq(services.organizationId, organization.id)),
       db.select({ value: count() }).from(appointments).where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, start), lte(appointments.startsAt, end))),
+      db.select({ value: count() }).from(appointments).where(eq(appointments.organizationId, organization.id)),
       db.select({ value: count() }).from(weeklyAvailability).where(eq(weeklyAvailability.organizationId, organization.id)),
       db.select({
         id: appointments.id,
@@ -56,7 +57,7 @@ export default async function DashboardPage({
     { done: serviceTotal.value > 0, label: `Cadastrar ${organization.serviceLabel.toLowerCase()}`, href: "/servicos" },
     { done: availabilityTotal.value > 0, label: "Definir disponibilidade", href: "/disponibilidade" },
     { done: organization.bookingEnabled, label: "Publicar agendamento online", href: "/configuracoes" },
-    { done: appointmentTotal.value > 0, label: `Realizar primeiro ${organization.appointmentLabel.toLowerCase()}`, href: "/agendamentos" },
+    { done: allAppointmentTotal.value > 0, label: `Realizar primeiro ${organization.appointmentLabel.toLowerCase()}`, href: "/agendamentos" },
   ];
   const completedOnboarding = onboarding.filter((item) => item.done).length;
 
@@ -80,7 +81,7 @@ export default async function DashboardPage({
           {[
             {
               icon: CalendarDays,
-              value: appointmentTotal.value,
+              value: todayAppointmentTotal.value,
               label: `${organization.appointmentLabelPlural} hoje`,
             },
             {

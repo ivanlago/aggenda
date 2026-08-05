@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { CalendarClock, CalendarOff, Trash2 } from "lucide-react";
+import { CalendarClock, CalendarOff, Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 import {
@@ -7,7 +7,9 @@ import {
   createProfessional,
   deleteProfessional,
   deleteProfessionalRegistration,
+  updateProfessional,
 } from "@/actions/app";
+import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import {
@@ -46,10 +48,15 @@ export default async function ProfessionalsPage() {
         name: professionals.name,
         title: professionals.title,
         email: professionals.email,
+        phone: professionals.phone,
+        bio: professionals.bio,
         color: professionals.color,
+        professionId: professionals.professionId,
+        honorificId: professionals.honorificId,
         customProfession: professionals.customProfession,
         customHonorific: professionals.customHonorific,
         isBookable: professionals.isBookable,
+        isActive: professionals.isActive,
         profession: professions.name,
         honorific: honorifics.label,
       })
@@ -61,6 +68,7 @@ export default async function ProfessionalsPage() {
     db
       .select({
         professionalId: professionalSpecialties.professionalId,
+        specialtyId: professionalSpecialties.specialtyId,
         name: specialties.name,
       })
       .from(professionalSpecialties)
@@ -80,10 +88,14 @@ export default async function ProfessionalsPage() {
   ]);
 
   const specialtiesByProfessional = new Map<string, string[]>();
+  const specialtyIdsByProfessional = new Map<string, string[]>();
   for (const row of specialtyRows) {
     const current = specialtiesByProfessional.get(row.professionalId) ?? [];
     current.push(row.name);
     specialtiesByProfessional.set(row.professionalId, current);
+    const currentIds = specialtyIdsByProfessional.get(row.professionalId) ?? [];
+    currentIds.push(row.specialtyId);
+    specialtyIdsByProfessional.set(row.professionalId, currentIds);
   }
 
   const registrationsByProfessional = new Map<string, typeof registrationRows>();
@@ -213,6 +225,7 @@ export default async function ProfessionalsPage() {
           <div className="mt-5 divide-y">
             {items.map((item) => {
               const itemSpecialties = specialtiesByProfessional.get(item.id) ?? [];
+              const itemSpecialtyIds = specialtyIdsByProfessional.get(item.id) ?? [];
               const itemRegistrations =
                 registrationsByProfessional.get(item.id) ?? [];
               const honorific =
@@ -281,6 +294,41 @@ export default async function ProfessionalsPage() {
                         Editar dias e horários
                       </Link>
                     </div>
+                    <details className="mt-3">
+                      <summary className="flex w-fit items-center gap-1 text-xs font-extrabold text-brand">
+                        <Pencil className="size-3" /> Editar dados
+                      </summary>
+                      <ActionForm action={updateProfessional} successMessage="Profissional atualizado com sucesso." className="mt-3 grid gap-3 rounded-2xl border bg-white p-4">
+                        <input type="hidden" name="id" value={item.id} />
+                        <input className="field py-2" name="name" defaultValue={item.name} required />
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <select className="field py-2" name="honorificId" defaultValue={item.honorificId ?? ""}>
+                            <option value="">Sem tratamento</option>
+                            {honorificOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                          </select>
+                          <input className="field py-2" name="customHonorific" defaultValue={item.customHonorific ?? ""} placeholder="Tratamento personalizado" />
+                        </div>
+                        <select className="field py-2" name="professionId" defaultValue={item.professionId ?? (item.customProfession ? "other" : "")}>
+                          <option value="">Profissão não informada</option>
+                          {professionOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                          <option value="other">Outra profissão</option>
+                        </select>
+                        <input className="field py-2" name="customProfession" defaultValue={item.customProfession ?? ""} placeholder="Profissão personalizada" />
+                        <select className="field min-h-28" name="specialtyIds" multiple defaultValue={itemSpecialtyIds}>
+                          {specialtyOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                        </select>
+                        <input className="field py-2" name="title" defaultValue={item.title ?? ""} placeholder="Cargo ou função" />
+                        <textarea className="field min-h-20 py-2" name="bio" defaultValue={item.bio ?? ""} placeholder="Apresentação breve" />
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <input className="field py-2" name="email" type="email" defaultValue={item.email ?? ""} placeholder="E-mail" />
+                          <input className="field py-2" name="phone" type="tel" defaultValue={item.phone ?? ""} placeholder="Telefone" />
+                        </div>
+                        <label className="flex items-center gap-2 text-sm font-bold">Cor na agenda <input name="color" type="color" defaultValue={item.color} /></label>
+                        <label className="flex items-center gap-2 text-sm font-bold"><input name="isBookable" type="checkbox" defaultChecked={item.isBookable} /> Pode receber agendamentos</label>
+                        <label className="flex items-center gap-2 text-sm font-bold"><input name="isActive" type="checkbox" defaultChecked={item.isActive} /> Cadastro ativo</label>
+                        <button className="primary-button py-2">Salvar alterações</button>
+                      </ActionForm>
+                    </details>
                     <details className="mt-3">
                       <summary className="cursor-pointer text-xs font-extrabold text-brand">
                         Adicionar registro profissional

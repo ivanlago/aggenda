@@ -300,6 +300,54 @@ export async function deleteProfessional(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
+export async function updateProfessional(formData: FormData) {
+  const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "professionals.manage");
+  const id = textValue(formData, "id");
+  const name = textValue(formData, "name");
+  const professionId = optionalText(formData, "professionId");
+  const specialtyIds = [...new Set(formData.getAll("specialtyIds").map(String).filter(Boolean))];
+  if (!id || name.length < 2) throw new Error("Informe o nome do profissional.");
+  if (professionId === "other" && !optionalText(formData, "customProfession")) {
+    throw new Error("Informe a profissão personalizada.");
+  }
+  if (specialtyIds.length) {
+    if (!professionId || professionId === "other") throw new Error("Selecione a profissão correspondente às especialidades.");
+    const valid = await db.select({ id: specialties.id }).from(specialties).where(and(
+      inArray(specialties.id, specialtyIds), eq(specialties.professionId, professionId), eq(specialties.isActive, true)
+    ));
+    if (valid.length !== specialtyIds.length) throw new Error("Uma ou mais especialidades não pertencem à profissão.");
+  }
+  await db.transaction(async (tx) => {
+    const [updated] = await tx.update(professionals).set({
+      name,
+      professionId: professionId === "other" ? null : professionId,
+      customProfession: optionalText(formData, "customProfession"),
+      honorificId: optionalText(formData, "honorificId"),
+      customHonorific: optionalText(formData, "customHonorific"),
+      title: optionalText(formData, "title"),
+      bio: optionalText(formData, "bio"),
+      email: optionalText(formData, "email"),
+      phone: optionalText(formData, "phone"),
+      color: textValue(formData, "color") || "#18664a",
+      isBookable: formData.get("isBookable") === "on",
+      isActive: formData.get("isActive") === "on",
+      updatedAt: new Date(),
+    }).where(and(eq(professionals.id, id), eq(professionals.organizationId, organization.id))).returning({ id: professionals.id });
+    if (!updated) throw new Error("Profissional não encontrado.");
+    await tx.delete(professionalSpecialties).where(and(
+      eq(professionalSpecialties.professionalId, id),
+      eq(professionalSpecialties.organizationId, organization.id)
+    ));
+    if (specialtyIds.length) await tx.insert(professionalSpecialties).values(
+      specialtyIds.map((specialtyId) => ({ professionalId: id, specialtyId, organizationId: organization.id }))
+    );
+  });
+  revalidatePath("/profissionais");
+  revalidatePath("/agendamentos");
+  revalidatePath("/dashboard");
+}
+
 export async function createClient(formData: FormData) {
   const { organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "clients.manage");
@@ -329,6 +377,25 @@ export async function deleteClient(formData: FormData) {
       )
     );
   revalidatePath("/clientes");
+  revalidatePath("/dashboard");
+}
+
+export async function updateClient(formData: FormData) {
+  const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "clients.manage");
+  const id = textValue(formData, "id");
+  const name = textValue(formData, "name");
+  if (!id || name.length < 2) throw new Error("Informe o nome do cliente.");
+  const [updated] = await db.update(clients).set({
+    name,
+    email: optionalText(formData, "email"),
+    phone: optionalText(formData, "phone"),
+    notes: optionalText(formData, "notes"),
+    updatedAt: new Date(),
+  }).where(and(eq(clients.id, id), eq(clients.organizationId, organization.id))).returning({ id: clients.id });
+  if (!updated) throw new Error("Cliente não encontrado.");
+  revalidatePath("/clientes");
+  revalidatePath(`/clientes/${id}`);
   revalidatePath("/dashboard");
 }
 

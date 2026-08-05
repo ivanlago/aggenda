@@ -1,8 +1,9 @@
 import { eq } from "drizzle-orm";
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
 
-import { createClient, deleteClient } from "@/actions/app";
+import { createClient, deleteClient, updateClient } from "@/actions/app";
+import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { clients } from "@/db/schema";
@@ -53,6 +54,19 @@ export default async function ClientsPage() {
                     {item.name}
                   </Link>
                   <p className="truncate text-sm text-muted">{item.phone || item.email || "Sem contato informado"}</p>
+                  <details className="mt-2">
+                    <summary className="flex w-fit items-center gap-1 text-xs font-extrabold text-brand">
+                      <Pencil className="size-3" /> Editar dados
+                    </summary>
+                    <ActionForm action={updateClient} successMessage="Cliente atualizado com sucesso." className="mt-3 grid gap-2 rounded-2xl border bg-white p-4">
+                      <input type="hidden" name="id" value={item.id} />
+                      <input className="field py-2" name="name" defaultValue={item.name} required />
+                      <input className="field py-2" name="phone" type="tel" defaultValue={item.phone ?? ""} placeholder="Telefone" />
+                      <input className="field py-2" name="email" type="email" defaultValue={item.email ?? ""} placeholder="E-mail" />
+                      <textarea className="field min-h-20 py-2" name="notes" defaultValue={item.notes ?? ""} placeholder="Observações" />
+                      <button className="primary-button py-2">Salvar alterações</button>
+                    </ActionForm>
+                  </details>
                 </div>
                 <form action={deleteClient}>
                   <input type="hidden" name="id" value={item.id} />

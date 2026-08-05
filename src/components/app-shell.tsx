@@ -63,8 +63,8 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-[#f3f5f1] lg:grid lg:grid-cols-[250px_1fr]">
-      <aside className="border-b bg-brand p-5 text-white lg:sticky lg:top-0 lg:h-screen lg:border-b-0">
-        <div className="flex items-center justify-between lg:block">
+      <aside className="border-b bg-brand p-5 text-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:overflow-hidden lg:border-b-0">
+        <div className="flex items-center justify-between lg:block lg:shrink-0">
           <Link href="/dashboard" className="flex items-center gap-3 text-xl font-extrabold">
             <span className="grid size-10 place-items-center rounded-xl bg-accent text-brand-dark">
               <CalendarCheck className="size-5" />
@@ -73,7 +73,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
           <div className="lg:hidden"><SignOutButton compact /></div>
         </div>
-        <nav className="mt-5 flex gap-2 overflow-x-auto pb-1 lg:mt-10 lg:grid lg:overflow-visible">
+        <nav className="mt-5 flex gap-2 overflow-x-auto pb-1 lg:mt-8 lg:grid lg:min-h-0 lg:flex-1 lg:content-start lg:overflow-x-hidden lg:overflow-y-auto lg:pb-4">
           {navigation.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
@@ -92,7 +92,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
           )}
         </nav>
-        <div className="absolute bottom-5 hidden w-[210px] border-t border-white/15 pt-5 lg:block">
+        <div className="mt-4 hidden shrink-0 border-t border-white/15 pt-4 lg:block">
           {memberships.length > 1 && (
             <form action={selectActiveOrganization} className="mb-4 grid gap-2">
               <select className="rounded-lg border-white/20 bg-white/10 px-2 py-2 text-xs" name="organizationId" defaultValue={organization.id}>

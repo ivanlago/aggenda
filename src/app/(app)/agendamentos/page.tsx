@@ -3,9 +3,10 @@ import { and, eq, gte } from "drizzle-orm";
 import { createAppointment, updateAppointmentStatus } from "@/actions/app";
 import { rescheduleAppointment } from "@/actions/schedule";
 import { ActionForm } from "@/components/action-form";
+import { AppointmentCreateForm } from "@/components/appointment-create-form";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
-import { appointments, clients, professionals, services } from "@/db/schema";
+import { appointments, clients, professionals, services, servicesToProfessionals } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
 
 export const metadata = { title: "Agendamentos" };
@@ -20,7 +21,7 @@ const statuses = [
 
 export default async function AppointmentsPage() {
   const { organization } = await requireOrganization();
-  const [clientItems, professionalItems, serviceItems, items] = await Promise.all([
+  const [clientItems, professionalItems, serviceItems, serviceProfessionalLinks, items] = await Promise.all([
     db.select().from(clients).where(eq(clients.organizationId, organization.id)).orderBy(clients.name),
     db.select().from(professionals).where(
       and(
@@ -30,6 +31,9 @@ export default async function AppointmentsPage() {
       )
     ).orderBy(professionals.name),
     db.select().from(services).where(and(eq(services.organizationId, organization.id), eq(services.isActive, true))).orderBy(services.name),
+    db.select({ serviceId: servicesToProfessionals.serviceId, professionalId: servicesToProfessionals.professionalId })
+      .from(servicesToProfessionals)
+      .where(eq(servicesToProfessionals.organizationId, organization.id)),
     db.select({
       id: appointments.id,
       startsAt: appointments.startsAt,
@@ -44,7 +48,6 @@ export default async function AppointmentsPage() {
       .where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, new Date(new Date().setHours(0, 0, 0, 0)))))
       .orderBy(appointments.startsAt),
   ]);
-  const allServicesRequireProfessional = serviceItems.length > 0 && serviceItems.every((item) => item.requiresProfessional);
 
   return (
     <div className="page-wrap">
@@ -54,43 +57,14 @@ export default async function AppointmentsPage() {
         description={`Crie ${organization.appointmentLabelPlural.toLowerCase()} e acompanhe cada etapa da operação.`}
       />
       <div className="content-grid">
-        <ActionForm action={createAppointment} successMessage={`${organization.appointmentLabel} criado com sucesso.`} className="panel form-stack">
-          <h2 className="text-lg font-extrabold">
-            Novo {organization.appointmentLabel.toLowerCase()}
-          </h2>
-          <select className="field" name="clientId" required defaultValue="">
-            <option value="" disabled>
-              Selecione o {organization.clientLabel.toLowerCase()}
-            </option>
-            {clientItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
-          <select className="field" name="serviceId" required defaultValue="">
-            <option value="" disabled>
-              Selecione o {organization.serviceLabel.toLowerCase()}
-            </option>
-            {serviceItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
-          <select className="field" name="professionalId" defaultValue="" required={allServicesRequireProfessional}>
-            <option value="" disabled={allServicesRequireProfessional}>
-              {allServicesRequireProfessional
-                ? `Selecione o ${organization.professionalLabel.toLowerCase()}`
-                : `Sem ${organization.professionalLabel.toLowerCase()} específico`}
-            </option>
-            {professionalItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
-          <input className="field" name="startsAt" type="datetime-local" required />
-          <input className="field" name="price" inputMode="decimal" placeholder="Preço em reais (opcional)" />
-          <textarea className="field min-h-20" name="notes" placeholder="Observações" />
-          <button className="primary-button" disabled={!clientItems.length || !serviceItems.length}>
-            Criar {organization.appointmentLabel.toLowerCase()}
-          </button>
-          {(!clientItems.length || !serviceItems.length) && (
-            <p className="text-xs text-muted">
-              Cadastre ao menos um {organization.clientLabel.toLowerCase()} e um{" "}
-              {organization.serviceLabel.toLowerCase()}.
-            </p>
-          )}
-        </ActionForm>
+        <AppointmentCreateForm
+          action={createAppointment}
+          clients={clientItems}
+          services={serviceItems}
+          professionals={professionalItems}
+          serviceProfessionalLinks={serviceProfessionalLinks}
+          labels={{ client: organization.clientLabel, service: organization.serviceLabel, professional: organization.professionalLabel, appointment: organization.appointmentLabel }}
+        />
         <section className="panel">
           <h2 className="text-lg font-extrabold">{items.length} próximos</h2>
           <div className="mt-5 divide-y">

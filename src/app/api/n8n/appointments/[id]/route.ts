@@ -12,6 +12,7 @@ import {
   syncAppointmentToGoogleCalendar,
 } from "@/lib/google-calendar";
 import { reconcilePackageUsage } from "@/lib/package-balance";
+import { syncAppointmentFinancialEntry } from "@/lib/finance";
 
 const patchSchema = z.object({
   startsAt: z.coerce.date().optional(),
@@ -68,6 +69,7 @@ export async function PATCH(
       await syncAppointmentToGoogleCalendar(appointment.id);
     }
     if (input.status) await reconcilePackageUsage(appointment.id, input.status);
+    await syncAppointmentFinancialEntry(appointment.id);
     return NextResponse.json({ appointment });
   } catch (error) {
     return apiError(error);
@@ -91,5 +93,6 @@ export async function DELETE(
   if (!appointment) return NextResponse.json({ error: "Appointment not found" }, { status: 404 });
   await deleteAppointmentFromGoogleCalendar(appointment.id);
   await reconcilePackageUsage(appointment.id, "cancelled");
+  await syncAppointmentFinancialEntry(appointment.id);
   return NextResponse.json({ appointment });
 }

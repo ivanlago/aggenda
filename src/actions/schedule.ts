@@ -18,6 +18,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 import { syncAppointmentToGoogleCalendar } from "@/lib/google-calendar";
+import { syncAppointmentFinancialEntry } from "@/lib/finance";
 
 function value(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -229,6 +230,8 @@ export async function rescheduleAppointment(formData: FormData) {
     entityId: id,
   });
   await syncAppointmentToGoogleCalendar(id);
+  await syncAppointmentFinancialEntry(id);
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
+  revalidatePath("/financeiro");
 }

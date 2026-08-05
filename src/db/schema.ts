@@ -835,6 +835,51 @@ export const packageUsages = pgTable(
   ]
 );
 
+export const financialEntries = pgTable(
+  "financial_entries",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    status: text("status").default("pending").notNull(),
+    source: text("source").default("manual").notNull(),
+    description: text("description").notNull(),
+    category: text("category"),
+    amountInCents: integer("amount_in_cents").notNull(),
+    dueDate: date("due_date", { mode: "string" }).notNull(),
+    realizedDate: date("realized_date", { mode: "string" }),
+    paymentMethod: text("payment_method"),
+    notes: text("notes"),
+    clientId: uuid("client_id").references(() => clients.id, {
+      onDelete: "set null",
+    }),
+    appointmentId: uuid("appointment_id")
+      .unique()
+      .references(() => appointments.id, { onDelete: "set null" }),
+    clientPackageId: uuid("client_package_id")
+      .unique()
+      .references(() => clientPackages.id, { onDelete: "set null" }),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("financial_entries_org_due_idx").on(
+      table.organizationId,
+      table.dueDate
+    ),
+    index("financial_entries_org_realized_idx").on(
+      table.organizationId,
+      table.realizedDate
+    ),
+    index("financial_entries_status_idx").on(table.status),
+  ]
+);
+
 export const auditLogs = pgTable(
   "audit_logs",
   {

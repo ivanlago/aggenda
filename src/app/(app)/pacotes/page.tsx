@@ -19,6 +19,7 @@ import {
 } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
 import { hasOrganizationPermission } from "@/lib/permissions";
+import { organizationDate } from "@/lib/appointment-safety";
 
 export const metadata = { title: "Pacotes" };
 
@@ -29,6 +30,7 @@ export default async function PackagesPage() {
   const { organization } = await requireOrganization();
   const canManageTemplates = hasOrganizationPermission(organization.role, "services.manage");
   const canAssignPackages = hasOrganizationPermission(organization.role, "clients.manage");
+  const today = organizationDate(new Date(), organization.timezone);
   const [serviceRows, clientRows, templates, templateItems, assigned, balances] =
     await Promise.all([
       db.select().from(services).where(and(
@@ -126,6 +128,11 @@ export default async function PackagesPage() {
             ))}
           </select>
           <input className="field" name="price" inputMode="decimal" placeholder="Valor negociado (opcional)" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-2 text-sm font-bold">Vencimento/recebimento<input className="field" name="dueDate" type="date" defaultValue={today} required /></label>
+            <select className="field" name="paymentMethod" defaultValue=""><option value="">Forma de pagamento</option><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="credit_card">Cartão de crédito</option><option value="debit_card">Cartão de débito</option><option value="bank_transfer">Transferência</option><option value="boleto">Boleto</option><option value="other">Outra</option></select>
+          </div>
+          <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" name="received" /> Pagamento já recebido</label>
           <textarea className="field min-h-20" name="notes" placeholder="Observações da venda" />
           <button className="primary-button" disabled={!clientRows.length || !templates.some((item) => item.isActive)}>Vincular ao cliente</button>
         </ActionForm>}

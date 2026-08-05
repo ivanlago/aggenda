@@ -10,6 +10,7 @@ import {
   clients,
   clientPackageBalances,
   clientPackages,
+  financialEntries,
   clientHistoryEntries,
   professionalRegistrations,
   professionalGoogleCalendarAccounts,
@@ -33,6 +34,10 @@ import {
   syncAppointmentToGoogleCalendar,
 } from "@/lib/google-calendar";
 import { reconcilePackageUsage, reservePackageSession } from "@/lib/package-balance";
+import {
+  createClientPackageFinancialEntry,
+  syncAppointmentFinancialEntry,
+} from "@/lib/finance";
 
 function textValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -622,8 +627,84 @@ export async function assignPackageToClient(formData: FormData) {
     entityId: assigned.id,
     details: { clientId, packageId, priceInCents },
   });
+  const dueDate = optionalText(formData, "dueDate") ?? organizationDate(new Date(), organization.timezone);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) throw new Error("Data de vencimento inválida.");
+  await createClientPackageFinancialEntry({
+    clientPackageId: assigned.id,
+    dueDate,
+    received: formData.get("received") === "on",
+    paymentMethod: optionalText(formData, "paymentMethod"),
+  });
   revalidatePath("/pacotes");
   revalidatePath(`/clientes/${clientId}`);
+  revalidatePath("/financeiro");
+}
+
+export async function createFinancialEntry(formData: FormData) {
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "finance.manage");
+  const type = textValue(formData, "type");
+  const description = textValue(formData, "description");
+  const amountInCents = optionalMoneyInCents(formData, "amount");
+  const dueDate = textValue(formData, "dueDate");
+  const realized = formData.get("realized") === "on";
+  if (!['payable', 'receivable'].includes(type) || description.length < 2 || !amountInCents || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    throw new Error("Informe tipo, descrição, valor e vencimento válidos.");
+  }
+  const [entry] = await db.insert(financialEntries).values({
+    organizationId: organization.id,
+    type,
+    status: realized ? (type === "payable" ? "paid" : "received") : "pending",
+    source: "manual",
+    description,
+    category: optionalText(formData, "category"),
+    amountInCents,
+    dueDate,
+    realizedDate: realized ? (optionalText(formData, "realizedDate") ?? dueDate) : null,
+    paymentMethod: optionalText(formData, "paymentMethod"),
+    notes: optionalText(formData, "notes"),
+    createdByUserId: session.user.id,
+  }).returning({ id: financialEntries.id });
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "financial_entry", entityId: entry.id });
+  revalidatePath("/financeiro");
+}
+
+export async function updateFinancialEntryStatus(formData: FormData) {
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "finance.manage");
+  const id = textValue(formData, "id");
+  const requestedStatus = textValue(formData, "status");
+  const [current] = await db.select({ type: financialEntries.type }).from(financialEntries).where(and(
+    eq(financialEntries.id, id), eq(financialEntries.organizationId, organization.id)
+  )).limit(1);
+  if (!current) throw new Error("Lançamento financeiro não encontrado.");
+  const status = requestedStatus === "realized"
+    ? (current.type === "payable" ? "paid" : "received")
+    : requestedStatus;
+  if (!["pending", "paid", "received", "cancelled"].includes(status)) throw new Error("Status financeiro inválido.");
+  const isRealized = status === "paid" || status === "received";
+  await db.update(financialEntries).set({
+    status,
+    realizedDate: isRealized ? (optionalText(formData, "realizedDate") ?? organizationDate(new Date(), organization.timezone)) : null,
+    paymentMethod: isRealized ? optionalText(formData, "paymentMethod") : null,
+    updatedAt: new Date(),
+  }).where(and(eq(financialEntries.id, id), eq(financialEntries.organizationId, organization.id)));
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: `status:${status}`, entityType: "financial_entry", entityId: id });
+  revalidatePath("/financeiro");
+}
+
+export async function deleteFinancialEntry(formData: FormData) {
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "finance.manage");
+  const id = textValue(formData, "id");
+  const [deleted] = await db.delete(financialEntries).where(and(
+    eq(financialEntries.id, id),
+    eq(financialEntries.organizationId, organization.id),
+    eq(financialEntries.source, "manual")
+  )).returning({ id: financialEntries.id });
+  if (!deleted) throw new Error("Somente lançamentos manuais podem ser excluídos.");
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "delete", entityType: "financial_entry", entityId: id });
+  revalidatePath("/financeiro");
 }
 
 export async function createAppointment(formData: FormData) {
@@ -711,6 +792,7 @@ export async function createAppointment(formData: FormData) {
       throw error;
     }
   }
+  await syncAppointmentFinancialEntry(created.id);
   await writeAuditLog({
     organizationId: organization.id,
     userId: session.user.id,
@@ -721,6 +803,7 @@ export async function createAppointment(formData: FormData) {
   await syncAppointmentToGoogleCalendar(created.id);
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
+  revalidatePath("/financeiro");
 }
 
 export async function updateAppointmentStatus(formData: FormData) {
@@ -770,6 +853,8 @@ export async function updateAppointmentStatus(formData: FormData) {
     await syncAppointmentToGoogleCalendar(appointmentId);
   }
   await reconcilePackageUsage(appointmentId, status);
+  await syncAppointmentFinancialEntry(appointmentId);
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
+  revalidatePath("/financeiro");
 }

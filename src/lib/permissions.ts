@@ -18,6 +18,8 @@ export const organizationPermissions = [
   "chat.inbox",
   "chat.configure",
   "integrations.manage",
+  "finance.read",
+  "finance.manage",
 ] as const;
 
 export type OrganizationPermission = (typeof organizationPermissions)[number];
@@ -53,6 +55,8 @@ const rolePermissions: Record<OrganizationRole, ReadonlySet<OrganizationPermissi
     "availability.manage",
     "team.read",
     "audit.read",
+    "finance.read",
+    "finance.manage",
     "chat.inbox",
   ]),
   receptionist: new Set([

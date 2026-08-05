@@ -11,6 +11,7 @@ import {
   ScrollText,
   DatabaseBackup,
   PackageOpen,
+  WalletCards,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -53,6 +54,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     },
     { href: "/servicos", label: organization.serviceLabelPlural, icon: Wrench, permission: "services.read" },
     { href: "/pacotes", label: "Pacotes", icon: PackageOpen, permission: "services.read" },
+    { href: "/financeiro", label: "Fluxo de caixa", icon: WalletCards, permission: "finance.read" },
     { href: "/dados", label: "Importar e exportar", icon: DatabaseBackup, permission: "clients.read" },
     { href: "/equipe", label: "Equipe e acesso", icon: UserRoundCog, permission: "team.read" },
     { href: "/configuracoes", label: "Configurações", icon: Settings2, permission: "organization.settings.manage" },

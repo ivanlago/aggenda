@@ -9,6 +9,7 @@ import { isTimeAvailable } from "@/lib/availability";
 import { organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
 import { syncAppointmentToGoogleCalendar } from "@/lib/google-calendar";
 import { reservePackageSession } from "@/lib/package-balance";
+import { syncAppointmentFinancialEntry } from "@/lib/finance";
 
 const inputSchema = z.object({
   clientId: z.string().uuid(),
@@ -133,6 +134,7 @@ export async function POST(request: NextRequest) {
         throw error;
       }
     }
+    await syncAppointmentFinancialEntry(appointment.id);
     await syncAppointmentToGoogleCalendar(appointment.id);
     return NextResponse.json({ appointment }, { status: 201 });
   } catch (error) {

@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { appointments, clientHistoryEntries, clientPackageBalances, clientPackages, clients, professionals, servicePackages, services, users } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
+import { formatOrganizationDateTime } from "@/lib/appointment-safety";
 
 const statusLabels = {
   scheduled: "Agendado",
@@ -144,10 +145,10 @@ export default async function ClientHistoryPage({
           {entries.map((entry) => <article key={entry.id} className="py-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="font-extrabold">{entry.title || (entry.entryType === "evolution" ? "Evolução" : entry.entryType === "anamnesis" ? "Anamnese" : "Anotação")}</p>
-              <span className="text-xs font-bold text-muted">{entry.occurredAt.toLocaleString("pt-BR")}</span>
+              <span className="text-xs font-bold text-muted">{formatOrganizationDateTime(entry.occurredAt, organization.timezone)}</span>
             </div>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{entry.content}</p>
-            <p className="mt-2 text-xs text-muted">Registrado por {entry.author} em {entry.createdAt.toLocaleString("pt-BR")}</p>
+            <p className="mt-2 text-xs text-muted">Registrado por {entry.author} em {formatOrganizationDateTime(entry.createdAt, organization.timezone)}</p>
           </article>)}
           {!entries.length && <p className="empty-state">Nenhum registro adicionado.</p>}
         </div>
@@ -166,7 +167,7 @@ export default async function ClientHistoryPage({
           {history.map((item) => (
             <article key={item.id} className="grid gap-2 py-4 sm:grid-cols-[150px_1fr_auto]">
               <p className="font-bold text-brand">
-                {item.startsAt.toLocaleString("pt-BR")}
+                {formatOrganizationDateTime(item.startsAt, organization.timezone)}
               </p>
               <div>
                 <p className="font-bold">{item.service}</p>

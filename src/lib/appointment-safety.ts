@@ -21,6 +21,34 @@ export function organizationDate(date: Date, timezone: string) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(date);
 }
 
+export function formatOrganizationDateTime(
+  date: Date,
+  timezone: string,
+  options: Intl.DateTimeFormatOptions = {}
+) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    ...options,
+    timeZone: timezone,
+  }).format(date);
+}
+
+export function organizationDayRange(date: Date, timezone: string) {
+  const localDate = organizationDate(date, timezone);
+  const [year, month, day] = localDate.split("-").map(Number);
+  const nextLocalDate = new Date(Date.UTC(year, month - 1, day + 1))
+    .toISOString()
+    .slice(0, 10);
+  return {
+    start: zonedDate(localDate, "00:00", timezone),
+    end: zonedDate(nextLocalDate, "00:00", timezone),
+  };
+}
+
 export async function withAppointmentLock<T>(
   organizationId: string,
   professionalId: string | null | undefined,

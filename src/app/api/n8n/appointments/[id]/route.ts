@@ -6,7 +6,7 @@ import { db } from "@/db";
 import { appointments, services } from "@/db/schema";
 import { apiError, requireN8nOrganization } from "@/lib/n8n-api";
 import { isTimeAvailable } from "@/lib/availability";
-import { organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
+import { formatOrganizationDateTime, organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
 import {
   deleteAppointmentFromGoogleCalendar,
   syncAppointmentToGoogleCalendar,
@@ -70,7 +70,14 @@ export async function PATCH(
     }
     if (input.status) await reconcilePackageUsage(appointment.id, input.status);
     await syncAppointmentFinancialEntry(appointment.id);
-    return NextResponse.json({ appointment });
+    return NextResponse.json({
+      timezone: auth.organization.timezone,
+      appointment: {
+        ...appointment,
+        startsAtLocal: formatOrganizationDateTime(appointment.startsAt, auth.organization.timezone),
+        endsAtLocal: formatOrganizationDateTime(appointment.endsAt, auth.organization.timezone),
+      },
+    });
   } catch (error) {
     return apiError(error);
   }

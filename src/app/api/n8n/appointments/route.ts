@@ -6,7 +6,7 @@ import { db } from "@/db";
 import { appointments, clients, professionals, services } from "@/db/schema";
 import { apiError, requireN8nOrganization } from "@/lib/n8n-api";
 import { isTimeAvailable } from "@/lib/availability";
-import { organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
+import { formatOrganizationDateTime, organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
 import { syncAppointmentToGoogleCalendar } from "@/lib/google-calendar";
 import { reservePackageSession } from "@/lib/package-balance";
 import { syncAppointmentFinancialEntry } from "@/lib/finance";
@@ -46,7 +46,14 @@ export async function GET(request: NextRequest) {
     ))
     .orderBy(appointments.startsAt);
 
-  return NextResponse.json({ appointments: items });
+  return NextResponse.json({
+    timezone: auth.organization.timezone,
+    appointments: items.map((item) => ({
+      ...item,
+      startsAtLocal: formatOrganizationDateTime(item.startsAt, auth.organization.timezone),
+      endsAtLocal: formatOrganizationDateTime(item.endsAt, auth.organization.timezone),
+    })),
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -136,7 +143,14 @@ export async function POST(request: NextRequest) {
     }
     await syncAppointmentFinancialEntry(appointment.id);
     await syncAppointmentToGoogleCalendar(appointment.id);
-    return NextResponse.json({ appointment }, { status: 201 });
+    return NextResponse.json({
+      timezone: auth.organization.timezone,
+      appointment: {
+        ...appointment,
+        startsAtLocal: formatOrganizationDateTime(appointment.startsAt, auth.organization.timezone),
+        endsAtLocal: formatOrganizationDateTime(appointment.endsAt, auth.organization.timezone),
+      },
+    }, { status: 201 });
   } catch (error) {
     return apiError(error);
   }

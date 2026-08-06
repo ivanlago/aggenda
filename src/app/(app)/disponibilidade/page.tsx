@@ -15,6 +15,7 @@ import {
   weeklyAvailability,
 } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
+import { formatOrganizationDateTime } from "@/lib/appointment-safety";
 
 export const metadata = { title: "Disponibilidade" };
 
@@ -192,8 +193,8 @@ export default async function AvailabilityPage({ searchParams }: { searchParams:
                       {item.professional ?? "Toda a organização"}
                     </p>
                     <p className="text-sm text-muted">
-                      {item.startsAt.toLocaleString("pt-BR")} até{" "}
-                      {item.endsAt.toLocaleString("pt-BR")}
+                      {formatOrganizationDateTime(item.startsAt, organization.timezone)} até{" "}
+                      {formatOrganizationDateTime(item.endsAt, organization.timezone)}
                     </p>
                     {item.reason && <p className="text-xs text-muted">{item.reason}</p>}
                   </div>

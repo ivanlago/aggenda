@@ -80,6 +80,7 @@ export default async function PublicBookingPage({
           slug={slug}
           services={serviceItems}
           professionals={professionalItems}
+          timezone={organization.timezone}
           labels={{
             service: organization.serviceLabel,
             professional: organization.professionalLabel,

@@ -1,4 +1,4 @@
-import { and, count, eq, gte, lte } from "drizzle-orm";
+import { and, count, eq, gte, lt } from "drizzle-orm";
 import { CalendarDays, Clock3, UsersRound, Wrench } from "lucide-react";
 import Link from "next/link";
 
@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { appointments, clients, professionals, services, weeklyAvailability } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
+import { formatOrganizationDateTime, organizationDayRange } from "@/lib/appointment-safety";
 
 export const metadata = { title: "Visão geral" };
 
@@ -25,18 +26,14 @@ export default async function DashboardPage({
 }) {
   const { session, organization } = await requireOrganization();
   const purchaseConfirmed = (await searchParams).compra === "sucesso";
-  const today = new Date();
-  const start = new Date(today);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(today);
-  end.setHours(23, 59, 59, 999);
+  const { start, end } = organizationDayRange(new Date(), organization.timezone);
 
   const [[clientTotal], [professionalTotal], [serviceTotal], [todayAppointmentTotal], [allAppointmentTotal], [availabilityTotal], next] =
     await Promise.all([
       db.select({ value: count() }).from(clients).where(eq(clients.organizationId, organization.id)),
       db.select({ value: count() }).from(professionals).where(eq(professionals.organizationId, organization.id)),
       db.select({ value: count() }).from(services).where(eq(services.organizationId, organization.id)),
-      db.select({ value: count() }).from(appointments).where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, start), lte(appointments.startsAt, end))),
+      db.select({ value: count() }).from(appointments).where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, start), lt(appointments.startsAt, end))),
       db.select({ value: count() }).from(appointments).where(eq(appointments.organizationId, organization.id)),
       db.select({ value: count() }).from(weeklyAvailability).where(eq(weeklyAvailability.organizationId, organization.id)),
       db.select({
@@ -148,7 +145,7 @@ export default async function DashboardPage({
             {next.length ? next.map((item) => (
               <div key={item.id} className="grid gap-2 py-4 sm:grid-cols-[100px_1fr_auto] sm:items-center">
                 <span className="font-extrabold text-brand">
-                  {item.startsAt.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                  {formatOrganizationDateTime(item.startsAt, organization.timezone, { year: undefined })}
                 </span>
                 <div><p className="font-bold">{item.client}</p><p className="text-sm text-muted">{item.service}</p></div>
                 <span className="status-pill">{statusLabel[item.status]}</span>

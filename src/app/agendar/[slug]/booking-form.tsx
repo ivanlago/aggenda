@@ -9,11 +9,13 @@ export function BookingForm({
   services,
   professionals,
   labels,
+  timezone,
 }: {
   slug: string;
   services: Item[];
   professionals: Item[];
   labels: { service: string; professional: string; appointment: string };
+  timezone: string;
 }) {
   const [serviceId, setServiceId] = useState("");
   const [professionalId, setProfessionalId] = useState("");
@@ -115,6 +117,7 @@ export function BookingForm({
             {new Date(time).toLocaleTimeString("pt-BR", {
               hour: "2-digit",
               minute: "2-digit",
+              timeZone: timezone,
             })}
           </option>
         ))}

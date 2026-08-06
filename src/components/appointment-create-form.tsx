@@ -14,6 +14,7 @@ export function AppointmentCreateForm({
   serviceProfessionalLinks,
   packageBalances,
   labels,
+  timezone,
 }: {
   action: (formData: FormData) => Promise<void>;
   clients: Item[];
@@ -22,6 +23,7 @@ export function AppointmentCreateForm({
   serviceProfessionalLinks: Array<{ serviceId: string; professionalId: string }>;
   packageBalances: Array<{ clientPackageId: string; clientId: string; serviceId: string; packageName: string; remaining: number; expiresAt: string | null }>;
   labels: { client: string; service: string; professional: string; appointment: string };
+  timezone: string;
 }) {
   const [serviceId, setServiceId] = useState("");
   const [clientId, setClientId] = useState("");
@@ -102,7 +104,7 @@ export function AppointmentCreateForm({
       <input className="field" type="date" min={minimumDate} value={date} onChange={(event) => { const next = event.target.value; setDate(next); loadAvailability(serviceId, professionalId, next); }} required />
       <select className="field" name="startsAt" required defaultValue="" disabled={loading || !times.length}>
         <option value="">{loading ? "Consultando horários…" : times.length ? "Selecione o horário" : "Nenhum horário disponível"}</option>
-        {times.map((time) => <option key={time} value={time}>{new Date(time).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</option>)}
+        {times.map((time) => <option key={time} value={time}>{new Date(time).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: timezone })}</option>)}
       </select>
       {availabilityError && <p className="text-sm font-bold text-red-700" role="alert">{availabilityError}</p>}
       <input className="field" name="price" inputMode="decimal" placeholder="Preço em reais (opcional)" />

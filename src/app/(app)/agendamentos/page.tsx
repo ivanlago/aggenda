@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { appointments, clientPackageBalances, clientPackages, clients, packageUsages, professionals, servicePackages, services, servicesToProfessionals } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
+import { formatOrganizationDateTime, organizationDayRange } from "@/lib/appointment-safety";
 
 export const metadata = { title: "Agendamentos" };
 
@@ -21,6 +22,7 @@ const statuses = [
 
 export default async function AppointmentsPage() {
   const { organization } = await requireOrganization();
+  const today = organizationDayRange(new Date(), organization.timezone);
   const [clientItems, professionalItems, serviceItems, serviceProfessionalLinks, packageBalanceRows, items] = await Promise.all([
     db.select().from(clients).where(eq(clients.organizationId, organization.id)).orderBy(clients.name),
     db.select().from(professionals).where(
@@ -65,7 +67,7 @@ export default async function AppointmentsPage() {
       .leftJoin(packageUsages, eq(packageUsages.appointmentId, appointments.id))
       .leftJoin(clientPackages, eq(clientPackages.id, packageUsages.clientPackageId))
       .leftJoin(servicePackages, eq(servicePackages.id, clientPackages.packageId))
-      .where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, new Date(new Date().setHours(0, 0, 0, 0)))))
+      .where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, today.start)))
       .orderBy(appointments.startsAt),
   ]);
 
@@ -87,6 +89,7 @@ export default async function AppointmentsPage() {
             .filter((item) => item.used < item.total && (!item.expiresAt || item.expiresAt > new Date()))
             .map((item) => ({ ...item, remaining: item.total - item.used, expiresAt: item.expiresAt?.toISOString() ?? null }))}
           labels={{ client: organization.clientLabel, service: organization.serviceLabel, professional: organization.professionalLabel, appointment: organization.appointmentLabel }}
+          timezone={organization.timezone}
         />
         <section className="panel">
           <h2 className="text-lg font-extrabold">{items.length} próximos</h2>
@@ -98,7 +101,7 @@ export default async function AppointmentsPage() {
                     <p className="font-extrabold">{item.client}</p>
                     <p className="text-sm text-muted">{item.service}{item.professional ? ` · ${item.professional}` : ""}</p>
                     {item.packageName && <p className="mt-1 text-xs font-bold text-brand">Pacote: {item.packageName} · {item.packageUsageStatus === "consumed" ? "sessão utilizada" : item.packageUsageStatus === "reversed" ? "sessão devolvida" : "sessão reservada"}</p>}
-                    <p className="mt-1 text-sm font-bold text-brand">{item.startsAt.toLocaleString("pt-BR")}</p>
+                    <p className="mt-1 text-sm font-bold text-brand">{formatOrganizationDateTime(item.startsAt, organization.timezone)}</p>
                   </div>
                   <ActionForm action={updateAppointmentStatus} successMessage="Status atualizado com sucesso.">
                     <input type="hidden" name="id" value={item.id} />

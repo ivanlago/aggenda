@@ -1,5 +1,5 @@
 import { and, eq, gte, lt, or } from "drizzle-orm";
-import { ArrowDownCircle, ArrowUpCircle, Trash2, WalletCards } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, Download, Trash2, WalletCards } from "lucide-react";
 import Link from "next/link";
 
 import {
@@ -63,6 +63,9 @@ export default async function FinancePage({
       <form method="get" className="panel mb-5 flex flex-wrap items-end gap-3">
         <label className="grid gap-2 text-sm font-bold">Período<input className="field" type="month" name="mes" defaultValue={month} /></label>
         <button className="primary-button py-3">Visualizar</button>
+        <a className="inline-flex items-center gap-2 rounded-xl border border-brand px-4 py-3 text-sm font-extrabold text-brand transition hover:bg-brand hover:text-white" href={`/api/finance/report?mes=${month}`}>
+          <Download className="size-4" /> Baixar extrato em PDF
+        </a>
         {month !== currentMonth && <Link className="text-sm font-bold text-brand underline" href="/financeiro">Voltar ao mês atual</Link>}
       </form>
 

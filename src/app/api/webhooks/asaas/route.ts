@@ -300,12 +300,24 @@ export async function POST(request: Request) {
     }
 
     if (checkout && (event.event === "CHECKOUT_CANCELED" || event.event === "CHECKOUT_EXPIRED")) {
-      const [current] = await tx.select({ status: organizationSubscriptions.status, trialEndsAt: organizationSubscriptions.trialEndsAt })
+      const [current] = await tx.select({
+        status: organizationSubscriptions.status,
+        trialEndsAt: organizationSubscriptions.trialEndsAt,
+        currentPeriodEnd: organizationSubscriptions.currentPeriodEnd,
+      })
         .from(organizationSubscriptions).where(eq(organizationSubscriptions.organizationId, organizationId)).limit(1);
-      const trialActive = current?.status === "trialing" && current.trialEndsAt && current.trialEndsAt > new Date();
-      await tx.update(organizationSubscriptions).set({
-        status: trialActive ? "trialing" : "incomplete", updatedAt: new Date(),
-      }).where(eq(organizationSubscriptions.organizationId, organizationId));
+      const now = new Date();
+      const accessStillValid = current?.status === "active" ||
+        (current?.status === "trialing" && Boolean(current.trialEndsAt && current.trialEndsAt > now)) ||
+        (current?.status === "canceled" && Boolean(current.currentPeriodEnd && current.currentPeriodEnd > now));
+
+      // O Asaas pode expirar a sessão de checkout depois de o Pix já ter sido
+      // recebido. A expiração do checkout não revoga um período já pago.
+      if (!accessStillValid) {
+        await tx.update(organizationSubscriptions).set({
+          status: "incomplete", updatedAt: now,
+        }).where(eq(organizationSubscriptions.organizationId, organizationId));
+      }
     }
 
     if (

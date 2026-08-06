@@ -136,10 +136,21 @@ export async function startCheckout(formData: FormData) {
     { organizationId: organization.id, userId: session.user.id, document: "privacy", version: "2026-08-04", ipAddress, userAgent },
   ]).onConflictDoNothing();
 
-  const [current] = await db.select({ status: organizationSubscriptions.status, trialEndsAt: organizationSubscriptions.trialEndsAt })
+  const [current] = await db.select({
+    status: organizationSubscriptions.status,
+    trialEndsAt: organizationSubscriptions.trialEndsAt,
+    currentPeriodEnd: organizationSubscriptions.currentPeriodEnd,
+  })
     .from(organizationSubscriptions)
     .where(eq(organizationSubscriptions.organizationId, organization.id)).limit(1);
   const trialStillActive = current?.status === "trialing" && current.trialEndsAt && current.trialEndsAt > now;
+  const paidAccessStillActive = current?.status === "active" ||
+    (current?.status === "canceled" && Boolean(current.currentPeriodEnd && current.currentPeriodEnd > now));
+  const checkoutStatus = trialStillActive
+    ? "trialing"
+    : paidAccessStillActive
+      ? current.status
+      : "incomplete";
   await db
     .insert(organizationSubscriptions)
     .values({
@@ -151,7 +162,7 @@ export async function startCheckout(formData: FormData) {
       billingIntervalMonths: recurring ? 1 : null,
       billingPaymentMethod: paymentMethod,
       pendingPeriodMonths: plan.months,
-      status: trialStillActive ? "trialing" : "incomplete",
+      status: checkoutStatus,
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
@@ -163,7 +174,7 @@ export async function startCheckout(formData: FormData) {
         billingIntervalMonths: recurring ? 1 : null,
         billingPaymentMethod: paymentMethod,
         pendingPeriodMonths: plan.months,
-        status: trialStillActive ? "trialing" : "incomplete",
+        status: checkoutStatus,
         updatedAt: new Date(),
       },
     });

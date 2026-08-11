@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckCircle2, LoaderCircle, XCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useState } from "react";
 
 type ActionState = {
@@ -49,10 +50,12 @@ export function ActionForm({
   className?: string;
   children: React.ReactNode;
 }) {
+  const router = useRouter();
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     async (_previousState, formData) => {
       try {
         await action(formData);
+        router.refresh();
         return { id: Date.now(), status: "success", message: successMessage };
       } catch (error) {
         console.error("[action-form] Falha ao executar comando", error);

@@ -62,6 +62,7 @@ export default async function AppointmentsPage() {
       id: appointments.id,
       startsAt: appointments.startsAt,
       status: appointments.status,
+      cancellationReason: appointments.cancellationReason,
       client: clients.name,
       clientPhone: clients.phone,
       service: services.name,
@@ -110,6 +111,11 @@ export default async function AppointmentsPage() {
                     <p className="text-sm text-muted">{item.service}{item.professional ? ` · ${item.professional}` : ""}</p>
                     {item.packageName && <p className="mt-1 text-xs font-bold text-brand">Pacote: {item.packageName} · {item.packageUsageStatus === "consumed" ? "sessão utilizada" : item.packageUsageStatus === "reversed" ? "sessão devolvida" : "sessão reservada"}</p>}
                     <p className="mt-1 text-sm font-bold text-brand">{formatOrganizationDateTime(item.startsAt, organization.timezone)}</p>
+                    {item.status === "cancelled" && item.cancellationReason && (
+                      <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-800">
+                        Motivo do cancelamento: {item.cancellationReason}
+                      </p>
+                    )}
                   </div>
                   <ActionForm action={updateAppointmentStatus} successMessage="Status atualizado com sucesso.">
                     <input type="hidden" name="id" value={item.id} />

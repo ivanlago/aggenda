@@ -4,6 +4,7 @@ import { Bot, CheckCircle2, MessageCircleMore, Sparkles, Workflow } from "lucide
 import { db } from "@/db";
 import { organizationUsageCounters, whatsappChannels } from "@/db/schema";
 import { PageHeader } from "@/components/page-header";
+import { WhatsAppConnectButton } from "@/components/whatsapp-connect-button";
 import {
   getOrganizationServicePlan,
   whatsappServiceCodes,
@@ -66,12 +67,18 @@ export default async function AutomationsPage() {
           <Bot className="size-6 text-brand" />
           <h2 className="mt-5 text-xl font-extrabold">Canal conectado</h2>
           {channels.length === 0 ? (
-            <p className="mt-3 text-sm leading-6 text-muted">Nenhum número oficial conectado. O WhatsApp Assistido continua disponível sem API.</p>
+            <>
+              <p className="mt-3 text-sm leading-6 text-muted">Nenhum número oficial conectado. Entre na Meta, informe ou escolha o número empresarial e confirme o código recebido.</p>
+              {current.usesCloudApi ? <WhatsAppConnectButton
+                  appId={process.env.NEXT_PUBLIC_META_APP_ID}
+                  configurationId={process.env.NEXT_PUBLIC_META_WHATSAPP_CONFIGURATION_ID}
+                /> : <p className="mt-3 rounded-xl bg-[#edf7f1] p-3 text-xs font-semibold text-brand">O WhatsApp Assistido não precisa conectar um número à API.</p>}
+            </>
           ) : (
             <div className="mt-4 grid gap-3">{channels.map((channel) => (
               <div className="rounded-xl border p-3" key={channel.id}>
                 <p className="font-bold">{channel.displayPhoneNumber ?? "Número configurado"}</p>
-                <p className="mt-1 flex items-center gap-2 text-xs text-muted"><CheckCircle2 className="size-3 text-brand" />{channel.isActive ? "Ativo" : "Pausado"}</p>
+                <p className="mt-1 flex items-center gap-2 text-xs text-muted"><CheckCircle2 className="size-3 text-brand" />{channel.connectionStatus === "active" && channel.isActive ? "Ativo" : "Pendente"}</p>
               </div>
             ))}</div>
           )}

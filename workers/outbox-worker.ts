@@ -5,6 +5,7 @@ import os from "node:os";
 import { Client } from "pg";
 
 import { normalizeDatabaseUrl } from "../src/lib/database-url";
+import { decryptWhatsAppToken } from "../src/lib/whatsapp-token";
 
 type OutboxEvent = {
   id: string;
@@ -113,12 +114,22 @@ async function forwardInboundToN8n(event: OutboxEvent) {
   }
 }
 
-async function sendWhatsAppText(event: OutboxEvent) {
-  const token = process.env.META_WHATSAPP_ACCESS_TOKEN;
+async function sendWhatsAppText(connection: Client, event: OutboxEvent) {
   const phoneNumberId = String(event.payload.phoneNumberId ?? "");
   const to = String(event.payload.to ?? "");
   const text = String(event.payload.text ?? "");
   const graphVersion = process.env.META_WHATSAPP_GRAPH_VERSION ?? "v23.0";
+
+  const channelResult = phoneNumberId
+    ? await connection.query<{ encrypted_access_token: string | null }>(
+      `select encrypted_access_token from whatsapp_channels where phone_number_id = $1 and is_active = true limit 1`,
+      [phoneNumberId]
+    )
+    : null;
+  const encryptedToken = channelResult?.rows[0]?.encrypted_access_token;
+  const token = encryptedToken
+    ? decryptWhatsAppToken(encryptedToken)
+    : process.env.META_WHATSAPP_ACCESS_TOKEN;
 
   if (!token || !phoneNumberId || !to || !text) {
     throw new Error("Credenciais ou payload de envio do WhatsApp incompletos");
@@ -149,13 +160,13 @@ async function sendWhatsAppText(event: OutboxEvent) {
   }
 }
 
-async function handleEvent(event: OutboxEvent) {
+async function handleEvent(connection: Client, event: OutboxEvent) {
   switch (event.event_type) {
     case "whatsapp.message.received":
       await forwardInboundToN8n(event);
       return;
     case "whatsapp.message.send":
-      await sendWhatsAppText(event);
+      await sendWhatsAppText(connection, event);
       return;
     default:
       throw new Error(`Evento sem handler: ${event.event_type}`);
@@ -209,7 +220,7 @@ async function run() {
     for (const event of events) {
       if (stopping) break;
       try {
-        await handleEvent(event);
+        await handleEvent(client, event);
         await markProcessed(client, event);
       } catch (error) {
         console.error(`[outbox] falha no evento ${event.id}`, error);

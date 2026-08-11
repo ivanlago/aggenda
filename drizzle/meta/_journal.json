@@ -120,6 +120,13 @@
       "when": 1786419519426,
       "tag": "0016_jazzy_madrox",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1786486014696,
+      "tag": "0017_thick_silver_sable",
+      "breakpoints": true
     }
   ]
 }

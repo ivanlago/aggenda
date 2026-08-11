@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 import { db } from "@/db";
@@ -8,8 +8,11 @@ import {
   chatConversations,
   chatMessages,
   outboxEvents,
+  organizationServicePlans,
+  organizationUsageCounters,
   whatsappChannels,
 } from "@/db/schema";
+import { isWhatsAppServiceCode, whatsappServices } from "@/lib/service-plans";
 
 export const runtime = "nodejs";
 
@@ -108,6 +111,31 @@ export async function POST(request: NextRequest) {
 
       if (!channel) continue;
 
+      const [configuredPlan] = await db
+        .select({
+          whatsappServiceCode: organizationServicePlans.whatsappServiceCode,
+          whatsappMonthlyLimit: organizationServicePlans.whatsappMonthlyLimit,
+        })
+        .from(organizationServicePlans)
+        .where(eq(organizationServicePlans.organizationId, channel.organizationId))
+        .limit(1);
+      const whatsappServiceCode = configuredPlan && isWhatsAppServiceCode(configuredPlan.whatsappServiceCode)
+        ? configuredPlan.whatsappServiceCode
+        : "core_ai";
+      const workflowProduct = whatsappServices[whatsappServiceCode].workflowProduct;
+      const currentPeriodStart = `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, "0")}-01`;
+      const [currentUsage] = await db
+        .select({ quantity: organizationUsageCounters.quantity })
+        .from(organizationUsageCounters)
+        .where(and(
+          eq(organizationUsageCounters.organizationId, channel.organizationId),
+          eq(organizationUsageCounters.periodStart, currentPeriodStart),
+          eq(organizationUsageCounters.metric, "whatsapp.inbound"),
+        ))
+        .limit(1);
+      const withinMonthlyLimit = !configuredPlan?.whatsappMonthlyLimit ||
+        (currentUsage?.quantity ?? 0) < configuredPlan.whatsappMonthlyLimit;
+
       for (const message of value.messages ?? []) {
         if (!message.id || !message.from) continue;
 
@@ -160,27 +188,49 @@ export async function POST(request: NextRequest) {
 
           if (!storedMessage) return false;
 
-          await tx.insert(outboxEvents).values({
+          const periodStart = `${occurredAt.getUTCFullYear()}-${String(occurredAt.getUTCMonth() + 1).padStart(2, "0")}-01`;
+          await tx.insert(organizationUsageCounters).values({
             organizationId: channel.organizationId,
-            eventKey: `whatsapp:inbound:${message.id}`,
-            eventType: "whatsapp.message.received",
-            aggregateType: "chat_message",
-            aggregateId: storedMessage.id,
-            payload: {
-              organizationId: channel.organizationId,
-              channelId: channel.id,
-              phoneNumberId,
-              conversationId: conversation.id,
-              messageId: storedMessage.id,
-              externalMessageId: message.id,
-              from: message.from,
-              contactName: contact?.profile?.name,
-              type: message.type ?? "unknown",
-              text: message.text?.body,
-              occurredAt: occurredAt.toISOString(),
-              metaWebhook: webhook,
+            periodStart,
+            metric: "whatsapp.inbound",
+            quantity: 1,
+          }).onConflictDoUpdate({
+            target: [
+              organizationUsageCounters.organizationId,
+              organizationUsageCounters.periodStart,
+              organizationUsageCounters.metric,
+            ],
+            set: {
+              quantity: sql`${organizationUsageCounters.quantity} + 1`,
+              updatedAt: new Date(),
             },
           });
+
+          if (workflowProduct && withinMonthlyLimit) {
+            await tx.insert(outboxEvents).values({
+              organizationId: channel.organizationId,
+              eventKey: `whatsapp:inbound:${message.id}`,
+              eventType: "whatsapp.message.received",
+              aggregateType: "chat_message",
+              aggregateId: storedMessage.id,
+              payload: {
+                organizationId: channel.organizationId,
+                channelId: channel.id,
+                phoneNumberId,
+                conversationId: conversation.id,
+                messageId: storedMessage.id,
+                externalMessageId: message.id,
+                from: message.from,
+                contactName: contact?.profile?.name,
+                type: message.type ?? "unknown",
+                text: message.text?.body,
+                occurredAt: occurredAt.toISOString(),
+                whatsappServiceCode,
+                workflowProduct,
+                metaWebhook: webhook,
+              },
+            });
+          }
 
           return true;
         });

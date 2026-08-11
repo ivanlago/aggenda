@@ -20,6 +20,13 @@ const statuses = [
   ["no_show", "Não compareceu"],
 ] as const;
 
+function whatsappLink(phone: string, message: string) {
+  const digits = phone.replace(/\D/g, "");
+  if (!digits) return null;
+  const international = digits.startsWith("55") ? digits : `55${digits}`;
+  return `https://wa.me/${international}?text=${encodeURIComponent(message)}`;
+}
+
 export default async function AppointmentsPage() {
   const { organization } = await requireOrganization();
   const today = organizationDayRange(new Date(), organization.timezone);
@@ -56,6 +63,7 @@ export default async function AppointmentsPage() {
       startsAt: appointments.startsAt,
       status: appointments.status,
       client: clients.name,
+      clientPhone: clients.phone,
       service: services.name,
       professional: professionals.name,
       packageName: servicePackages.name,
@@ -116,6 +124,14 @@ export default async function AppointmentsPage() {
                     <button className="mt-2 w-full text-xs font-extrabold text-brand">Atualizar</button>
                   </ActionForm>
                 </div>
+                {item.clientPhone && (() => {
+                  const formattedDate = formatOrganizationDateTime(item.startsAt, organization.timezone);
+                  const href = whatsappLink(
+                    item.clientPhone,
+                    `Olá, ${item.client}! Seu ${organization.appointmentLabel.toLowerCase()} de ${item.service} está marcado para ${formattedDate}.${item.professional ? ` Profissional: ${item.professional}.` : ""}`,
+                  );
+                  return href ? <a className="mt-3 inline-flex rounded-xl border px-3 py-2 text-xs font-extrabold text-brand transition hover:bg-[#edf7f1]" href={href} target="_blank" rel="noreferrer">Enviar pelo WhatsApp</a> : null;
+                })()}
                 <details className="mt-3">
                   <summary className="cursor-pointer text-xs font-extrabold text-brand">
                     Reagendar

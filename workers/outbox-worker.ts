@@ -83,9 +83,16 @@ async function claimEvents(connection: Client) {
 }
 
 async function forwardInboundToN8n(event: OutboxEvent) {
-  const url = process.env.N8N_FALLBACK_WEBHOOK_URL;
+  const workflowProduct = String(event.payload.workflowProduct ?? "");
+  const urls: Record<string, string | undefined> = {
+    CHAT: process.env.N8N_CHAT_WEBHOOK_URL,
+    CHAT_AI: process.env.N8N_CHAT_AI_WEBHOOK_URL,
+    CORE: process.env.N8N_CORE_WEBHOOK_URL,
+    CORE_AI: process.env.N8N_CORE_AI_WEBHOOK_URL,
+  };
+  const url = urls[workflowProduct] ?? process.env.N8N_FALLBACK_WEBHOOK_URL;
   if (!url) {
-    throw new Error("N8N_FALLBACK_WEBHOOK_URL não configurada");
+    throw new Error(`Webhook n8n não configurado para ${workflowProduct || "fallback"}`);
   }
 
   const originalWebhook = event.payload.metaWebhook;

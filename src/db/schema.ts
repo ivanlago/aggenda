@@ -269,6 +269,43 @@ export const organizationSubscriptions = pgTable(
   ]
 );
 
+export const organizationServicePlans = pgTable(
+  "organization_service_plans",
+  {
+    organizationId: uuid("organization_id")
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    corePlanCode: text("core_plan_code").default("core").notNull(),
+    whatsappServiceCode: text("whatsapp_service_code")
+      .default("assisted")
+      .notNull(),
+    whatsappMonthlyLimit: integer("whatsapp_monthly_limit")
+      .default(0)
+      .notNull(),
+    aiMonthlyLimit: integer("ai_monthly_limit").default(0).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [index("organization_service_plans_core_idx").on(table.corePlanCode)]
+);
+
+export const organizationUsageCounters = pgTable(
+  "organization_usage_counters",
+  {
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    periodStart: date("period_start").notNull(),
+    metric: text("metric").notNull(),
+    quantity: integer("quantity").default(0).notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.organizationId, table.periodStart, table.metric] }),
+    index("organization_usage_counters_period_idx").on(table.periodStart, table.metric),
+  ]
+);
+
 export const billingPayments = pgTable(
   "billing_payments",
   {

@@ -34,6 +34,12 @@ const idleInterval = boundedNumber(
   pollInterval,
   300_000
 );
+const reminderInterval = boundedNumber(
+  process.env.WHATSAPP_REMINDER_INTERVAL_MS,
+  300_000,
+  60_000,
+  3_600_000
+);
 
 let stopping = false;
 let client: Client | undefined;
@@ -81,6 +87,92 @@ async function claimEvents(connection: Client) {
   );
 
   return result.rows;
+}
+
+async function enqueueDueReminders(connection: Client) {
+  const result = await connection.query<{ id: string }>(
+    `with candidates as (
+       select appointment.id
+       from appointments as appointment
+       inner join organization_service_plans as plan
+         on plan.organization_id = appointment.organization_id
+       where appointment.status in ('scheduled', 'confirmed')
+         and appointment.starts_at between now() + interval '23 hours 50 minutes'
+           and now() + interval '24 hours 10 minutes'
+         and appointment.reminder_claimed_at is null
+         and plan.whatsapp_service_code in ('notify', 'menu', 'chat', 'chat_ai', 'core_ai')
+       order by appointment.starts_at
+       for update skip locked
+       limit 100
+     )
+     update appointments as appointment
+     set reminder_claimed_at = now(), updated_at = now()
+     from candidates
+     where appointment.id = candidates.id
+     returning appointment.id`
+  );
+
+  for (const appointment of result.rows) {
+    const details = await connection.query<{
+      organization_id: string;
+      channel_id: string | null;
+      phone_number_id: string | null;
+      client_name: string;
+      client_phone: string | null;
+      service_name: string;
+      professional_name: string | null;
+      timezone: string;
+      starts_at: Date;
+    }>(
+      `select appointment.organization_id, channel.id as channel_id,
+              channel.phone_number_id, client.name as client_name,
+              client.phone as client_phone, service.name as service_name,
+              professional.name as professional_name, organization.timezone,
+              appointment.starts_at
+       from appointments as appointment
+       inner join clients as client on client.id = appointment.client_id
+       inner join services as service on service.id = appointment.service_id
+       inner join organizations as organization on organization.id = appointment.organization_id
+       left join professionals as professional on professional.id = appointment.professional_id
+       left join whatsapp_channels as channel
+         on channel.organization_id = appointment.organization_id and channel.is_active = true
+       where appointment.id = $1
+       limit 1`,
+      [appointment.id]
+    );
+    const item = details.rows[0];
+    const digits = item?.client_phone?.replace(/\D/g, "") ?? "";
+    if (!item?.channel_id || !item.phone_number_id || !digits) {
+      await connection.query(`update appointments set reminder_claimed_at = null where id = $1`, [appointment.id]);
+      continue;
+    }
+    const scheduledFor = new Intl.DateTimeFormat("pt-BR", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit", timeZone: item.timezone,
+    }).format(item.starts_at);
+    await connection.query(
+      `insert into outbox_events
+         (organization_id, event_key, event_type, aggregate_type, aggregate_id, payload)
+       values ($1, $2, 'whatsapp.template.send', 'appointment', $3, $4::jsonb)
+       on conflict (event_key) do nothing`,
+      [
+        item.organization_id,
+        `whatsapp:reminder:${appointment.id}:once`,
+        appointment.id,
+        JSON.stringify({
+          organizationId: item.organization_id,
+          channelId: item.channel_id,
+          phoneNumberId: item.phone_number_id,
+          to: digits.startsWith("55") ? digits : `55${digits}`,
+          notificationKind: "reminder",
+          appointmentId: appointment.id,
+          languageCode: "pt_BR",
+          parameters: [item.client_name, item.service_name, scheduledFor, item.professional_name || "Profissional a definir"],
+        }),
+      ]
+    );
+  }
+  return result.rowCount ?? 0;
 }
 
 async function forwardInboundToN8n(connection: Client, event: OutboxEvent) {
@@ -298,8 +390,18 @@ async function run() {
   });
   await client.connect();
   console.log(`[outbox] worker ${workerId} iniciado`);
+  let nextReminderScanAt = 0;
 
   while (!stopping) {
+    if (Date.now() >= nextReminderScanAt) {
+      try {
+        const reminders = await enqueueDueReminders(client);
+        if (reminders) console.log(`[outbox] ${reminders} lembrete(s) reivindicado(s)`);
+      } catch (error) {
+        console.error("[outbox] falha ao buscar lembretes", error);
+      }
+      nextReminderScanAt = Date.now() + reminderInterval;
+    }
     const events = await claimEvents(client);
     if (events.length === 0) {
       await delay(idleInterval);

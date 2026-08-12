@@ -44,6 +44,6 @@ o webhook específico e usa `N8N_FALLBACK_WEBHOOK_URL` apenas como compatibilida
 1. Criar e aprovar na Meta quatro templates com quatro variáveis no corpo:
    `META_TEMPLATE_APPOINTMENT_CONFIRMATION`, `META_TEMPLATE_APPOINTMENT_RESCHEDULE`,
    `META_TEMPLATE_APPOINTMENT_CANCELLATION` e `META_TEMPLATE_APPOINTMENT_REMINDER`.
-2. Configurar `CRON_SECRET`; o cron `/api/cron/whatsapp-reminders` executa a cada cinco minutos e requer plano Vercel compatível.
+2. Manter o worker do Coolify ativo; ele consulta e enfileira lembretes a cada cinco minutos. O intervalo pode ser alterado por `WHATSAPP_REMINDER_INTERVAL_MS`.
 3. Importar e homologar os workflows de `workflows/commercial`, configurar a credencial `Aggenda API - n8n`, o ID da organização e as URLs `N8N_*_WEBHOOK_URL` no worker.
 4. Executar os dez cenários em número Meta de teste antes de ativar cada organização.

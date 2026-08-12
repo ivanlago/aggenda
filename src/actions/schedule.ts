@@ -207,21 +207,25 @@ export async function rescheduleAppointment(formData: FormData) {
     )
     .limit(1);
   if (!item || Number.isNaN(startsAt.getTime()) || !item.professionalId) {
-    throw new Error("Agendamento ou horário inválido.");
+    return { error: "Agendamento ou horário inválido. Consulte novamente os horários disponíveis." };
   }
-  await withAppointmentLock(organization.id, item.professionalId, async (tx) => {
+  const rescheduled = await withAppointmentLock(organization.id, item.professionalId, async (tx) => {
     const available = await isTimeAvailable({
       organizationId: organization.id, timezone: organization.timezone,
       date: organizationDate(startsAt, organization.timezone), serviceId: item.serviceId,
       professionalId: item.professionalId, slotIntervalMinutes: organization.slotIntervalMinutes,
       excludeAppointmentId: id, startsAt,
     });
-    if (!available) throw new Error("O horário não está mais disponível.");
+    if (!available) return false;
     await tx.update(appointments).set({ startsAt,
       endsAt: new Date(startsAt.getTime() + item.duration * 60_000), status: "scheduled",
       updatedAt: new Date(),
     }).where(and(eq(appointments.id, id), eq(appointments.organizationId, organization.id)));
+    return true;
   });
+  if (!rescheduled) {
+    return { error: "Este horário não está mais disponível. Escolha outro horário na lista." };
+  }
   const followUpResults = await Promise.allSettled([
     writeAuditLog({
       organizationId: organization.id,

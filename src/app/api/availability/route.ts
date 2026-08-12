@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
   const date = request.nextUrl.searchParams.get("date");
   const serviceId = request.nextUrl.searchParams.get("serviceId");
   const professionalId = request.nextUrl.searchParams.get("professionalId");
+  const excludeAppointmentId = request.nextUrl.searchParams.get("excludeAppointmentId") ?? undefined;
   if (!date || !serviceId || !professionalId) {
     return Response.json({ error: "Selecione serviço, profissional e data." }, { status: 400 });
   }
@@ -17,6 +18,7 @@ export async function GET(request: NextRequest) {
     date,
     serviceId,
     professionalId,
+    excludeAppointmentId,
     slotIntervalMinutes: organization.slotIntervalMinutes,
   });
   if (times === null) return Response.json({ error: "Serviço não encontrado." }, { status: 404 });

@@ -45,7 +45,7 @@ export function ActionForm({
   className,
   children,
 }: {
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<void | { error?: string }>;
   successMessage: string;
   className?: string;
   children: React.ReactNode;
@@ -54,7 +54,10 @@ export function ActionForm({
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     async (_previousState, formData) => {
       try {
-        await action(formData);
+        const result = await action(formData);
+        if (result?.error) {
+          return { id: Date.now(), status: "error", message: result.error };
+        }
         router.refresh();
         return { id: Date.now(), status: "success", message: successMessage };
       } catch (error) {

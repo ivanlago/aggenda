@@ -4,6 +4,7 @@ import { createAppointment, updateAppointmentStatus } from "@/actions/app";
 import { rescheduleAppointment } from "@/actions/schedule";
 import { ActionForm } from "@/components/action-form";
 import { AppointmentCreateForm } from "@/components/appointment-create-form";
+import { AppointmentRescheduleForm } from "@/components/appointment-reschedule-form";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { appointments, clientPackageBalances, clientPackages, clients, packageUsages, professionals, servicePackages, services, servicesToProfessionals } from "@/db/schema";
@@ -66,7 +67,9 @@ export default async function AppointmentsPage() {
       client: clients.name,
       clientPhone: clients.phone,
       service: services.name,
+      serviceId: appointments.serviceId,
       professional: professionals.name,
+      professionalId: appointments.professionalId,
       packageName: servicePackages.name,
       packageUsageStatus: packageUsages.status,
     }).from(appointments)
@@ -142,11 +145,15 @@ export default async function AppointmentsPage() {
                   <summary className="cursor-pointer text-xs font-extrabold text-brand">
                     Reagendar
                   </summary>
-                  <ActionForm action={rescheduleAppointment} successMessage="Agendamento remarcado com sucesso." className="mt-2 flex gap-2">
-                    <input type="hidden" name="id" value={item.id} />
-                    <input className="field py-2" name="startsAt" type="datetime-local" required />
-                    <button className="primary-button py-2">Salvar</button>
-                  </ActionForm>
+                  {item.professionalId && (
+                    <AppointmentRescheduleForm
+                      action={rescheduleAppointment}
+                      appointmentId={item.id}
+                      serviceId={item.serviceId}
+                      professionalId={item.professionalId}
+                      timezone={organization.timezone}
+                    />
+                  )}
                 </details>
               </article>
             ))}

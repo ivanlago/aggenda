@@ -2,9 +2,9 @@ import { and, eq, gte } from "drizzle-orm";
 
 import { createAppointment, updateAppointmentStatus } from "@/actions/app";
 import { rescheduleAppointment } from "@/actions/schedule";
-import { ActionForm } from "@/components/action-form";
 import { AppointmentCreateForm } from "@/components/appointment-create-form";
 import { AppointmentRescheduleForm } from "@/components/appointment-reschedule-form";
+import { AppointmentStatusForm } from "@/components/appointment-status-form";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { appointments, clientPackageBalances, clientPackages, clients, packageUsages, professionals, servicePackages, services, servicesToProfessionals } from "@/db/schema";
@@ -120,18 +120,13 @@ export default async function AppointmentsPage() {
                       </p>
                     )}
                   </div>
-                  <ActionForm action={updateAppointmentStatus} successMessage="Status atualizado com sucesso.">
-                    <input type="hidden" name="id" value={item.id} />
-                    <select className="field py-2" name="status" defaultValue={item.status}>
-                      {statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                    </select>
-                    <input
-                      className="field mt-2 py-2"
-                      name="cancellationReason"
-                      placeholder="Motivo se cancelar"
-                    />
-                    <button className="mt-2 w-full text-xs font-extrabold text-brand">Atualizar</button>
-                  </ActionForm>
+                  <AppointmentStatusForm
+                    action={updateAppointmentStatus}
+                    appointmentId={item.id}
+                    initialStatus={item.status}
+                    initialCancellationReason={item.cancellationReason}
+                    statuses={statuses}
+                  />
                 </div>
                 {item.clientPhone && (() => {
                   const formattedDate = formatOrganizationDateTime(item.startsAt, organization.timezone);

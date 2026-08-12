@@ -817,15 +817,15 @@ export async function updateAppointmentStatus(formData: FormData) {
     | "no_show";
 
   if (!["scheduled", "confirmed", "cancelled", "completed", "no_show"].includes(status)) {
-    throw new Error("Status inválido.");
+    return { error: "Selecione um status válido." };
   }
   const cancellationReason = optionalText(formData, "cancellationReason");
   if (status === "cancelled" && !cancellationReason) {
-    throw new Error("Informe o motivo do cancelamento.");
+    return { error: "Informe o motivo do cancelamento." };
   }
 
   const appointmentId = textValue(formData, "id");
-  await db
+  const [updatedAppointment] = await db
     .update(appointments)
     .set({
       status,
@@ -838,22 +838,34 @@ export async function updateAppointmentStatus(formData: FormData) {
         eq(appointments.id, appointmentId),
         eq(appointments.organizationId, organization.id)
       )
-    );
-  await writeAuditLog({
-    organizationId: organization.id,
-    userId: session.user.id,
-    action: `status:${status}`,
-    entityType: "appointment",
-    entityId: appointmentId,
-    details: cancellationReason ? { cancellationReason } : {},
-  });
-  if (status === "cancelled") {
-    await deleteAppointmentFromGoogleCalendar(appointmentId);
-  } else {
-    await syncAppointmentToGoogleCalendar(appointmentId);
+    )
+    .returning({ id: appointments.id });
+  if (!updatedAppointment) {
+    return { error: "Agendamento não encontrado. Atualize a página e tente novamente." };
   }
-  await reconcilePackageUsage(appointmentId, status);
-  await syncAppointmentFinancialEntry(appointmentId);
+
+  const followUpResults = await Promise.allSettled([
+    writeAuditLog({
+      organizationId: organization.id,
+      userId: session.user.id,
+      action: `status:${status}`,
+      entityType: "appointment",
+      entityId: appointmentId,
+      details: cancellationReason ? { cancellationReason } : {},
+    }),
+    status === "cancelled"
+      ? deleteAppointmentFromGoogleCalendar(appointmentId)
+      : syncAppointmentToGoogleCalendar(appointmentId),
+    reconcilePackageUsage(appointmentId, status),
+    syncAppointmentFinancialEntry(appointmentId),
+  ]);
+
+  followUpResults.forEach((result, index) => {
+    if (result.status === "rejected") {
+      const operation = ["auditoria", "Google Agenda", "pacote", "financeiro"][index];
+      console.error(`[update-appointment-status] Falha na sincronização de ${operation}`, result.reason);
+    }
+  });
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
   revalidatePath("/financeiro");

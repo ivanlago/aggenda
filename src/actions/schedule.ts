@@ -222,15 +222,24 @@ export async function rescheduleAppointment(formData: FormData) {
       updatedAt: new Date(),
     }).where(and(eq(appointments.id, id), eq(appointments.organizationId, organization.id)));
   });
-  await writeAuditLog({
-    organizationId: organization.id,
-    userId: session.user.id,
-    action: "reschedule",
-    entityType: "appointment",
-    entityId: id,
+  const followUpResults = await Promise.allSettled([
+    writeAuditLog({
+      organizationId: organization.id,
+      userId: session.user.id,
+      action: "reschedule",
+      entityType: "appointment",
+      entityId: id,
+    }),
+    syncAppointmentToGoogleCalendar(id),
+    syncAppointmentFinancialEntry(id),
+  ]);
+
+  followUpResults.forEach((result, index) => {
+    if (result.status === "rejected") {
+      const operation = ["auditoria", "Google Agenda", "financeiro"][index];
+      console.error(`[reschedule-appointment] Falha na sincronização de ${operation}`, result.reason);
+    }
   });
-  await syncAppointmentToGoogleCalendar(id);
-  await syncAppointmentFinancialEntry(id);
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
   revalidatePath("/financeiro");

@@ -32,7 +32,27 @@ export default async function AutomationsPage() {
   const current = whatsappServices[plan.whatsappServiceCode];
   const usageByMetric = new Map(usage.map((item) => [item.metric, item.quantity]));
   const received = usageByMetric.get("whatsapp.inbound") ?? 0;
+  const sent = usageByMetric.get("whatsapp.outbound") ?? 0;
   const aiCalls = usageByMetric.get("ai.calls") ?? 0;
+  const whatsappUsage = received + sent;
+  const whatsappLimitReached = plan.whatsappMonthlyLimit > 0 && whatsappUsage >= plan.whatsappMonthlyLimit;
+  const aiLimitReached = plan.aiMonthlyLimit > 0 && aiCalls >= plan.aiMonthlyLimit;
+  const activeChannel = channels.some((channel) => channel.isActive && channel.connectionStatus === "active");
+  const workflowUrls = {
+    CHAT: process.env.N8N_CHAT_WEBHOOK_URL,
+    CHAT_AI: process.env.N8N_CHAT_AI_WEBHOOK_URL,
+    CORE: process.env.N8N_CORE_WEBHOOK_URL,
+    CORE_AI: process.env.N8N_CORE_AI_WEBHOOK_URL,
+  };
+  const templatesReady = [
+    process.env.META_TEMPLATE_APPOINTMENT_CONFIRMATION,
+    process.env.META_TEMPLATE_APPOINTMENT_RESCHEDULE,
+    process.env.META_TEMPLATE_APPOINTMENT_CANCELLATION,
+    process.env.META_TEMPLATE_APPOINTMENT_REMINDER,
+  ].every(Boolean);
+  const channelReady = !current.usesCloudApi || activeChannel;
+  const workflowReady = !current.workflowProduct || Boolean(workflowUrls[current.workflowProduct]);
+  const serviceReady = channelReady && (!current.usesCloudApi || templatesReady) && workflowReady;
 
   return (
     <div className="page-wrap">
@@ -50,10 +70,24 @@ export default async function AutomationsPage() {
               <h2 className="mt-2 text-2xl font-extrabold">{current.name}</h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{current.description}</p>
             </div>
-            <span className="status-pill">{plan.isLegacyFallback ? "Acesso legado" : "Configurado"}</span>
+            <span className="status-pill">{serviceReady ? "Pronto" : plan.isLegacyFallback ? "Acesso legado" : "Configuração pendente"}</span>
           </div>
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+          <div className={`mt-5 rounded-xl p-3 text-sm font-bold ${serviceReady ? "bg-[#edf7f1] text-brand" : "bg-amber-50 text-amber-800"}`}>
+            {serviceReady ? "Serviço pronto para homologação." : "Configuração incompleta: "}
+            {!channelReady && "conecte um canal Meta ativo; "}
+            {current.usesCloudApi && !templatesReady && "configure os quatro templates transacionais; "}
+            {!workflowReady && `configure o webhook ${current.workflowProduct};`}
+          </div>
+          {(whatsappLimitReached || aiLimitReached) && (
+            <p className="mt-5 rounded-xl bg-amber-50 p-3 text-sm font-bold text-amber-800" role="alert">
+              {whatsappLimitReached ? "A franquia mensal do WhatsApp foi atingida. " : ""}
+              {aiLimitReached ? "A franquia mensal de IA foi atingida. " : ""}
+              O atendimento automático excedente será direcionado ao fallback disponível.
+            </p>
+          )}
+          <div className="mt-6 grid gap-3 sm:grid-cols-4">
             <div className="rounded-2xl bg-[#f3f5f1] p-4"><MessageCircleMore className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{received}</p><p className="text-xs text-muted">recebidas no mês</p></div>
+            <div className="rounded-2xl bg-[#f3f5f1] p-4"><MessageCircleMore className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{sent}</p><p className="text-xs text-muted">enviadas no mês</p></div>
             <div className="rounded-2xl bg-[#f3f5f1] p-4"><Sparkles className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{aiCalls}</p><p className="text-xs text-muted">chamadas de IA</p></div>
             <div className="rounded-2xl bg-[#f3f5f1] p-4"><Workflow className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{channels.filter((channel) => channel.isActive).length}</p><p className="text-xs text-muted">canais ativos</p></div>
           </div>

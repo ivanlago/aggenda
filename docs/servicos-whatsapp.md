@@ -30,10 +30,20 @@ o webhook específico e usa `N8N_FALLBACK_WEBHOOK_URL` apenas como compatibilida
 - `N8N_CORE_WEBHOOK_URL`;
 - `N8N_CORE_AI_WEBHOOK_URL`.
 
-## Próximas entregas
+## Estado da implementação
 
-1. Criar os eventos programados e templates do Notify.
-2. Medir mensagens de saída e chamadas/tokens de IA.
-3. Implantar e homologar uma URL n8n para cada produto.
-4. Exibir alerta de franquia e permitir compra de excedentes.
-5. Automatizar onboarding de número e credenciais por organização.
+- Assistido: mensagens manuais contextuais para confirmação e cancelamento.
+- Notify: confirmação, reagendamento, cancelamento e lembrete 24 horas antes via templates Meta e outbox com retentativa.
+- Menu e Chat: workflow determinístico parametrizado, com menu, informações e handoff.
+- Chat + AI: workflow com linguagem natural, base aprovada e handoff.
+- Core + AI: dez cenários do MVP, incluindo consulta, reagendamento e cancelamento com confirmação.
+- Métricas: entradas, saídas e chamadas de IA contabilizadas mensalmente; alertas de franquia visíveis no painel.
+
+## Dependências para ativação comercial
+
+1. Criar e aprovar na Meta quatro templates com quatro variáveis no corpo:
+   `META_TEMPLATE_APPOINTMENT_CONFIRMATION`, `META_TEMPLATE_APPOINTMENT_RESCHEDULE`,
+   `META_TEMPLATE_APPOINTMENT_CANCELLATION` e `META_TEMPLATE_APPOINTMENT_REMINDER`.
+2. Configurar `CRON_SECRET`; o cron `/api/cron/whatsapp-reminders` executa a cada cinco minutos e requer plano Vercel compatível.
+3. Importar e homologar os workflows de `workflows/commercial`, configurar a credencial `Aggenda API - n8n`, o ID da organização e as URLs `N8N_*_WEBHOOK_URL` no worker.
+4. Executar os dez cenários em número Meta de teste antes de ativar cada organização.

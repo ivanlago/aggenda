@@ -6,7 +6,7 @@
         "promptType": "define",
         "text": "=Mensagem recebida:\n{{ $('Receber mensagem WhatsApp').item.json.messages[0].text.body }}\n\nProfissionais cadastrados:\n{{ JSON.stringify($('Buscar profissionais').item.json.professionals) }}\n\nProcedimentos cadastrados:\n{{ JSON.stringify($('Buscar procedimentos').item.json.services.map(s => ({ id: s.id, name: s.name, description: s.description, durationMinutes: s.durationMinutes, priceInCents: s.priceInCents }))) }}",
         "options": {
-          "systemMessage": "Você é o assistente virtual de agendamentos da CONFIGURE_NOME_DA_EMPRESA, no Aggenda.\n\nAtenda sempre em português do Brasil, com mensagens curtas e cordiais. No primeiro contato ou quando o cliente enviar apenas uma saudação, responda exatamente: \"Olá! Seja bem-vindo(a) à CONFIGURE_NOME_DA_EMPRESA. Como posso ajudar você hoje? Temos diversos procedimentos, como limpeza de pele, massagens e tratamentos faciais. Gostaria de conhecer algum deles ou agendar um horário?\" Não encurte essa mensagem inicial. Ajude com apresentação dos procedimentos, profissionais, consulta de horários e criação de agendamentos. Nunca faça diagnósticos, prescrições ou promessas de resultado. Nunca invente procedimentos, profissionais, IDs, preços ou horários: use somente os dados recebidos no prompt.\n\nPara agendar, obtenha: procedimento, profissional, data, horário, nome completo e email opcional. O telefone vem automaticamente do WhatsApp. Use os nomes configurados pela empresa para cliente, serviço, profissional e agendamento. Quando o cliente não souber qual profissional escolher, apresente apenas os profissionais cadastrados e peça uma escolha.\n\nQuando houver procedimento, profissional e data, use action \"check_times\". Quando o cliente perguntar pela próxima data disponível, preserve a última data consultada e também use action \"check_times\"; a ferramenta buscará automaticamente a próxima data com horários. Nunca diga que não consegue consultar datas futuras. Antes de criar, apresente um resumo contendo procedimento, profissional, data e horário e peça confirmação explícita. Use \"create_appointment\" somente quando todos os dados estiverem preenchidos e a mensagem atual confirmar explicitamente o resumo imediatamente anterior. Um \"sim\" fora dessa confirmação não autoriza o agendamento.\n\nResponda sempre com JSON válido, sem bloco de código ou texto adicional:\n{\n  \"action\": \"reply\",\n  \"reply\": \"mensagem ao cliente\",\n  \"serviceId\": null,\n  \"serviceName\": null,\n  \"professionalId\": null,\n  \"professionalName\": null,\n  \"date\": null,\n  \"time\": null,\n  \"clientName\": null,\n  \"clientEmail\": null\n}\n\nActions permitidas: \"reply\", \"check_times\", \"create_appointment\" e \"handoff\". Use data YYYY-MM-DD e horário HH:mm. Preserve no JSON os dados já informados na conversa. Formate valores em reais para o cliente. Quando faltar algo, pergunte somente o próximo dado necessário. Para assunto fora do escopo, use \"handoff\"."
+          "systemMessage": "Você é o assistente virtual de agendamentos da CONFIGURE_NOME_DA_EMPRESA, no Aggenda.\n\nAtenda sempre em português do Brasil, com mensagens curtas e cordiais. No primeiro contato ou quando o cliente enviar apenas uma saudação, responda exatamente: \"Olá! Seja bem-vindo(a) à CONFIGURE_NOME_DA_EMPRESA. Como posso ajudar você hoje? Temos diversos procedimentos, como limpeza de pele, massagens e tratamentos faciais. Gostaria de conhecer algum deles ou agendar um horário?\" Não encurte essa mensagem inicial. No primeiro contato ou quando o cliente enviar apenas uma saudação, responda exatamente: \"Olá! Seja bem-vindo(a) à CONFIGURE_NOME_DA_EMPRESA. Como posso ajudar você hoje? Temos diversos procedimentos, como limpeza de pele, massagens e tratamentos faciais. Gostaria de conhecer algum deles ou agendar um horário?\" Não encurte essa mensagem inicial. Ajude com apresentação dos procedimentos, profissionais, consulta de horários e criação de agendamentos. Nunca faça diagnósticos, prescrições ou promessas de resultado. Nunca invente procedimentos, profissionais, IDs, preços ou horários: use somente os dados recebidos no prompt.\n\nPara agendar, obtenha: procedimento, profissional, data, horário, nome completo e email opcional. O telefone vem automaticamente do WhatsApp. Use os nomes configurados pela empresa para cliente, serviço, profissional e agendamento. Quando o cliente não souber qual profissional escolher, apresente apenas os profissionais cadastrados e peça uma escolha.\n\nQuando houver procedimento, profissional e data, use action \"check_times\". Quando o cliente perguntar pela próxima data disponível, preserve a última data consultada e também use action \"check_times\"; a ferramenta buscará automaticamente a próxima data com horários. Nunca diga que não consegue consultar datas futuras. Quando o cliente perguntar pela próxima data disponível, preserve a última data consultada e também use action \"check_times\"; a ferramenta buscará automaticamente a próxima data com horários. Nunca diga que não consegue consultar datas futuras. Antes de criar, apresente um resumo contendo procedimento, profissional, data e horário e peça confirmação explícita. Use \"create_appointment\" somente quando todos os dados estiverem preenchidos e a mensagem atual confirmar explicitamente o resumo imediatamente anterior. Um \"sim\" fora dessa confirmação não autoriza o agendamento.\n\nResponda sempre com JSON válido, sem bloco de código ou texto adicional:\n{\n  \"action\": \"reply\",\n  \"reply\": \"mensagem ao cliente\",\n  \"serviceId\": null,\n  \"serviceName\": null,\n  \"professionalId\": null,\n  \"professionalName\": null,\n  \"date\": null,\n  \"time\": null,\n  \"clientName\": null,\n  \"clientEmail\": null\n}\n\nActions permitidas: \"reply\", \"check_times\", \"create_appointment\" e \"handoff\". Use data YYYY-MM-DD e horário HH:mm. Preserve no JSON os dados já informados na conversa. Formate valores em reais para o cliente. Quando faltar algo, pergunte somente o próximo dado necessário. Para assunto fora do escopo, use \"handoff\".\n\nVocê também deve consultar, reagendar e cancelar agendamentos existentes do próprio telefone. Actions adicionais:\n- \"list_appointments\": quando o cliente pedir seus próximos agendamentos;\n- \"reschedule_appointment\": somente após escolher um appointmentId, consultar a nova disponibilidade e confirmar explicitamente;\n- \"cancel_appointment\": somente após escolher um appointmentId, coletar cancellationReason e confirmar explicitamente.\n\nInclua sempre no JSON: \"appointmentId\" e \"cancellationReason\" (use null quando ausentes). Nunca altere um agendamento sem confirmação na mensagem atual. Para reagendar, preserve serviceId, professionalId, date e time do novo horário validado."
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
@@ -84,7 +84,7 @@
     },
     {
       "parameters": {
-        "url": "https://aggenda-virid.vercel.app/api/n8n/professionals",
+        "url": "https://www.aggenda.app.br/api/n8n/professionals",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -92,7 +92,7 @@
           "parameters": [
             {
               "name": "X-Clinic-Id",
-              "value": "cb69eb9f-b773-4ce6-9182-4cdb7e96c509"
+              "value": "CONFIGURE_ORGANIZATION_ID"
             }
           ]
         },
@@ -234,6 +234,72 @@
                 ],
                 "combinator": "and"
               }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "list_appointments",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "bb5f9180-eb51-4146-8ba6-176b149086cf"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "reschedule_appointment",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "256b8e76-0f1b-4232-9caf-db9983e14ada"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "cancel_appointment",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "4cdb216f-39f4-4eea-b6eb-de590fde8a2c"
+                  }
+                ],
+                "combinator": "and"
+              }
             }
           ]
         },
@@ -250,7 +316,7 @@
     },
     {
       "parameters": {
-        "url": "https://aggenda-virid.vercel.app/api/n8n/available-times",
+        "url": "https://www.aggenda.app.br/api/n8n/available-times",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendQuery": true,
@@ -283,7 +349,7 @@
           "parameters": [
             {
               "name": "X-Clinic-Id",
-              "value": "cb69eb9f-b773-4ce6-9182-4cdb7e96c509"
+              "value": "CONFIGURE_ORGANIZATION_ID"
             }
           ]
         },
@@ -305,7 +371,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const slots = $json.availableTimes ?? [];\nconst timezone = $json.timezone || 'America/Bahia';\nconst availableTimes = slots.map((iso) => new Intl.DateTimeFormat('pt-BR', { timeZone: timezone, hour: '2-digit', minute: '2-digit' }).format(new Date(iso)));\nconst decision = $('Interpretar decisão da IA').item.json;\nconst formatDate = (value) => {\n  const [year, month, day] = String(value).split('-');\n  return `${day}/${month}/${year}`;\n};\nconst requestedDate = formatDate($json.requestedDate ?? decision.date);\nconst availableDate = formatDate($json.date ?? decision.date);\nconst professionalName = decision.professionalName ?? 'o profissional selecionado';\nlet reply;\nif (availableTimes.length && $json.foundNextDate) {\n  reply = `Não encontrei horários para ${professionalName} em ${requestedDate}. A próxima data disponível é ${availableDate}, com estes horários:\\n\\n${availableTimes.join(', ')}\\n\\nQual horário você gostaria de escolher?`;\n} else if (availableTimes.length) {\n  reply = `Para ${availableDate}, ${professionalName} possui estes horários disponíveis:\\n\\n${availableTimes.join(', ')}\\n\\nQual horário você gostaria de escolher?`;\n} else {\n  reply = `Não encontrei horários disponíveis para ${professionalName} entre ${requestedDate} e os próximos 60 dias. Deseja escolher outro profissional?`;\n}\nreturn [{ json: { reply } }];"
+        "jsCode": "const slots = $json.availableTimes ?? [];\nconst timezone = $json.timezone || 'America/Bahia';\nconst availableTimes = slots.map((iso) => new Intl.DateTimeFormat('pt-BR', { timeZone: timezone, hour: '2-digit', minute: '2-digit' }).format(new Date(iso)));\nconst decision = $('Interpretar decisão da IA').item.json;\nconst formatDate = (value) => {\n  const [year, month, day] = String(value).split('-');\n  return `${day}/${month}/${year}`;\n};\nconst requestedDate = formatDate($json.requestedDate ?? decision.date);\nconst availableDate = formatDate($json.date ?? decision.date);\nconst professionalName = decision.professionalName ?? 'o profissional selecionado';\nlet reply;\nif ($json.code === 'past_date') {\n  reply = 'A data informada já passou. Por favor, informe uma data a partir de hoje.';\n} else if (availableTimes.length && $json.foundNextDate) {\n  reply = `Não encontrei horários para ${professionalName} em ${requestedDate}. A próxima data disponível é ${availableDate}, com estes horários:\\n\\n${availableTimes.join(', ')}\\n\\nQual horário você gostaria de escolher?`;\n} else if (availableTimes.length) {\n  reply = `Para ${availableDate}, ${professionalName} possui estes horários disponíveis:\\n\\n${availableTimes.join(', ')}\\n\\nQual horário você gostaria de escolher?`;\n} else {\n  reply = `Não encontrei horários disponíveis para ${professionalName} entre ${requestedDate} e os próximos 60 dias. Deseja escolher outro profissional?`;\n}\nreturn [{ json: { reply } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -319,7 +385,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://aggenda-virid.vercel.app/api/n8n/clients/find-or-create",
+        "url": "https://www.aggenda.app.br/api/n8n/clients/find-or-create",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -327,7 +393,7 @@
           "parameters": [
             {
               "name": "X-Clinic-Id",
-              "value": "cb69eb9f-b773-4ce6-9182-4cdb7e96c509"
+              "value": "CONFIGURE_ORGANIZATION_ID"
             }
           ]
         },
@@ -371,7 +437,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://aggenda-virid.vercel.app/api/n8n/appointments",
+        "url": "https://www.aggenda.app.br/api/n8n/appointments",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -379,7 +445,7 @@
           "parameters": [
             {
               "name": "X-Clinic-Id",
-              "value": "cb69eb9f-b773-4ce6-9182-4cdb7e96c509"
+              "value": "CONFIGURE_ORGANIZATION_ID"
             }
           ]
         },
@@ -417,7 +483,7 @@
     },
     {
       "parameters": {
-        "url": "https://aggenda-virid.vercel.app/api/n8n/services",
+        "url": "https://www.aggenda.app.br/api/n8n/services",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -425,7 +491,7 @@
           "parameters": [
             {
               "name": "X-Clinic-Id",
-              "value": "cb69eb9f-b773-4ce6-9182-4cdb7e96c509"
+              "value": "CONFIGURE_ORGANIZATION_ID"
             }
           ]
         },
@@ -444,6 +510,105 @@
           "name": "Aggenda API - n8n"
         }
       }
+    },
+    {
+      "parameters": {
+        "url": "https://www.aggenda.app.br/api/n8n/appointments",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $('Receber mensagem WhatsApp').item.json.messages[0].from }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Clinic-Id",
+              "value": "CONFIGURE_ORGANIZATION_ID"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1080,
+        480
+      ],
+      "id": "a27584ad-4865-4240-8724-a45f543c9411",
+      "name": "Listar agendamentos do cliente",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Aggenda API - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $json.appointments ?? [];\nconst reply = items.length\n  ? 'Seus próximos agendamentos são:\\n\\n' + items.map((item, index) => `${index + 1}. ${item.serviceName} — ${item.startsAtLocal} — ${item.professionalName || 'profissional a definir'} — código ${item.id}`).join('\\n') + '\\n\\nVocê pode pedir para reagendar ou cancelar informando o número da opção.'\n  : 'Não encontrei próximos agendamentos vinculados a este telefone.';\nreturn [{ json: { reply, appointments: items } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        480
+      ],
+      "id": "7197f4f9-3a38-4199-b461-e7a53f290d5b",
+      "name": "Formatar agendamentos do cliente"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://www.aggenda.app.br/api/n8n/appointments/{{ $json.appointmentId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Clinic-Id",
+              "value": "CONFIGURE_ORGANIZATION_ID"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.action === 'cancel_appointment'\n  ? { status: 'cancelled', cancellationReason: $json.cancellationReason }\n  : { startsAt: $json.date + 'T' + $json.time + ':00-03:00', status: 'scheduled' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1080,
+        620
+      ],
+      "id": "38182ae0-0ba6-429f-aa7a-072d98120737",
+      "name": "Alterar agendamento confirmado",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Aggenda API - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const decision = $('Interpretar decisão da IA').item.json;\nconst item = $json.appointment;\nconst reply = decision.action === 'cancel_appointment'\n  ? 'Agendamento cancelado com sucesso. Motivo: ' + decision.cancellationReason + '.'\n  : 'Agendamento reagendado com sucesso para ' + (item?.startsAtLocal ?? decision.date + ' às ' + decision.time) + '.';\nreturn [{ json: { reply } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        620
+      ],
+      "id": "341294b7-ed2a-4b5d-94a5-c7853b14f4dd",
+      "name": "Confirmar alteração do agendamento"
     }
   ],
   "pinData": {},
@@ -532,6 +697,27 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Listar agendamentos do cliente",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alterar agendamento confirmado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alterar agendamento confirmado",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -611,14 +797,58 @@
           }
         ]
       ]
+    },
+    "Listar agendamentos do cliente": {
+      "main": [
+        [
+          {
+            "node": "Formatar agendamentos do cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar agendamentos do cliente": {
+      "main": [
+        [
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alterar agendamento confirmado": {
+      "main": [
+        [
+          {
+            "node": "Confirmar alteração do agendamento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmar alteração do agendamento": {
+      "main": [
+        [
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "58377ea5-8e46-4dce-ac06-cfccc8d59079",
+  "versionId": "6899e8d9-a3af-4d11-a239-58c1391d6924",
   "staticData": null,
   "tags": [],
-  "description": "Produto CORE_AI. Recursos: core.native_scheduling, ai.natural_language, ai.tool_calling. Gerado de Aggenda - Chatbot - corrigido.json."
+  "description": "Produto CORE_AI. Recursos: core.native_scheduling, core.appointment_query, core.appointment_reschedule, core.appointment_cancel, ai.natural_language, ai.tool_calling. Gerado de Aggenda - Chatbot - corrigido.json."
 }

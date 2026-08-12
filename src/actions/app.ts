@@ -38,6 +38,7 @@ import {
   createClientPackageFinancialEntry,
   syncAppointmentFinancialEntry,
 } from "@/lib/finance";
+import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
 
 function textValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -801,6 +802,11 @@ export async function createAppointment(formData: FormData) {
     entityId: created.id,
   });
   await syncAppointmentToGoogleCalendar(created.id);
+  try {
+    await enqueueAppointmentNotification(created.id, "confirmation");
+  } catch (error) {
+    console.error("[create-appointment] Falha ao enfileirar confirmação no WhatsApp", error);
+  }
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
   revalidatePath("/financeiro");
@@ -858,11 +864,17 @@ export async function updateAppointmentStatus(formData: FormData) {
       : syncAppointmentToGoogleCalendar(appointmentId),
     reconcilePackageUsage(appointmentId, status),
     syncAppointmentFinancialEntry(appointmentId),
+    ...(status === "cancelled" || status === "confirmed"
+      ? [enqueueAppointmentNotification(
+          appointmentId,
+          status === "cancelled" ? "cancellation" : "confirmation",
+        )]
+      : []),
   ]);
 
   followUpResults.forEach((result, index) => {
     if (result.status === "rejected") {
-      const operation = ["auditoria", "Google Agenda", "pacote", "financeiro"][index];
+      const operation = ["auditoria", "Google Agenda", "pacote", "financeiro", "WhatsApp"][index];
       console.error(`[update-appointment-status] Falha na sincronização de ${operation}`, result.reason);
     }
   });

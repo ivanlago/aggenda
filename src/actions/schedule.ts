@@ -19,6 +19,7 @@ import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 import { syncAppointmentToGoogleCalendar } from "@/lib/google-calendar";
 import { syncAppointmentFinancialEntry } from "@/lib/finance";
+import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
 
 function value(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -236,11 +237,12 @@ export async function rescheduleAppointment(formData: FormData) {
     }),
     syncAppointmentToGoogleCalendar(id),
     syncAppointmentFinancialEntry(id),
+    enqueueAppointmentNotification(id, "reschedule"),
   ]);
 
   followUpResults.forEach((result, index) => {
     if (result.status === "rejected") {
-      const operation = ["auditoria", "Google Agenda", "financeiro"][index];
+      const operation = ["auditoria", "Google Agenda", "financeiro", "WhatsApp"][index];
       console.error(`[reschedule-appointment] Falha na sincronização de ${operation}`, result.reason);
     }
   });

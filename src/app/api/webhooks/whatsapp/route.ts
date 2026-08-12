@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 import { db } from "@/db";
@@ -115,6 +115,7 @@ export async function POST(request: NextRequest) {
         .select({
           whatsappServiceCode: organizationServicePlans.whatsappServiceCode,
           whatsappMonthlyLimit: organizationServicePlans.whatsappMonthlyLimit,
+          aiMonthlyLimit: organizationServicePlans.aiMonthlyLimit,
         })
         .from(organizationServicePlans)
         .where(eq(organizationServicePlans.organizationId, channel.organizationId))
@@ -122,19 +123,27 @@ export async function POST(request: NextRequest) {
       const whatsappServiceCode = configuredPlan && isWhatsAppServiceCode(configuredPlan.whatsappServiceCode)
         ? configuredPlan.whatsappServiceCode
         : "core_ai";
-      const workflowProduct = whatsappServices[whatsappServiceCode].workflowProduct;
+      const configuredWorkflowProduct = whatsappServices[whatsappServiceCode].workflowProduct;
       const currentPeriodStart = `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, "0")}-01`;
-      const [currentUsage] = await db
-        .select({ quantity: organizationUsageCounters.quantity })
+      const usageRows = await db
+        .select({ metric: organizationUsageCounters.metric, quantity: organizationUsageCounters.quantity })
         .from(organizationUsageCounters)
         .where(and(
           eq(organizationUsageCounters.organizationId, channel.organizationId),
           eq(organizationUsageCounters.periodStart, currentPeriodStart),
-          eq(organizationUsageCounters.metric, "whatsapp.inbound"),
+          inArray(organizationUsageCounters.metric, ["whatsapp.inbound", "whatsapp.outbound", "ai.calls"]),
         ))
-        .limit(1);
+      const usageByMetric = new Map(usageRows.map((item) => [item.metric, item.quantity]));
+      const whatsappUsage = (usageByMetric.get("whatsapp.inbound") ?? 0) + (usageByMetric.get("whatsapp.outbound") ?? 0);
+      const aiUsage = usageByMetric.get("ai.calls") ?? 0;
       const withinMonthlyLimit = !configuredPlan?.whatsappMonthlyLimit ||
-        (currentUsage?.quantity ?? 0) < configuredPlan.whatsappMonthlyLimit;
+        whatsappUsage < configuredPlan.whatsappMonthlyLimit;
+      const withinAiLimit = !configuredPlan?.aiMonthlyLimit || aiUsage < configuredPlan.aiMonthlyLimit;
+      const workflowProduct = !withinAiLimit && configuredWorkflowProduct === "CHAT_AI"
+        ? "CHAT"
+        : !withinAiLimit && configuredWorkflowProduct === "CORE_AI"
+          ? "CORE"
+          : configuredWorkflowProduct;
 
       for (const message of value.messages ?? []) {
         if (!message.id || !message.from) continue;

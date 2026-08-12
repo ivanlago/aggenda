@@ -96,6 +96,19 @@ const sanitizeCredentials = (workflow) => {
 const finalize = (workflow, product, requires) => {
   normalizeSender(workflow);
   sanitizeCredentials(workflow);
+  for (const node of workflow.nodes) {
+    if (typeof node.parameters?.url === "string") {
+      node.parameters.url = node.parameters.url.replace(
+        "https://aggenda-virid.vercel.app",
+        "https://www.aggenda.app.br"
+      );
+    }
+    for (const header of node.parameters?.headerParameters?.parameters ?? []) {
+      if (String(header.name).toLowerCase() === "x-clinic-id") {
+        header.value = "CONFIGURE_ORGANIZATION_ID";
+      }
+    }
+  }
   workflow.settings ??= { executionOrder: "v1" };
   workflow.staticData = null;
   workflow.tags = [];
@@ -334,8 +347,79 @@ function buildCore(ai = false) {
         "Quando o cliente não souber qual profissional escolher",
         "Use os nomes configurados pela empresa para cliente, serviço, profissional e agendamento. Quando o cliente não souber qual profissional escolher"
       );
+    agent.parameters.options.systemMessage += `
+
+Você também deve consultar, reagendar e cancelar agendamentos existentes do próprio telefone. Actions adicionais:
+- "list_appointments": quando o cliente pedir seus próximos agendamentos;
+- "reschedule_appointment": somente após escolher um appointmentId, consultar a nova disponibilidade e confirmar explicitamente;
+- "cancel_appointment": somente após escolher um appointmentId, coletar cancellationReason e confirmar explicitamente.
+
+Inclua sempre no JSON: "appointmentId" e "cancellationReason" (use null quando ausentes). Nunca altere um agendamento sem confirmação na mensagem atual. Para reagendar, preserve serviceId, professionalId, date e time do novo horário validado.`;
+
+    const router = byName(workflow, "Rotear ação");
+    const actionRule = (action) => {
+      const rule = clone(router.parameters.rules.values[0]);
+      rule.conditions.conditions[0].id = id();
+      rule.conditions.conditions[0].rightValue = action;
+      return rule;
+    };
+    router.parameters.rules.values.push(
+      actionRule("list_appointments"),
+      actionRule("reschedule_appointment"),
+      actionRule("cancel_appointment")
+    );
+
+    const list = clone(byName(workflow, "Buscar horários"));
+    list.id = id();
+    list.name = "Listar agendamentos do cliente";
+    list.position = [1080, 480];
+    list.parameters.url = "https://www.aggenda.app.br/api/n8n/appointments";
+    list.parameters.queryParameters = { parameters: [{
+      name: "phone",
+      value: "={{ $('Receber mensagem WhatsApp').item.json.messages[0].from }}",
+    }] };
+    const formatList = codeNode(
+      "Formatar agendamentos do cliente",
+      `const items = $json.appointments ?? [];
+const reply = items.length
+  ? 'Seus próximos agendamentos são:\\n\\n' + items.map((item, index) => \`${"${index + 1}. ${item.serviceName} — ${item.startsAtLocal} — ${item.professionalName || 'profissional a definir'} — código ${item.id}"}\`).join('\\n') + '\\n\\nVocê pode pedir para reagendar ou cancelar informando o número da opção.'
+  : 'Não encontrei próximos agendamentos vinculados a este telefone.';
+return [{ json: { reply, appointments: items } }];`,
+      [1300, 480]
+    );
+
+    const update = clone(byName(workflow, "Criar agendamento"));
+    update.id = id();
+    update.name = "Alterar agendamento confirmado";
+    update.position = [1080, 620];
+    update.parameters.method = "PATCH";
+    update.parameters.url = "=https://www.aggenda.app.br/api/n8n/appointments/{{ $json.appointmentId }}";
+    update.parameters.jsonBody = `={{ JSON.stringify($json.action === 'cancel_appointment'
+  ? { status: 'cancelled', cancellationReason: $json.cancellationReason }
+  : { startsAt: $json.date + 'T' + $json.time + ':00-03:00', status: 'scheduled' }) }}`;
+    const formatUpdate = codeNode(
+      "Confirmar alteração do agendamento",
+      `const decision = $('Interpretar decisão da IA').item.json;
+const item = $json.appointment;
+const reply = decision.action === 'cancel_appointment'
+  ? 'Agendamento cancelado com sucesso. Motivo: ' + decision.cancellationReason + '.'
+  : 'Agendamento reagendado com sucesso para ' + (item?.startsAtLocal ?? decision.date + ' às ' + decision.time) + '.';
+return [{ json: { reply } }];`,
+      [1300, 620]
+    );
+    workflow.nodes.push(list, formatList, update, formatUpdate);
+    connect(workflow, "Rotear ação", "Listar agendamentos do cliente", "main", 4);
+    connect(workflow, "Rotear ação", "Alterar agendamento confirmado", "main", 5);
+    connect(workflow, "Rotear ação", "Alterar agendamento confirmado", "main", 6);
+    connect(workflow, "Listar agendamentos do cliente", "Formatar agendamentos do cliente");
+    connect(workflow, "Formatar agendamentos do cliente", "Send message");
+    connect(workflow, "Alterar agendamento confirmado", "Confirmar alteração do agendamento");
+    connect(workflow, "Confirmar alteração do agendamento", "Send message");
     return finalize(workflow, "CORE_AI", [
       "core.native_scheduling",
+      "core.appointment_query",
+      "core.appointment_reschedule",
+      "core.appointment_cancel",
       "ai.natural_language",
       "ai.tool_calling",
     ]);

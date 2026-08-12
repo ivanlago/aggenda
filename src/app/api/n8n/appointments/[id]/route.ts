@@ -17,6 +17,10 @@ import { syncAppointmentFinancialEntry } from "@/lib/finance";
 const patchSchema = z.object({
   startsAt: z.coerce.date().optional(),
   status: z.enum(["scheduled", "confirmed", "cancelled", "completed", "no_show"]).optional(),
+  cancellationReason: z.string().trim().min(2).optional().nullable(),
+}).refine((input) => input.status !== "cancelled" || Boolean(input.cancellationReason), {
+  message: "Informe o motivo do cancelamento.",
+  path: ["cancellationReason"],
 });
 
 export async function PATCH(
@@ -59,6 +63,9 @@ export async function PATCH(
       const [updated] = await tx.update(appointments).set({
         startsAt: input.startsAt, endsAt, status: input.status,
         confirmedAt: input.status === "confirmed" ? new Date() : undefined,
+        cancellationReason: input.status === "cancelled" ? input.cancellationReason : undefined,
+        reminderClaimedAt: input.startsAt ? null : undefined,
+        reminderSentAt: input.startsAt ? null : undefined,
         updatedAt: new Date(),
       }).where(and(eq(appointments.id, id), eq(appointments.organizationId, auth.organization.id))).returning();
       return updated;

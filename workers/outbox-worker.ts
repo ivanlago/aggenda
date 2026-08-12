@@ -83,7 +83,7 @@ async function claimEvents(connection: Client) {
   return result.rows;
 }
 
-async function forwardInboundToN8n(event: OutboxEvent) {
+async function forwardInboundToN8n(connection: Client, event: OutboxEvent) {
   const workflowProduct = String(event.payload.workflowProduct ?? "");
   const urls: Record<string, string | undefined> = {
     CHAT: process.env.N8N_CHAT_WEBHOOK_URL,
@@ -111,6 +111,19 @@ async function forwardInboundToN8n(event: OutboxEvent) {
 
   if (!response.ok) {
     throw new Error(`n8n respondeu HTTP ${response.status}`);
+  }
+  if (workflowProduct === "CHAT_AI" || workflowProduct === "CORE_AI") {
+    const organizationId = String(event.payload.organizationId ?? "");
+    if (organizationId) {
+      await connection.query(
+        `insert into organization_usage_counters
+           (organization_id, period_start, metric, quantity, updated_at)
+         values ($1, date_trunc('month', now())::date, 'ai.calls', 1, now())
+         on conflict (organization_id, period_start, metric)
+         do update set quantity = organization_usage_counters.quantity + 1, updated_at = now()`,
+        [organizationId]
+      );
+    }
   }
 }
 
@@ -160,13 +173,89 @@ async function sendWhatsAppText(connection: Client, event: OutboxEvent) {
   }
 }
 
+async function sendWhatsAppTemplate(connection: Client, event: OutboxEvent) {
+  const phoneNumberId = String(event.payload.phoneNumberId ?? "");
+  const to = String(event.payload.to ?? "");
+  const notificationKind = String(event.payload.notificationKind ?? "");
+  const templateNames: Record<string, string | undefined> = {
+    confirmation: process.env.META_TEMPLATE_APPOINTMENT_CONFIRMATION,
+    reschedule: process.env.META_TEMPLATE_APPOINTMENT_RESCHEDULE,
+    cancellation: process.env.META_TEMPLATE_APPOINTMENT_CANCELLATION,
+    reminder: process.env.META_TEMPLATE_APPOINTMENT_REMINDER,
+  };
+  const templateName = templateNames[notificationKind];
+  const parameters = Array.isArray(event.payload.parameters)
+    ? event.payload.parameters.map((value) => String(value))
+    : [];
+  const graphVersion = process.env.META_WHATSAPP_GRAPH_VERSION ?? "v23.0";
+  const channelResult = phoneNumberId
+    ? await connection.query<{ encrypted_access_token: string | null }>(
+      `select encrypted_access_token from whatsapp_channels where phone_number_id = $1 and is_active = true limit 1`,
+      [phoneNumberId]
+    )
+    : null;
+  const encryptedToken = channelResult?.rows[0]?.encrypted_access_token;
+  const token = encryptedToken ? decryptWhatsAppToken(encryptedToken) : process.env.META_WHATSAPP_ACCESS_TOKEN;
+  if (!token || !phoneNumberId || !to || !templateName) {
+    throw new Error(`Configuração incompleta para template ${notificationKind}`);
+  }
+
+  const response = await fetch(`https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "template",
+      template: {
+        name: templateName,
+        language: { code: String(event.payload.languageCode ?? "pt_BR") },
+        components: [{
+          type: "body",
+          parameters: parameters.map((text) => ({ type: "text", text })),
+        }],
+      },
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 500);
+    throw new Error(`Meta respondeu HTTP ${response.status}: ${detail}`);
+  }
+}
+
+async function recordOutboundUsage(connection: Client, event: OutboxEvent) {
+  const organizationId = String(event.payload.organizationId ?? "");
+  if (!organizationId) return;
+  await connection.query(
+    `insert into organization_usage_counters
+       (organization_id, period_start, metric, quantity, updated_at)
+     values ($1, date_trunc('month', now())::date, 'whatsapp.outbound', 1, now())
+     on conflict (organization_id, period_start, metric)
+     do update set quantity = organization_usage_counters.quantity + 1, updated_at = now()`,
+    [organizationId]
+  );
+  if (event.payload.notificationKind === "reminder" && event.payload.appointmentId) {
+    await connection.query(
+      `update appointments set reminder_sent_at = now(), updated_at = now() where id = $1`,
+      [String(event.payload.appointmentId)]
+    );
+  }
+}
+
 async function handleEvent(connection: Client, event: OutboxEvent) {
   switch (event.event_type) {
     case "whatsapp.message.received":
-      await forwardInboundToN8n(event);
+      await forwardInboundToN8n(connection, event);
       return;
     case "whatsapp.message.send":
       await sendWhatsAppText(connection, event);
+      await recordOutboundUsage(connection, event);
+      return;
+    case "whatsapp.template.send":
+      await sendWhatsAppTemplate(connection, event);
+      await recordOutboundUsage(connection, event);
       return;
     default:
       throw new Error(`Evento sem handler: ${event.event_type}`);

@@ -48,7 +48,7 @@
     },
     {
       "parameters": {
-        "url": "https://aggenda-virid.vercel.app/api/n8n/professionals",
+        "url": "https://www.aggenda.app.br/api/n8n/professionals",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -56,7 +56,7 @@
           "parameters": [
             {
               "name": "X-Clinic-Id",
-              "value": "cb69eb9f-b773-4ce6-9182-4cdb7e96c509"
+              "value": "CONFIGURE_ORGANIZATION_ID"
             }
           ]
         },
@@ -186,7 +186,7 @@
     },
     {
       "parameters": {
-        "url": "https://aggenda-virid.vercel.app/api/n8n/available-times",
+        "url": "https://www.aggenda.app.br/api/n8n/available-times",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendQuery": true,
@@ -219,7 +219,7 @@
           "parameters": [
             {
               "name": "X-Clinic-Id",
-              "value": "cb69eb9f-b773-4ce6-9182-4cdb7e96c509"
+              "value": "CONFIGURE_ORGANIZATION_ID"
             }
           ]
         },
@@ -241,7 +241,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const slots = $json.availableTimes ?? [];\nconst timezone = $json.timezone || 'America/Bahia';\nconst availableTimes = slots.map((iso) => new Intl.DateTimeFormat('pt-BR', { timeZone: timezone, hour: '2-digit', minute: '2-digit' }).format(new Date(iso)));\nconst decision = $('Atendimento Core determinístico').item.json;\nconst formatDate = (value) => {\n  const [year, month, day] = String(value).split('-');\n  return `${day}/${month}/${year}`;\n};\nconst requestedDate = formatDate($json.requestedDate ?? decision.date);\nconst availableDate = formatDate($json.date ?? decision.date);\nconst professionalName = decision.professionalName ?? 'o profissional selecionado';\nlet reply;\nif (availableTimes.length && $json.foundNextDate) {\n  reply = `Não encontrei horários para ${professionalName} em ${requestedDate}. A próxima data disponível é ${availableDate}, com estes horários:\\n\\n${availableTimes.join(', ')}\\n\\nQual horário você gostaria de escolher?`;\n} else if (availableTimes.length) {\n  reply = `Para ${availableDate}, ${professionalName} possui estes horários disponíveis:\\n\\n${availableTimes.join(', ')}\\n\\nQual horário você gostaria de escolher?`;\n} else {\n  reply = `Não encontrei horários disponíveis para ${professionalName} entre ${requestedDate} e os próximos 60 dias. Deseja escolher outro profissional?`;\n}\nconst phone = String($('Receber mensagem WhatsApp').item.json.messages?.[0]?.from ?? '');\nconst state = $getWorkflowStaticData('global');\nif (phone && state.sessions?.[phone] && $json.availableTimes?.length) {\n  state.sessions[phone].fields.date = $json.date;\n}\nreturn [{ json: { reply } }];"
+        "jsCode": "const slots = $json.availableTimes ?? [];\nconst timezone = $json.timezone || 'America/Bahia';\nconst availableTimes = slots.map((iso) => new Intl.DateTimeFormat('pt-BR', { timeZone: timezone, hour: '2-digit', minute: '2-digit' }).format(new Date(iso)));\nconst decision = $('Atendimento Core determinístico').item.json;\nconst formatDate = (value) => {\n  const [year, month, day] = String(value).split('-');\n  return `${day}/${month}/${year}`;\n};\nconst requestedDate = formatDate($json.requestedDate ?? decision.date);\nconst availableDate = formatDate($json.date ?? decision.date);\nconst professionalName = decision.professionalName ?? 'o profissional selecionado';\nlet reply;\nif ($json.code === 'past_date') {\n  reply = 'A data informada já passou. Por favor, informe uma data a partir de hoje.';\n} else if (availableTimes.length && $json.foundNextDate) {\n  reply = `Não encontrei horários para ${professionalName} em ${requestedDate}. A próxima data disponível é ${availableDate}, com estes horários:\\n\\n${availableTimes.join(', ')}\\n\\nQual horário você gostaria de escolher?`;\n} else if (availableTimes.length) {\n  reply = `Para ${availableDate}, ${professionalName} possui estes horários disponíveis:\\n\\n${availableTimes.join(', ')}\\n\\nQual horário você gostaria de escolher?`;\n} else {\n  reply = `Não encontrei horários disponíveis para ${professionalName} entre ${requestedDate} e os próximos 60 dias. Deseja escolher outro profissional?`;\n}\nconst phone = String($('Receber mensagem WhatsApp').item.json.messages?.[0]?.from ?? '');\nconst state = $getWorkflowStaticData('global');\nif (phone && state.sessions?.[phone] && $json.availableTimes?.length) {\n  state.sessions[phone].fields.date = $json.date;\n}\nreturn [{ json: { reply } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -255,7 +255,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://aggenda-virid.vercel.app/api/n8n/clients/find-or-create",
+        "url": "https://www.aggenda.app.br/api/n8n/clients/find-or-create",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -263,7 +263,7 @@
           "parameters": [
             {
               "name": "X-Clinic-Id",
-              "value": "cb69eb9f-b773-4ce6-9182-4cdb7e96c509"
+              "value": "CONFIGURE_ORGANIZATION_ID"
             }
           ]
         },
@@ -307,7 +307,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://aggenda-virid.vercel.app/api/n8n/appointments",
+        "url": "https://www.aggenda.app.br/api/n8n/appointments",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -315,7 +315,7 @@
           "parameters": [
             {
               "name": "X-Clinic-Id",
-              "value": "cb69eb9f-b773-4ce6-9182-4cdb7e96c509"
+              "value": "CONFIGURE_ORGANIZATION_ID"
             }
           ]
         },
@@ -353,7 +353,7 @@
     },
     {
       "parameters": {
-        "url": "https://aggenda-virid.vercel.app/api/n8n/services",
+        "url": "https://www.aggenda.app.br/api/n8n/services",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -361,7 +361,7 @@
           "parameters": [
             {
               "name": "X-Clinic-Id",
-              "value": "cb69eb9f-b773-4ce6-9182-4cdb7e96c509"
+              "value": "CONFIGURE_ORGANIZATION_ID"
             }
           ]
         },
@@ -391,7 +391,7 @@
         520,
         16
       ],
-      "id": "fca82560-ab09-4c9d-bd13-288eace891f8",
+      "id": "7bbc9113-3d49-4f66-83c8-6ce71dd03310",
       "name": "Atendimento Core determinístico"
     }
   ],
@@ -526,7 +526,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "7fe6bc6c-8d56-4d57-b7ae-0720237d3d07",
+  "versionId": "1e84e1af-6608-4221-8395-a0ef8ddb3e62",
   "staticData": null,
   "tags": [],
   "description": "Produto CORE. Recursos: chat.menus, core.native_scheduling. Gerado de Aggenda - Chatbot - corrigido.json."

@@ -10,8 +10,9 @@ Falhas temporárias deixam o evento pendente para nova tentativa.
 Meta -> /api/webhooks/whatsapp -> Neon Outbox -> worker Coolify -> n8n
 ```
 
-O worker também reconhece o evento `whatsapp.message.send` para envio direto
-pela Cloud API. Isso será usado pelo agente nativo em uma etapa posterior.
+O worker também reconhece `whatsapp.message.send` para envio direto pela Cloud
+API e `whatsapp.template.send` para confirmações, reagendamentos, cancelamentos
+e lembretes transacionais aprovados pela Meta.
 
 ## 1. Banco
 

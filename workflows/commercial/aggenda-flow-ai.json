@@ -140,7 +140,7 @@
         850,
         120
       ],
-      "id": "d57298ff-b89f-4058-996b-ada230259ee9",
+      "id": "5dbff01c-892d-4f88-888b-93707e44a51e",
       "name": "Executar automação publicada"
     },
     {
@@ -153,7 +153,7 @@
         1060,
         120
       ],
-      "id": "cb4e6044-3c88-4a41-9288-b115e5d4548a",
+      "id": "8dba61ce-bb95-4fcf-bc83-41fb7df4e8ca",
       "name": "Confirmar resultado do fluxo"
     },
     {
@@ -215,7 +215,7 @@
         650,
         0
       ],
-      "id": "6fffc613-bb54-4acd-b592-f4ce12984eaa",
+      "id": "edd133b9-9afa-463b-aa8c-ce1f03bb60ab",
       "name": "Rotear automação"
     }
   ],
@@ -321,7 +321,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "8b439feb-e2be-4d8b-8af2-ad00154d4691",
+  "versionId": "db82009c-5c74-41b2-82a4-d10fe3c315ed",
   "staticData": null,
   "tags": [],
   "description": "Produto FLOW_AI. Recursos: chat.menus, flow.webhooks, flow.retries, ai.natural_language, ai.tool_calling. Gerado de Aggenda - Chatbot - corrigido.json."

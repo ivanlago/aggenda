@@ -1,4 +1,4 @@
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -24,6 +24,18 @@ export async function GET(request: NextRequest) {
   const auth = await requireN8nOrganization(request);
   if ("error" in auth) return auth.error;
 
+  const phone = request.nextUrl.searchParams.get("phone")?.replace(/\D/g, "");
+  const clientId = request.nextUrl.searchParams.get("clientId");
+  const conditions = [
+    eq(appointments.organizationId, auth.organization.id),
+    gte(appointments.startsAt, new Date()),
+  ];
+  if (phone) {
+    const nationalPhone = phone.startsWith("55") ? phone.slice(2) : phone;
+    conditions.push(sql`regexp_replace(coalesce(${clients.phone}, ''), '\\D', '', 'g') in (${phone}, ${nationalPhone})`);
+  }
+  if (clientId) conditions.push(eq(clients.id, clientId));
+
   const items = await db.select({
     id: appointments.id,
     startsAt: appointments.startsAt,
@@ -40,10 +52,7 @@ export async function GET(request: NextRequest) {
     .innerJoin(clients, eq(clients.id, appointments.clientId))
     .innerJoin(services, eq(services.id, appointments.serviceId))
     .leftJoin(professionals, eq(professionals.id, appointments.professionalId))
-    .where(and(
-      eq(appointments.organizationId, auth.organization.id),
-      gte(appointments.startsAt, new Date())
-    ))
+    .where(and(...conditions))
     .orderBy(appointments.startsAt);
 
   return NextResponse.json({

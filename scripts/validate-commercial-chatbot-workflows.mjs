@@ -35,6 +35,24 @@ for (const filename of files) {
   if (workflow.active !== false) errors.push(`${filename}: deve ser importado inativo`);
   if (!nameSet.has("Receber mensagem WhatsApp")) errors.push(`${filename}: trigger ausente`);
   if (!nameSet.has("Send message")) errors.push(`${filename}: envio ausente`);
+  const serialized = JSON.stringify(workflow);
+  if (serialized.includes("aggenda-virid.vercel.app")) {
+    errors.push(`${filename}: endpoint de homologação antigo encontrado`);
+  }
+  if (serialized.includes("cb69eb9f-b773-4ce6-9182-4cdb7e96c509")) {
+    errors.push(`${filename}: tenant de demonstração encontrado`);
+  }
+  if (filename === "aggenda-core-ai.json") {
+    for (const capability of [
+      "list_appointments",
+      "reschedule_appointment",
+      "cancel_appointment",
+      "Listar agendamentos do cliente",
+      "Alterar agendamento confirmado",
+    ]) {
+      if (!serialized.includes(capability)) errors.push(`${filename}: capacidade ausente (${capability})`);
+    }
+  }
 
   for (const [source, connection] of Object.entries(workflow.connections ?? {})) {
     if (!nameSet.has(source)) errors.push(`${filename}: conexão parte de nó ausente (${source})`);

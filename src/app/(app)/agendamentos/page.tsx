@@ -130,11 +130,18 @@ export default async function AppointmentsPage() {
                 </div>
                 {item.clientPhone && (() => {
                   const formattedDate = formatOrganizationDateTime(item.startsAt, organization.timezone);
+                  const professionalMessage = item.professional ? ` Profissional: ${item.professional}.` : "";
+                  const cancellationMessage = item.cancellationReason
+                    ? ` Motivo: ${item.cancellationReason}.`
+                    : "";
+                  const message = item.status === "cancelled"
+                    ? `Olá, ${item.client}! Seu ${organization.appointmentLabel.toLowerCase()} de ${item.service}, previsto para ${formattedDate}, foi cancelado.${cancellationMessage}`
+                    : `Olá, ${item.client}! Seu ${organization.appointmentLabel.toLowerCase()} de ${item.service} está marcado para ${formattedDate}.${professionalMessage}`;
                   const href = whatsappLink(
                     item.clientPhone,
-                    `Olá, ${item.client}! Seu ${organization.appointmentLabel.toLowerCase()} de ${item.service} está marcado para ${formattedDate}.${item.professional ? ` Profissional: ${item.professional}.` : ""}`,
+                    message,
                   );
-                  return href ? <a className="mt-3 inline-flex rounded-xl border px-3 py-2 text-xs font-extrabold text-brand transition hover:bg-[#edf7f1]" href={href} target="_blank" rel="noreferrer">Enviar pelo WhatsApp</a> : null;
+                  return href ? <a className="mt-3 inline-flex rounded-xl border px-3 py-2 text-xs font-extrabold text-brand transition hover:bg-[#edf7f1]" href={href} target="_blank" rel="noreferrer">{item.status === "cancelled" ? "Enviar cancelamento pelo WhatsApp" : "Enviar pelo WhatsApp"}</a> : null;
                 })()}
                 <details className="mt-3">
                   <summary className="cursor-pointer text-xs font-extrabold text-brand">

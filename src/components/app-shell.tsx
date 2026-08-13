@@ -14,6 +14,7 @@ import {
   WalletCards,
   Bot,
   Rocket,
+  KanbanSquare,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -41,6 +42,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   }> = [
     { href: "/dashboard", label: "Visão geral", icon: LayoutDashboard, permission: "organization.read" },
     { href: "/implantacao", label: "Implantação guiada", icon: Rocket, permission: "organization.read" },
+    { href: "/crm", label: "CRM comercial", icon: KanbanSquare, permission: "crm.read" },
     {
       href: "/agendamentos",
       label: organization.appointmentLabelPlural,

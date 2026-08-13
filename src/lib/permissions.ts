@@ -20,6 +20,8 @@ export const organizationPermissions = [
   "integrations.manage",
   "finance.read",
   "finance.manage",
+  "crm.read",
+  "crm.manage",
 ] as const;
 
 export type OrganizationPermission = (typeof organizationPermissions)[number];
@@ -41,6 +43,7 @@ const operationalRead: OrganizationPermission[] = [
   "services.read",
   "appointments.read",
   "availability.read",
+  "crm.read",
 ];
 
 const rolePermissions: Record<OrganizationRole, ReadonlySet<OrganizationPermission>> = {
@@ -58,12 +61,14 @@ const rolePermissions: Record<OrganizationRole, ReadonlySet<OrganizationPermissi
     "finance.read",
     "finance.manage",
     "chat.inbox",
+    "crm.manage",
   ]),
   receptionist: new Set([
     ...operationalRead,
     "clients.manage",
     "appointments.manage",
     "chat.inbox",
+    "crm.manage",
   ]),
   professional: new Set([
     "organization.read",

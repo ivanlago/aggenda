@@ -80,6 +80,9 @@ export const chatMessageStatusEnum = pgEnum("chat_message_status", [
   "read",
   "failed",
 ]);
+export const crmLeadStatusEnum = pgEnum("crm_lead_status", ["open", "converted", "archived"]);
+export const crmOpportunityStatusEnum = pgEnum("crm_opportunity_status", ["open", "won", "lost"]);
+export const crmTaskTypeEnum = pgEnum("crm_task_type", ["follow_up", "call", "message", "meeting", "proposal", "other"]);
 
 export const professions = pgTable("professions", {
   id: text("id").primaryKey(),
@@ -597,6 +600,113 @@ export const clientHistoryEntries = pgTable(
   (table) => [
     index("client_history_entries_client_idx").on(table.clientId, table.occurredAt),
     index("client_history_entries_org_idx").on(table.organizationId),
+  ]
+);
+
+export const crmPipelines = pgTable(
+  "crm_pipelines",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    isDefault: boolean("is_default").default(false).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [index("crm_pipelines_org_idx").on(table.organizationId)]
+);
+
+export const crmStages = pgTable(
+  "crm_stages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    pipelineId: uuid("pipeline_id").notNull().references(() => crmPipelines.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    position: integer("position").notNull(),
+    probability: integer("probability").default(0).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("crm_stages_pipeline_position_unique").on(table.pipelineId, table.position),
+    index("crm_stages_org_idx").on(table.organizationId),
+  ]
+);
+
+export const crmLeads = pgTable(
+  "crm_leads",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
+    assignedUserId: text("assigned_user_id").references(() => users.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    phone: text("phone"),
+    email: text("email"),
+    company: text("company"),
+    source: text("source").default("manual").notNull(),
+    status: crmLeadStatusEnum("status").default("open").notNull(),
+    notes: text("notes"),
+    convertedAt: timestamp("converted_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("crm_leads_org_status_idx").on(table.organizationId, table.status),
+    index("crm_leads_assigned_idx").on(table.assignedUserId),
+    index("crm_leads_phone_idx").on(table.organizationId, table.phone),
+  ]
+);
+
+export const crmOpportunities = pgTable(
+  "crm_opportunities",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    leadId: uuid("lead_id").references(() => crmLeads.id, { onDelete: "set null" }),
+    clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
+    pipelineId: uuid("pipeline_id").notNull().references(() => crmPipelines.id, { onDelete: "restrict" }),
+    stageId: uuid("stage_id").notNull().references(() => crmStages.id, { onDelete: "restrict" }),
+    assignedUserId: text("assigned_user_id").references(() => users.id, { onDelete: "set null" }),
+    title: text("title").notNull(),
+    valueInCents: integer("value_in_cents"),
+    source: text("source").default("manual").notNull(),
+    status: crmOpportunityStatusEnum("status").default("open").notNull(),
+    expectedCloseDate: date("expected_close_date", { mode: "string" }),
+    nextActionAt: timestamp("next_action_at"),
+    lostReason: text("lost_reason"),
+    closedAt: timestamp("closed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("crm_opportunities_org_stage_idx").on(table.organizationId, table.stageId),
+    index("crm_opportunities_org_status_idx").on(table.organizationId, table.status),
+    index("crm_opportunities_assigned_idx").on(table.assignedUserId),
+  ]
+);
+
+export const crmTasks = pgTable(
+  "crm_tasks",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    leadId: uuid("lead_id").references(() => crmLeads.id, { onDelete: "cascade" }),
+    opportunityId: uuid("opportunity_id").references(() => crmOpportunities.id, { onDelete: "cascade" }),
+    assignedUserId: text("assigned_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdByUserId: text("created_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    type: crmTaskTypeEnum("type").default("follow_up").notNull(),
+    title: text("title").notNull(),
+    notes: text("notes"),
+    dueAt: timestamp("due_at").notNull(),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("crm_tasks_org_due_idx").on(table.organizationId, table.dueAt),
+    index("crm_tasks_opportunity_idx").on(table.opportunityId),
   ]
 );
 

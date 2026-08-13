@@ -8,6 +8,8 @@ import { db } from "@/db";
 import {
   appointments,
   clients,
+  crmPipelines,
+  crmStages,
   clientPackageBalances,
   clientPackages,
   financialEntries,
@@ -139,6 +141,19 @@ export async function createOrganization(formData: FormData) {
       status: "trialing",
       trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
+
+    const [pipeline] = await tx.insert(crmPipelines).values({
+      organizationId: organization.id,
+      name: "Funil comercial",
+      isDefault: true,
+    }).returning({ id: crmPipelines.id });
+    await tx.insert(crmStages).values([
+      { organizationId: organization.id, pipelineId: pipeline.id, name: "Novo contato", position: 1, probability: 10 },
+      { organizationId: organization.id, pipelineId: pipeline.id, name: "Qualificado", position: 2, probability: 30 },
+      { organizationId: organization.id, pipelineId: pipeline.id, name: "Demonstração", position: 3, probability: 50 },
+      { organizationId: organization.id, pipelineId: pipeline.id, name: "Proposta", position: 4, probability: 70 },
+      { organizationId: organization.id, pipelineId: pipeline.id, name: "Negociação", position: 5, probability: 85 },
+    ]);
   });
 
   const requestedNext = textValue(formData, "next");

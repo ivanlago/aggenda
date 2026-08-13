@@ -51,6 +51,25 @@ input:disabled {
   cursor: not-allowed;
 }
 
+main a[href]:not(.primary-button):not(.secondary-button):not(.icon-button):not(.panel):not([class*="rounded-"]) {
+  text-decoration-color: transparent;
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.22em;
+  transition: color 160ms ease, text-decoration-color 160ms ease;
+}
+
+main a[href]:not(.primary-button):not(.secondary-button):not(.icon-button):not(.panel):not([class*="rounded-"]):hover {
+  color: var(--brand);
+  text-decoration-color: currentColor;
+}
+
+a[href]:focus-visible {
+  border-radius: 0.25rem;
+  outline: 3px solid color-mix(in srgb, var(--brand) 35%, transparent);
+  outline-offset: 3px;
+}
+
 ::selection {
   background: var(--accent);
   color: var(--brand-dark);
@@ -79,6 +98,10 @@ input:disabled {
 
   .primary-button {
     @apply rounded-xl bg-brand px-5 py-3 text-sm font-extrabold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .secondary-button {
+    @apply inline-flex items-center justify-center rounded-xl border border-brand px-4 py-2.5 text-sm font-extrabold text-brand transition hover:bg-brand hover:text-white;
   }
 
   .icon-button {

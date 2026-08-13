@@ -1,122 +1,51 @@
-import { and, eq, gte, lt, or } from "drizzle-orm";
-import { ArrowDownCircle, ArrowUpCircle, Download, Trash2, WalletCards } from "lucide-react";
+import { asc, eq } from "drizzle-orm";
+import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, CalendarRange, Download, Trash2, WalletCards } from "lucide-react";
 import Link from "next/link";
 
-import {
-  createFinancialEntry,
-  deleteFinancialEntry,
-  updateFinancialEntryStatus,
-} from "@/actions/app";
+import { createFinancialAccount, createFinancialCategory, createFinancialCostCenter, createFinancialEntry, deleteFinancialEntry, updateFinancialEntryStatus } from "@/actions/app";
 import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
-import { financialEntries } from "@/db/schema";
+import { financialAccounts, financialCategories, financialCostCenters, financialEntries } from "@/db/schema";
 import { organizationDate } from "@/lib/appointment-safety";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
 export const metadata = { title: "Fluxo de caixa" };
+const money = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const addDays = (date: string, days: number) => { const value = new Date(`${date}T12:00:00Z`); value.setUTCDate(value.getUTCDate() + days); return value.toISOString().slice(0, 10); };
+const sourceLabels: Record<string, string> = { manual: "Manual", appointment: "Agendamento", package: "Pacote", installment: "Parcelado", recurring: "Recorrente" };
 
-const money = (value: number) =>
-  (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+export default async function FinancePage({ searchParams }: { searchParams: Promise<{ mes?: string; status?: string; tipo?: string; conta?: string; categoria?: string }> }) {
+  const { organization } = await requireOrganization(); const query = await searchParams;
+  const today = organizationDate(new Date(), organization.timezone); const currentMonth = today.slice(0, 7); const month = /^\d{4}-\d{2}$/.test(query.mes ?? "") ? query.mes! : currentMonth;
+  const [year, monthNumber] = month.split("-").map(Number); const nextMonthDate = new Date(Date.UTC(year, monthNumber, 1)); const nextMonth = `${nextMonthDate.getUTCFullYear()}-${String(nextMonthDate.getUTCMonth() + 1).padStart(2, "0")}`;
+  const firstDay = `${month}-01`; const nextFirstDay = `${nextMonth}-01`; const horizon90 = addDays(today, 90); const canManage = hasOrganizationPermission(organization.role, "finance.manage");
+  const [allEntries, accounts, categories, costCenters] = await Promise.all([
+    db.select().from(financialEntries).where(eq(financialEntries.organizationId, organization.id)).orderBy(asc(financialEntries.dueDate)),
+    db.select().from(financialAccounts).where(eq(financialAccounts.organizationId, organization.id)).orderBy(asc(financialAccounts.name)),
+    db.select().from(financialCategories).where(eq(financialCategories.organizationId, organization.id)).orderBy(asc(financialCategories.name)),
+    db.select().from(financialCostCenters).where(eq(financialCostCenters.organizationId, organization.id)).orderBy(asc(financialCostCenters.name)),
+  ]);
+  const matches = (entry: typeof allEntries[number]) => (!query.status || query.status === "all" || (query.status === "overdue" ? entry.status === "pending" && entry.dueDate < today : entry.status === query.status)) && (!query.tipo || query.tipo === "all" || entry.type === query.tipo) && (!query.conta || query.conta === "all" || entry.accountId === query.conta) && (!query.categoria || query.categoria === "all" || entry.categoryId === query.categoria);
+  const entries = allEntries.filter((entry) => ((entry.dueDate >= firstDay && entry.dueDate < nextFirstDay) || Boolean(entry.realizedDate && entry.realizedDate >= firstDay && entry.realizedDate < nextFirstDay)) && matches(entry));
+  const realized = allEntries.filter((entry) => entry.realizedDate && entry.realizedDate >= firstDay && entry.realizedDate < nextFirstDay);
+  const due = allEntries.filter((entry) => entry.dueDate >= firstDay && entry.dueDate < nextFirstDay && entry.status === "pending");
+  const received = realized.filter((entry) => entry.type === "receivable" && entry.status === "received").reduce((sum, entry) => sum + entry.amountInCents, 0); const paid = realized.filter((entry) => entry.type === "payable" && entry.status === "paid").reduce((sum, entry) => sum + entry.amountInCents, 0);
+  const receivable = due.filter((entry) => entry.type === "receivable").reduce((sum, entry) => sum + entry.amountInCents, 0); const payable = due.filter((entry) => entry.type === "payable").reduce((sum, entry) => sum + entry.amountInCents, 0);
+  const overdue = allEntries.filter((entry) => entry.status === "pending" && entry.dueDate < today); const overdueValue = overdue.reduce((sum, entry) => sum + (entry.type === "receivable" ? entry.amountInCents : -entry.amountInCents), 0);
+  const projections = [30, 60, 90].map((days) => { const end = addDays(today, days); const pending = allEntries.filter((entry) => entry.status === "pending" && entry.dueDate >= today && entry.dueDate <= end); return { days, incoming: pending.filter((entry) => entry.type === "receivable").reduce((sum, entry) => sum + entry.amountInCents, 0), outgoing: pending.filter((entry) => entry.type === "payable").reduce((sum, entry) => sum + entry.amountInCents, 0) }; });
 
-const sourceLabels: Record<string, string> = {
-  manual: "Manual",
-  appointment: "Agendamento",
-  package: "Pacote",
-};
+  return <div className="page-wrap"><PageHeader eyebrow="Financeiro" title="Fluxo de caixa" description="Contas a pagar e receber, vencimentos e previsibilidade financeira da operação." />
+    <form method="get" className="panel mb-5 grid gap-3 md:grid-cols-3 xl:grid-cols-6"><label className="grid gap-1 text-xs font-bold">Período<input className="field" type="month" name="mes" defaultValue={month} /></label><label className="grid gap-1 text-xs font-bold">Situação<select className="field" name="status" defaultValue={query.status ?? "all"}><option value="all">Todas</option><option value="pending">Pendentes</option><option value="overdue">Vencidas</option><option value="paid">Pagas</option><option value="received">Recebidas</option><option value="cancelled">Canceladas</option></select></label><label className="grid gap-1 text-xs font-bold">Tipo<select className="field" name="tipo" defaultValue={query.tipo ?? "all"}><option value="all">Todos</option><option value="receivable">A receber</option><option value="payable">A pagar</option></select></label><label className="grid gap-1 text-xs font-bold">Conta<select className="field" name="conta" defaultValue={query.conta ?? "all"}><option value="all">Todas</option>{accounts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="grid gap-1 text-xs font-bold">Categoria<select className="field" name="categoria" defaultValue={query.categoria ?? "all"}><option value="all">Todas</option>{categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><button className="primary-button self-end">Filtrar</button><a className="secondary-button" href={`/api/finance/report?mes=${month}`}><Download className="mr-2 size-4" />Extrato PDF</a>{month !== currentMonth && <Link className="self-center text-sm font-bold text-brand" href="/financeiro">Mês atual</Link>}</form>
 
-export default async function FinancePage({
-  searchParams,
-}: {
-  searchParams: Promise<{ mes?: string }>;
-}) {
-  const { organization } = await requireOrganization();
-  const query = await searchParams;
-  const currentMonth = organizationDate(new Date(), organization.timezone).slice(0, 7);
-  const month = /^\d{4}-\d{2}$/.test(query.mes ?? "") ? query.mes! : currentMonth;
-  const [year, monthNumber] = month.split("-").map(Number);
-  const nextMonthDate = new Date(Date.UTC(year, monthNumber, 1));
-  const nextMonth = `${nextMonthDate.getUTCFullYear()}-${String(nextMonthDate.getUTCMonth() + 1).padStart(2, "0")}`;
-  const firstDay = `${month}-01`;
-  const nextFirstDay = `${nextMonth}-01`;
-  const canManage = hasOrganizationPermission(organization.role, "finance.manage");
+    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5"><article className="panel"><ArrowUpCircle className="size-5 text-emerald-600" /><p className="mt-4 text-sm text-muted">Recebido</p><p className="text-2xl font-extrabold text-emerald-700">{money(received)}</p></article><article className="panel"><ArrowDownCircle className="size-5 text-red-600" /><p className="mt-4 text-sm text-muted">Pago</p><p className="text-2xl font-extrabold text-red-700">{money(paid)}</p></article><article className="panel"><WalletCards className="size-5 text-brand" /><p className="mt-4 text-sm text-muted">Saldo realizado</p><p className="text-2xl font-extrabold">{money(received - paid)}</p></article><article className="panel"><CalendarRange className="size-5 text-amber-600" /><p className="mt-4 text-sm text-muted">Saldo previsto</p><p className="text-2xl font-extrabold">{money(receivable - payable)}</p></article><article className="panel"><AlertTriangle className="size-5 text-red-600" /><p className="mt-4 text-sm text-muted">Vencidos ({overdue.length})</p><p className="text-2xl font-extrabold">{money(overdueValue)}</p></article></section>
 
-  const entries = await db.select().from(financialEntries).where(and(
-    eq(financialEntries.organizationId, organization.id),
-    or(
-      and(gte(financialEntries.dueDate, firstDay), lt(financialEntries.dueDate, nextFirstDay)),
-      and(gte(financialEntries.realizedDate, firstDay), lt(financialEntries.realizedDate, nextFirstDay))
-    )
-  )).orderBy(financialEntries.dueDate, financialEntries.createdAt);
+    <section className="panel mt-5"><h2 className="text-lg font-extrabold">Projeção de caixa</h2><p className="text-sm text-muted">Compromissos pendentes cadastrados até {new Date(`${horizon90}T12:00:00Z`).toLocaleDateString("pt-BR")}.</p><div className="mt-4 grid gap-4 md:grid-cols-3">{projections.map((item) => <article className="rounded-2xl border p-4" key={item.days}><p className="font-extrabold">Próximos {item.days} dias</p><p className="mt-3 text-sm text-emerald-700">Entradas {money(item.incoming)}</p><p className="text-sm text-red-700">Saídas {money(item.outgoing)}</p><p className="mt-2 text-xl font-extrabold">{money(item.incoming - item.outgoing)}</p></article>)}</div></section>
 
-  const dueThisMonth = entries.filter((entry) => entry.dueDate >= firstDay && entry.dueDate < nextFirstDay);
-  const realizedThisMonth = entries.filter((entry) => entry.realizedDate && entry.realizedDate >= firstDay && entry.realizedDate < nextFirstDay);
-  const received = realizedThisMonth.filter((entry) => entry.type === "receivable" && entry.status === "received").reduce((sum, entry) => sum + entry.amountInCents, 0);
-  const paid = realizedThisMonth.filter((entry) => entry.type === "payable" && entry.status === "paid").reduce((sum, entry) => sum + entry.amountInCents, 0);
-  const receivable = dueThisMonth.filter((entry) => entry.type === "receivable" && entry.status === "pending").reduce((sum, entry) => sum + entry.amountInCents, 0);
-  const payable = dueThisMonth.filter((entry) => entry.type === "payable" && entry.status === "pending").reduce((sum, entry) => sum + entry.amountInCents, 0);
+    {canManage && <><details className="panel mt-5"><summary className="font-extrabold text-brand">Configurar contas, categorias e centros de custo</summary><div className="mt-5 grid gap-5 lg:grid-cols-3"><ActionForm action={createFinancialAccount} successMessage="Conta criada." className="grid gap-3"><h3 className="font-bold">Nova conta ou caixa</h3><input className="field" name="name" required placeholder="Ex.: Banco principal" /><select className="field" name="accountType"><option value="bank">Conta bancária</option><option value="cash">Caixa físico</option><option value="digital_wallet">Carteira digital</option></select><input className="field" name="openingBalance" inputMode="decimal" placeholder="Saldo inicial" /><button className="secondary-button">Criar conta</button></ActionForm><ActionForm action={createFinancialCategory} successMessage="Categoria criada." className="grid gap-3"><h3 className="font-bold">Nova categoria</h3><input className="field" name="name" required placeholder="Ex.: Aluguel" /><select className="field" name="type"><option value="payable">Despesa</option><option value="receivable">Receita</option></select><button className="secondary-button">Criar categoria</button></ActionForm><ActionForm action={createFinancialCostCenter} successMessage="Centro de custo criado." className="grid content-start gap-3"><h3 className="font-bold">Novo centro de custo</h3><input className="field" name="name" required placeholder="Ex.: Unidade Centro" /><button className="secondary-button">Criar centro</button></ActionForm></div></details>
+    <ActionForm action={createFinancialEntry} successMessage="Lançamento financeiro criado." className="panel form-stack mt-5"><h2 className="text-lg font-extrabold">Novo lançamento</h2><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3"><select className="field" name="type" required defaultValue="receivable"><option value="receivable">Conta a receber</option><option value="payable">Conta a pagar</option></select><input className="field" name="description" required placeholder="Descrição" /><input className="field" name="amount" inputMode="decimal" required placeholder="Valor total (R$)" /><label className="grid gap-1 text-xs font-bold">Vencimento<input className="field" name="dueDate" type="date" required defaultValue={`${month}-01`} /></label><select className="field" name="accountId"><option value="">Conta/caixa não informado</option>{accounts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select className="field" name="categoryId"><option value="">Categoria não informada</option>{categories.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.type === "payable" ? "despesa" : "receita"})</option>)}</select><select className="field" name="costCenterId"><option value="">Centro de custo não informado</option>{costCenters.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select className="field" name="paymentMethod"><option value="">Forma de pagamento</option><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="credit_card">Cartão de crédito</option><option value="debit_card">Cartão de débito</option><option value="bank_transfer">Transferência</option><option value="boleto">Boleto</option><option value="other">Outra</option></select><label className="grid gap-1 text-xs font-bold">Número de parcelas<input className="field" name="installmentCount" type="number" min="1" max="60" defaultValue="1" /></label><label className="grid gap-1 text-xs font-bold">Repetir por quantos meses<input className="field" name="recurrenceMonths" type="number" min="1" max="60" defaultValue="1" /></label></div><textarea className="field min-h-20" name="notes" placeholder="Observações" /><label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" name="realized" /> Primeira competência já foi paga/recebida</label><button className="primary-button sm:w-fit">Adicionar lançamento</button></ActionForm></>}
 
-  return (
-    <div className="page-wrap">
-      <PageHeader eyebrow="Financeiro" title="Fluxo de caixa" description="Acompanhe entradas, saídas e previsões geradas pela operação do Aggenda." />
-      <form method="get" className="panel mb-5 flex flex-wrap items-end gap-3">
-        <label className="grid gap-2 text-sm font-bold">Período<input className="field" type="month" name="mes" defaultValue={month} /></label>
-        <button className="primary-button py-3">Visualizar</button>
-        <a className="inline-flex items-center gap-2 rounded-xl border border-brand px-4 py-3 text-sm font-extrabold text-brand transition hover:bg-brand hover:text-white" href={`/api/finance/report?mes=${month}`}>
-          <Download className="size-4" /> Baixar extrato em PDF
-        </a>
-        {month !== currentMonth && <Link className="text-sm font-bold text-brand underline" href="/financeiro">Voltar ao mês atual</Link>}
-      </form>
-
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <article className="panel"><ArrowUpCircle className="size-5 text-emerald-600" /><p className="mt-5 text-sm text-muted">Recebido</p><p className="mt-1 text-2xl font-extrabold text-emerald-700">{money(received)}</p></article>
-        <article className="panel"><ArrowDownCircle className="size-5 text-red-600" /><p className="mt-5 text-sm text-muted">Pago</p><p className="mt-1 text-2xl font-extrabold text-red-700">{money(paid)}</p></article>
-        <article className="panel"><WalletCards className="size-5 text-brand" /><p className="mt-5 text-sm text-muted">Saldo realizado</p><p className="mt-1 text-2xl font-extrabold">{money(received - paid)}</p></article>
-        <article className="panel"><WalletCards className="size-5 text-amber-600" /><p className="mt-5 text-sm text-muted">Saldo previsto</p><p className="mt-1 text-2xl font-extrabold">{money(receivable - payable)}</p><p className="mt-1 text-xs text-muted">A receber {money(receivable)} · a pagar {money(payable)}</p></article>
-      </section>
-
-      {canManage && <ActionForm action={createFinancialEntry} successMessage="Lançamento financeiro criado." className="panel form-stack mt-5">
-        <h2 className="text-lg font-extrabold">Novo lançamento manual</h2>
-        <div className="grid gap-3 md:grid-cols-2">
-          <select className="field" name="type" required defaultValue="receivable"><option value="receivable">Conta a receber</option><option value="payable">Conta a pagar</option></select>
-          <input className="field" name="description" required placeholder="Descrição" />
-          <input className="field" name="category" placeholder="Categoria (ex.: Aluguel, Materiais)" />
-          <input className="field" name="amount" inputMode="decimal" required placeholder="Valor (ex.: 350,00)" />
-          <label className="grid gap-2 text-sm font-bold">Vencimento<input className="field" name="dueDate" type="date" required defaultValue={`${month}-01`} /></label>
-          <select className="field" name="paymentMethod" defaultValue=""><option value="">Forma de pagamento</option><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="credit_card">Cartão de crédito</option><option value="debit_card">Cartão de débito</option><option value="bank_transfer">Transferência</option><option value="boleto">Boleto</option><option value="other">Outra</option></select>
-        </div>
-        <textarea className="field min-h-20" name="notes" placeholder="Observações" />
-        <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" name="realized" /> Já foi pago/recebido</label>
-        <button className="primary-button sm:w-fit">Adicionar lançamento</button>
-      </ActionForm>}
-
-      <section className="panel mt-5">
-        <h2 className="text-lg font-extrabold">Lançamentos do período</h2>
-        <div className="mt-4 divide-y">
-          {entries.map((entry) => {
-            const realized = entry.status === "paid" || entry.status === "received";
-            return <article key={entry.id} className="grid gap-3 py-4 lg:grid-cols-[1fr_auto_auto] lg:items-center">
-              <div>
-                <p className="font-extrabold">{entry.description}</p>
-                <p className="mt-1 text-xs text-muted">{entry.category || "Sem categoria"} · {sourceLabels[entry.source] ?? entry.source} · vencimento {new Date(`${entry.dueDate}T12:00:00Z`).toLocaleDateString("pt-BR")}</p>
-                {entry.realizedDate && <p className="mt-1 text-xs font-bold text-brand">{entry.type === "payable" ? "Pago" : "Recebido"} em {new Date(`${entry.realizedDate}T12:00:00Z`).toLocaleDateString("pt-BR")}</p>}
-              </div>
-              <div className="lg:text-right"><p className={`font-extrabold ${entry.type === "receivable" ? "text-emerald-700" : "text-red-700"}`}>{entry.type === "receivable" ? "+" : "−"} {money(entry.amountInCents)}</p><span className="status-pill">{entry.status === "pending" ? "Pendente" : entry.status === "cancelled" ? "Cancelado" : entry.type === "payable" ? "Pago" : "Recebido"}</span></div>
-              {canManage && <div className="flex items-center gap-2">
-                <ActionForm action={updateFinancialEntryStatus} successMessage="Lançamento atualizado." className="flex flex-wrap gap-2">
-                  <input type="hidden" name="id" value={entry.id} />
-                  <select className="field py-2" name="status" defaultValue={realized ? "realized" : entry.status}><option value="pending">Pendente</option><option value="realized">{entry.type === "payable" ? "Pago" : "Recebido"}</option><option value="cancelled">Cancelado</option></select>
-                  <input className="field py-2" name="realizedDate" type="date" aria-label="Data da baixa" />
-                  <button className="text-xs font-extrabold text-brand">Salvar</button>
-                </ActionForm>
-                {entry.source === "manual" && <ActionForm action={deleteFinancialEntry} successMessage="Lançamento excluído."><input type="hidden" name="id" value={entry.id} /><button className="icon-button" aria-label="Excluir lançamento"><Trash2 className="size-4" /></button></ActionForm>}
-              </div>}
-            </article>;
-          })}
-          {!entries.length && <p className="empty-state">Nenhum lançamento neste período.</p>}
-        </div>
-      </section>
-    </div>
-  );
+    <section className="panel mt-5"><h2 className="text-lg font-extrabold">Lançamentos do período</h2><div className="mt-4 divide-y">{entries.map((entry) => { const account = accounts.find((item) => item.id === entry.accountId)?.name; const costCenter = costCenters.find((item) => item.id === entry.costCenterId)?.name; const isOverdue = entry.status === "pending" && entry.dueDate < today; const isRealized = entry.status === "paid" || entry.status === "received"; return <article key={entry.id} className="grid gap-3 py-4 xl:grid-cols-[1fr_auto_auto] xl:items-center"><div><div className="flex flex-wrap items-center gap-2"><p className="font-extrabold">{entry.description}</p>{isOverdue && <span className="rounded-full bg-red-50 px-2 py-1 text-xs font-bold text-red-700">Vencido</span>}</div><p className="mt-1 text-xs text-muted">{entry.category || "Sem categoria"}{account ? ` · ${account}` : ""}{costCenter ? ` · ${costCenter}` : ""} · {sourceLabels[entry.source] ?? entry.source} · vencimento {new Date(`${entry.dueDate}T12:00:00Z`).toLocaleDateString("pt-BR")}</p></div><div className="xl:text-right"><p className={`font-extrabold ${entry.type === "receivable" ? "text-emerald-700" : "text-red-700"}`}>{entry.type === "receivable" ? "+" : "−"} {money(entry.amountInCents)}</p><span className="status-pill">{entry.status === "pending" ? "Pendente" : entry.status === "cancelled" ? "Cancelado" : entry.type === "payable" ? "Pago" : "Recebido"}</span></div>{canManage && <div className="flex items-center gap-2"><ActionForm action={updateFinancialEntryStatus} successMessage="Lançamento atualizado." className="flex flex-wrap gap-2"><input type="hidden" name="id" value={entry.id} /><select className="field py-2" name="status" defaultValue={isRealized ? "realized" : entry.status}><option value="pending">Pendente</option><option value="realized">{entry.type === "payable" ? "Pago" : "Recebido"}</option><option value="cancelled">Cancelado</option></select><input className="field py-2" name="realizedDate" type="date" aria-label="Data da baixa" /><button className="text-xs font-extrabold text-brand">Salvar</button></ActionForm>{["manual", "installment", "recurring"].includes(entry.source) && <ActionForm action={deleteFinancialEntry} successMessage="Lançamento excluído."><input type="hidden" name="id" value={entry.id} /><button className="icon-button" aria-label="Excluir lançamento"><Trash2 className="size-4" /></button></ActionForm>}</div>}</article>; })}{!entries.length && <p className="empty-state">Nenhum lançamento encontrado para os filtros.</p>}</div></section>
+  </div>;
 }

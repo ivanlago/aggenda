@@ -13,6 +13,9 @@ import {
   clientPackageBalances,
   clientPackages,
   financialEntries,
+  financialAccounts,
+  financialCategories,
+  financialCostCenters,
   clientHistoryEntries,
   professionalRegistrations,
   professionalGoogleCalendarAccounts,
@@ -664,25 +667,50 @@ export async function createFinancialEntry(formData: FormData) {
   const amountInCents = optionalMoneyInCents(formData, "amount");
   const dueDate = textValue(formData, "dueDate");
   const realized = formData.get("realized") === "on";
+  const installmentCount = Math.min(60, Math.max(1, Math.trunc(Number(textValue(formData, "installmentCount") || "1"))));
+  const recurrenceMonths = Math.min(60, Math.max(1, Math.trunc(Number(textValue(formData, "recurrenceMonths") || "1"))));
+  if (installmentCount > 1 && recurrenceMonths > 1) throw new Error("Escolha parcelamento ou recorrência, não os dois ao mesmo tempo.");
   if (!['payable', 'receivable'].includes(type) || description.length < 2 || !amountInCents || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
     throw new Error("Informe tipo, descrição, valor e vencimento válidos.");
   }
-  const [entry] = await db.insert(financialEntries).values({
-    organizationId: organization.id,
-    type,
-    status: realized ? (type === "payable" ? "paid" : "received") : "pending",
-    source: "manual",
-    description,
-    category: optionalText(formData, "category"),
-    amountInCents,
-    dueDate,
-    realizedDate: realized ? (optionalText(formData, "realizedDate") ?? dueDate) : null,
-    paymentMethod: optionalText(formData, "paymentMethod"),
-    notes: optionalText(formData, "notes"),
-    createdByUserId: session.user.id,
-  }).returning({ id: financialEntries.id });
+  const accountId = optionalText(formData, "accountId"); const categoryId = optionalText(formData, "categoryId"); const costCenterId = optionalText(formData, "costCenterId");
+  const [account, category, costCenter] = await Promise.all([
+    accountId ? db.select({ id: financialAccounts.id }).from(financialAccounts).where(and(eq(financialAccounts.id, accountId), eq(financialAccounts.organizationId, organization.id))).limit(1) : [],
+    categoryId ? db.select({ id: financialCategories.id, name: financialCategories.name }).from(financialCategories).where(and(eq(financialCategories.id, categoryId), eq(financialCategories.organizationId, organization.id), eq(financialCategories.type, type))).limit(1) : [],
+    costCenterId ? db.select({ id: financialCostCenters.id }).from(financialCostCenters).where(and(eq(financialCostCenters.id, costCenterId), eq(financialCostCenters.organizationId, organization.id))).limit(1) : [],
+  ]);
+  if ((accountId && !account.length) || (categoryId && !category.length) || (costCenterId && !costCenter.length)) throw new Error("Conta, categoria ou centro de custo inválido.");
+  const totalEntries = Math.max(installmentCount, recurrenceMonths); const groupId = totalEntries > 1 ? crypto.randomUUID() : null;
+  const baseDate = new Date(`${dueDate}T12:00:00Z`);
+  const values = Array.from({ length: totalEntries }, (_, index) => {
+    const next = new Date(baseDate); next.setUTCMonth(next.getUTCMonth() + index);
+    const entryAmount = installmentCount > 1 ? Math.floor(amountInCents / installmentCount) + (index < amountInCents % installmentCount ? 1 : 0) : amountInCents;
+    return { organizationId: organization.id, type, status: realized && index === 0 ? (type === "payable" ? "paid" : "received") : "pending", source: recurrenceMonths > 1 ? "recurring" : installmentCount > 1 ? "installment" : "manual", description: totalEntries > 1 ? `${description} (${index + 1}/${totalEntries})` : description, category: category[0]?.name ?? optionalText(formData, "category"), categoryId, accountId, costCenterId, amountInCents: entryAmount, dueDate: next.toISOString().slice(0, 10), realizedDate: realized && index === 0 ? (optionalText(formData, "realizedDate") ?? dueDate) : null, paymentMethod: optionalText(formData, "paymentMethod"), notes: optionalText(formData, "notes"), recurrenceGroupId: groupId, installmentNumber: index + 1, installmentCount: totalEntries, createdByUserId: session.user.id };
+  });
+  const [entry] = await db.insert(financialEntries).values(values).returning({ id: financialEntries.id });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "financial_entry", entityId: entry.id });
   revalidatePath("/financeiro");
+}
+
+export async function createFinancialAccount(formData: FormData) {
+  const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage");
+  const name = textValue(formData, "name"); const accountType = textValue(formData, "accountType");
+  if (name.length < 2 || !["bank", "cash", "digital_wallet"].includes(accountType)) throw new Error("Informe nome e tipo da conta.");
+  await db.insert(financialAccounts).values({ organizationId: organization.id, name, accountType, openingBalanceInCents: optionalMoneyInCents(formData, "openingBalance") ?? 0 }).onConflictDoNothing();
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "financial_account" }); revalidatePath("/financeiro");
+}
+
+export async function createFinancialCategory(formData: FormData) {
+  const { organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage");
+  const name = textValue(formData, "name"); const type = textValue(formData, "type");
+  if (name.length < 2 || !["payable", "receivable"].includes(type)) throw new Error("Informe nome e tipo da categoria.");
+  await db.insert(financialCategories).values({ organizationId: organization.id, name, type }).onConflictDoNothing(); revalidatePath("/financeiro");
+}
+
+export async function createFinancialCostCenter(formData: FormData) {
+  const { organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage");
+  const name = textValue(formData, "name"); if (name.length < 2) throw new Error("Informe o centro de custo.");
+  await db.insert(financialCostCenters).values({ organizationId: organization.id, name }).onConflictDoNothing(); revalidatePath("/financeiro");
 }
 
 export async function updateFinancialEntryStatus(formData: FormData) {
@@ -716,9 +744,9 @@ export async function deleteFinancialEntry(formData: FormData) {
   const [deleted] = await db.delete(financialEntries).where(and(
     eq(financialEntries.id, id),
     eq(financialEntries.organizationId, organization.id),
-    eq(financialEntries.source, "manual")
+    inArray(financialEntries.source, ["manual", "installment", "recurring"])
   )).returning({ id: financialEntries.id });
-  if (!deleted) throw new Error("Somente lançamentos manuais podem ser excluídos.");
+  if (!deleted) throw new Error("Somente lançamentos criados manualmente podem ser excluídos.");
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "delete", entityType: "financial_entry", entityId: id });
   revalidatePath("/financeiro");
 }

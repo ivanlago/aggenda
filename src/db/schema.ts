@@ -83,6 +83,8 @@ export const chatMessageStatusEnum = pgEnum("chat_message_status", [
 export const crmLeadStatusEnum = pgEnum("crm_lead_status", ["open", "converted", "archived"]);
 export const crmOpportunityStatusEnum = pgEnum("crm_opportunity_status", ["open", "won", "lost"]);
 export const crmTaskTypeEnum = pgEnum("crm_task_type", ["follow_up", "call", "message", "meeting", "proposal", "other"]);
+export const crmProposalStatusEnum = pgEnum("crm_proposal_status", ["draft", "sent", "accepted", "rejected", "expired"]);
+export const crmAiInsightStatusEnum = pgEnum("crm_ai_insight_status", ["draft", "approved", "dismissed"]);
 
 export const professions = pgTable("professions", {
   id: text("id").primaryKey(),
@@ -710,6 +712,98 @@ export const crmTasks = pgTable(
   ]
 );
 
+export const crmProposals = pgTable(
+  "crm_proposals",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    opportunityId: uuid("opportunity_id").notNull().references(() => crmOpportunities.id, { onDelete: "cascade" }),
+    createdByUserId: text("created_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    number: text("number").notNull(),
+    title: text("title").notNull(),
+    status: crmProposalStatusEnum("status").default("draft").notNull(),
+    notes: text("notes"),
+    validUntil: date("valid_until", { mode: "string" }),
+    subtotalInCents: integer("subtotal_in_cents").notNull(),
+    discountInCents: integer("discount_in_cents").default(0).notNull(),
+    totalInCents: integer("total_in_cents").notNull(),
+    sentAt: timestamp("sent_at"),
+    acceptedAt: timestamp("accepted_at"),
+    rejectedAt: timestamp("rejected_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("crm_proposals_org_number_unique").on(table.organizationId, table.number),
+    index("crm_proposals_opportunity_idx").on(table.opportunityId),
+    index("crm_proposals_org_status_idx").on(table.organizationId, table.status),
+  ]
+);
+
+export const crmProposalItems = pgTable(
+  "crm_proposal_items",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    proposalId: uuid("proposal_id").notNull().references(() => crmProposals.id, { onDelete: "cascade" }),
+    serviceId: uuid("service_id").references(() => services.id, { onDelete: "set null" }),
+    description: text("description").notNull(),
+    quantity: integer("quantity").default(1).notNull(),
+    unitPriceInCents: integer("unit_price_in_cents").notNull(),
+    totalInCents: integer("total_in_cents").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("crm_proposal_items_proposal_idx").on(table.proposalId)]
+);
+
+export const crmTags = pgTable(
+  "crm_tags",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    color: text("color").default("#37664f").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("crm_tags_org_name_unique").on(table.organizationId, table.name)]
+);
+
+export const crmLeadTags = pgTable(
+  "crm_lead_tags",
+  {
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    leadId: uuid("lead_id").notNull().references(() => crmLeads.id, { onDelete: "cascade" }),
+    tagId: uuid("tag_id").notNull().references(() => crmTags.id, { onDelete: "cascade" }),
+  },
+  (table) => [primaryKey({ columns: [table.leadId, table.tagId] }), index("crm_lead_tags_org_idx").on(table.organizationId)]
+);
+
+export const crmCustomFields = pgTable(
+  "crm_custom_fields",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    fieldType: text("field_type").default("text").notNull(),
+    options: jsonb("options").$type<string[]>().default([]),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("crm_custom_fields_org_name_unique").on(table.organizationId, table.name)]
+);
+
+export const crmCustomFieldValues = pgTable(
+  "crm_custom_field_values",
+  {
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    leadId: uuid("lead_id").notNull().references(() => crmLeads.id, { onDelete: "cascade" }),
+    fieldId: uuid("field_id").notNull().references(() => crmCustomFields.id, { onDelete: "cascade" }),
+    value: text("value"),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.leadId, table.fieldId] }), index("crm_custom_values_org_idx").on(table.organizationId)]
+);
+
 export const clientAccounts = pgTable(
   "client_accounts",
   {
@@ -982,6 +1076,45 @@ export const packageUsages = pgTable(
   ]
 );
 
+export const financialAccounts = pgTable(
+  "financial_accounts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    accountType: text("account_type").default("bank").notNull(),
+    openingBalanceInCents: integer("opening_balance_in_cents").default(0).notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("financial_accounts_org_name_unique").on(table.organizationId, table.name)]
+);
+
+export const financialCategories = pgTable(
+  "financial_categories",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    type: text("type").notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("financial_categories_org_type_name_unique").on(table.organizationId, table.type, table.name)]
+);
+
+export const financialCostCenters = pgTable(
+  "financial_cost_centers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("financial_cost_centers_org_name_unique").on(table.organizationId, table.name)]
+);
+
 export const financialEntries = pgTable(
   "financial_entries",
   {
@@ -994,11 +1127,17 @@ export const financialEntries = pgTable(
     source: text("source").default("manual").notNull(),
     description: text("description").notNull(),
     category: text("category"),
+    categoryId: uuid("category_id").references(() => financialCategories.id, { onDelete: "set null" }),
+    accountId: uuid("account_id").references(() => financialAccounts.id, { onDelete: "set null" }),
+    costCenterId: uuid("cost_center_id").references(() => financialCostCenters.id, { onDelete: "set null" }),
     amountInCents: integer("amount_in_cents").notNull(),
     dueDate: date("due_date", { mode: "string" }).notNull(),
     realizedDate: date("realized_date", { mode: "string" }),
     paymentMethod: text("payment_method"),
     notes: text("notes"),
+    recurrenceGroupId: uuid("recurrence_group_id"),
+    installmentNumber: integer("installment_number").default(1).notNull(),
+    installmentCount: integer("installment_count").default(1).notNull(),
     clientId: uuid("client_id").references(() => clients.id, {
       onDelete: "set null",
     }),
@@ -1024,6 +1163,9 @@ export const financialEntries = pgTable(
       table.realizedDate
     ),
     index("financial_entries_status_idx").on(table.status),
+    index("financial_entries_account_idx").on(table.accountId),
+    index("financial_entries_category_idx").on(table.categoryId),
+    index("financial_entries_recurrence_idx").on(table.recurrenceGroupId),
   ]
 );
 
@@ -1083,8 +1225,17 @@ export const chatConversations = pgTable(
     channelId: uuid("channel_id")
       .notNull()
       .references(() => whatsappChannels.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
+    leadId: uuid("lead_id").references(() => crmLeads.id, { onDelete: "set null" }),
+    opportunityId: uuid("opportunity_id").references(() => crmOpportunities.id, { onDelete: "set null" }),
+    assignedUserId: text("assigned_user_id").references(() => users.id, { onDelete: "set null" }),
     externalContactId: text("external_contact_id").notNull(),
     contactName: text("contact_name"),
+    handoffStatus: text("handoff_status").default("bot").notNull(),
+    handoffReason: text("handoff_reason"),
+    automationPaused: boolean("automation_paused").default(false).notNull(),
+    handoffRequestedAt: timestamp("handoff_requested_at"),
+    handoffResolvedAt: timestamp("handoff_resolved_at"),
     lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -1095,8 +1246,36 @@ export const chatConversations = pgTable(
       table.externalContactId
     ),
     index("chat_conversations_organization_idx").on(table.organizationId),
+    index("chat_conversations_lead_idx").on(table.leadId),
+    index("chat_conversations_assigned_idx").on(table.assignedUserId),
     index("chat_conversations_last_message_idx").on(table.lastMessageAt),
   ]
+);
+
+export const crmAiInsights = pgTable(
+  "crm_ai_insights",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    leadId: uuid("lead_id").references(() => crmLeads.id, { onDelete: "cascade" }),
+    opportunityId: uuid("opportunity_id").references(() => crmOpportunities.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id").references(() => chatConversations.id, { onDelete: "set null" }),
+    requestedByUserId: text("requested_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    status: crmAiInsightStatusEnum("status").default("draft").notNull(),
+    summary: text("summary").notNull(),
+    intent: text("intent"),
+    urgency: integer("urgency").default(1).notNull(),
+    suggestedAction: text("suggested_action"),
+    suggestedReply: text("suggested_reply"),
+    model: text("model").notNull(),
+    promptVersion: text("prompt_version").default("crm-v1").notNull(),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    reviewedAt: timestamp("reviewed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("crm_ai_insights_lead_idx").on(table.leadId, table.createdAt), index("crm_ai_insights_org_status_idx").on(table.organizationId, table.status)]
 );
 
 export const chatMessages = pgTable(

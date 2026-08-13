@@ -134,6 +134,20 @@
       "when": 1786591234366,
       "tag": "0018_unusual_micromacro",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786592081631,
+      "tag": "0019_broken_gamma_corps",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786596831852,
+      "tag": "0020_material_mystique",
+      "breakpoints": true
     }
   ]
 }

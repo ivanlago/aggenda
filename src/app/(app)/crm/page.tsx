@@ -67,6 +67,7 @@ export default async function CrmPage() {
   return (
     <div className="page-wrap">
       <PageHeader eyebrow={organization.name} title="CRM comercial" description="Acompanhe contatos, oportunidades, responsáveis e próximas ações em um só lugar." />
+      <nav className="mb-5 flex flex-wrap gap-2 text-sm font-bold"><Link className="secondary-button" href="/crm/inbox">Conversas</Link><Link className="secondary-button" href="/crm/propostas">Propostas</Link><Link className="secondary-button" href="/crm/relatorios">Relatórios</Link><Link className="secondary-button" href="/crm/configuracoes">Configurações</Link></nav>
 
       {!pipeline ? (
         <section className="panel mx-auto max-w-2xl text-center">

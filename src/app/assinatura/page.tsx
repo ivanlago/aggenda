@@ -128,6 +128,7 @@ export default async function SubscriptionPage({
               <li>Agenda, clientes e serviços</li>
               <li>Profissionais e equipe</li>
               <li>Confirmações e integrações</li>
+              <li><strong>Ativação padrão gratuita</strong>, sem taxa obrigatória</li>
             </ul>
 
             {subscription?.billingSubscriptionId &&
@@ -257,6 +258,9 @@ export default async function SubscriptionPage({
             )}
             <p className="mt-4 flex items-center justify-center gap-2 text-xs text-muted">
               <ShieldCheck className="size-4" /> Pagamento processado pelo Asaas
+            </p>
+            <p className="mt-3 text-center text-xs leading-5 text-muted">
+              Implantação e configuração fiscal assistidas são serviços opcionais, solicitados separadamente.
             </p>
           </aside>
         </section>

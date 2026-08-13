@@ -12,10 +12,17 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+import { saveImplementationPreferences } from "@/actions/implementation";
+import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { WhatsAppConnectButton } from "@/components/whatsapp-connect-button";
 import { db } from "@/db";
-import { professionals, services, weeklyAvailability, whatsappChannels } from "@/db/schema";
+import { organizationImplementationPreferences, professionals, services, weeklyAvailability, whatsappChannels } from "@/db/schema";
+import {
+  FISCAL_SETUP_ASSISTED_PRICE_IN_CENTS,
+  formatImplementationPrice,
+  IMPLEMENTATION_ASSISTED_PRICE_IN_CENTS,
+} from "@/lib/implementation-services";
 import { getOrganizationServicePlan, whatsappServices } from "@/lib/service-plans";
 import { requireOrganization } from "@/lib/session";
 
@@ -32,13 +39,14 @@ type Step = {
 
 export default async function ImplantationPage() {
   const { organization } = await requireOrganization();
-  const [plan, [professionalTotal], [serviceTotal], [describedServiceTotal], [availabilityTotal], channels] = await Promise.all([
+  const [plan, [professionalTotal], [serviceTotal], [describedServiceTotal], [availabilityTotal], channels, [implementation]] = await Promise.all([
     getOrganizationServicePlan(organization.id),
     db.select({ value: count() }).from(professionals).where(eq(professionals.organizationId, organization.id)),
     db.select({ value: count() }).from(services).where(eq(services.organizationId, organization.id)),
     db.select({ value: count() }).from(services).where(and(eq(services.organizationId, organization.id), isNotNull(services.description))),
     db.select({ value: count() }).from(weeklyAvailability).where(eq(weeklyAvailability.organizationId, organization.id)),
     db.select().from(whatsappChannels).where(eq(whatsappChannels.organizationId, organization.id)),
+    db.select().from(organizationImplementationPreferences).where(eq(organizationImplementationPreferences.organizationId, organization.id)).limit(1),
   ]);
   const product = whatsappServices[plan.whatsappServiceCode];
   const activeChannel = channels.find((channel) => channel.isActive && channel.connectionStatus === "active");
@@ -189,6 +197,69 @@ export default async function ImplantationPage() {
             </article>
           );
         })}
+      </section>
+
+      <section className="panel mt-5">
+        <div className="max-w-3xl">
+          <p className="text-xs font-extrabold uppercase tracking-widest text-brand">Modalidade de implantação</p>
+          <h2 className="mt-2 text-xl font-extrabold">Escolha quanto apoio você deseja</h2>
+          <p className="mt-2 text-sm leading-6 text-muted">
+            A ativação guiada é gratuita. Os serviços assistidos são opcionais e cobrados uma única vez, sem alterar sua mensalidade.
+          </p>
+        </div>
+
+        <ActionForm
+          action={saveImplementationPreferences}
+          successMessage="Preferências de implantação atualizadas."
+          className="mt-5 grid gap-5"
+        >
+          <fieldset>
+            <legend className="font-extrabold">Configuração inicial do Aggenda</legend>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <label className="cursor-pointer rounded-2xl border p-4 has-[:checked]:border-brand has-[:checked]:bg-[#edf7f1]">
+                <input className="mr-2" type="radio" name="implementationMode" value="guided_free" defaultChecked={!implementation || implementation.implementationMode === "guided_free"} />
+                <strong>Implantação guiada — gratuita</strong>
+                <span className="mt-2 block text-sm leading-6 text-muted">Você segue o passo a passo desta página e o Aggenda valida automaticamente cada etapa.</span>
+              </label>
+              <label className="cursor-pointer rounded-2xl border p-4 has-[:checked]:border-brand has-[:checked]:bg-[#edf7f1]">
+                <input className="mr-2" type="radio" name="implementationMode" value="assisted" defaultChecked={implementation?.implementationMode === "assisted"} />
+                <strong>Implantação assistida — {formatImplementationPrice(IMPLEMENTATION_ASSISTED_PRICE_IN_CENTS)}</strong>
+                <span className="mt-2 block text-sm leading-6 text-muted">Cadastro inicial, importação de clientes e serviços, revisão das configurações e orientação remota.</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend className="font-extrabold">Emissão fiscal</legend>
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+              <label className="cursor-pointer rounded-2xl border p-4 has-[:checked]:border-brand has-[:checked]:bg-[#edf7f1]">
+                <input className="mr-2" type="radio" name="fiscalSetupMode" value="none" defaultChecked={!implementation || implementation.fiscalSetupMode === "none"} />
+                <strong>Não configurar agora</strong>
+                <span className="mt-2 block text-sm leading-6 text-muted">O módulo financeiro continua disponível sem emissão fiscal.</span>
+              </label>
+              <label className="cursor-pointer rounded-2xl border p-4 has-[:checked]:border-brand has-[:checked]:bg-[#edf7f1]">
+                <input className="mr-2" type="radio" name="fiscalSetupMode" value="self_service" defaultChecked={implementation?.fiscalSetupMode === "self_service"} />
+                <strong>Ativação fiscal guiada — gratuita</strong>
+                <span className="mt-2 block text-sm leading-6 text-muted">Você informa a credencial do seu próprio provedor fiscal seguindo as instruções do Aggenda.</span>
+              </label>
+              <label className="cursor-pointer rounded-2xl border p-4 has-[:checked]:border-brand has-[:checked]:bg-[#edf7f1]">
+                <input className="mr-2" type="radio" name="fiscalSetupMode" value="assisted" defaultChecked={implementation?.fiscalSetupMode === "assisted"} />
+                <strong>Configuração fiscal assistida — {formatImplementationPrice(FISCAL_SETUP_ASSISTED_PRICE_IN_CENTS)}</strong>
+                <span className="mt-2 block text-sm leading-6 text-muted">Conferência cadastral, credencial, homologação e primeiro teste acompanhado.</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="max-w-2xl font-semibold">Certificado digital, tributos e eventual mensalidade do provedor fiscal são contratados e pagos diretamente pelo cliente.</p>
+            <button className="primary-button">Salvar escolha</button>
+          </div>
+        </ActionForm>
+        {(implementation?.implementationStatus === "requested" || implementation?.fiscalSetupStatus === "requested") && (
+          <p className="mt-4 rounded-xl bg-[#edf7f1] p-3 text-sm font-bold text-brand">
+            Solicitação recebida. A equipe Aggenda entrará em contato antes de gerar qualquer cobrança do serviço opcional.
+          </p>
+        )}
       </section>
 
       <section className="panel mt-5">

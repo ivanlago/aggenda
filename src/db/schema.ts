@@ -294,6 +294,28 @@ export const organizationServicePlans = pgTable(
   (table) => [index("organization_service_plans_core_idx").on(table.corePlanCode)]
 );
 
+export const organizationImplementationPreferences = pgTable(
+  "organization_implementation_preferences",
+  {
+    organizationId: uuid("organization_id")
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    implementationMode: text("implementation_mode").default("guided_free").notNull(),
+    implementationStatus: text("implementation_status").default("not_required").notNull(),
+    fiscalSetupMode: text("fiscal_setup_mode").default("none").notNull(),
+    fiscalSetupStatus: text("fiscal_setup_status").default("not_required").notNull(),
+    requestedAt: timestamp("requested_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("organization_implementation_preferences_status_idx").on(
+      table.implementationStatus,
+      table.fiscalSetupStatus
+    ),
+  ]
+);
+
 export const organizationUsageCounters = pgTable(
   "organization_usage_counters",
   {

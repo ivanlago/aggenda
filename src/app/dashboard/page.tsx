@@ -70,8 +70,9 @@ export default async function DashboardPage({
           <section className="mb-5 rounded-2xl border border-brand/20 bg-[#edf7f1] p-5 text-brand">
             <p className="font-extrabold">Pagamento confirmado — bem-vindo ao Aggenda!</p>
             <p className="mt-1 text-sm font-medium">
-              Seu acesso está liberado. Comece pelas etapas abaixo para deixar sua agenda pronta para receber clientes.
+              Seu acesso está liberado. Use a implantação guiada para conectar o WhatsApp e preparar o serviço contratado.
             </p>
+            <Link className="mt-3 inline-flex text-sm font-extrabold underline" href="/implantacao">Iniciar implantação →</Link>
           </section>
         )}
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

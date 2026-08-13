@@ -13,6 +13,7 @@ import {
   PackageOpen,
   WalletCards,
   Bot,
+  Rocket,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -39,6 +40,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     permission: OrganizationPermission;
   }> = [
     { href: "/dashboard", label: "Visão geral", icon: LayoutDashboard, permission: "organization.read" },
+    { href: "/implantacao", label: "Implantação guiada", icon: Rocket, permission: "organization.read" },
     {
       href: "/agendamentos",
       label: organization.appointmentLabelPlural,

@@ -148,6 +148,27 @@
       "when": 1786596831852,
       "tag": "0020_material_mystique",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786598515051,
+      "tag": "0021_purple_magma",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1786600432752,
+      "tag": "0022_chilly_agent_zero",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1786606022088,
+      "tag": "0023_typical_lady_mastermind",
+      "breakpoints": true
     }
   ]
 }

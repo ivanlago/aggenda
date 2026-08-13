@@ -846,6 +846,22 @@ export const services = pgTable(
   (table) => [index("services_organization_idx").on(table.organizationId)]
 );
 
+export const inventoryProducts = pgTable("inventory_products", {
+  id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), name: text("name").notNull(), sku: text("sku"), unit: text("unit").default("unit").notNull(), currentQuantityMillis: integer("current_quantity_millis").default(0).notNull(), minimumQuantityMillis: integer("minimum_quantity_millis").default(0).notNull(), costInCents: integer("cost_in_cents"), isActive: boolean("is_active").default(true).notNull(), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [uniqueIndex("inventory_products_org_sku_unique").on(table.organizationId, table.sku), index("inventory_products_org_idx").on(table.organizationId)]);
+
+export const serviceInventoryItems = pgTable("service_inventory_items", {
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), serviceId: uuid("service_id").notNull().references(() => services.id, { onDelete: "cascade" }), productId: uuid("product_id").notNull().references(() => inventoryProducts.id, { onDelete: "cascade" }), quantityMillis: integer("quantity_millis").notNull(),
+}, (table) => [primaryKey({ columns: [table.serviceId, table.productId] }), index("service_inventory_items_org_idx").on(table.organizationId)]);
+
+export const inventoryMovements = pgTable("inventory_movements", {
+  id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), productId: uuid("product_id").notNull().references(() => inventoryProducts.id, { onDelete: "restrict" }), appointmentId: uuid("appointment_id").references(() => appointments.id, { onDelete: "set null" }), type: text("type").notNull(), quantityMillis: integer("quantity_millis").notNull(), balanceAfterMillis: integer("balance_after_millis").notNull(), notes: text("notes"), createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }), createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [index("inventory_movements_product_idx").on(table.productId, table.createdAt), index("inventory_movements_org_idx").on(table.organizationId)]);
+
+export const appointmentInventoryConsumptions = pgTable("appointment_inventory_consumptions", {
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), appointmentId: uuid("appointment_id").notNull().references(() => appointments.id, { onDelete: "cascade" }), productId: uuid("product_id").notNull().references(() => inventoryProducts.id, { onDelete: "restrict" }), quantityMillis: integer("quantity_millis").notNull(), consumedAt: timestamp("consumed_at").defaultNow().notNull(), reversedAt: timestamp("reversed_at"),
+}, (table) => [primaryKey({ columns: [table.appointmentId, table.productId] }), index("appointment_inventory_org_idx").on(table.organizationId)]);
+
 export const servicesToProfessionals = pgTable(
   "services_to_professionals",
   {
@@ -1114,6 +1130,49 @@ export const financialCostCenters = pgTable(
   },
   (table) => [uniqueIndex("financial_cost_centers_org_name_unique").on(table.organizationId, table.name)]
 );
+
+export const financialBudgets = pgTable(
+  "financial_budgets",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    categoryId: uuid("category_id").notNull().references(() => financialCategories.id, { onDelete: "cascade" }),
+    costCenterId: uuid("cost_center_id").references(() => financialCostCenters.id, { onDelete: "cascade" }),
+    month: text("month").notNull(),
+    amountInCents: integer("amount_in_cents").notNull(),
+    createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("financial_budgets_scope_unique").on(table.organizationId, table.categoryId, table.costCenterId, table.month),
+    index("financial_budgets_org_month_idx").on(table.organizationId, table.month),
+  ]
+);
+
+export const commissionRules = pgTable("commission_rules", {
+  id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), professionalId: uuid("professional_id").references(() => professionals.id, { onDelete: "cascade" }), serviceId: uuid("service_id").references(() => services.id, { onDelete: "cascade" }), trigger: text("trigger").default("completed_appointment").notNull(), calculationType: text("calculation_type").default("percentage").notNull(), value: integer("value").notNull(), isActive: boolean("is_active").default(true).notNull(), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [index("commission_rules_org_idx").on(table.organizationId), index("commission_rules_professional_idx").on(table.professionalId)]);
+
+export const commissionEntries = pgTable("commission_entries", {
+  id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), ruleId: uuid("rule_id").references(() => commissionRules.id, { onDelete: "set null" }), professionalId: uuid("professional_id").notNull().references(() => professionals.id, { onDelete: "restrict" }), appointmentId: uuid("appointment_id").references(() => appointments.id, { onDelete: "set null" }), baseAmountInCents: integer("base_amount_in_cents").notNull(), amountInCents: integer("amount_in_cents").notNull(), status: text("status").default("pending").notNull(), competence: text("competence").notNull(), paidAt: timestamp("paid_at"), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [uniqueIndex("commission_entries_appointment_unique").on(table.appointmentId), index("commission_entries_org_competence_idx").on(table.organizationId, table.competence)]);
+
+export const cashClosings = pgTable("cash_closings", {
+  id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), accountId: uuid("account_id").notNull().references(() => financialAccounts.id, { onDelete: "restrict" }), openedByUserId: text("opened_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }), closedByUserId: text("closed_by_user_id").references(() => users.id, { onDelete: "restrict" }), openedAt: timestamp("opened_at").defaultNow().notNull(), closedAt: timestamp("closed_at"), openingBalanceInCents: integer("opening_balance_in_cents").notNull(), expectedBalanceInCents: integer("expected_balance_in_cents"), countedBalanceInCents: integer("counted_balance_in_cents"), differenceInCents: integer("difference_in_cents"), notes: text("notes"),
+}, (table) => [index("cash_closings_org_open_idx").on(table.organizationId, table.openedAt)]);
+
+export const bankImportTransactions = pgTable("bank_import_transactions", {
+  id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), accountId: uuid("account_id").notNull().references(() => financialAccounts.id, { onDelete: "cascade" }), externalId: text("external_id").notNull(), occurredOn: date("occurred_on", { mode: "string" }).notNull(), description: text("description").notNull(), amountInCents: integer("amount_in_cents").notNull(), financialEntryId: uuid("financial_entry_id").references(() => financialEntries.id, { onDelete: "set null" }), status: text("status").default("unmatched").notNull(), importedAt: timestamp("imported_at").defaultNow().notNull(),
+}, (table) => [uniqueIndex("bank_import_org_external_unique").on(table.organizationId, table.accountId, table.externalId), index("bank_import_status_idx").on(table.organizationId, table.status)]);
+
+export const organizationFinancialIntegrations = pgTable("organization_financial_integrations", {
+  id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), provider: text("provider").notNull(), environment: text("environment").default("sandbox").notNull(), encryptedCredential: text("encrypted_credential").notNull(), status: text("status").default("configured").notNull(), metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [uniqueIndex("organization_financial_integrations_unique").on(table.organizationId, table.provider)]);
+
+export const fiscalDocuments = pgTable("fiscal_documents", {
+  id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), financialEntryId: uuid("financial_entry_id").references(() => financialEntries.id, { onDelete: "set null" }), provider: text("provider").default("manual").notNull(), externalId: text("external_id"), number: text("number"), status: text("status").default("draft").notNull(), amountInCents: integer("amount_in_cents").notNull(), issuedAt: timestamp("issued_at"), verificationUrl: text("verification_url"), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [index("fiscal_documents_org_idx").on(table.organizationId, table.createdAt)]);
 
 export const financialEntries = pgTable(
   "financial_entries",

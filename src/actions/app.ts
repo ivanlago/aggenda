@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -16,6 +16,7 @@ import {
   financialAccounts,
   financialCategories,
   financialCostCenters,
+  financialBudgets,
   clientHistoryEntries,
   professionalRegistrations,
   professionalGoogleCalendarAccounts,
@@ -44,6 +45,7 @@ import {
   syncAppointmentFinancialEntry,
 } from "@/lib/finance";
 import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
+import { updateAppointmentAndInventory } from "@/lib/inventory";
 
 function textValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -713,6 +715,19 @@ export async function createFinancialCostCenter(formData: FormData) {
   await db.insert(financialCostCenters).values({ organizationId: organization.id, name }).onConflictDoNothing(); revalidatePath("/financeiro");
 }
 
+export async function upsertFinancialBudget(formData: FormData) {
+  const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage");
+  const categoryId = textValue(formData, "categoryId"); const costCenterId = optionalText(formData, "costCenterId"); const month = textValue(formData, "month"); const amountInCents = optionalMoneyInCents(formData, "amount");
+  if (!categoryId || !/^\d{4}-\d{2}$/.test(month) || amountInCents == null) throw new Error("Informe categoria, mês e orçamento válidos.");
+  const [category] = await db.select({ id: financialCategories.id }).from(financialCategories).where(and(eq(financialCategories.id, categoryId), eq(financialCategories.organizationId, organization.id))).limit(1);
+  const center = costCenterId ? await db.select({ id: financialCostCenters.id }).from(financialCostCenters).where(and(eq(financialCostCenters.id, costCenterId), eq(financialCostCenters.organizationId, organization.id))).limit(1) : [];
+  if (!category || (costCenterId && !center.length)) throw new Error("Categoria ou centro de custo inválido.");
+  const [existing] = await db.select({ id: financialBudgets.id }).from(financialBudgets).where(and(eq(financialBudgets.organizationId, organization.id), eq(financialBudgets.categoryId, categoryId), costCenterId ? eq(financialBudgets.costCenterId, costCenterId) : isNull(financialBudgets.costCenterId), eq(financialBudgets.month, month))).limit(1);
+  if (existing) await db.update(financialBudgets).set({ amountInCents, updatedAt: new Date() }).where(eq(financialBudgets.id, existing.id));
+  else await db.insert(financialBudgets).values({ organizationId: organization.id, categoryId, costCenterId, month, amountInCents, createdByUserId: session.user.id });
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "upsert", entityType: "financial_budget", details: { categoryId, costCenterId, month, amountInCents } }); revalidatePath("/financeiro/relatorios");
+}
+
 export async function updateFinancialEntryStatus(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "finance.manage");
@@ -874,21 +889,12 @@ export async function updateAppointmentStatus(formData: FormData) {
   }
 
   const appointmentId = textValue(formData, "id");
-  const [updatedAppointment] = await db
-    .update(appointments)
-    .set({
-      status,
-      confirmedAt: status === "confirmed" ? new Date() : undefined,
-      cancellationReason: status === "cancelled" ? cancellationReason : null,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(appointments.id, appointmentId),
-        eq(appointments.organizationId, organization.id)
-      )
-    )
-    .returning({ id: appointments.id });
+  let updatedAppointment = false;
+  try {
+    updatedAppointment = await updateAppointmentAndInventory({ organizationId: organization.id, appointmentId, status, cancellationReason, userId: session.user.id });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Não foi possível movimentar o estoque." };
+  }
   if (!updatedAppointment) {
     return { error: "Agendamento não encontrado. Atualize a página e tente novamente." };
   }
@@ -924,4 +930,5 @@ export async function updateAppointmentStatus(formData: FormData) {
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
   revalidatePath("/financeiro");
+  revalidatePath("/estoque");
 }

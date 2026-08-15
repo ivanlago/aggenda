@@ -1196,6 +1196,58 @@ export const organizationFinancialIntegrations = pgTable("organization_financial
   id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), provider: text("provider").notNull(), environment: text("environment").default("sandbox").notNull(), encryptedCredential: text("encrypted_credential").notNull(), status: text("status").default("configured").notNull(), metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [uniqueIndex("organization_financial_integrations_unique").on(table.organizationId, table.provider)]);
 
+export const paymentCharges = pgTable("payment_charges", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  provider: text("provider").default("asaas").notNull(),
+  providerPaymentId: text("provider_payment_id"),
+  providerCustomerId: text("provider_customer_id"),
+  originType: text("origin_type").notNull(),
+  originId: text("origin_id").notNull(),
+  financialEntryId: uuid("financial_entry_id").references(() => financialEntries.id, { onDelete: "set null" }),
+  paymentMethod: text("payment_method").notNull(),
+  status: text("status").default("pending").notNull(),
+  amountInCents: integer("amount_in_cents").notNull(),
+  description: text("description").notNull(),
+  customerName: text("customer_name").notNull(),
+  customerDocument: text("customer_document"),
+  customerEmail: text("customer_email"),
+  customerPhone: text("customer_phone"),
+  dueDate: date("due_date", { mode: "string" }).notNull(),
+  invoiceUrl: text("invoice_url"),
+  bankSlipUrl: text("bank_slip_url"),
+  bankSlipIdentificationField: text("bank_slip_identification_field"),
+  pixQrCodePayload: text("pix_qr_code_payload"),
+  pixQrCodeImage: text("pix_qr_code_image"),
+  paidAt: timestamp("paid_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  refundedAt: timestamp("refunded_at"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("payment_charges_provider_payment_unique").on(table.provider, table.providerPaymentId),
+  index("payment_charges_org_created_idx").on(table.organizationId, table.createdAt),
+  index("payment_charges_origin_idx").on(table.organizationId, table.originType, table.originId),
+  index("payment_charges_financial_entry_idx").on(table.financialEntryId),
+]);
+
+export const paymentChargeEvents = pgTable("payment_charge_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  chargeId: uuid("charge_id").notNull().references(() => paymentCharges.id, { onDelete: "cascade" }),
+  providerEventId: text("provider_event_id"),
+  eventType: text("event_type").notNull(),
+  previousStatus: text("previous_status"),
+  status: text("status").notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("payment_charge_events_provider_event_unique").on(table.providerEventId),
+  index("payment_charge_events_charge_idx").on(table.chargeId, table.createdAt),
+]);
+
 export const fiscalDocuments = pgTable("fiscal_documents", {
   id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), financialEntryId: uuid("financial_entry_id").references(() => financialEntries.id, { onDelete: "set null" }), provider: text("provider").default("manual").notNull(), externalId: text("external_id"), number: text("number"), status: text("status").default("draft").notNull(), amountInCents: integer("amount_in_cents").notNull(), issuedAt: timestamp("issued_at"), verificationUrl: text("verification_url"), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [index("fiscal_documents_org_idx").on(table.organizationId, table.createdAt)]);

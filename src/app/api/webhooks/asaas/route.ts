@@ -6,11 +6,17 @@ import { db } from "@/db";
 import {
   billingPayments,
   billingWebhookEvents,
+  auditLogs,
+  financialEntries,
   organizationMembers,
+  organizationFinancialIntegrations,
   organizationSubscriptions,
+  paymentChargeEvents,
+  paymentCharges,
   users,
 } from "@/db/schema";
 import { asaasRequest } from "@/lib/asaas";
+import { decodeOrganizationAsaasCredential } from "@/lib/organization-asaas";
 
 type AsaasSubscription = {
   id: string;
@@ -64,6 +70,99 @@ function validWebhookToken(received: string | null) {
     receivedBuffer.length === expectedBuffer.length &&
     timingSafeEqual(receivedBuffer, expectedBuffer)
   );
+}
+
+function sameToken(received: string, expected: string) {
+  const receivedBuffer = Buffer.from(received);
+  const expectedBuffer = Buffer.from(expected);
+  return receivedBuffer.length === expectedBuffer.length && timingSafeEqual(receivedBuffer, expectedBuffer);
+}
+
+async function organizationForWebhookToken(received: string | null) {
+  if (!received) return null;
+  const integrations = await db.select({
+    organizationId: organizationFinancialIntegrations.organizationId,
+    environment: organizationFinancialIntegrations.environment,
+    encryptedCredential: organizationFinancialIntegrations.encryptedCredential,
+  }).from(organizationFinancialIntegrations).where(and(
+    eq(organizationFinancialIntegrations.provider, "asaas"),
+    eq(organizationFinancialIntegrations.status, "active"),
+  ));
+  for (const integration of integrations) {
+    try {
+      const credential = decodeOrganizationAsaasCredential(integration.encryptedCredential, integration.environment);
+      if (credential.webhookToken && sameToken(received, credential.webhookToken)) return integration.organizationId;
+    } catch (error) {
+      console.error("[asaas:webhook] Credencial organizacional inválida", { organizationId: integration.organizationId, error });
+    }
+  }
+  return null;
+}
+
+function chargeStatus(eventType: string) {
+  if (eventType === "PAYMENT_RECEIVED") return "paid";
+  if (eventType === "PAYMENT_OVERDUE") return "overdue";
+  if (eventType === "PAYMENT_DELETED") return "cancelled";
+  if (eventType === "PAYMENT_REFUNDED" || eventType === "PAYMENT_PARTIALLY_REFUNDED") return "refunded";
+  return "pending";
+}
+
+async function processOrganizationCharge(organizationId: string, event: AsaasWebhook) {
+  const payment = event.payment;
+  if (!payment?.id) return false;
+  const externalChargeId = payment.externalReference?.startsWith("charge:") ? payment.externalReference.slice(7) : null;
+  const [charge] = await db.select().from(paymentCharges).where(and(
+    eq(paymentCharges.organizationId, organizationId),
+    externalChargeId ? eq(paymentCharges.id, externalChargeId) : eq(paymentCharges.providerPaymentId, payment.id),
+  )).limit(1);
+  if (!charge) return false;
+  const mappedStatus = chargeStatus(event.event);
+  const status = mappedStatus === "pending" && charge.status !== "pending" ? charge.status : mappedStatus;
+  await db.transaction(async (tx) => {
+    const [inserted] = await tx.insert(paymentChargeEvents).values({
+      organizationId,
+      chargeId: charge.id,
+      providerEventId: event.id,
+      eventType: event.event,
+      previousStatus: charge.status,
+      status,
+      payload: { paymentId: payment.id, providerStatus: payment.status ?? null },
+    }).onConflictDoNothing().returning({ id: paymentChargeEvents.id });
+    if (!inserted) return;
+    const now = new Date();
+    await tx.update(paymentCharges).set({
+      status,
+      paidAt: status === "paid" ? paymentDate(payment.paymentDate) ?? now : charge.paidAt,
+      cancelledAt: status === "cancelled" ? now : charge.cancelledAt,
+      refundedAt: status === "refunded" ? now : charge.refundedAt,
+      updatedAt: now,
+    }).where(eq(paymentCharges.id, charge.id));
+    if (status === "paid" && charge.financialEntryId) {
+      const realizedDate = payment.paymentDate && /^\d{4}-\d{2}-\d{2}$/.test(payment.paymentDate)
+        ? payment.paymentDate
+        : now.toISOString().slice(0, 10);
+      await tx.update(financialEntries).set({ status: "received", realizedDate, paymentMethod: charge.paymentMethod, updatedAt: now }).where(and(
+        eq(financialEntries.id, charge.financialEntryId),
+        eq(financialEntries.organizationId, organizationId),
+        eq(financialEntries.type, "receivable"),
+      ));
+    }
+    if (status === "refunded" && charge.financialEntryId && charge.status === "paid") {
+      await tx.update(financialEntries).set({ status: "pending", realizedDate: null, paymentMethod: null, updatedAt: now }).where(and(
+        eq(financialEntries.id, charge.financialEntryId),
+        eq(financialEntries.organizationId, organizationId),
+        eq(financialEntries.type, "receivable"),
+      ));
+    }
+    await tx.insert(auditLogs).values({
+      organizationId,
+      action: `status:${status}`,
+      entityType: "payment_charge",
+      entityId: charge.id,
+      details: { providerEventId: event.id, eventType: event.event, previousStatus: charge.status },
+    });
+  });
+  return true;
 }
 
 function validOrganizationId(value?: string | null) {
@@ -182,7 +281,9 @@ async function findOrganizationId(event: AsaasWebhook) {
 }
 
 export async function POST(request: Request) {
-  if (!validWebhookToken(request.headers.get("asaas-access-token"))) {
+  const receivedToken = request.headers.get("asaas-access-token");
+  const organizationFromToken = await organizationForWebhookToken(receivedToken);
+  if (!organizationFromToken && !validWebhookToken(receivedToken)) {
     return Response.json({ error: "Token de webhook inválido." }, { status: 401 });
   }
 
@@ -195,6 +296,14 @@ export async function POST(request: Request) {
 
   if (!event.id || !event.event) {
     return Response.json({ error: "Evento inválido." }, { status: 400 });
+  }
+
+  if (organizationFromToken) {
+    const processed = await processOrganizationCharge(organizationFromToken, event);
+    if (!processed) {
+      console.error("[asaas:webhook] Cobrança organizacional não encontrada", { organizationId: organizationFromToken, eventId: event.id, paymentId: event.payment?.id ?? null });
+    }
+    return Response.json({ received: true, processed });
   }
 
   const organizationId = await findOrganizationId(event);

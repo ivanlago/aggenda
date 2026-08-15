@@ -28,7 +28,7 @@ type AsaasWebhook = { id: string };
 
 const appUrl = () => process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "http://localhost:3000";
 const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message.slice(0, 500) : fallback;
-function revalidateCharges() { revalidatePath("/financeiro"); revalidatePath("/financeiro/cobrancas"); revalidatePath("/financeiro/operacoes"); }
+function revalidateCharges() { revalidatePath("/financeiro"); revalidatePath("/financeiro/cobrancas"); }
 
 export async function connectAsaasAccount(data: FormData) {
   const { session, organization } = await requireOrganization();

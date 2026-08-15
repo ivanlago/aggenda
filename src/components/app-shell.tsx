@@ -75,11 +75,11 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     { label: "Financeiro", items: [
       { href: "/financeiro", label: "Contas e fluxo de caixa", icon: WalletCards, permission: "finance.read" },
       { href: "/financeiro/relatorios", label: "DRE e indicadores", icon: ChartNoAxesCombined, permission: "finance.read", secondary: true },
-      { href: "/financeiro/operacoes#comissoes", label: "Comissões", icon: HandCoins, permission: "finance.read", secondary: true },
-      { href: "/financeiro/operacoes#fechamento-caixa", label: "Fechamento de caixa", icon: CircleDollarSign, permission: "finance.read", secondary: true },
-      { href: "/financeiro/operacoes#conciliacao-ofx", label: "Conciliação OFX", icon: Landmark, permission: "finance.read", secondary: true },
+      { href: "/financeiro/comissoes", label: "Comissões", icon: HandCoins, permission: "finance.read", secondary: true },
+      { href: "/financeiro/fechamento-caixa", label: "Fechamento de caixa", icon: CircleDollarSign, permission: "finance.read", secondary: true },
+      { href: "/financeiro/conciliacao-ofx", label: "Conciliação OFX", icon: Landmark, permission: "finance.read", secondary: true },
       { href: "/financeiro/cobrancas", label: "Pagamentos", icon: BanknoteArrowDown, permission: "finance.read", secondary: true },
-      { href: "/financeiro/operacoes#nfse", label: "Emissão de NFS-e", icon: ReceiptText, permission: "finance.read", secondary: true },
+      { href: "/financeiro/nfse", label: "Emissão de NFS-e", icon: ReceiptText, permission: "finance.read", secondary: true },
     ] },
     { label: "Automação", items: [
       { href: "/automacoes", label: "WhatsApp e IA", icon: Bot, permission: "integrations.manage" },

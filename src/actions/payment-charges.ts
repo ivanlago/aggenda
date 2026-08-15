@@ -117,6 +117,7 @@ export async function createFinancialCharge(data: FormData) {
 export async function updatePaymentCharge(data: FormData) {
   const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage");
   const charge = await chargeForOrganization(text(data, "id"), organization.id);
+  if (charge?.provider !== "asaas") return { error: "Alterações diretas estão disponíveis apenas para pagamentos Asaas nesta versão." };
   if (!charge || !["pending", "overdue"].includes(charge.status) || !charge.providerPaymentId) return { error: "Cobrança não encontrada ou não pode mais ser alterada." };
   const dueDate = text(data, "dueDate"); const description = text(data, "description"); const amountInCents = Math.round(Number(text(data, "amount").replace(/\./g, "").replace(",", ".")) * 100);
   if (!validDate(dueDate) || description.length < 2 || amountInCents < 100) return { error: "Informe descrição, valor e vencimento válidos." };
@@ -129,6 +130,7 @@ export async function updatePaymentCharge(data: FormData) {
 
 export async function cancelPaymentCharge(data: FormData) {
   const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage"); const charge = await chargeForOrganization(text(data, "id"), organization.id);
+  if (charge?.provider !== "asaas") return { error: "Cancelamento direto do Mercado Pago ainda não está disponível no Aggenda." };
   if (!charge || !["pending", "overdue"].includes(charge.status)) return { error: "Cobrança não encontrada ou já finalizada." };
   const credential = await getOrganizationAsaasCredential(organization.id);
   try { if (charge.providerSubscriptionId) await organizationAsaasRequest(`/subscriptions/${charge.providerSubscriptionId}`, credential, { method: "DELETE" }); else if (charge.providerPaymentId) await organizationAsaasRequest(`/payments/${charge.providerPaymentId}`, credential, { method: "DELETE" }); } catch (error) { return { error: errorMessage(error, "O Asaas não aceitou o cancelamento.") }; }
@@ -137,6 +139,7 @@ export async function cancelPaymentCharge(data: FormData) {
 
 export async function refundPaymentCharge(data: FormData) {
   const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage"); const charge = await chargeForOrganization(text(data, "id"), organization.id);
+  if (charge?.provider !== "asaas") return { error: "Estorno direto do Mercado Pago ainda não está disponível no Aggenda." };
   if (!charge || charge.status !== "paid" || !charge.providerPaymentId) return { error: "Somente uma cobrança paga pode ser estornada." };
   const credential = await getOrganizationAsaasCredential(organization.id); try { await organizationAsaasRequest(`/payments/${charge.providerPaymentId}/refund`, credential, { method: "POST", body: {} }); } catch (error) { return { error: errorMessage(error, "O Asaas não aceitou o estorno.") }; }
   await recordLocalEvent({ organizationId: organization.id, chargeId: charge.id, eventType: "refund_requested", previousStatus: charge.status, status: charge.status }); await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "refund_requested", entityType: "payment_charge", entityId: charge.id }); revalidateCharges();

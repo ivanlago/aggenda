@@ -184,6 +184,10 @@ export async function updateBookingSettings(formData: FormData) {
       reminderOffsetsHours: [...new Set(value(formData, "reminderOffsetsHours").split(",").map(Number).filter((item) => Number.isFinite(item) && item > 0 && item <= 720))].sort((a, b) => b - a),
       reminderConfirmationEnabled: formData.get("reminderConfirmationEnabled") === "on",
       patientRecoveryDays: Math.min(730, Math.max(30, Number(value(formData, "patientRecoveryDays")) || 90)),
+      cancellationPolicy: value(formData, "cancellationPolicy") || null,
+      depositRefundPolicy: value(formData, "depositRefundPolicy") || null,
+      latenessPolicy: value(formData, "latenessPolicy") || null,
+      publicPrivacyPolicy: value(formData, "publicPrivacyPolicy") || null,
       updatedAt: new Date(),
     })
     .where(eq(organizations.id, organization.id));

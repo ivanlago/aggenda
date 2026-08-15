@@ -92,6 +92,7 @@ export default async function PublicBookingPage({
             appointment: organization.appointmentLabel,
           }}
         />
+        {[organization.cancellationPolicy, organization.depositRefundPolicy, organization.latenessPolicy, organization.publicPrivacyPolicy].some(Boolean) && <details className="mt-5 rounded-2xl border p-4 text-sm"><summary className="cursor-pointer font-extrabold">Políticas de agendamento</summary><div className="mt-3 grid gap-3 text-muted">{organization.cancellationPolicy && <p><strong className="text-foreground">Cancelamento:</strong> {organization.cancellationPolicy}</p>}{organization.depositRefundPolicy && <p><strong className="text-foreground">Sinal:</strong> {organization.depositRefundPolicy}</p>}{organization.latenessPolicy && <p><strong className="text-foreground">Atrasos e ausências:</strong> {organization.latenessPolicy}</p>}{organization.publicPrivacyPolicy && <p><strong className="text-foreground">Privacidade:</strong> {organization.publicPrivacyPolicy}</p>}</div></details>}
         <p className="mt-6 text-center text-xs text-muted">Agendamento seguro por Aggenda</p>
       </section>
     </main>

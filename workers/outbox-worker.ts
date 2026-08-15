@@ -324,6 +324,7 @@ async function sendWhatsAppTemplate(connection: Client, event: OutboxEvent) {
     reminder: process.env.META_TEMPLATE_APPOINTMENT_REMINDER,
     payment_charge: process.env.META_TEMPLATE_PAYMENT_CHARGE,
     payment_dunning: process.env.META_TEMPLATE_PAYMENT_DUNNING,
+    recovery: process.env.META_TEMPLATE_PATIENT_RECOVERY,
   };
   const templateName = templateNames[notificationKind];
   const parameters = Array.isArray(event.payload.parameters)

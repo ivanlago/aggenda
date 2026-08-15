@@ -152,7 +152,7 @@ export async function POST(
       paymentUrl = payment.invoiceUrl;
     }
     if (!depositAmount) await enqueueAppointmentNotification(appointment.id, "confirmation");
-    return Response.json({ id: appointment.id, manageToken, paymentUrl }, { status: 201 });
+    return Response.json({ id: appointment.id, manageToken, paymentUrl, manageUrl: `/agendamento/${manageToken}` }, { status: 201 });
   } catch (error) {
     if (error instanceof Error && error.message === "APPOINTMENT_CONFLICT") {
       return Response.json(

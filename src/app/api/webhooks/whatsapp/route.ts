@@ -1,12 +1,14 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 import { db } from "@/db";
 import {
   chatConversations,
   chatMessages,
+  appointments,
+  clients,
   outboxEvents,
   organizationServicePlans,
   organizationUsageCounters,
@@ -51,6 +53,15 @@ function validSignature(rawBody: string, signature: string | null) {
     receivedBuffer.length === expectedBuffer.length &&
     timingSafeEqual(receivedBuffer, expectedBuffer)
   );
+}
+
+async function applyAppointmentReply(organizationId: string, from: string, body?: string) {
+  const command = body?.trim().toLocaleUpperCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const status = ["SIM", "CONFIRMAR", "CONFIRMO", "CONFIRMADO"].includes(command ?? "") ? "confirmed" : ["CANCELAR", "CANCELO", "NAO PODEREI IR"].includes(command ?? "") ? "cancelled" : null;
+  if (!status) return;
+  const [item] = await db.select({ id: appointments.id }).from(appointments).innerJoin(clients, eq(clients.id, appointments.clientId)).where(and(eq(appointments.organizationId, organizationId), inArray(appointments.status, ["scheduled", "confirmed"]), gte(appointments.startsAt, new Date()), sql`right(regexp_replace(coalesce(${clients.phone}, ''), '\\D', '', 'g'), 10) = right(${from}, 10)`)).orderBy(asc(appointments.startsAt)).limit(1);
+  if (!item) return;
+  await db.update(appointments).set({ status, confirmedAt: status === "confirmed" ? new Date() : undefined, cancellationReason: status === "cancelled" ? "Cancelado pelo paciente via WhatsApp" : null, updatedAt: new Date() }).where(eq(appointments.id, item.id));
 }
 
 export async function GET(request: NextRequest) {
@@ -244,7 +255,10 @@ export async function POST(request: NextRequest) {
           return true;
         });
 
-        if (inserted) accepted += 1;
+        if (inserted) {
+          accepted += 1;
+          if (message.type === "text") await applyAppointmentReply(channel.organizationId, message.from, message.text?.body);
+        }
       }
     }
   }

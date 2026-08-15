@@ -78,7 +78,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       { href: "/financeiro/operacoes#comissoes", label: "Comissões", icon: HandCoins, permission: "finance.read", secondary: true },
       { href: "/financeiro/operacoes#fechamento-caixa", label: "Fechamento de caixa", icon: CircleDollarSign, permission: "finance.read", secondary: true },
       { href: "/financeiro/operacoes#conciliacao-ofx", label: "Conciliação OFX", icon: Landmark, permission: "finance.read", secondary: true },
-      { href: "/financeiro/cobrancas", label: "Cobranças", icon: BanknoteArrowDown, permission: "finance.read", secondary: true },
+      { href: "/financeiro/cobrancas", label: "Pagamentos", icon: BanknoteArrowDown, permission: "finance.read", secondary: true },
       { href: "/financeiro/operacoes#nfse", label: "Emissão de NFS-e", icon: ReceiptText, permission: "finance.read", secondary: true },
     ] },
     { label: "Automação", items: [

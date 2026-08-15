@@ -222,6 +222,10 @@ export const organizations = pgTable("organizations", {
   reminderOffsetsHours: jsonb("reminder_offsets_hours").$type<number[]>().default([24]).notNull(),
   reminderConfirmationEnabled: boolean("reminder_confirmation_enabled").default(true).notNull(),
   patientRecoveryDays: integer("patient_recovery_days").default(90).notNull(),
+  cancellationPolicy: text("cancellation_policy"),
+  depositRefundPolicy: text("deposit_refund_policy"),
+  latenessPolicy: text("lateness_policy"),
+  publicPrivacyPolicy: text("public_privacy_policy"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

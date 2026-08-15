@@ -211,6 +211,13 @@
       "when": 1786786671734,
       "tag": "0029_sticky_lizard",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1786788557440,
+      "tag": "0030_premium_vulture",
+      "breakpoints": true
     }
   ]
 }

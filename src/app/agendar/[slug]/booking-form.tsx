@@ -23,6 +23,7 @@ export function BookingForm({
   const [times, setTimes] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resultLinks, setResultLinks] = useState<{ paymentUrl?: string; manageUrl?: string }>({});
   const selectedService = services.find((item) => item.id === serviceId);
   const requiresDeposit = selectedService?.depositType && selectedService.depositType !== "none";
 
@@ -62,7 +63,7 @@ export function BookingForm({
     }
     setTimes([]);
     setMessage(data.paymentUrl ? `${labels.appointment} reservado. Conclua o sinal para confirmar.` : `${labels.appointment} confirmado com sucesso.`);
-    if (data.paymentUrl) window.location.assign(data.paymentUrl);
+    setResultLinks({ paymentUrl: data.paymentUrl, manageUrl: data.manageUrl });
   }
 
   const minimumDate = new Date().toISOString().slice(0, 10);
@@ -139,6 +140,7 @@ export function BookingForm({
           {message}
         </p>
       )}
+      {(resultLinks.paymentUrl || resultLinks.manageUrl) && <div className="flex flex-wrap gap-2">{resultLinks.paymentUrl && <a className="primary-button" href={resultLinks.paymentUrl}>Pagar sinal</a>}{resultLinks.manageUrl && <a className="secondary-button" href={resultLinks.manageUrl}>Gerenciar agendamento</a>}</div>}
     </form>
   );
 }

@@ -7,6 +7,8 @@ import {
   billingPayments,
   billingWebhookEvents,
   auditLogs,
+  appointments,
+  clientMemberships,
   financialEntries,
   organizationMembers,
   organizationFinancialIntegrations,
@@ -17,6 +19,7 @@ import {
 } from "@/db/schema";
 import { asaasRequest } from "@/lib/asaas";
 import { decodeOrganizationAsaasCredential } from "@/lib/organization-asaas";
+import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
 
 type AsaasSubscription = {
   id: string;
@@ -148,6 +151,18 @@ async function processOrganizationCharge(organizationId: string, event: AsaasWeb
         eq(financialEntries.type, "receivable"),
       ));
     }
+    if (charge.originType === "appointment") {
+      await tx.update(appointments).set({
+        depositStatus: status === "paid" ? "paid" : status === "refunded" ? "refunded" : status === "cancelled" ? "cancelled" : "pending",
+        status: status === "paid" ? "confirmed" : undefined,
+        confirmedAt: status === "paid" ? now : undefined,
+        reservationExpiresAt: status === "paid" ? null : undefined,
+        updatedAt: now,
+      }).where(and(eq(appointments.id, charge.originId), eq(appointments.organizationId, organizationId)));
+    }
+    if (charge.originType === "membership") {
+      await tx.update(clientMemberships).set({ status: status === "paid" ? "active" : status === "cancelled" ? "cancelled" : status === "overdue" ? "past_due" : undefined, updatedAt: now }).where(and(eq(clientMemberships.id, charge.originId), eq(clientMemberships.organizationId, organizationId)));
+    }
     if (status === "refunded" && charge.financialEntryId && charge.status === "paid") {
       await tx.update(financialEntries).set({ status: "pending", realizedDate: null, paymentMethod: null, updatedAt: now }).where(and(
         eq(financialEntries.id, charge.financialEntryId),
@@ -163,6 +178,7 @@ async function processOrganizationCharge(organizationId: string, event: AsaasWeb
       details: { providerEventId: event.id, eventType: event.event, previousStatus: charge.status },
     });
   });
+  if (status === "paid" && charge.status !== "paid" && charge.originType === "appointment") await enqueueAppointmentNotification(charge.originId, "confirmation");
   return true;
 }
 

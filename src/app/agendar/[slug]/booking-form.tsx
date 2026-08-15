@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-type Item = { id: string; name: string; durationMinutes?: number };
+type Item = { id: string; name: string; durationMinutes?: number; priceInCents?: number | null; depositType?: string; depositValue?: number };
 
 export function BookingForm({
   slug,
@@ -23,6 +23,8 @@ export function BookingForm({
   const [times, setTimes] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const selectedService = services.find((item) => item.id === serviceId);
+  const requiresDeposit = selectedService?.depositType && selectedService.depositType !== "none";
 
   useEffect(() => {
     if (!serviceId || !professionalId || !date) {
@@ -59,7 +61,8 @@ export function BookingForm({
       return;
     }
     setTimes([]);
-    setMessage(`${labels.appointment} confirmado com sucesso.`);
+    setMessage(data.paymentUrl ? `${labels.appointment} reservado. Conclua o sinal para confirmar.` : `${labels.appointment} confirmado com sucesso.`);
+    if (data.paymentUrl) window.location.assign(data.paymentUrl);
   }
 
   const minimumDate = new Date().toISOString().slice(0, 10);
@@ -126,6 +129,8 @@ export function BookingForm({
       <input className="field" name="name" placeholder="Seu nome" required />
       <input className="field" name="phone" type="tel" placeholder="WhatsApp com DDD" required />
       <input className="field" name="email" type="email" placeholder="E-mail (opcional)" />
+      <input className="field" name="voucherCode" placeholder="Voucher ou cupom (opcional)" />
+      {requiresDeposit && <><input className="field" name="document" inputMode="numeric" placeholder="CPF do responsável pelo pagamento" required /><div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm"><strong>Reserva com sinal.</strong> O horário fica reservado por 30 minutos e será confirmado após o pagamento seguro na conta Asaas da empresa.</div></>}
       <button className="primary-button" disabled={loading || !times.length}>
         Confirmar {labels.appointment.toLowerCase()}
       </button>

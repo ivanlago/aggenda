@@ -36,6 +36,11 @@ export default async function ServicesPage() {
           <textarea className="field min-h-20" name="description" placeholder="Descrição" />
           <input className="field" name="durationMinutes" type="number" min="5" step="5" required placeholder="Duração em minutos" />
           <input className="field" name="price" inputMode="decimal" placeholder="Preço em reais (ex.: 150,00)" />
+          <input className="field" name="estimatedCost" inputMode="decimal" placeholder="Custo estimado (produtos, taxas etc.)" />
+          <div className="grid gap-2 sm:grid-cols-2">
+            <select className="field" name="depositType" defaultValue="none"><option value="none">Sem sinal</option><option value="fixed">Sinal em reais</option><option value="percentage">Sinal percentual</option><option value="full">Pagamento integral</option></select>
+            <input className="field" name="depositValue" type="number" min="0" placeholder="Valor em centavos ou %" />
+          </div>
           <button className="primary-button">
             Adicionar {organization.serviceLabel.toLowerCase()}
           </button>
@@ -66,6 +71,9 @@ export default async function ServicesPage() {
                     <textarea className="field" name="description" defaultValue={item.description ?? ""} placeholder="Descrição" />
                     <input className="field" name="durationMinutes" type="number" min="5" step="5" defaultValue={item.durationMinutes} required />
                     <input className="field" name="price" inputMode="decimal" defaultValue={item.priceInCents == null ? "" : (item.priceInCents / 100).toFixed(2).replace(".", ",")} placeholder="Preço em reais" />
+                    <input className="field" name="estimatedCost" inputMode="decimal" defaultValue={(item.estimatedCostInCents / 100).toFixed(2).replace(".", ",")} placeholder="Custo estimado" />
+                    <select className="field" name="depositType" defaultValue={item.depositType}><option value="none">Sem sinal</option><option value="fixed">Sinal em reais</option><option value="percentage">Sinal percentual</option><option value="full">Pagamento integral</option></select>
+                    <input className="field" name="depositValue" type="number" min="0" defaultValue={item.depositValue} aria-label="Valor do sinal em centavos ou percentual" />
                     <label className="flex gap-2 text-sm"><input type="checkbox" name="isActive" defaultChecked={item.isActive} /> Ativo</label>
                     <button className="primary-button">Salvar</button>
                   </form>

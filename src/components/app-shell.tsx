@@ -24,6 +24,7 @@ import {
   Landmark,
   MessageCircleMore,
   ReceiptText,
+  TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -65,6 +66,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       { href: "/estoque", label: "Controle de estoque", icon: Boxes, permission: "inventory.read" },
     ] },
     { label: "CRM comercial", items: [
+      { href: "/crescimento", label: "Crescimento e recorrência", icon: TrendingUp, permission: "crm.read" },
       { href: "/crm", label: "Funil e oportunidades", icon: KanbanSquare, permission: "crm.read" },
       { href: "/crm/inbox", label: "Conversas comerciais", icon: MessageCircleMore, permission: "crm.read", secondary: true },
       { href: "/crm/propostas", label: "Propostas", icon: FileCheck2, permission: "crm.read", secondary: true },

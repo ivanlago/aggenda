@@ -212,6 +212,16 @@ export const organizations = pgTable("organizations", {
   bookingNoticeHours: integer("booking_notice_hours").default(2).notNull(),
   bookingHorizonDays: integer("booking_horizon_days").default(60).notNull(),
   slotIntervalMinutes: integer("slot_interval_minutes").default(30).notNull(),
+  publicDescription: text("public_description"),
+  publicAddress: text("public_address"),
+  publicLogoUrl: text("public_logo_url"),
+  publicCoverUrl: text("public_cover_url"),
+  brandColor: text("brand_color").default("#37664f").notNull(),
+  customDomain: text("custom_domain").unique(),
+  customDomainVerifiedAt: timestamp("custom_domain_verified_at"),
+  reminderOffsetsHours: jsonb("reminder_offsets_hours").$type<number[]>().default([24]).notNull(),
+  reminderConfirmationEnabled: boolean("reminder_confirmation_enabled").default(true).notNull(),
+  patientRecoveryDays: integer("patient_recovery_days").default(90).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -631,6 +641,21 @@ export const clientHistoryEntries = pgTable(
   ]
 );
 
+export const clientClinicalMedia = pgTable("client_clinical_media", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  appointmentId: uuid("appointment_id").references(() => appointments.id, { onDelete: "set null" }),
+  authorUserId: text("author_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  mediaType: text("media_type").default("photo").notNull(),
+  phase: text("phase").default("clinical").notNull(),
+  title: text("title"),
+  url: text("url").notNull(),
+  consentConfirmed: boolean("consent_confirmed").default(false).notNull(),
+  capturedAt: timestamp("captured_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [index("client_clinical_media_client_idx").on(table.clientId, table.capturedAt), index("client_clinical_media_org_idx").on(table.organizationId)]);
+
 export const crmPipelines = pgTable(
   "crm_pipelines",
   {
@@ -864,6 +889,10 @@ export const services = pgTable(
     description: text("description"),
     durationMinutes: integer("duration_minutes").notNull(),
     priceInCents: integer("price_in_cents"),
+    estimatedCostInCents: integer("estimated_cost_in_cents").default(0).notNull(),
+    depositType: text("deposit_type").default("none").notNull(),
+    depositValue: integer("deposit_value").default(0).notNull(),
+    depositExpirationMinutes: integer("deposit_expiration_minutes").default(30).notNull(),
     requiresProfessional: boolean("requires_professional").default(true).notNull(),
     isActive: boolean("is_active").default(true).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -972,6 +1001,37 @@ export const clientPackages = pgTable(
   ]
 );
 
+export const clientMemberships = pgTable("client_memberships", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "restrict" }),
+  packageId: uuid("package_id").notNull().references(() => servicePackages.id, { onDelete: "restrict" }),
+  status: text("status").default("active").notNull(),
+  monthlyPriceInCents: integer("monthly_price_in_cents").notNull(),
+  billingDay: integer("billing_day").default(1).notNull(),
+  providerSubscriptionId: text("provider_subscription_id"),
+  startsAt: timestamp("starts_at").defaultNow().notNull(),
+  nextRenewalAt: timestamp("next_renewal_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [index("client_memberships_org_status_idx").on(table.organizationId, table.status), index("client_memberships_client_idx").on(table.clientId)]);
+
+export const vouchers = pgTable("vouchers", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  description: text("description"),
+  discountType: text("discount_type").default("fixed").notNull(),
+  discountValue: integer("discount_value").notNull(),
+  maxUses: integer("max_uses"),
+  usedCount: integer("used_count").default(0).notNull(),
+  validFrom: timestamp("valid_from").defaultNow().notNull(),
+  validUntil: timestamp("valid_until"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [uniqueIndex("vouchers_org_code_unique").on(table.organizationId, table.code), index("vouchers_org_active_idx").on(table.organizationId, table.isActive)]);
+
 export const clientPackageBalances = pgTable(
   "client_package_balances",
   {
@@ -1073,6 +1133,10 @@ export const appointments = pgTable(
     confirmedAt: timestamp("confirmed_at"),
     reminderClaimedAt: timestamp("reminder_claimed_at"),
     reminderSentAt: timestamp("reminder_sent_at"),
+    depositStatus: text("deposit_status").default("not_required").notNull(),
+    depositAmountInCents: integer("deposit_amount_in_cents").default(0).notNull(),
+    reservationExpiresAt: timestamp("reservation_expires_at"),
+    publicManageToken: text("public_manage_token").unique(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

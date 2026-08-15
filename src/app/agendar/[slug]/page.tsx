@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
-import { CalendarCheck } from "lucide-react";
+import { CalendarCheck, MapPin } from "lucide-react";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 
 import { db } from "@/db";
@@ -41,6 +42,9 @@ export default async function PublicBookingPage({
         id: services.id,
         name: services.name,
         durationMinutes: services.durationMinutes,
+        priceInCents: services.priceInCents,
+        depositType: services.depositType,
+        depositValue: services.depositValue,
       })
       .from(services)
       .where(
@@ -63,12 +67,11 @@ export default async function PublicBookingPage({
       .orderBy(professionals.name),
   ]);
   return (
-    <main className="grid min-h-screen place-items-center p-5">
+    <main className="grid min-h-screen place-items-center p-5" style={{ background: `linear-gradient(145deg, ${organization.brandColor}18, #f3f5f1 55%)` }}>
       <section className="panel w-full max-w-xl shadow-xl shadow-brand/5">
+        {organization.publicCoverUrl && <Image className="mb-5 h-44 w-full rounded-2xl object-cover" src={organization.publicCoverUrl} alt={`Capa de ${organization.name}`} width={900} height={360} unoptimized />}
         <div className="flex items-center gap-3">
-          <span className="grid size-11 place-items-center rounded-xl bg-accent text-brand-dark">
-            <CalendarCheck className="size-5" />
-          </span>
+          {organization.publicLogoUrl ? <Image className="size-14 rounded-xl object-contain" src={organization.publicLogoUrl} alt={`Logo de ${organization.name}`} width={56} height={56} unoptimized /> : <span className="grid size-11 place-items-center rounded-xl bg-accent text-brand-dark"><CalendarCheck className="size-5" /></span>}
           <div>
             <p className="text-xs font-extrabold uppercase tracking-widest text-brand">
               Agendamento online
@@ -76,6 +79,8 @@ export default async function PublicBookingPage({
             <h1 className="text-2xl font-extrabold">{organization.name}</h1>
           </div>
         </div>
+        {organization.publicDescription && <p className="mt-4 text-sm leading-6 text-muted">{organization.publicDescription}</p>}
+        {organization.publicAddress && <p className="mt-3 flex items-center gap-2 text-sm font-bold"><MapPin className="size-4" />{organization.publicAddress}</p>}
         <BookingForm
           slug={slug}
           services={serviceItems}

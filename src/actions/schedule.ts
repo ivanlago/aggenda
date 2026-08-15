@@ -175,6 +175,15 @@ export async function updateBookingSettings(formData: FormData) {
       bookingNoticeHours: notice,
       bookingHorizonDays: horizon,
       slotIntervalMinutes: interval,
+      publicDescription: value(formData, "publicDescription") || null,
+      publicAddress: value(formData, "publicAddress") || null,
+      publicLogoUrl: value(formData, "publicLogoUrl") || null,
+      publicCoverUrl: value(formData, "publicCoverUrl") || null,
+      brandColor: /^#[0-9a-f]{6}$/i.test(value(formData, "brandColor")) ? value(formData, "brandColor") : "#37664f",
+      customDomain: value(formData, "customDomain").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "") || null,
+      reminderOffsetsHours: [...new Set(value(formData, "reminderOffsetsHours").split(",").map(Number).filter((item) => Number.isFinite(item) && item > 0 && item <= 720))].sort((a, b) => b - a),
+      reminderConfirmationEnabled: formData.get("reminderConfirmationEnabled") === "on",
+      patientRecoveryDays: Math.min(730, Math.max(30, Number(value(formData, "patientRecoveryDays")) || 90)),
       updatedAt: new Date(),
     })
     .where(eq(organizations.id, organization.id));

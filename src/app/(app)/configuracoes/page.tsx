@@ -122,7 +122,7 @@ export default async function SettingsPage() {
       <section className="panel mt-5 max-w-3xl">
         <h2 className="text-xl font-extrabold">Agendamento público</h2>
         <p className="mt-2 text-sm text-muted">
-          Link público: /agendar/{organization.slug}
+          Link público incluído: /agendar/{organization.slug}
         </p>
         <ActionForm
           action={updateBookingSettings}
@@ -149,6 +149,15 @@ export default async function SettingsPage() {
               disabled={!canManage}
             />
           </label>
+          <label className="grid gap-2 text-sm font-bold sm:col-span-3">Apresentação pública<textarea className="field min-h-20" name="publicDescription" defaultValue={organization.publicDescription ?? ""} disabled={!canManage} placeholder="Conte a especialidade e os diferenciais do negócio" /></label>
+          <label className="grid gap-2 text-sm font-bold sm:col-span-3">Endereço público<input className="field" name="publicAddress" defaultValue={organization.publicAddress ?? ""} disabled={!canManage} /></label>
+          <label className="grid gap-2 text-sm font-bold">Logo (URL)<input className="field" name="publicLogoUrl" type="url" defaultValue={organization.publicLogoUrl ?? ""} disabled={!canManage} /></label>
+          <label className="grid gap-2 text-sm font-bold">Capa (URL)<input className="field" name="publicCoverUrl" type="url" defaultValue={organization.publicCoverUrl ?? ""} disabled={!canManage} /></label>
+          <label className="grid gap-2 text-sm font-bold">Cor da marca<input className="field h-12" name="brandColor" type="color" defaultValue={organization.brandColor} disabled={!canManage} /></label>
+          <label className="grid gap-2 text-sm font-bold sm:col-span-2">Domínio próprio (opcional)<input className="field" name="customDomain" defaultValue={organization.customDomain ?? ""} disabled={!canManage} placeholder="agenda.suamarca.com.br" /><span className="text-xs font-normal leading-5 text-muted">O link padrão do Aggenda continua disponível sem custo adicional. Se optar pelo domínio próprio, o registro, o DNS e a renovação permanecem sob responsabilidade da empresa. O Aggenda não compra nem renova domínios automaticamente.</span></label>
+          <label className="grid gap-2 text-sm font-bold">Reativar após (dias)<input className="field" name="patientRecoveryDays" type="number" min="30" max="730" defaultValue={organization.patientRecoveryDays} disabled={!canManage} /></label>
+          <label className="grid gap-2 text-sm font-bold sm:col-span-2">Lembretes antes do horário (horas)<input className="field" name="reminderOffsetsHours" defaultValue={organization.reminderOffsetsHours.join(", ")} disabled={!canManage} placeholder="48, 24, 2" /><span className="text-xs font-normal text-muted">Separe por vírgulas. Cada horário é enviado uma única vez.</span></label>
+          <label className="flex items-center gap-3 text-sm font-bold"><input name="reminderConfirmationEnabled" type="checkbox" defaultChecked={organization.reminderConfirmationEnabled} disabled={!canManage} />Solicitar confirmação</label>
           <label className="grid gap-2 text-sm font-bold">
             Janela futura (dias)
             <input

@@ -18,6 +18,7 @@ import {
   financialCostCenters,
   financialBudgets,
   clientHistoryEntries,
+  clientClinicalMedia,
   professionalRegistrations,
   professionalGoogleCalendarAccounts,
   professionalSpecialties,
@@ -481,6 +482,19 @@ export async function createClientHistoryEntry(formData: FormData) {
   revalidatePath(`/clientes/${clientId}`);
 }
 
+export async function createClientClinicalMedia(formData: FormData) {
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "clients.manage");
+  const clientId = textValue(formData, "clientId");
+  const url = textValue(formData, "url");
+  if (!clientId || !/^https:\/\//i.test(url) || formData.get("consentConfirmed") !== "on") throw new Error("Informe uma URL HTTPS e confirme o consentimento do paciente.");
+  const [client] = await db.select({ id: clients.id }).from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1);
+  if (!client) throw new Error("Cliente não encontrado.");
+  await db.insert(clientClinicalMedia).values({ organizationId: organization.id, clientId, authorUserId: session.user.id, phase: textValue(formData, "phase") || "clinical", title: optionalText(formData, "title"), url, consentConfirmed: true });
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "client_clinical_media", entityId: clientId });
+  revalidatePath(`/clientes/${clientId}`);
+}
+
 export async function createService(formData: FormData) {
   const { organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "services.manage");
@@ -496,6 +510,9 @@ export async function createService(formData: FormData) {
     description: optionalText(formData, "description"),
     durationMinutes,
     priceInCents: optionalMoneyInCents(formData, "price"),
+    estimatedCostInCents: optionalMoneyInCents(formData, "estimatedCost") ?? 0,
+    depositType: ["none", "fixed", "percentage", "full"].includes(textValue(formData, "depositType")) ? textValue(formData, "depositType") : "none",
+    depositValue: Number.parseInt(textValue(formData, "depositValue") || "0", 10) || 0,
   });
   revalidatePath("/servicos");
   revalidatePath("/dashboard");
@@ -528,6 +545,9 @@ export async function updateService(formData: FormData) {
   await db.update(services).set({
     name, description: optionalText(formData, "description"), durationMinutes,
     priceInCents: optionalMoneyInCents(formData, "price"),
+    estimatedCostInCents: optionalMoneyInCents(formData, "estimatedCost") ?? 0,
+    depositType: ["none", "fixed", "percentage", "full"].includes(textValue(formData, "depositType")) ? textValue(formData, "depositType") : "none",
+    depositValue: Number.parseInt(textValue(formData, "depositValue") || "0", 10) || 0,
     isActive: formData.get("isActive") === "on", updatedAt: new Date(),
   }).where(and(eq(services.id, id), eq(services.organizationId, organization.id)));
   revalidatePath("/servicos");

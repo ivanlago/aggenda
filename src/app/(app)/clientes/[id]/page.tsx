@@ -2,11 +2,12 @@ import { and, desc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { createClientHistoryEntry } from "@/actions/app";
+import { createClientClinicalMedia, createClientHistoryEntry } from "@/actions/app";
+import Image from "next/image";
 import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
-import { appointments, clientHistoryEntries, clientPackageBalances, clientPackages, clients, professionals, servicePackages, services, users } from "@/db/schema";
+import { appointments, clientClinicalMedia, clientHistoryEntries, clientPackageBalances, clientPackages, clients, professionals, servicePackages, services, users } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
 import { formatOrganizationDateTime } from "@/lib/appointment-safety";
 
@@ -33,7 +34,7 @@ export default async function ClientHistoryPage({
     )
     .limit(1);
   if (!client) notFound();
-  const [history, entries, packageRows] = await Promise.all([db
+  const [history, entries, packageRows, clinicalMedia] = await Promise.all([db
     .select({
       id: appointments.id,
       startsAt: appointments.startsAt,
@@ -80,6 +81,7 @@ export default async function ClientHistoryPage({
       .innerJoin(services, eq(services.id, clientPackageBalances.serviceId))
       .where(and(eq(clientPackages.clientId, client.id), eq(clientPackages.organizationId, organization.id)))
       .orderBy(desc(clientPackages.purchasedAt)),
+    db.select().from(clientClinicalMedia).where(and(eq(clientClinicalMedia.clientId, client.id), eq(clientClinicalMedia.organizationId, organization.id))).orderBy(desc(clientClinicalMedia.capturedAt)),
   ]);
   const packages = new Map<string, { name: string; purchasedAt: Date; expiresAt: Date | null; status: string; balances: typeof packageRows }>();
   for (const row of packageRows) {
@@ -105,6 +107,19 @@ export default async function ClientHistoryPage({
           <div><p className="text-muted">Contato</p><p className="font-bold">{client.phone || client.email || "Não informado"}</p></div>
         </div>
       </section>
+      {isHealth && <section className="panel mb-5">
+        <h2 className="text-lg font-extrabold">Fotografias clínicas</h2>
+        <p className="mt-1 text-sm text-muted">Organize registros de antes, durante e depois com consentimento rastreável. Use apenas URLs do armazenamento seguro adotado pela clínica.</p>
+        <ActionForm action={createClientClinicalMedia} successMessage="Fotografia clínica vinculada." className="mt-4 grid gap-3 sm:grid-cols-2">
+          <input type="hidden" name="clientId" value={client.id} />
+          <select className="field" name="phase"><option value="before">Antes</option><option value="during">Durante</option><option value="after">Depois</option><option value="clinical">Registro clínico</option></select>
+          <input className="field" name="title" placeholder="Área ou procedimento" />
+          <input className="field sm:col-span-2" name="url" type="url" required placeholder="https://armazenamento-seguro/foto" />
+          <label className="flex items-start gap-2 text-sm font-bold sm:col-span-2"><input className="mt-1" name="consentConfirmed" type="checkbox" required />Confirmo que há consentimento para este registro clínico.</label>
+          <button className="primary-button sm:w-fit">Adicionar fotografia</button>
+        </ActionForm>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{clinicalMedia.map((media) => <article key={media.id} className="rounded-2xl border p-3"><Image className="aspect-square w-full rounded-xl object-cover" src={media.url} alt={media.title || "Fotografia clínica"} width={500} height={500} unoptimized /><p className="mt-2 font-bold">{media.title || "Registro clínico"}</p><span className="status-pill mt-1">{{ before: "Antes", during: "Durante", after: "Depois", clinical: "Clínico" }[media.phase] ?? media.phase}</span></article>)}</div>
+      </section>}
       <section className="panel mb-5">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-extrabold">Pacotes e saldos</h2>

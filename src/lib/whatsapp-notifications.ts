@@ -25,6 +25,7 @@ function normalizedPhone(value: string | null) {
 export async function enqueueAppointmentNotification(
   appointmentId: string,
   kind: AppointmentNotificationKind,
+  occurrence = "once",
 ) {
   const [item] = await db
     .select({
@@ -76,7 +77,7 @@ export async function enqueueAppointmentNotification(
 
   await db.insert(outboxEvents).values({
     organizationId: item.organizationId,
-    eventKey: `whatsapp:${kind}:${appointmentId}:${kind === "reminder" ? "once" : item.updatedAt.getTime()}`,
+    eventKey: `whatsapp:${kind}:${appointmentId}:${kind === "reminder" ? occurrence : item.updatedAt.getTime()}`,
     eventType: "whatsapp.template.send",
     aggregateType: "appointment",
     aggregateId: appointmentId,

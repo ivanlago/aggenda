@@ -96,7 +96,7 @@ export async function POST(request: Request) {
               await tx.insert(dataImportRows).values({ importId: input.importId, rowNumber, entityId: found.id, action: "ignored" });
               continue;
             }
-            const values = { name, description: text(row.description) || null, durationMinutes, priceInCents: money(row.price), isActive: truthy(row.isActive, true), requiresProfessional: truthy(row.requiresProfessional, true), updatedAt: new Date() };
+            const values = { name, description: text(row.description) || null, durationMinutes, priceInCents: money(row.price), estimatedCostInCents: 0, depositType: "none", depositValue: 0, depositExpirationMinutes: 30, isActive: truthy(row.isActive, true), requiresProfessional: truthy(row.requiresProfessional, true), updatedAt: new Date() };
             if (found) {
               await tx.update(services).set(values).where(eq(services.id, found.id));
               updatedRows += 1; results.push({ row: rowNumber, action: "updated" });

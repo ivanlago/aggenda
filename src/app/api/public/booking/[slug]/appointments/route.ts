@@ -1,17 +1,25 @@
 import { and, eq } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 
 import { db } from "@/db";
 import {
   appointments,
   clients,
+  financialEntries,
   organizations,
+  paymentChargeEvents,
+  paymentCharges,
   professionals,
   services,
+  vouchers,
 } from "@/db/schema";
 import { isTimeAvailable } from "@/lib/availability";
 import { organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
 import { syncAppointmentToGoogleCalendar } from "@/lib/google-calendar";
 import { syncAppointmentFinancialEntry } from "@/lib/finance";
+import { organizationAsaasRequest } from "@/lib/asaas";
+import { getOrganizationAsaasCredential } from "@/lib/organization-asaas";
+import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
 
 export async function POST(
   request: Request,
@@ -22,6 +30,8 @@ export async function POST(
   const name = String(body.name ?? "").trim();
   const phone = String(body.phone ?? "").replace(/\D/g, "");
   const email = String(body.email ?? "").trim() || null;
+  const document = String(body.document ?? "").replace(/\D/g, "");
+  const voucherCode = String(body.voucherCode ?? "").trim().toUpperCase();
   const serviceId = String(body.serviceId ?? "");
   const professionalId = String(body.professionalId ?? "");
   const startsAt = new Date(String(body.startsAt ?? ""));
@@ -40,7 +50,7 @@ export async function POST(
   }
   const [[service], [professional]] = await Promise.all([
     db
-      .select({ duration: services.durationMinutes, price: services.priceInCents })
+      .select({ duration: services.durationMinutes, price: services.priceInCents, name: services.name, depositType: services.depositType, depositValue: services.depositValue, expiration: services.depositExpirationMinutes })
       .from(services)
       .where(
         and(
@@ -67,6 +77,13 @@ export async function POST(
     return Response.json({ error: "Serviço ou profissional inválido." }, { status: 400 });
   }
   try {
+    const [voucher] = voucherCode ? await db.select().from(vouchers).where(and(eq(vouchers.organizationId, organization.id), eq(vouchers.code, voucherCode), eq(vouchers.isActive, true))).limit(1) : [];
+    if (voucherCode && (!voucher || (voucher.validUntil && voucher.validUntil < new Date()) || (voucher.maxUses != null && voucher.usedCount >= voucher.maxUses))) return Response.json({ error: "Voucher inválido, expirado ou esgotado." }, { status: 400 });
+    const discount = voucher ? voucher.discountType === "percentage" ? Math.round((service.price ?? 0) * voucher.discountValue / 100) : voucher.discountValue : 0;
+    const finalPrice = Math.max(0, (service.price ?? 0) - discount);
+    const depositAmount = service.depositType === "full" ? finalPrice : service.depositType === "percentage" ? Math.round(finalPrice * service.depositValue / 100) : service.depositType === "fixed" ? Math.min(finalPrice, service.depositValue) : 0;
+    if (depositAmount > 0 && ![11, 14].includes(document.length)) return Response.json({ error: "Informe um CPF ou CNPJ válido para gerar o sinal." }, { status: 400 });
+    const manageToken = randomUUID();
     const appointment = await withAppointmentLock(organization.id, professionalId, async (tx) => {
       const available = await isTimeAvailable({
         organizationId: organization.id, timezone: organization.timezone,
@@ -102,15 +119,40 @@ export async function POST(
           professionalId,
           startsAt,
           endsAt: new Date(startsAt.getTime() + service.duration * 60_000),
-          priceInCents: service.price,
+          priceInCents: finalPrice,
           source: "booking_page",
+          depositStatus: depositAmount > 0 ? "pending" : "not_required",
+          depositAmountInCents: depositAmount,
+          reservationExpiresAt: depositAmount > 0 ? new Date(Date.now() + service.expiration * 60_000) : null,
+          publicManageToken: manageToken,
         })
-        .returning({ id: appointments.id });
+        .returning({ id: appointments.id, clientId: appointments.clientId });
+      if (voucher) await tx.update(vouchers).set({ usedCount: voucher.usedCount + 1 }).where(eq(vouchers.id, voucher.id));
       return created;
     });
     await syncAppointmentFinancialEntry(appointment.id);
+    if (depositAmount > 0) {
+      const remaining = finalPrice - depositAmount;
+      if (remaining > 0) await db.update(financialEntries).set({ amountInCents: remaining, description: `Saldo - ${service.name}`, updatedAt: new Date() }).where(eq(financialEntries.appointmentId, appointment.id));
+      else await db.delete(financialEntries).where(eq(financialEntries.appointmentId, appointment.id));
+    }
     await syncAppointmentToGoogleCalendar(appointment.id);
-    return Response.json({ id: appointment.id }, { status: 201 });
+    let paymentUrl: string | undefined;
+    if (depositAmount > 0) {
+      const credential = await getOrganizationAsaasCredential(organization.id);
+      type CustomerList = { data?: Array<{ id: string }> }; type Customer = { id: string }; type Payment = { id: string; invoiceUrl?: string };
+      const found = await organizationAsaasRequest<CustomerList>(`/customers?cpfCnpj=${document}&limit=1`, credential);
+      const customerId = found.data?.[0]?.id ?? (await organizationAsaasRequest<Customer>("/customers", credential, { method: "POST", body: { name, cpfCnpj: document, email: email ?? undefined, phone } })).id;
+      const chargeId = randomUUID();
+      const dueDate = organizationDate(new Date(), organization.timezone);
+      const payment = await organizationAsaasRequest<Payment>("/payments", credential, { method: "POST", body: { customer: customerId, billingType: "UNDEFINED", value: depositAmount / 100, dueDate, description: `Sinal - ${service.name}`, externalReference: `charge:${chargeId}` } });
+      const [entry] = await db.insert(financialEntries).values({ organizationId: organization.id, clientId: appointment.clientId, type: "receivable", source: "appointment_deposit", status: "pending", description: `Sinal - ${service.name}`, category: "Sinais de agendamento", amountInCents: depositAmount, dueDate }).returning({ id: financialEntries.id });
+      await db.insert(paymentCharges).values({ id: chargeId, organizationId: organization.id, providerPaymentId: payment.id, providerCustomerId: customerId, originType: "appointment", originId: appointment.id, financialEntryId: entry.id, clientId: appointment.clientId, paymentMethod: "link", status: "pending", amountInCents: depositAmount, description: `Sinal - ${service.name}`, customerName: name, customerDocument: document, customerEmail: email, customerPhone: phone, dueDate, invoiceUrl: payment.invoiceUrl, metadata: { appointmentId: appointment.id } });
+      await db.insert(paymentChargeEvents).values({ organizationId: organization.id, chargeId, eventType: "charge_created", status: "pending", payload: { appointmentId: appointment.id, publicBooking: true } });
+      paymentUrl = payment.invoiceUrl;
+    }
+    if (!depositAmount) await enqueueAppointmentNotification(appointment.id, "confirmation");
+    return Response.json({ id: appointment.id, manageToken, paymentUrl }, { status: 201 });
   } catch (error) {
     if (error instanceof Error && error.message === "APPOINTMENT_CONFLICT") {
       return Response.json(

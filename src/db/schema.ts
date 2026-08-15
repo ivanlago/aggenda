@@ -288,6 +288,10 @@ export const organizationServicePlans = pgTable(
       .default(0)
       .notNull(),
     aiMonthlyLimit: integer("ai_monthly_limit").default(0).notNull(),
+    nfseServiceCode: text("nfse_service_code").default("none").notNull(),
+    nfseMonthlyLimit: integer("nfse_monthly_limit").default(0).notNull(),
+    nfseOverageInCents: integer("nfse_overage_in_cents").default(49).notNull(),
+    nfseMonthlyPriceInCents: integer("nfse_monthly_price_in_cents").default(4990).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

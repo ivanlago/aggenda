@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { organizationServicePlans } from "@/db/schema";
 import {
   isCorePlanCode,
+  isNfseServiceCode,
   isWhatsAppServiceCode,
 } from "@/lib/service-plans";
 import { requirePlatformMember } from "@/lib/session";
@@ -23,15 +24,20 @@ export async function updateOrganizationServicePlan(formData: FormData) {
   const organizationId = String(formData.get("organizationId") ?? "");
   const corePlanCode = String(formData.get("corePlanCode") ?? "");
   const whatsappServiceCode = String(formData.get("whatsappServiceCode") ?? "");
+  const nfseServiceCode = String(formData.get("nfseServiceCode") ?? "none");
   if (!organizationId || !isCorePlanCode(corePlanCode)) {
     throw new Error("Plano Core inválido.");
   }
   if (!isWhatsAppServiceCode(whatsappServiceCode)) {
     throw new Error("Serviço de WhatsApp inválido.");
   }
+  if (!isNfseServiceCode(nfseServiceCode)) throw new Error("Serviço de NFS-e inválido.");
 
   const whatsappMonthlyLimit = boundedLimit(formData, "whatsappMonthlyLimit");
   const aiMonthlyLimit = boundedLimit(formData, "aiMonthlyLimit");
+  const nfseMonthlyLimit = boundedLimit(formData, "nfseMonthlyLimit");
+  const nfseOverageInCents = boundedLimit(formData, "nfseOverageInCents");
+  const nfseMonthlyPriceInCents = boundedLimit(formData, "nfseMonthlyPriceInCents");
   await db
     .insert(organizationServicePlans)
     .values({
@@ -40,6 +46,10 @@ export async function updateOrganizationServicePlan(formData: FormData) {
       whatsappServiceCode,
       whatsappMonthlyLimit,
       aiMonthlyLimit,
+      nfseServiceCode,
+      nfseMonthlyLimit,
+      nfseOverageInCents,
+      nfseMonthlyPriceInCents,
     })
     .onConflictDoUpdate({
       target: organizationServicePlans.organizationId,
@@ -48,6 +58,10 @@ export async function updateOrganizationServicePlan(formData: FormData) {
         whatsappServiceCode,
         whatsappMonthlyLimit,
         aiMonthlyLimit,
+        nfseServiceCode,
+        nfseMonthlyLimit,
+        nfseOverageInCents,
+        nfseMonthlyPriceInCents,
         updatedAt: new Date(),
       },
     });

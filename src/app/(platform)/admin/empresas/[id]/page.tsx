@@ -8,6 +8,7 @@ import { db } from "@/db";
 import {
   clients,
   organizationMembers,
+  organizationFinancialIntegrations,
   organizations,
   services,
   supportSessions,
@@ -18,6 +19,8 @@ import {
   corePlanCodes,
   corePlans,
   getOrganizationServicePlan,
+  nfseServiceCodes,
+  nfseServices,
   whatsappServiceCodes,
   whatsappServices,
 } from "@/lib/service-plans";
@@ -30,13 +33,14 @@ function maskPhone(value: string | null) {
 export default async function CompanyAdminPage({ params }: { params: Promise<{ id: string }> }) {
   const { platform } = await requirePlatformMember();
   const { id } = await params;
-  const [[organization], members, clientItems, serviceItems, activeSupport, servicePlan] = await Promise.all([
+  const [[organization], members, clientItems, serviceItems, activeSupport, servicePlan, [nfseIntegration]] = await Promise.all([
     db.select().from(organizations).where(eq(organizations.id, id)).limit(1),
     db.select({ name: users.name, email: users.email, role: organizationMembers.role }).from(organizationMembers).innerJoin(users, eq(users.id, organizationMembers.userId)).where(eq(organizationMembers.organizationId, id)),
     db.select({ id: clients.id, name: clients.name, phone: clients.phone, email: clients.email }).from(clients).where(eq(clients.organizationId, id)).limit(100),
     db.select({ id: services.id, name: services.name, isActive: services.isActive }).from(services).where(eq(services.organizationId, id)).limit(100),
     db.select().from(supportSessions).where(and(eq(supportSessions.organizationId, id), isNull(supportSessions.endedAt))).limit(10),
     getOrganizationServicePlan(id),
+    db.select({ status: organizationFinancialIntegrations.status, environment: organizationFinancialIntegrations.environment, metadata: organizationFinancialIntegrations.metadata, updatedAt: organizationFinancialIntegrations.updatedAt }).from(organizationFinancialIntegrations).where(and(eq(organizationFinancialIntegrations.organizationId, id), eq(organizationFinancialIntegrations.provider, "nfse"))).limit(1),
   ]);
   if (!organization) notFound();
   const canStartSupport = ["super_admin", "support", "operations"].includes(platform.role);
@@ -53,6 +57,7 @@ export default async function CompanyAdminPage({ params }: { params: Promise<{ i
         <button className="primary-button">Iniciar sessão de 1 hora</button>
       </form>}
       {activeSupport.length > 0 && <p className="mt-3 text-sm font-bold text-amber-700">Existem {activeSupport.length} sessões de suporte registradas para esta empresa.</p>}
+      {nfseIntegration?.status === "requested" && <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5"><p className="text-xs font-extrabold uppercase tracking-widest text-amber-700">Ação necessária</p><h2 className="mt-2 text-xl font-extrabold text-amber-950">Ativação de NFS-e solicitada</h2><p className="mt-2 text-sm leading-6 text-amber-900">Confirme valores e compatibilidade com a prefeitura antes de orientar a empresa a inserir a credencial fiscal. Solicitação atualizada em {nfseIntegration.updatedAt.toLocaleString("pt-BR")}.</p></section>}
       <section className="panel mt-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -67,6 +72,10 @@ export default async function CompanyAdminPage({ params }: { params: Promise<{ i
           <label className="grid gap-2 text-sm font-bold">Serviço de WhatsApp<select className="field" name="whatsappServiceCode" defaultValue={servicePlan.whatsappServiceCode}>{whatsappServiceCodes.map((code) => <option key={code} value={code}>{whatsappServices[code].name}</option>)}</select></label>
           <label className="grid gap-2 text-sm font-bold">Franquia WhatsApp<input className="field" type="number" min="0" name="whatsappMonthlyLimit" defaultValue={servicePlan.whatsappMonthlyLimit} /><span className="text-xs font-normal text-muted">0 mantém sem limite</span></label>
           <label className="grid gap-2 text-sm font-bold">Franquia de IA<input className="field" type="number" min="0" name="aiMonthlyLimit" defaultValue={servicePlan.aiMonthlyLimit} /><span className="text-xs font-normal text-muted">0 mantém sem limite</span></label>
+          <label className="grid gap-2 text-sm font-bold">Serviço de NFS-e<select className="field" name="nfseServiceCode" defaultValue={servicePlan.nfseServiceCode}>{nfseServiceCodes.map((code) => <option key={code} value={code}>{nfseServices[code].name}</option>)}</select></label>
+          <label className="grid gap-2 text-sm font-bold">Franquia mensal NFS-e<input className="field" type="number" min="0" name="nfseMonthlyLimit" defaultValue={servicePlan.nfseMonthlyLimit} /></label>
+          <label className="grid gap-2 text-sm font-bold">Excedente NFS-e (centavos)<input className="field" type="number" min="0" name="nfseOverageInCents" defaultValue={servicePlan.nfseOverageInCents} /></label>
+          <label className="grid gap-2 text-sm font-bold">Mensalidade NFS-e (centavos)<input className="field" type="number" min="0" name="nfseMonthlyPriceInCents" defaultValue={servicePlan.nfseMonthlyPriceInCents} /></label>
           <button className="primary-button md:col-span-2 xl:col-span-4 xl:w-fit">Salvar produtos e limites</button>
         </ActionForm>}
       </section>

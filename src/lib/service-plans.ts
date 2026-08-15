@@ -16,6 +16,20 @@ export const whatsappServiceCodes = [
   "core_ai",
 ] as const;
 export type WhatsAppServiceCode = (typeof whatsappServiceCodes)[number];
+export const nfseServiceCodes = ["none", "emitter"] as const;
+export type NfseServiceCode = (typeof nfseServiceCodes)[number];
+
+export const nfseServices: Record<NfseServiceCode, { name: string; description: string }> = {
+  none: { name: "Sem NFS-e", description: "Emissor fiscal não contratado." },
+  emitter: { name: "Emissor NFS-e", description: "Emissão government-first com fallback fiscal quando necessário." },
+};
+
+export const nfsePublicOffer = {
+  monthlyPriceInCents: 4990,
+  monthlyLimit: 100,
+  overageInCents: 49,
+  assistedSetupInCents: 14900,
+} as const;
 
 export const corePlans: Record<CorePlanCode, {
   name: string;
@@ -101,12 +115,17 @@ export function isCorePlanCode(value: string): value is CorePlanCode {
 export function isWhatsAppServiceCode(value: string): value is WhatsAppServiceCode {
   return whatsappServiceCodes.includes(value as WhatsAppServiceCode);
 }
+export function isNfseServiceCode(value: string): value is NfseServiceCode { return nfseServiceCodes.includes(value as NfseServiceCode); }
 
 const legacyConfiguration = {
   corePlanCode: "core" as CorePlanCode,
   whatsappServiceCode: "core_ai" as WhatsAppServiceCode,
   whatsappMonthlyLimit: 0,
   aiMonthlyLimit: 0,
+  nfseServiceCode: "none" as NfseServiceCode,
+  nfseMonthlyLimit: nfsePublicOffer.monthlyLimit,
+  nfseOverageInCents: nfsePublicOffer.overageInCents,
+  nfseMonthlyPriceInCents: nfsePublicOffer.monthlyPriceInCents,
   isLegacyFallback: true,
 };
 
@@ -122,5 +141,6 @@ export const getOrganizationServicePlan = cache(async (organizationId: string) =
   const whatsappServiceCode = isWhatsAppServiceCode(plan.whatsappServiceCode)
     ? plan.whatsappServiceCode
     : "assisted";
-  return { ...plan, corePlanCode, whatsappServiceCode, isLegacyFallback: false };
+  const nfseServiceCode = isNfseServiceCode(plan.nfseServiceCode) ? plan.nfseServiceCode : "none";
+  return { ...plan, corePlanCode, whatsappServiceCode, nfseServiceCode, isLegacyFallback: false };
 });

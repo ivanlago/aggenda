@@ -176,6 +176,13 @@
       "when": 1786609861236,
       "tag": "0024_swift_rafael_vega",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786768268979,
+      "tag": "0025_brave_ozymandias",
+      "breakpoints": true
     }
   ]
 }

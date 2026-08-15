@@ -7,6 +7,8 @@ import { appointments, bankImportTransactions, cashClosings, commissionEntries, 
 import { organizationDate } from "@/lib/appointment-safety";
 import { writeAuditLog } from "@/lib/audit";
 import { encryptFinancialCredential } from "@/lib/financial-secret";
+import { checkGovernmentNfseCompatibility, readNfseProfile, selectNfseRoute, type NfseCertificateSecret, type NfseFiscalProfile } from "@/lib/nfse-routing";
+import { nfsePublicOffer } from "@/lib/service-plans";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
@@ -36,6 +38,58 @@ export async function importOfx(data: FormData) { const { organization } = await
 
 export async function reconcileOfx(data: FormData) { const { organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage"); const transactionId = value(data, "transactionId"); const entryId = value(data, "entryId"); const [entry] = await db.select({ id: financialEntries.id }).from(financialEntries).where(and(eq(financialEntries.id, entryId), eq(financialEntries.organizationId, organization.id))).limit(1); if (!entry) throw new Error("Lançamento inválido."); await db.update(bankImportTransactions).set({ financialEntryId: entryId, status: "matched" }).where(and(eq(bankImportTransactions.id, transactionId), eq(bankImportTransactions.organizationId, organization.id))); revalidatePath("/financeiro/operacoes"); }
 
-export async function saveClientFinancialIntegration(data: FormData) { const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "integrations.manage"); const provider = value(data, "provider"); const credential = value(data, "credential"); if (!["asaas", "nfse"].includes(provider) || credential.length < 8) throw new Error("Credencial inválida."); const encryptedCredential = encryptFinancialCredential(credential); await db.insert(organizationFinancialIntegrations).values({ organizationId: organization.id, provider, environment: value(data, "environment") || "sandbox", encryptedCredential, metadata: { billingOwner: "client", costsPaidBy: "client" } }).onConflictDoUpdate({ target: [organizationFinancialIntegrations.organizationId, organizationFinancialIntegrations.provider], set: { encryptedCredential, environment: value(data, "environment") || "sandbox", status: "configured", metadata: { billingOwner: "client", costsPaidBy: "client" }, updatedAt: new Date() } }); await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "configure", entityType: `financial_integration:${provider}` }); revalidatePath("/financeiro/operacoes"); }
+export async function requestNfseActivation(data: FormData) {
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "integrations.manage");
+  if (data.get("acceptNfseOffer") !== "on") throw new Error("Aceite as condições comerciais da NFS-e.");
+  const setupMode = value(data, "setupMode") === "assisted" ? "assisted" : "self_service";
+  const [existing] = await db.select({ status: organizationFinancialIntegrations.status }).from(organizationFinancialIntegrations).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "nfse"))).limit(1);
+  if (existing?.status === "configured" || existing?.status === "active") throw new Error("A emissão de NFS-e já está configurada.");
+  const commercialAcceptance = { monthlyPriceInCents: nfsePublicOffer.monthlyPriceInCents, monthlyLimit: nfsePublicOffer.monthlyLimit, overageInCents: nfsePublicOffer.overageInCents, assistedSetupInCents: setupMode === "assisted" ? nfsePublicOffer.assistedSetupInCents : 0, setupMode, acceptedAt: new Date().toISOString(), acceptedByUserId: session.user.id };
+  await db.insert(organizationFinancialIntegrations).values({ organizationId: organization.id, provider: "nfse", environment: "sandbox", encryptedCredential: encryptFinancialCredential("activation-requested"), status: "requested", metadata: { billingOwner: "client", costsPaidBy: "client", requestedAt: new Date().toISOString(), requestedByUserId: session.user.id, commercialAcceptance } }).onConflictDoUpdate({ target: [organizationFinancialIntegrations.organizationId, organizationFinancialIntegrations.provider], set: { status: "requested", metadata: { billingOwner: "client", costsPaidBy: "client", requestedAt: new Date().toISOString(), requestedByUserId: session.user.id, commercialAcceptance }, updatedAt: new Date() } });
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "request_activation", entityType: "financial_integration:nfse", details: commercialAcceptance });
+  revalidatePath("/financeiro/operacoes");
+}
 
-export async function registerFiscalDocument(data: FormData) { const { organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage"); await db.insert(fiscalDocuments).values({ organizationId: organization.id, financialEntryId: value(data, "financialEntryId") || null, provider: "manual", number: value(data, "number") || null, status: "issued", amountInCents: cents(data, "amount"), issuedAt: new Date(), verificationUrl: value(data, "verificationUrl") || null }); revalidatePath("/financeiro/operacoes"); }
+function digits(data: FormData, key: string) { return value(data, key).replace(/\D/g, ""); }
+
+export async function saveNfseFiscalProfile(data: FormData) {
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "integrations.manage");
+  const cnpj = digits(data, "cnpj");
+  const municipalRegistration = value(data, "municipalRegistration");
+  const municipalityCode = digits(data, "municipalityCode");
+  const taxRegime = value(data, "taxRegime") as NfseFiscalProfile["taxRegime"];
+  const certificate = data.get("certificate");
+  const certificatePassword = value(data, "certificatePassword");
+  if (cnpj.length !== 14) throw new Error("Informe um CNPJ válido.");
+  if (!municipalRegistration) throw new Error("Informe a inscrição municipal.");
+  if (municipalityCode.length !== 7) throw new Error("Informe o código IBGE do município com 7 dígitos.");
+  if (!["simples_nacional", "lucro_presumido", "lucro_real", "mei"].includes(taxRegime)) throw new Error("Regime tributário inválido.");
+  if (!(certificate instanceof File) || !certificate.size || certificate.size > 5_000_000 || !/\.(pfx|p12)$/i.test(certificate.name)) throw new Error("Envie um certificado A1 .pfx ou .p12 de até 5 MB.");
+  if (!certificatePassword) throw new Error("Informe a senha do certificado A1.");
+  const secret: NfseCertificateSecret = { pfxBase64: Buffer.from(await certificate.arrayBuffer()).toString("base64"), password: certificatePassword, fileName: certificate.name };
+  const profile: NfseFiscalProfile = { cnpj, municipalRegistration, municipalityCode, taxRegime, routingMode: "pending_analysis", compatibilityStatus: "not_checked", partnerFallbackAuthorized: data.get("partnerFallbackAuthorized") === "on" };
+  const [currentIntegration] = await db.select({ metadata: organizationFinancialIntegrations.metadata }).from(organizationFinancialIntegrations).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "nfse"))).limit(1);
+  const metadata = { ...(currentIntegration?.metadata ?? {}), billingOwner: "client", costsPaidBy: "client", fiscalProfile: profile };
+  await db.insert(organizationFinancialIntegrations).values({ organizationId: organization.id, provider: "nfse", environment: value(data, "environment") === "production" ? "production" : "sandbox", encryptedCredential: encryptFinancialCredential(JSON.stringify(secret)), status: "configured", metadata }).onConflictDoUpdate({ target: [organizationFinancialIntegrations.organizationId, organizationFinancialIntegrations.provider], set: { environment: value(data, "environment") === "production" ? "production" : "sandbox", encryptedCredential: encryptFinancialCredential(JSON.stringify(secret)), status: "configured", metadata, updatedAt: new Date() } });
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "configure_fiscal_profile", entityType: "financial_integration:nfse", details: { municipalityCode, taxRegime, environment: value(data, "environment") } });
+  revalidatePath("/financeiro/operacoes");
+}
+
+export async function diagnoseNfseCompatibility() {
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "integrations.manage");
+  const [integration] = await db.select().from(organizationFinancialIntegrations).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "nfse"))).limit(1);
+  const profile = readNfseProfile(integration?.metadata);
+  if (!integration || !profile) throw new Error("Conclua o cadastro fiscal antes do diagnóstico.");
+  const result = await checkGovernmentNfseCompatibility(profile.municipalityCode, integration.environment);
+  const updatedProfile: NfseFiscalProfile = { ...profile, compatibilityStatus: result.status, compatibilityMessage: result.message, compatibilityCheckedAt: new Date().toISOString(), routingMode: selectNfseRoute(result.status, profile.partnerFallbackAuthorized) };
+  await db.update(organizationFinancialIntegrations).set({ status: result.status === "compatible" || (result.status === "incompatible" && profile.partnerFallbackAuthorized) ? "active" : "configured", metadata: { ...(integration.metadata ?? {}), fiscalProfile: updatedProfile }, updatedAt: new Date() }).where(eq(organizationFinancialIntegrations.id, integration.id));
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "diagnose_compatibility", entityType: "financial_integration:nfse", details: { municipalityCode: profile.municipalityCode, result: result.status, route: updatedProfile.routingMode } });
+  revalidatePath("/financeiro/operacoes");
+}
+
+export async function saveClientFinancialIntegration(data: FormData) { const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "integrations.manage"); const provider = value(data, "provider"); const credential = value(data, "credential"); if (provider !== "asaas" || credential.length < 8) throw new Error("Integração financeira inválida."); const encryptedCredential = encryptFinancialCredential(credential); await db.insert(organizationFinancialIntegrations).values({ organizationId: organization.id, provider, environment: value(data, "environment") || "sandbox", encryptedCredential, metadata: { billingOwner: "client", costsPaidBy: "client" } }).onConflictDoUpdate({ target: [organizationFinancialIntegrations.organizationId, organizationFinancialIntegrations.provider], set: { encryptedCredential, environment: value(data, "environment") || "sandbox", status: "configured", metadata: { billingOwner: "client", costsPaidBy: "client" }, updatedAt: new Date() } }); await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "configure", entityType: `financial_integration:${provider}` }); revalidatePath("/financeiro/operacoes"); }
+
+export async function registerFiscalDocument(data: FormData) { const { organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage"); const [integration] = await db.select({ status: organizationFinancialIntegrations.status }).from(organizationFinancialIntegrations).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "nfse"))).limit(1); if (integration?.status !== "active") throw new Error("Ative uma rota fiscal antes de registrar documentos."); await db.insert(fiscalDocuments).values({ organizationId: organization.id, financialEntryId: value(data, "financialEntryId") || null, provider: "manual", number: value(data, "number") || null, status: "issued", amountInCents: cents(data, "amount"), issuedAt: new Date(), verificationUrl: value(data, "verificationUrl") || null }); revalidatePath("/financeiro/operacoes"); }

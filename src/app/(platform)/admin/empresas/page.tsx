@@ -1,10 +1,11 @@
-import { countDistinct, desc, eq } from "drizzle-orm";
+import { and, countDistinct, desc, eq } from "drizzle-orm";
 import Link from "next/link";
 
 import { db } from "@/db";
 import {
   clients,
   organizationMembers,
+  organizationFinancialIntegrations,
   organizationSubscriptions,
   organizations,
   services,
@@ -27,13 +28,15 @@ export default async function CompaniesAdminPage() {
       members: countDistinct(organizationMembers.userId),
       clients: countDistinct(clients.id),
       services: countDistinct(services.id),
+      nfseStatus: organizationFinancialIntegrations.status,
     })
     .from(organizations)
     .leftJoin(organizationSubscriptions, eq(organizationSubscriptions.organizationId, organizations.id))
     .leftJoin(organizationMembers, eq(organizationMembers.organizationId, organizations.id))
     .leftJoin(clients, eq(clients.organizationId, organizations.id))
     .leftJoin(services, eq(services.organizationId, organizations.id))
-    .groupBy(organizations.id, organizationSubscriptions.plan, organizationSubscriptions.status)
+    .leftJoin(organizationFinancialIntegrations, and(eq(organizationFinancialIntegrations.organizationId, organizations.id), eq(organizationFinancialIntegrations.provider, "nfse")))
+    .groupBy(organizations.id, organizationSubscriptions.plan, organizationSubscriptions.status, organizationFinancialIntegrations.status)
     .orderBy(desc(organizations.createdAt));
 
   return (
@@ -42,12 +45,12 @@ export default async function CompaniesAdminPage() {
       <p className="mt-2 text-muted">Organizações, plano e volume cadastrado na plataforma.</p>
       <div className="panel mt-6 overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead><tr className="border-b text-muted"><th className="py-3">Empresa</th><th>Plano</th><th>Membros</th><th>Clientes</th><th>Serviços</th><th>Status</th></tr></thead>
+          <thead><tr className="border-b text-muted"><th className="py-3">Empresa</th><th>Plano</th><th>Membros</th><th>Clientes</th><th>Serviços</th><th>NFS-e</th><th>Status</th></tr></thead>
           <tbody>
             {items.map((item) => (
               <tr className="border-b last:border-0" key={item.id}>
                 <td className="py-4"><Link className="font-bold text-brand" href={`/admin/empresas/${item.id}`}>{item.name}</Link><p className="text-xs text-muted">{item.slug}</p></td>
-                <td>{item.plan ?? "sem plano"}</td><td>{item.members}</td><td>{item.clients}</td><td>{item.services}</td><td>{item.subscriptionStatus ?? "não configurado"}</td>
+                <td>{item.plan ?? "sem plano"}</td><td>{item.members}</td><td>{item.clients}</td><td>{item.services}</td><td className={item.nfseStatus === "requested" ? "font-bold text-amber-700" : ""}>{item.nfseStatus === "requested" ? "solicitada" : item.nfseStatus === "configured" || item.nfseStatus === "active" ? "ativa" : "—"}</td><td>{item.subscriptionStatus ?? "não configurado"}</td>
               </tr>
             ))}
           </tbody>

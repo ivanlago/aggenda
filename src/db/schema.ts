@@ -1201,11 +1201,15 @@ export const paymentCharges = pgTable("payment_charges", {
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
   provider: text("provider").default("asaas").notNull(),
   providerPaymentId: text("provider_payment_id"),
+  providerSubscriptionId: text("provider_subscription_id"),
   providerCustomerId: text("provider_customer_id"),
   originType: text("origin_type").notNull(),
   originId: text("origin_id").notNull(),
   financialEntryId: uuid("financial_entry_id").references(() => financialEntries.id, { onDelete: "set null" }),
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
   paymentMethod: text("payment_method").notNull(),
+  chargeMode: text("charge_mode").default("single").notNull(),
+  installmentCount: integer("installment_count").default(1).notNull(),
   status: text("status").default("pending").notNull(),
   amountInCents: integer("amount_in_cents").notNull(),
   description: text("description").notNull(),
@@ -1222,6 +1226,8 @@ export const paymentCharges = pgTable("payment_charges", {
   paidAt: timestamp("paid_at"),
   cancelledAt: timestamp("cancelled_at"),
   refundedAt: timestamp("refunded_at"),
+  lastReminderAt: timestamp("last_reminder_at"),
+  reminderCount: integer("reminder_count").default(0).notNull(),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
   createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -1231,6 +1237,8 @@ export const paymentCharges = pgTable("payment_charges", {
   index("payment_charges_org_created_idx").on(table.organizationId, table.createdAt),
   index("payment_charges_origin_idx").on(table.organizationId, table.originType, table.originId),
   index("payment_charges_financial_entry_idx").on(table.financialEntryId),
+  index("payment_charges_client_idx").on(table.organizationId, table.clientId),
+  index("payment_charges_due_status_idx").on(table.organizationId, table.status, table.dueDate),
 ]);
 
 export const paymentChargeEvents = pgTable("payment_charge_events", {
@@ -1284,6 +1292,9 @@ export const financialEntries = pgTable(
     clientPackageId: uuid("client_package_id")
       .unique()
       .references(() => clientPackages.id, { onDelete: "set null" }),
+    crmProposalId: uuid("crm_proposal_id")
+      .unique()
+      .references(() => crmProposals.id, { onDelete: "set null" }),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),

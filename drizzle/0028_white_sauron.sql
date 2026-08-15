@@ -1,0 +1,3 @@
+ALTER TABLE "financial_entries" ADD COLUMN "crm_proposal_id" uuid;--> statement-breakpoint
+ALTER TABLE "financial_entries" ADD CONSTRAINT "financial_entries_crm_proposal_id_crm_proposals_id_fk" FOREIGN KEY ("crm_proposal_id") REFERENCES "public"."crm_proposals"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "financial_entries" ADD CONSTRAINT "financial_entries_crm_proposal_id_unique" UNIQUE("crm_proposal_id");

@@ -100,7 +100,7 @@ async function organizationForWebhookToken(received: string | null) {
 }
 
 function chargeStatus(eventType: string) {
-  if (eventType === "PAYMENT_RECEIVED") return "paid";
+  if (eventType === "PAYMENT_RECEIVED" || eventType === "PAYMENT_CONFIRMED") return "paid";
   if (eventType === "PAYMENT_OVERDUE") return "overdue";
   if (eventType === "PAYMENT_DELETED") return "cancelled";
   if (eventType === "PAYMENT_REFUNDED" || eventType === "PAYMENT_PARTIALLY_REFUNDED") return "refunded";
@@ -131,6 +131,7 @@ async function processOrganizationCharge(organizationId: string, event: AsaasWeb
     if (!inserted) return;
     const now = new Date();
     await tx.update(paymentCharges).set({
+      providerPaymentId: charge.providerPaymentId ?? payment.id,
       status,
       paidAt: status === "paid" ? paymentDate(payment.paymentDate) ?? now : charge.paidAt,
       cancelledAt: status === "cancelled" ? now : charge.cancelledAt,

@@ -27,7 +27,7 @@ function readSecret(encryptedCredential: string) {
   return { apiKey: decrypted, webhookToken: undefined };
 }
 
-export async function getOrganizationAsaasCredential(organizationId: string) {
+export async function getOrganizationAsaasCredential(organizationId: string, options: { allowAttention?: boolean } = {}) {
   const [integration] = await db.select({
     environment: organizationFinancialIntegrations.environment,
     encryptedCredential: organizationFinancialIntegrations.encryptedCredential,
@@ -36,7 +36,7 @@ export async function getOrganizationAsaasCredential(organizationId: string) {
     eq(organizationFinancialIntegrations.organizationId, organizationId),
     eq(organizationFinancialIntegrations.provider, "asaas"),
   )).limit(1);
-  if (!integration || integration.status !== "active") {
+  if (!integration || (integration.status !== "active" && !(options.allowAttention && integration.status === "attention"))) {
     throw new Error("Conecte e teste a conta Asaas antes de gerar cobranças.");
   }
   const secret = readSecret(integration.encryptedCredential);

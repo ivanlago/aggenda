@@ -20,6 +20,7 @@ import {
   crmStages,
   crmTags,
   crmTasks,
+  financialEntries,
 } from "@/db/schema";
 import { writeAuditLog } from "@/lib/audit";
 import { assertOrganizationPermission } from "@/lib/permissions";
@@ -310,13 +311,16 @@ export async function updateCrmProposalStatus(formData: FormData) {
   const proposalId = text(formData, "proposalId");
   const status = text(formData, "status") as "draft" | "sent" | "accepted" | "rejected" | "expired";
   if (!["draft", "sent", "accepted", "rejected", "expired"].includes(status)) throw new Error("Situação inválida.");
-  const [proposal] = await db.select({ id: crmProposals.id, opportunityId: crmProposals.opportunityId, totalInCents: crmProposals.totalInCents }).from(crmProposals)
-    .where(and(eq(crmProposals.id, proposalId), eq(crmProposals.organizationId, organization.id))).limit(1);
+  const [proposal] = await db.select({ id: crmProposals.id, opportunityId: crmProposals.opportunityId, totalInCents: crmProposals.totalInCents, title: crmProposals.title, clientId: crmOpportunities.clientId }).from(crmProposals)
+    .innerJoin(crmOpportunities, eq(crmOpportunities.id, crmProposals.opportunityId)).where(and(eq(crmProposals.id, proposalId), eq(crmProposals.organizationId, organization.id))).limit(1);
   if (!proposal) throw new Error("Proposta não encontrada.");
   const now = new Date();
   await db.transaction(async (tx) => {
     await tx.update(crmProposals).set({ status, sentAt: status === "sent" ? now : undefined, acceptedAt: status === "accepted" ? now : undefined, rejectedAt: status === "rejected" ? now : undefined, updatedAt: now }).where(eq(crmProposals.id, proposalId));
-    if (status === "accepted") await tx.update(crmOpportunities).set({ status: "won", valueInCents: proposal.totalInCents, closedAt: now, updatedAt: now }).where(eq(crmOpportunities.id, proposal.opportunityId));
+    if (status === "accepted") {
+      await tx.update(crmOpportunities).set({ status: "won", valueInCents: proposal.totalInCents, closedAt: now, updatedAt: now }).where(eq(crmOpportunities.id, proposal.opportunityId));
+      await tx.insert(financialEntries).values({ organizationId: organization.id, type: "receivable", status: "pending", source: "proposal", description: proposal.title, amountInCents: proposal.totalInCents, dueDate: now.toISOString().slice(0, 10), clientId: proposal.clientId, crmProposalId: proposal.id, createdByUserId: session.user.id }).onConflictDoNothing();
+    }
   });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: `crm.proposal.${status}`, entityType: "crm_proposal", entityId: proposalId });
   revalidatePath("/crm"); revalidatePath("/crm/propostas");

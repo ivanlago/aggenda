@@ -175,6 +175,54 @@ async function enqueueDueReminders(connection: Client) {
   return result.rowCount ?? 0;
 }
 
+async function enqueuePaymentReminders(connection: Client) {
+  const result = await connection.query<{
+    id: string; organization_id: string; customer_name: string; customer_phone: string;
+    amount_in_cents: number; due_date: string; invoice_url: string | null; bank_slip_url: string | null;
+    channel_id: string; phone_number_id: string; reminder_stage: string;
+  }>(
+    `select charge.id, charge.organization_id, charge.customer_name, charge.customer_phone,
+            charge.amount_in_cents, charge.due_date::text, charge.invoice_url, charge.bank_slip_url,
+            channel.id as channel_id, channel.phone_number_id,
+            case
+              when charge.due_date = current_date + 3 then 'before_3'
+              when charge.due_date = current_date then 'due_today'
+              when charge.due_date = current_date - 3 then 'overdue_3'
+              when charge.due_date = current_date - 7 then 'overdue_7'
+            end as reminder_stage
+       from payment_charges as charge
+       inner join whatsapp_channels as channel
+         on channel.organization_id = charge.organization_id and channel.is_active = true
+       where charge.status in ('pending', 'overdue')
+         and charge.customer_phone is not null
+         and coalesce(charge.invoice_url, charge.bank_slip_url) is not null
+         and charge.due_date in (current_date + 3, current_date, current_date - 3, current_date - 7)
+       order by charge.due_date
+       limit 200`
+  );
+  let queued = 0;
+  for (const item of result.rows) {
+    const phone = item.customer_phone.replace(/\D/g, "");
+    if (!phone || !item.reminder_stage) continue;
+    const link = item.invoice_url || item.bank_slip_url;
+    const amount = (item.amount_in_cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    const dueDate = new Date(`${item.due_date}T12:00:00Z`).toLocaleDateString("pt-BR");
+    const opening = item.reminder_stage === "before_3" ? "Lembrete de vencimento" : item.reminder_stage === "due_today" ? "Sua cobrança vence hoje" : "Identificamos uma cobrança vencida";
+    const inserted = await connection.query(
+      `insert into outbox_events (organization_id, event_key, event_type, aggregate_type, aggregate_id, payload)
+       values ($1, $2, 'whatsapp.template.send', 'payment_charge', $3, $4::jsonb)
+       on conflict (event_key) do nothing returning id`,
+      [item.organization_id, `whatsapp:payment-dunning:${item.id}:${item.reminder_stage}`, item.id, JSON.stringify({ organizationId: item.organization_id, channelId: item.channel_id, phoneNumberId: item.phone_number_id, to: phone.startsWith("55") ? phone : `55${phone}`, notificationKind: "payment_dunning", chargeId: item.id, languageCode: "pt_BR", parameters: [item.customer_name, opening, amount, dueDate, link] })]
+    );
+    if (inserted.rowCount) {
+      queued += 1;
+      await connection.query(`update payment_charges set last_reminder_at = now(), reminder_count = reminder_count + 1, updated_at = now() where id = $1`, [item.id]);
+      await connection.query(`insert into payment_charge_events (organization_id, charge_id, event_type, previous_status, status, payload) select organization_id, id, 'automatic_reminder_queued', status, status, $2::jsonb from payment_charges where id = $1`, [item.id, JSON.stringify({ stage: item.reminder_stage })]);
+    }
+  }
+  return queued;
+}
+
 async function forwardInboundToN8n(connection: Client, event: OutboxEvent) {
   const workflowProduct = String(event.payload.workflowProduct ?? "");
   const urls: Record<string, string | undefined> = {
@@ -274,6 +322,8 @@ async function sendWhatsAppTemplate(connection: Client, event: OutboxEvent) {
     reschedule: process.env.META_TEMPLATE_APPOINTMENT_RESCHEDULE,
     cancellation: process.env.META_TEMPLATE_APPOINTMENT_CANCELLATION,
     reminder: process.env.META_TEMPLATE_APPOINTMENT_REMINDER,
+    payment_charge: process.env.META_TEMPLATE_PAYMENT_CHARGE,
+    payment_dunning: process.env.META_TEMPLATE_PAYMENT_DUNNING,
   };
   const templateName = templateNames[notificationKind];
   const parameters = Array.isArray(event.payload.parameters)
@@ -332,6 +382,13 @@ async function recordOutboundUsage(connection: Client, event: OutboxEvent) {
     await connection.query(
       `update appointments set reminder_sent_at = now(), updated_at = now() where id = $1`,
       [String(event.payload.appointmentId)]
+    );
+  }
+  if ((event.payload.notificationKind === "payment_charge" || event.payload.notificationKind === "payment_dunning") && event.payload.chargeId) {
+    await connection.query(
+      `insert into payment_charge_events (organization_id, charge_id, event_type, previous_status, status, payload)
+       select organization_id, id, 'whatsapp_sent', status, status, $2::jsonb from payment_charges where id = $1`,
+      [String(event.payload.chargeId), JSON.stringify({ notificationKind: event.payload.notificationKind })]
     );
   }
 }
@@ -397,6 +454,8 @@ async function run() {
       try {
         const reminders = await enqueueDueReminders(client);
         if (reminders) console.log(`[outbox] ${reminders} lembrete(s) reivindicado(s)`);
+        const paymentReminders = await enqueuePaymentReminders(client);
+        if (paymentReminders) console.log(`[outbox] ${paymentReminders} cobrança(s) lembrada(s)`);
       } catch (error) {
         console.error("[outbox] falha ao buscar lembretes", error);
       }

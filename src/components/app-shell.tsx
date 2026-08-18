@@ -18,6 +18,7 @@ import {
   Boxes,
   BanknoteArrowDown,
   ChartNoAxesCombined,
+  ChevronDown,
   CircleDollarSign,
   FileCheck2,
   HandCoins,
@@ -98,8 +99,8 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   })).filter((group) => group.items.length > 0);
 
   return (
-    <div className="min-h-screen bg-[#f3f5f1] lg:grid lg:grid-cols-[280px_1fr]">
-      <aside className="border-b bg-brand p-5 text-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:overflow-hidden lg:border-b-0">
+    <div className="min-h-screen bg-[#f3f5f1] lg:grid lg:grid-cols-[248px_1fr]">
+      <aside className="border-b bg-brand p-4 text-white shadow-[4px_0_24px_rgba(14,63,46,0.12)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:overflow-hidden lg:border-b-0">
         <div className="flex items-center justify-between lg:block lg:shrink-0">
           <Link href="/dashboard" className="flex items-center gap-3 text-xl font-extrabold">
             <span className="grid size-10 place-items-center rounded-xl bg-accent text-brand-dark">
@@ -109,22 +110,30 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
           <div className="lg:hidden"><SignOutButton compact /></div>
         </div>
-        <nav className="mt-5 flex gap-2 overflow-x-auto pb-1 lg:mt-8 lg:grid lg:min-h-0 lg:flex-1 lg:content-start lg:overflow-x-hidden lg:overflow-y-auto lg:pb-4">
-          {navigation.map((group) => (
-            <section className="contents lg:block" key={group.label}>
-              <p className="hidden px-3 pb-1 pt-3 text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/45 first:pt-0 lg:block">{group.label}</p>
-              <div className="contents lg:grid lg:gap-0.5">
+        <nav className="app-menu-scrollbar mt-5 flex gap-2 overflow-x-auto pb-1 lg:mt-7 lg:grid lg:min-h-0 lg:flex-1 lg:content-start lg:overflow-x-hidden lg:overflow-y-auto lg:pb-4">
+          {navigation.map((group, index) => (
+            <details
+              className="group/nav relative shrink-0 lg:block"
+              open={index === 0 ? true : undefined}
+              key={group.label}
+              name="app-navigation"
+            >
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-3 py-2 text-[11px] font-extrabold uppercase tracking-[0.14em] text-white/65 transition hover:bg-white/10 hover:text-white [&::-webkit-details-marker]:hidden">
+                {group.label}
+                <ChevronDown className="size-3.5 transition group-open/nav:rotate-180" />
+              </summary>
+              <div className="absolute left-0 top-full z-30 mt-2 grid min-w-64 gap-0.5 rounded-2xl bg-brand p-2 shadow-xl ring-1 ring-white/15 lg:static lg:mt-1 lg:min-w-0 lg:bg-transparent lg:p-0 lg:pl-2 lg:shadow-none lg:ring-0">
                 {group.items.map(({ href, label, icon: Icon, secondary }) => (
                   <Link
                     key={href}
                     href={href}
-                    className={`flex shrink-0 items-center rounded-xl py-2 text-sm font-bold text-white/75 transition hover:bg-white/10 hover:text-white ${secondary ? "gap-2 pl-7 pr-3 text-xs" : "gap-3 px-3"}`}
+                    className={`flex shrink-0 items-center rounded-xl py-2 font-bold text-white/75 transition hover:bg-white/10 hover:text-white ${secondary ? "gap-2 px-3 text-xs" : "gap-3 px-3 text-sm"}`}
                   >
                     <Icon className={secondary ? "size-3.5" : "size-4"} /> {label}
                   </Link>
                 ))}
               </div>
-            </section>
+            </details>
           ))}
           {platformMembership && (
             <Link

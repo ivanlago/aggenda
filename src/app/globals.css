@@ -75,6 +75,33 @@ a[href]:focus-visible {
   color: var(--brand-dark);
 }
 
+.app-menu-scrollbar {
+  scrollbar-color: color-mix(in srgb, var(--accent) 60%, var(--brand)) transparent;
+  scrollbar-width: thin;
+}
+
+.app-menu-scrollbar::-webkit-scrollbar {
+  height: 5px;
+  width: 5px;
+}
+
+.app-menu-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-menu-scrollbar::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--accent) 55%, var(--brand));
+  border-radius: 999px;
+}
+
+.app-menu-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+.app-menu-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 @layer components {
   .page-wrap {
     @apply mx-auto w-full max-w-7xl p-5 sm:p-8 lg:p-10;

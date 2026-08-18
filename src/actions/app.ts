@@ -40,6 +40,7 @@ import {
   deleteAppointmentFromGoogleCalendar,
   syncAppointmentToGoogleCalendar,
 } from "@/lib/google-calendar";
+import { deleteClinicalImage, uploadClinicalImage } from "@/lib/cloudinary";
 import { reconcilePackageUsage, reservePackageSession } from "@/lib/package-balance";
 import {
   createClientPackageFinancialEntry,
@@ -486,13 +487,67 @@ export async function createClientClinicalMedia(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "clients.manage");
   const clientId = textValue(formData, "clientId");
-  const url = textValue(formData, "url");
-  if (!clientId || !/^https:\/\//i.test(url) || formData.get("consentConfirmed") !== "on") throw new Error("Informe uma URL HTTPS e confirme o consentimento do paciente.");
+  const file = formData.get("file");
+  if (!clientId || !(file instanceof File) || file.size === 0 || formData.get("consentConfirmed") !== "on") {
+    throw new Error("Selecione uma imagem e confirme o consentimento do paciente.");
+  }
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new Error("Envie uma imagem JPG, PNG ou WebP.");
+  if (file.size > 12 * 1024 * 1024) throw new Error("A imagem deve ter no máximo 12 MB.");
   const [client] = await db.select({ id: clients.id }).from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1);
   if (!client) throw new Error("Cliente não encontrado.");
-  await db.insert(clientClinicalMedia).values({ organizationId: organization.id, clientId, authorUserId: session.user.id, phase: textValue(formData, "phase") || "clinical", title: optionalText(formData, "title"), url, consentConfirmed: true });
-  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "client_clinical_media", entityId: clientId });
+  const parentMediaId = optionalText(formData, "parentMediaId");
+  if (parentMediaId) {
+    const [parent] = await db.select({ id: clientClinicalMedia.id }).from(clientClinicalMedia).where(and(
+      eq(clientClinicalMedia.id, parentMediaId),
+      eq(clientClinicalMedia.clientId, clientId),
+      eq(clientClinicalMedia.organizationId, organization.id),
+    )).limit(1);
+    if (!parent) throw new Error("Fotografia original não encontrada.");
+  }
+  const uploaded = await uploadClinicalImage(file, organization.id, clientId);
+  try {
+    const [media] = await db.insert(clientClinicalMedia).values({
+      organizationId: organization.id,
+      clientId,
+      authorUserId: session.user.id,
+      phase: textValue(formData, "phase") || "clinical",
+      title: optionalText(formData, "title"),
+      url: "cloudinary:authenticated",
+      consentConfirmed: true,
+      storageProvider: "cloudinary",
+      storageAssetId: uploaded.assetId,
+      storagePublicId: uploaded.publicId,
+      originalFilename: file.name,
+      mimeType: file.type,
+      width: uploaded.width,
+      height: uploaded.height,
+      bytes: uploaded.bytes,
+      parentMediaId,
+    }).returning({ id: clientClinicalMedia.id });
+    await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "client_clinical_media", entityId: media.id });
+  } catch (error) {
+    await deleteClinicalImage(uploaded.publicId).catch(() => undefined);
+    throw error;
+  }
   revalidatePath(`/clientes/${clientId}`);
+}
+
+export async function deleteClientClinicalMedia(formData: FormData) {
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "clients.manage");
+  const mediaId = textValue(formData, "mediaId");
+  const [media] = await db.select().from(clientClinicalMedia).where(and(
+    eq(clientClinicalMedia.id, mediaId),
+    eq(clientClinicalMedia.organizationId, organization.id),
+  )).limit(1);
+  if (!media) throw new Error("Fotografia não encontrada.");
+  if (media.storageProvider === "cloudinary" && media.storagePublicId) await deleteClinicalImage(media.storagePublicId);
+  await db.delete(clientClinicalMedia).where(and(
+    eq(clientClinicalMedia.id, media.id),
+    eq(clientClinicalMedia.organizationId, organization.id),
+  ));
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "delete", entityType: "client_clinical_media", entityId: media.id });
+  revalidatePath(`/clientes/${media.clientId}`);
 }
 
 export async function createService(formData: FormData) {

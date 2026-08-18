@@ -218,6 +218,13 @@
       "when": 1786788557440,
       "tag": "0030_premium_vulture",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1786801381373,
+      "tag": "0031_faithful_the_watchers",
+      "breakpoints": true
     }
   ]
 }

@@ -3,8 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { createClientClinicalMedia, createClientHistoryEntry } from "@/actions/app";
-import Image from "next/image";
 import { ActionForm } from "@/components/action-form";
+import { ClinicalMediaGallery } from "@/components/clinical-media-gallery";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { appointments, clientClinicalMedia, clientHistoryEntries, clientPackageBalances, clientPackages, clients, professionals, servicePackages, services, users } from "@/db/schema";
@@ -109,16 +109,16 @@ export default async function ClientHistoryPage({
       </section>
       {isHealth && <section className="panel mb-5">
         <h2 className="text-lg font-extrabold">Fotografias clínicas</h2>
-        <p className="mt-1 text-sm text-muted">Organize registros de antes, durante e depois com consentimento rastreável. Use apenas URLs do armazenamento seguro adotado pela clínica.</p>
-        <ActionForm action={createClientClinicalMedia} successMessage="Fotografia clínica vinculada." className="mt-4 grid gap-3 sm:grid-cols-2">
+        <p className="mt-1 text-sm text-muted">Organize registros de antes, durante e depois. As imagens são compactadas, entregues por acesso autenticado e vinculadas ao consentimento.</p>
+        <ActionForm action={createClientClinicalMedia} successMessage="Fotografia clínica enviada." className="mt-4 grid gap-3 sm:grid-cols-2">
           <input type="hidden" name="clientId" value={client.id} />
           <select className="field" name="phase"><option value="before">Antes</option><option value="during">Durante</option><option value="after">Depois</option><option value="clinical">Registro clínico</option></select>
           <input className="field" name="title" placeholder="Área ou procedimento" />
-          <input className="field sm:col-span-2" name="url" type="url" required placeholder="https://armazenamento-seguro/foto" />
+          <input className="field sm:col-span-2" name="file" type="file" accept="image/jpeg,image/png,image/webp" required />
           <label className="flex items-start gap-2 text-sm font-bold sm:col-span-2"><input className="mt-1" name="consentConfirmed" type="checkbox" required />Confirmo que há consentimento para este registro clínico.</label>
           <button className="primary-button sm:w-fit">Adicionar fotografia</button>
         </ActionForm>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{clinicalMedia.map((media) => <article key={media.id} className="rounded-2xl border p-3"><Image className="aspect-square w-full rounded-xl object-cover" src={media.url} alt={media.title || "Fotografia clínica"} width={500} height={500} unoptimized /><p className="mt-2 font-bold">{media.title || "Registro clínico"}</p><span className="status-pill mt-1">{{ before: "Antes", during: "Durante", after: "Depois", clinical: "Clínico" }[media.phase] ?? media.phase}</span></article>)}</div>
+        <ClinicalMediaGallery clientId={client.id} media={clinicalMedia.map((item) => ({ id: item.id, title: item.title, phase: item.phase, src: item.storageProvider === "cloudinary" ? `/api/clinical-media/${item.id}?width=1200` : item.url }))} />
       </section>}
       <section className="panel mb-5">
         <div className="flex items-center justify-between gap-3">

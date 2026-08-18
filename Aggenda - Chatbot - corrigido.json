@@ -87,7 +87,7 @@
     },
     {
       "parameters": {
-        "url": "https://aggenda-virid.vercel.app/api/n8n/professionals",
+        "url": "https://www.aggenda.app.br/api/n8n/professionals",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -254,7 +254,7 @@
     },
     {
       "parameters": {
-        "url": "https://aggenda-virid.vercel.app/api/n8n/available-times",
+        "url": "https://www.aggenda.app.br/api/n8n/available-times",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendQuery": true,
@@ -324,7 +324,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://aggenda-virid.vercel.app/api/n8n/clients/find-or-create",
+        "url": "https://www.aggenda.app.br/api/n8n/clients/find-or-create",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -377,7 +377,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://aggenda-virid.vercel.app/api/n8n/appointments",
+        "url": "https://www.aggenda.app.br/api/n8n/appointments",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -424,7 +424,7 @@
     },
     {
       "parameters": {
-        "url": "https://aggenda-virid.vercel.app/api/n8n/services",
+        "url": "https://www.aggenda.app.br/api/n8n/services",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,

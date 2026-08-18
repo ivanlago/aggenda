@@ -6,7 +6,7 @@ if (!input || !output) throw new Error("Informe os caminhos de entrada e saída.
 
 const workflow = JSON.parse(fs.readFileSync(input, "utf8"));
 const byName = (name) => workflow.nodes.find((node) => node.name === name);
-const baseUrl = "https://aggenda-virid.vercel.app";
+const baseUrl = "https://www.aggenda.app.br";
 const clinicId = "cb69eb9f-b773-4ce6-9182-4cdb7e96c509";
 
 workflow.name = "Aggenda - Chatbot WhatsApp";

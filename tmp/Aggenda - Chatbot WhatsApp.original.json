@@ -87,7 +87,7 @@
     },
     {
       "parameters": {
-        "url": "https://clinihora.vercel.app/api/n8n/doctors",
+        "url": "https://www.aggenda.app.br/api/n8n/doctors",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -254,7 +254,7 @@
     },
     {
       "parameters": {
-        "url": "https://clinihora.vercel.app/api/n8n/available-times",
+        "url": "https://www.aggenda.app.br/api/n8n/available-times",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendQuery": true,
@@ -312,7 +312,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://clinihora.vercel.app/api/n8n/patients/find-or-create",
+        "url": "https://www.aggenda.app.br/api/n8n/patients/find-or-create",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -365,7 +365,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://clinihora.vercel.app/api/n8n/appointments",
+        "url": "https://www.aggenda.app.br/api/n8n/appointments",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,

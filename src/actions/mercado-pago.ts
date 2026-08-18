@@ -9,6 +9,8 @@ import { clients, financialEntries, organizationFinancialIntegrations, paymentCh
 import { writeAuditLog } from "@/lib/audit";
 import { encryptFinancialCredential } from "@/lib/financial-secret";
 import { getMercadoPagoCredential, mercadoPagoRequest } from "@/lib/mercado-pago";
+import { createPagBankCharge } from "@/actions/pagbank";
+import { createEfiCharge } from "@/actions/efi";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
@@ -54,5 +56,9 @@ async function createMercadoPagoCharge(data: FormData) {
 }
 
 export async function createProviderCharge(data: FormData) {
-  return text(data, "provider") === "mercado_pago" ? createMercadoPagoCharge(data) : createFinancialCharge(data);
+  const provider = text(data, "provider");
+  if (provider === "mercado_pago") return createMercadoPagoCharge(data);
+  if (provider === "pagbank") return createPagBankCharge(data);
+  if (provider === "efi") return createEfiCharge(data);
+  return createFinancialCharge(data);
 }

@@ -6,6 +6,7 @@ type ProviderTab = {
   id: string;
   label: string;
   connected: boolean;
+  available?: boolean;
   content: ReactNode;
 };
 
@@ -32,7 +33,7 @@ export function PaymentProviderTabs({ tabs, defaultTab }: { tabs: ProviderTab[];
                 role="tab"
                 type="button"
               >
-                <span className={`size-2 rounded-full ${tab.connected ? "bg-emerald-500" : "bg-amber-400"}`} />
+                <span className={`size-2 rounded-full ${tab.connected ? "bg-emerald-500" : tab.available ? "bg-sky-500" : "bg-amber-400"}`} />
                 {tab.label}
               </button>
             );

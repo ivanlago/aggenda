@@ -15,6 +15,7 @@ import {
   requireSession,
 } from "@/lib/session";
 import { assertOrganizationPermission } from "@/lib/permissions";
+import { sendTeamInvitationEmail } from "@/lib/email";
 
 export async function inviteTeamMember(formData: FormData) {
   const { session, organization } = await requireOrganization();
@@ -59,6 +60,15 @@ export async function inviteTeamMember(formData: FormData) {
         acceptedAt: null,
       },
     });
+
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  await sendTeamInvitationEmail({
+    email,
+    inviterName: session.user.name,
+    organizationName: organization.name,
+    invitationUrl: `${appUrl}/convite/${token}`,
+    token,
+  });
 
   revalidatePath("/equipe");
 }

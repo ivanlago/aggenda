@@ -6,7 +6,7 @@ import { FormEvent, useState } from "react";
 
 import { authClient } from "@/lib/auth-client";
 
-type Mode = "login" | "register";
+type Mode = "login" | "register" | "forgot";
 
 export function AuthForm({
   googleEnabled,
@@ -30,6 +30,18 @@ export function AuthForm({
     const password = String(formData.get("password") ?? "");
 
     try {
+      if (mode === "forgot") {
+        const result = await authClient.requestPasswordReset({
+          email,
+          redirectTo: "/redefinir-senha",
+        });
+        if (result.error) {
+          setError("Não foi possível solicitar a redefinição agora.");
+          return;
+        }
+        setError("Enviamos as instruções para o e-mail informado, caso ele esteja cadastrado.");
+        return;
+      }
       const result =
         mode === "login"
           ? await authClient.signIn.email({ email, password })
@@ -121,18 +133,26 @@ export function AuthForm({
             placeholder="Digite seu e-mail"
           />
         </label>
-        <label className="grid gap-2 text-sm font-bold">
-          Senha
-          <input
-            className="field"
-            name="password"
-            type="password"
-            autoComplete={mode === "login" ? "current-password" : "new-password"}
-            required
-            minLength={8}
-            placeholder="Mínimo de 8 caracteres"
-          />
-        </label>
+        {mode !== "forgot" && (
+          <label className="grid gap-2 text-sm font-bold">
+            Senha
+            <input
+              className="field"
+              name="password"
+              type="password"
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              required
+              minLength={8}
+              placeholder="Mínimo de 8 caracteres"
+            />
+          </label>
+        )}
+
+        {mode === "login" && (
+          <button className="w-fit text-sm font-bold text-brand" onClick={() => { setMode("forgot"); setError(""); }} type="button">
+            Esqueci minha senha
+          </button>
+        )}
 
         {error && (
           <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
@@ -149,14 +169,20 @@ export function AuthForm({
             <LoaderCircle className="size-5 animate-spin" />
           ) : (
             <>
-              {mode === "login" ? "Entrar" : "Criar conta"}
+              {mode === "login" ? "Entrar" : mode === "register" ? "Criar conta" : "Enviar instruções"}
               <ArrowRight className="size-5" />
             </>
           )}
         </button>
       </form>
 
-      {googleEnabled && (
+      {mode === "forgot" && (
+        <button className="mt-5 text-sm font-bold text-brand" onClick={() => { setMode("login"); setError(""); }} type="button">
+          Voltar ao login
+        </button>
+      )}
+
+      {googleEnabled && mode !== "forgot" && (
         <>
           <div className="my-5 flex items-center gap-3 text-xs font-bold uppercase tracking-widest text-muted">
             <span className="h-px flex-1 bg-border" />

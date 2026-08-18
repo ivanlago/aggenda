@@ -27,6 +27,13 @@ Atualizado em 18/08/2026.
 - A camada de IA foi centralizada no Aggenda e mantém o Google Gemini `gemini-3.1-flash-lite`, o mesmo modelo já adotado nos workflows existentes.
 - Mensagens do WhatsApp passam pelo gateway interno do Aggenda; regras, contexto, segurança, handoff, histórico e medição não ficam no n8n.
 - O n8n fica reservado ao evento `commercial.automation.requested`, para templates comerciais publicados e configuráveis.
-- `AI_API_URL`, `AI_MODEL` e `AGGENDA_INTERNAL_API_KEY` foram configurados na Vercel; `AGGENDA_INTERNAL_API_URL` e o mesmo segredo interno foram configurados no worker do Coolify.
-- Pendência operacional: cadastrar apenas `AI_API_KEY` na Vercel. A credencial existente foi validada no n8n, mas o valor secreto salvo não é exibido para reutilização automática.
+- `AI_API_URL`, `AI_API_KEY`, `AI_MODEL` e `AGGENDA_INTERNAL_API_KEY` estão configurados na Vercel; `AGGENDA_INTERNAL_API_URL` e o mesmo segredo interno estão configurados no worker do Coolify.
+- A aplicação foi reimplantada em produção com a configuração completa da IA.
 - Pendência de homologação: repetir o teste ponta a ponta depois do cadastro do novo número do WhatsApp.
+
+## Item 5 — Demais serviços externos
+
+- Concluído sem contratação ou configuração adicional.
+- Os serviços obrigatórios já estão cobertos por Vercel, Neon, Coolify, Meta, Resend, Google Calendar, Google Gemini e Cloudinary, além dos provedores financeiros já configurados.
+- Google Sheets, CRM externo, SMS pago, verificação empresarial da Meta e serviços semelhantes permanecem opcionais e serão ativados somente quando houver demanda comercial.
+- Não há pendência externa bloqueante neste item.

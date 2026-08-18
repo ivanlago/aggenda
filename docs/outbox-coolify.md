@@ -1,13 +1,16 @@
 # Outbox do WhatsApp no Coolify
 
-Esta etapa mantém o workflow funcional do n8n como processador, mas passa a
-receber e guardar cada mensagem no Aggenda antes de entregá-la ao workflow.
-Falhas temporárias deixam o evento pendente para nova tentativa.
+O Aggenda recebe, registra e processa as mensagens na própria camada de domínio.
+O n8n não decide respostas nem executa regras do Core; ele recebe somente
+eventos de automações comerciais publicadas. Falhas temporárias deixam o evento
+pendente para nova tentativa.
 
 ## Fluxo de transição
 
 ```text
-Meta -> /api/webhooks/whatsapp -> Neon Outbox -> worker Coolify -> n8n
+Meta -> /api/webhooks/whatsapp -> Neon Outbox -> worker Coolify -> Aggenda AI/Core
+                                                                    |
+                                      automação comercial publicada -> n8n
 ```
 
 O worker também reconhece `whatsapp.message.send` para envio direto pela Cloud
@@ -69,8 +72,10 @@ npm run worker:outbox
 Variáveis obrigatórias do serviço:
 
 - `DATABASE_URL`;
-- `N8N_FALLBACK_WEBHOOK_URL`: URL de produção do webhook funcional do n8n;
-- `N8N_API_KEY`, somente se o webhook estiver configurado para exigir o header;
+- `AGGENDA_INTERNAL_API_URL`: normalmente `https://www.aggenda.app.br`;
+- `AGGENDA_INTERNAL_API_KEY`: segredo compartilhado com a aplicação;
+- `N8N_COMMERCIAL_WEBHOOK_URL`: somente quando houver automações comerciais publicadas;
+- `N8N_API_KEY`, somente se o webhook comercial exigir o header;
 - `META_WHATSAPP_ACCESS_TOKEN` para futuros eventos de envio direto.
 
 Valores iniciais recomendados:

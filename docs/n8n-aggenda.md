@@ -1,7 +1,9 @@
 # Integração n8n com Aggenda
 
-O n8n recebe as mensagens do canal de atendimento e usa a API do Aggenda para
-consultar disponibilidade e administrar agendamentos.
+O n8n recebe apenas eventos de automações comerciais publicadas pelo Aggenda.
+Mensagens, IA, contexto, confirmação, handoff e operações do Core permanecem na
+camada própria do produto. Os endpoints abaixo são contratos legados de
+transição e não devem ser usados para criar novas regras conversacionais.
 
 Todas as requisições devem enviar:
 

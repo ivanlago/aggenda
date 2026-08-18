@@ -2,6 +2,7 @@
 
 import { and, asc, desc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { db } from "@/db";
 import {
@@ -23,6 +24,7 @@ import {
   financialEntries,
 } from "@/db/schema";
 import { writeAuditLog } from "@/lib/audit";
+import { generateAiJson } from "@/lib/ai/provider";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
@@ -367,26 +369,18 @@ export async function generateCrmAiInsight(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "crm.manage");
   const leadId = text(formData, "leadId");
-  const apiUrl = process.env.CRM_AI_API_URL; const apiKey = process.env.CRM_AI_API_KEY; const model = process.env.CRM_AI_MODEL;
-  if (!apiUrl || !apiKey || !model) throw new Error("Configure CRM_AI_API_URL, CRM_AI_API_KEY e CRM_AI_MODEL para ativar a análise assistida.");
   const [lead] = await db.select().from(crmLeads).where(and(eq(crmLeads.id, leadId), eq(crmLeads.organizationId, organization.id))).limit(1);
   if (!lead) throw new Error("Lead não encontrado.");
   const [opportunity] = await db.select().from(crmOpportunities).where(and(eq(crmOpportunities.organizationId, organization.id), eq(crmOpportunities.leadId, leadId))).orderBy(desc(crmOpportunities.createdAt)).limit(1);
   const [conversation] = await db.select({ id: chatConversations.id }).from(chatConversations).where(and(eq(chatConversations.organizationId, organization.id), eq(chatConversations.leadId, leadId))).orderBy(desc(chatConversations.lastMessageAt)).limit(1);
   const messages = conversation ? await db.select({ direction: chatMessages.direction, body: chatMessages.body }).from(chatMessages).where(and(eq(chatMessages.organizationId, organization.id), eq(chatMessages.conversationId, conversation.id))).orderBy(desc(chatMessages.occurredAt)).limit(20) : [];
-  const response = await fetch(apiUrl, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` }, body: JSON.stringify({ model, response_format: { type: "json_object" }, messages: [
+  const generated = await generateAiJson({ schema: z.object({ summary: z.string().min(1), intent: z.string().optional(), urgency: z.number().min(1).max(5).default(1), suggestedAction: z.string().optional(), suggestedReply: z.string().optional() }), messages: [
     { role: "system", content: "Você analisa uma oportunidade comercial. Não faça diagnóstico clínico. Responda somente JSON com summary, intent, urgency (1 a 5), suggestedAction e suggestedReply. A resposta é apenas sugestão e será revisada por uma pessoa." },
-    { role: "user", content: JSON.stringify({ lead: { name: lead.name, source: lead.source, notes: lead.notes }, opportunity: opportunity ? { title: opportunity.title, valueInCents: opportunity.valueInCents, status: opportunity.status } : null, recentMessages: messages.reverse().map((item) => ({ direction: item.direction, body: item.body?.slice(0, 1000) })) }) }
-  ] }) });
-  if (!response.ok) throw new Error("O provedor de IA não conseguiu concluir a análise.");
-  const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number } };
-  const content = payload.choices?.[0]?.message?.content;
-  if (!content) throw new Error("O provedor de IA retornou uma resposta vazia.");
-  let insight: { summary?: string; intent?: string; urgency?: number; suggestedAction?: string; suggestedReply?: string };
-  try { insight = JSON.parse(content); } catch { throw new Error("A resposta da IA não veio no formato esperado."); }
-  if (!insight.summary) throw new Error("A análise da IA não contém um resumo.");
-  const [created] = await db.insert(crmAiInsights).values({ organizationId: organization.id, leadId, opportunityId: opportunity?.id, conversationId: conversation?.id, requestedByUserId: session.user.id, summary: insight.summary, intent: insight.intent, urgency: Math.min(5, Math.max(1, Number(insight.urgency) || 1)), suggestedAction: insight.suggestedAction, suggestedReply: insight.suggestedReply, model, inputTokens: payload.usage?.prompt_tokens, outputTokens: payload.usage?.completion_tokens }).returning({ id: crmAiInsights.id });
-  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "crm.ai.generated", entityType: "crm_ai_insight", entityId: created.id, details: { model } });
+    { role: "user", content: JSON.stringify({ lead: { name: lead.name, source: lead.source, notes: lead.notes }, opportunity: opportunity ? { title: opportunity.title, valueInCents: opportunity.valueInCents, status: opportunity.status } : null, recentMessages: messages.reverse().map((item) => ({ direction: item.direction, body: item.body?.slice(0, 1000) })) }) },
+  ] });
+  const insight = generated.data;
+  const [created] = await db.insert(crmAiInsights).values({ organizationId: organization.id, leadId, opportunityId: opportunity?.id, conversationId: conversation?.id, requestedByUserId: session.user.id, summary: insight.summary, intent: insight.intent, urgency: insight.urgency, suggestedAction: insight.suggestedAction, suggestedReply: insight.suggestedReply, model: generated.model, inputTokens: generated.inputTokens, outputTokens: generated.outputTokens }).returning({ id: crmAiInsights.id });
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "crm.ai.generated", entityType: "crm_ai_insight", entityId: created.id, details: { model: generated.model } });
   revalidatePath(`/crm/leads/${leadId}`);
 }
 

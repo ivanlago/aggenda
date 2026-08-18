@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title">
+  <title id="title">Aggenda</title>
+  <rect width="1024" height="1024" rx="224" fill="#18664a"/>
+  <g fill="none" stroke="#ddff7a" stroke-width="72" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M352 192v160M672 192v160"/>
+    <rect x="192" y="272" width="640" height="576" rx="80"/>
+    <path d="M192 464h640M384 656l80 80 176-176"/>
+  </g>
+</svg>

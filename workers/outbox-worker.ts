@@ -223,48 +223,33 @@ async function enqueuePaymentReminders(connection: Client) {
   return queued;
 }
 
-async function forwardInboundToN8n(connection: Client, event: OutboxEvent) {
-  const workflowProduct = String(event.payload.workflowProduct ?? "");
-  const urls: Record<string, string | undefined> = {
-    CHAT: process.env.N8N_CHAT_WEBHOOK_URL,
-    CHAT_AI: process.env.N8N_CHAT_AI_WEBHOOK_URL,
-    CORE: process.env.N8N_CORE_WEBHOOK_URL,
-    CORE_AI: process.env.N8N_CORE_AI_WEBHOOK_URL,
-  };
-  const url = urls[workflowProduct] ?? process.env.N8N_FALLBACK_WEBHOOK_URL;
-  if (!url) {
-    throw new Error(`Webhook n8n não configurado para ${workflowProduct || "fallback"}`);
-  }
-
-  const originalWebhook = event.payload.metaWebhook;
+async function processInboundWithAggenda(event: OutboxEvent) {
+  const baseUrl = process.env.AGGENDA_INTERNAL_API_URL?.replace(/\/$/, "");
+  const apiKey = process.env.AGGENDA_INTERNAL_API_KEY;
+  if (!baseUrl || !apiKey) throw new Error("API interna do Aggenda não configurada");
+  const url = `${baseUrl}/api/internal/ai/whatsapp`;
   const response = await fetch(url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      ...(process.env.N8N_API_KEY
-        ? { "x-n8n-api-key": process.env.N8N_API_KEY }
-        : {}),
+      authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify(originalWebhook ?? event.payload),
+    body: JSON.stringify(event.payload),
     signal: AbortSignal.timeout(30_000),
   });
+  if (!response.ok) throw new Error(`Aggenda AI respondeu HTTP ${response.status}`);
+}
 
-  if (!response.ok) {
-    throw new Error(`n8n respondeu HTTP ${response.status}`);
-  }
-  if (workflowProduct === "CHAT_AI" || workflowProduct === "CORE_AI") {
-    const organizationId = String(event.payload.organizationId ?? "");
-    if (organizationId) {
-      await connection.query(
-        `insert into organization_usage_counters
-           (organization_id, period_start, metric, quantity, updated_at)
-         values ($1, date_trunc('month', now())::date, 'ai.calls', 1, now())
-         on conflict (organization_id, period_start, metric)
-         do update set quantity = organization_usage_counters.quantity + 1, updated_at = now()`,
-        [organizationId]
-      );
-    }
-  }
+async function forwardCommercialAutomationToN8n(event: OutboxEvent) {
+  const url = process.env.N8N_COMMERCIAL_WEBHOOK_URL;
+  if (!url) throw new Error("Webhook comercial do n8n não configurado");
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(process.env.N8N_API_KEY ? { "x-n8n-api-key": process.env.N8N_API_KEY } : {}) },
+    body: JSON.stringify(event.payload),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error(`n8n respondeu HTTP ${response.status}`);
 }
 
 async function sendWhatsAppText(connection: Client, event: OutboxEvent) {
@@ -397,7 +382,10 @@ async function recordOutboundUsage(connection: Client, event: OutboxEvent) {
 async function handleEvent(connection: Client, event: OutboxEvent) {
   switch (event.event_type) {
     case "whatsapp.message.received":
-      await forwardInboundToN8n(connection, event);
+      await processInboundWithAggenda(event);
+      return;
+    case "commercial.automation.requested":
+      await forwardCommercialAutomationToN8n(event);
       return;
     case "whatsapp.message.send":
       await sendWhatsAppText(connection, event);

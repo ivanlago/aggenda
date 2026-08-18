@@ -1,8 +1,8 @@
 # Aggenda Chat — especificação do MVP
 
-O Chat deve ser um template único e versionado no n8n. Dados da empresa,
-mensagens, horários e credenciais são parâmetros por organização, nunca cópias
-independentes do workflow.
+O Chat é uma capacidade versionada da camada própria do Aggenda. Dados da
+empresa, mensagens, horários, prompts e credenciais são isolados por organização.
+O n8n é usado somente por automações comerciais configuráveis e publicadas.
 
 ## Dez cenários obrigatórios
 
@@ -21,7 +21,7 @@ independentes do workflow.
 
 - exigir confirmação antes de criar, reagendar ou cancelar;
 - nunca inventar serviço, preço, profissional ou horário;
-- usar as APIs genéricas `/api/n8n`, evitando os aliases legados de clínica;
+- executar regras e respostas pela camada interna do Aggenda;
 - guardar origem `whatsapp`, identificador da conversa e versão do workflow;
 - aplicar timeout, três tentativas com espera progressiva e alerta após falha;
 - remover credenciais e dados sensíveis dos logs;

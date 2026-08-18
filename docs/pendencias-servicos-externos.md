@@ -37,3 +37,11 @@ Atualizado em 18/08/2026.
 - Os serviços obrigatórios já estão cobertos por Vercel, Neon, Coolify, Meta, Resend, Google Calendar, Google Gemini e Cloudinary, além dos provedores financeiros já configurados.
 - Google Sheets, CRM externo, SMS pago, verificação empresarial da Meta e serviços semelhantes permanecem opcionais e serão ativados somente quando houver demanda comercial.
 - Não há pendência externa bloqueante neste item.
+
+## Item 6 — Calendário, arquivos e serviços complementares
+
+- Concluído com os serviços já adotados no projeto.
+- Google Calendar possui integração OAuth própria do Aggenda e credenciais configuradas em Production e Preview.
+- Cloudinary já atende ao armazenamento e à entrega autenticada de imagens, também com credenciais nos três ambientes da Vercel.
+- Não é necessário contratar outro serviço de calendário, arquivos, analytics ou monitoramento para a operação inicial.
+- Google Sheets, PostHog, Sentry e conectores adicionais permanecem evoluções opcionais, sem pendência bloqueante.

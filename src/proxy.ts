@@ -12,7 +12,7 @@ export async function proxy(request: NextRequest) {
     const [organization] = await db.select({ slug: organizations.slug }).from(organizations).where(eq(organizations.customDomain, host)).limit(1);
     if (organization) return NextResponse.rewrite(new URL(`/agendar/${organization.slug}`, request.url));
   }
-  const protectedPath = ["/dashboard", "/onboarding", "/profissionais", "/clientes", "/servicos", "/agendamentos", "/equipe", "/assinatura", "/admin", "/crescimento"].some((path) => request.nextUrl.pathname === path || request.nextUrl.pathname.startsWith(`${path}/`));
+  const protectedPath = ["/dashboard", "/onboarding", "/profissionais", "/clientes", "/servicos", "/agendamentos", "/equipe", "/assinatura", "/admin", "/crescimento", "/documentos"].some((path) => request.nextUrl.pathname === path || request.nextUrl.pathname.startsWith(`${path}/`));
   if (protectedPath && !getSessionCookie(request)) {
     return NextResponse.redirect(new URL("/entrar", request.url));
   }
@@ -30,6 +30,7 @@ export const config = {
     "/agendamentos/:path*",
     "/equipe/:path*",
     "/assinatura/:path*",
+    "/documentos/:path*",
     "/admin/:path*",
     "/crescimento/:path*",
     "/",

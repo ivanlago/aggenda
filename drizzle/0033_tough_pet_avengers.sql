@@ -1,0 +1,1 @@
+ALTER TABLE "electronic_documents" ADD COLUMN "signer_responses" text;

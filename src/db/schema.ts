@@ -85,6 +85,14 @@ export const crmOpportunityStatusEnum = pgEnum("crm_opportunity_status", ["open"
 export const crmTaskTypeEnum = pgEnum("crm_task_type", ["follow_up", "call", "message", "meeting", "proposal", "other"]);
 export const crmProposalStatusEnum = pgEnum("crm_proposal_status", ["draft", "sent", "accepted", "rejected", "expired"]);
 export const crmAiInsightStatusEnum = pgEnum("crm_ai_insight_status", ["draft", "approved", "dismissed"]);
+export const electronicDocumentStatusEnum = pgEnum("electronic_document_status", [
+  "pending",
+  "viewed",
+  "signed",
+  "refused",
+  "expired",
+  "cancelled",
+]);
 
 export const professions = pgTable("professions", {
   id: text("id").primaryKey(),
@@ -669,6 +677,66 @@ export const clientClinicalMedia = pgTable("client_clinical_media", {
   capturedAt: timestamp("captured_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [index("client_clinical_media_client_idx").on(table.clientId, table.capturedAt), index("client_clinical_media_org_idx").on(table.organizationId)]);
+
+export const documentTemplates = pgTable("document_templates", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  documentType: text("document_type").default("consent").notNull(),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [index("document_templates_org_idx").on(table.organizationId, table.isActive)]);
+
+export const electronicDocuments = pgTable("electronic_documents", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "restrict" }),
+  templateId: uuid("template_id").references(() => documentTemplates.id, { onDelete: "set null" }),
+  createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  documentType: text("document_type").notNull(),
+  title: text("title").notNull(),
+  contentSnapshot: text("content_snapshot").notNull(),
+  contentHash: text("content_hash").notNull(),
+  status: electronicDocumentStatusEnum("status").default("pending").notNull(),
+  signerName: text("signer_name").notNull(),
+  signerEmail: text("signer_email").notNull(),
+  accessTokenHash: text("access_token_hash").notNull().unique(),
+  verificationCodeHash: text("verification_code_hash").notNull(),
+  verificationExpiresAt: timestamp("verification_expires_at").notNull(),
+  tokenExpiresAt: timestamp("token_expires_at").notNull(),
+  verificationAttempts: integer("verification_attempts").default(0).notNull(),
+  viewedAt: timestamp("viewed_at"),
+  signedAt: timestamp("signed_at"),
+  refusedAt: timestamp("refused_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  signatureData: text("signature_data"),
+  signerResponses: text("signer_responses"),
+  acceptanceText: text("acceptance_text"),
+  signerIpAddress: text("signer_ip_address"),
+  signerUserAgent: text("signer_user_agent"),
+  evidenceHash: text("evidence_hash"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("electronic_documents_org_idx").on(table.organizationId, table.createdAt),
+  index("electronic_documents_client_idx").on(table.clientId, table.createdAt),
+  index("electronic_documents_status_idx").on(table.organizationId, table.status),
+]);
+
+export const electronicDocumentEvents = pgTable("electronic_document_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  documentId: uuid("document_id").notNull().references(() => electronicDocuments.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  eventType: text("event_type").notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  details: jsonb("details").$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [index("electronic_document_events_document_idx").on(table.documentId, table.createdAt)]);
 
 export const crmPipelines = pgTable(
   "crm_pipelines",

@@ -73,3 +73,28 @@ export async function sendTeamInvitationEmail(input: {
     ),
   });
 }
+
+export async function sendElectronicDocumentEmail(input: {
+  email: string;
+  signerName: string;
+  organizationName: string;
+  documentTitle: string;
+  url: string;
+  verificationCode: string;
+  documentId: string;
+}) {
+  const signer = escapeHtml(input.signerName);
+  const organization = escapeHtml(input.organizationName);
+  const title = escapeHtml(input.documentTitle);
+  const url = escapeHtml(input.url);
+  const code = escapeHtml(input.verificationCode);
+  await sendEmail({
+    to: input.email,
+    subject: `${input.organizationName} enviou um documento para sua assinatura`,
+    idempotencyKey: `electronic-document-${input.documentId}-${input.verificationCode}`,
+    html: emailLayout(
+      "Documento aguardando sua assinatura",
+      `<p style="line-height:1.6">${signer}, a <strong>${organization}</strong> enviou o documento <strong>${title}</strong> para sua leitura e assinatura.</p><p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:#24543a;color:#fff;text-decoration:none;padding:14px 20px;border-radius:12px;font-weight:700">Revisar documento</a></p><p style="line-height:1.6">Código de confirmação: <strong style="font-size:20px;letter-spacing:3px">${code}</strong></p><p style="line-height:1.6;color:#647066">O código expira em 30 minutos. O link fica disponível por 7 dias.</p>`,
+    ),
+  });
+}

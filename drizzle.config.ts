@@ -1,8 +1,9 @@
-import "dotenv/config";
-
 import { defineConfig } from "drizzle-kit";
+import { loadEnvConfig } from "@next/env";
 
 import { normalizeDatabaseUrl } from "./src/lib/database-url";
+
+loadEnvConfig(process.cwd());
 
 export default defineConfig({
   out: "./drizzle",

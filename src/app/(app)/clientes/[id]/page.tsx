@@ -162,10 +162,10 @@ export default async function ClientHistoryPage({
             <p className="truncate font-extrabold">{entry.title || (entry.entryType === "prescription" ? "Receituário" : "Documento")}</p>
             <span className="text-xs font-bold text-muted md:whitespace-nowrap">{formatOrganizationDateTime(entry.occurredAt, organization.timezone)}</span>
             <Link className="secondary-button justify-center py-2 md:whitespace-nowrap" href={`/api/documents/${entry.electronicDocumentId}/pdf`}>Abrir PDF original</Link>
-            {entry.entryType === "prescription" ? <Link className="secondary-button justify-center py-2 md:whitespace-nowrap" href={`/documentos?reuse=${entry.electronicDocumentId}`}>Criar nova a partir desta</Link> : <span />}
+            {["prescription", "exam_request"].includes(entry.entryType) ? <Link className="secondary-button justify-center py-2 md:whitespace-nowrap" href={`/documentos?reuse=${entry.electronicDocumentId}`}>Criar nova a partir desta</Link> : <span />}
           </article> : <article key={entry.id} className="py-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="font-extrabold">{entry.title || (entry.entryType === "evolution" ? "Evolução" : entry.entryType === "anamnesis" ? "Anamnese" : entry.entryType === "prescription" ? "Receita" : "Anotação")}</p>
+              <p className="font-extrabold">{entry.title || (entry.entryType === "evolution" ? "Evolução" : entry.entryType === "anamnesis" ? "Anamnese" : entry.entryType === "prescription" ? "Receita" : entry.entryType === "exam_request" ? "Solicitação de exames" : "Anotação")}</p>
               <span className="text-xs font-bold text-muted">{formatOrganizationDateTime(entry.occurredAt, organization.timezone)}</span>
             </div>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{entry.content}</p>

@@ -23,18 +23,20 @@ export default async function ServicesPage() {
         title={organization.serviceLabelPlural}
         description={`Defina duração e preço dos ${organization.serviceLabelPlural.toLowerCase()} oferecidos.`}
       />
-      <div className="content-grid">
+      <div className="content-grid xl:grid-cols-2">
         <form action={createService} className="panel form-stack">
           <h2 className="text-lg font-extrabold">
             Novo {organization.serviceLabel.toLowerCase()}
           </h2>
-          <TussAutocomplete table="22" label="Guia TUSS 22 (opcional)" onSelectNameField="name" />
+          <TussAutocomplete table="22" label="Guia TUSS 22 (opcional)" onSelectNameField="name" onSelectCodeField="manualTussCode" />
           <input
             className="field"
             name="name"
             required
             placeholder={`Nome do ${organization.serviceLabel.toLowerCase()}`}
           />
+          <div className="grid gap-2 sm:grid-cols-2"><input className="field" name="manualTussCode" placeholder="Código TUSS (opcional)" /><input className="field" name="shortName" maxLength={80} placeholder="Nome curto, ex.: RM, USG" /></div>
+          <textarea className="field min-h-24" name="preparation" placeholder="Preparação necessária para o exame/procedimento" />
           <textarea className="field min-h-20" name="description" placeholder="Descrição" />
           <input className="field" name="durationMinutes" type="number" min="5" step="5" required placeholder="Duração em minutos" />
           <input className="field" name="price" inputMode="decimal" placeholder="Preço em reais (ex.: 150,00)" />
@@ -59,19 +61,20 @@ export default async function ServicesPage() {
             {items.map((item) => (
               <div key={item.id} className="flex items-center gap-4 py-4">
                 <div className="min-w-0 flex-1">
-                  <p className="font-bold">{item.name}</p>
+                  <p className="font-bold">{item.shortName || item.name}</p>
                   <p className="text-sm text-muted">
                     {item.durationMinutes} min
                     {item.priceInCents != null ? ` · ${(item.priceInCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}
                   </p>
-                  {item.tussCode && <p className="mt-1 text-xs font-bold text-brand">TUSS {item.tussCode} · {item.tussName}</p>}
                 </div>
                 <details className="relative">
                   <summary className="cursor-pointer text-sm font-bold text-brand">Editar</summary>
                   <form action={updateService} className="absolute right-0 z-10 mt-2 grid w-72 gap-2 rounded-2xl border bg-white p-4 shadow-xl">
                     <input type="hidden" name="id" value={item.id} />
-                    <TussAutocomplete table="22" label="Guia TUSS 22" defaultCode={item.tussCode ?? ""} defaultName={item.tussName ?? ""} onSelectNameField="name" />
+                    <TussAutocomplete table="22" label="Guia TUSS 22" defaultCode={item.tussCode ?? ""} defaultName={item.tussName ?? ""} onSelectNameField="name" onSelectCodeField="manualTussCode" />
                     <input className="field" name="name" defaultValue={item.name} required />
+                    <div className="grid gap-2 sm:grid-cols-2"><input className="field" name="manualTussCode" defaultValue={item.tussCode ?? ""} placeholder="Código TUSS" /><input className="field" name="shortName" defaultValue={item.shortName ?? ""} placeholder="Nome curto" /></div>
+                    <textarea className="field" name="preparation" defaultValue={item.preparation ?? ""} placeholder="Preparação necessária" />
                     <textarea className="field" name="description" defaultValue={item.description ?? ""} placeholder="Descrição" />
                     <input className="field" name="durationMinutes" type="number" min="5" step="5" defaultValue={item.durationMinutes} required />
                     <input className="field" name="price" inputMode="decimal" defaultValue={item.priceInCents == null ? "" : (item.priceInCents / 100).toFixed(2).replace(".", ",")} placeholder="Preço em reais" />

@@ -5,10 +5,11 @@ import Link from "next/link";
 import { cancelElectronicDocument, createDocumentTemplate, installDefaultDocumentTemplates, issueElectronicDocument, issueProfessionalDocument, resendElectronicDocument, restoreDefaultDocumentTemplates, setDocumentTemplateActive, updateDocumentTemplate } from "@/actions/electronic-documents";
 import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
+import { ExamRequestComposer } from "@/components/exam-request-composer";
 import { PrescriptionComposer } from "@/components/prescription-composer";
 import { ProfessionalDocumentComposer } from "@/components/professional-document-composer";
 import { db } from "@/db";
-import { clients, documentTemplates, electronicDocuments, professionals } from "@/db/schema";
+import { clients, documentTemplates, electronicDocuments, professionals, services } from "@/db/schema";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
@@ -21,19 +22,22 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
   const { organization } = await requireOrganization();
   const { reuse } = await searchParams;
   const canManage = hasOrganizationPermission(organization.role, "documents.manage");
-  const [templates, clientRows, professionalRows, rows] = await Promise.all([
+  const [templates, clientRows, professionalRows, procedureRows, rows] = await Promise.all([
     db.select().from(documentTemplates).where(eq(documentTemplates.organizationId, organization.id)).orderBy(desc(documentTemplates.createdAt)),
     db.select({ id: clients.id, name: clients.name, email: clients.email, phone: clients.phone }).from(clients).where(eq(clients.organizationId, organization.id)).orderBy(clients.name),
     db.select({ id: professionals.id, name: professionals.name }).from(professionals).where(eq(professionals.organizationId, organization.id)).orderBy(professionals.name),
+    db.select({ id: services.id, name: services.name, shortName: services.shortName, tussCode: services.tussCode, preparation: services.preparation }).from(services).where(and(eq(services.organizationId, organization.id), eq(services.isActive, true))).orderBy(services.name),
     db.select({ document: electronicDocuments, clientName: clients.name }).from(electronicDocuments).innerJoin(clients, eq(clients.id, electronicDocuments.clientId)).where(eq(electronicDocuments.organizationId, organization.id)).orderBy(desc(electronicDocuments.createdAt)).limit(100),
   ]);
   const activeTemplates = templates.filter((item) => item.isActive);
   const patientTemplates = activeTemplates.filter((item) => item.workflowType === "patient_signature");
   const professionalTemplates = activeTemplates.filter((item) => item.workflowType === "professional_issue");
   const prescriptionTemplate = professionalTemplates.find((item) => item.documentType === "prescription");
-  const otherProfessionalTemplates = professionalTemplates.filter((item) => item.documentType !== "prescription");
-  const [reusedDocument] = reuse ? await db.select({ clientId: electronicDocuments.clientId, professionalId: electronicDocuments.issuerProfessionalId, structuredData: electronicDocuments.structuredData }).from(electronicDocuments).where(and(eq(electronicDocuments.id, reuse), eq(electronicDocuments.organizationId, organization.id), eq(electronicDocuments.documentType, "prescription"))).limit(1) : [];
-  const initialPrescription = reusedDocument?.structuredData ? { ...(reusedDocument.structuredData as { kind?: string; observations?: string; medications?: Array<{ name: string; presentation: string; route: string; dosage: string; quantity: string; notes: string; tussCode: string }> }), clientId: reusedDocument.clientId, professionalId: reusedDocument.professionalId ?? undefined } : null;
+  const examRequestTemplate = professionalTemplates.find((item) => item.documentType === "exam_request");
+  const otherProfessionalTemplates = professionalTemplates.filter((item) => !["prescription", "exam_request"].includes(item.documentType));
+  const [reusedDocument] = reuse ? await db.select({ clientId: electronicDocuments.clientId, professionalId: electronicDocuments.issuerProfessionalId, documentType: electronicDocuments.documentType, structuredData: electronicDocuments.structuredData }).from(electronicDocuments).where(and(eq(electronicDocuments.id, reuse), eq(electronicDocuments.organizationId, organization.id))).limit(1) : [];
+  const initialPrescription = reusedDocument?.documentType === "prescription" && reusedDocument.structuredData ? { ...(reusedDocument.structuredData as { kind?: string; observations?: string; includeDate?: boolean; medications?: Array<{ name: string; presentation: string; route: string; dosage: string; quantity: string; notes: string; tussCode: string }> }), clientId: reusedDocument.clientId, professionalId: reusedDocument.professionalId ?? undefined } : null;
+  const initialExamRequest = reusedDocument?.documentType === "exam_request" && reusedDocument.structuredData ? { ...(reusedDocument.structuredData as { observations?: string; includeDate?: boolean; exams?: Array<{ name: string; fullName: string; indication: string; tussCode: string; preparation: string }> }), clientId: reusedDocument.clientId, professionalId: reusedDocument.professionalId ?? undefined } : null;
 
   return <div className="page-wrap">
     <PageHeader eyebrow="Documentos digitais" title="Documentos e assinaturas" description="Gerencie formulários assinados pelo paciente e documentos clínicos emitidos pelo profissional em papel timbrado." />
@@ -46,6 +50,12 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
     </ActionForm>}
 
     {canManage && !prescriptionTemplate && <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900">Instale a biblioteca inicial Aggenda para habilitar o fluxo simplificado de receita.</div>}
+
+    {canManage && examRequestTemplate && <ActionForm action={issueProfessionalDocument} successMessage="Solicitação de exames emitida." className="panel form-stack mb-5">
+      <div><p className="eyebrow">Fluxo simplificado</p><h2 className="text-xl font-extrabold">Nova solicitação de exames</h2><p className="mt-1 text-sm text-muted">Escolha o paciente, adicione os exames e revise antes de emitir.</p></div>
+      {initialExamRequest ? <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-900">Uma cópia editável da solicitação anterior foi carregada. O documento original permanece intacto.</div> : null}
+      <ExamRequestComposer templateId={examRequestTemplate.id} organizationName={organization.name} clients={clientRows} professionals={professionalRows} procedures={procedureRows} initial={initialExamRequest} />
+    </ActionForm>}
 
     {canManage && <div className="grid gap-5 xl:grid-cols-2">
       <ActionForm action={createDocumentTemplate} successMessage="Modelo criado." className="panel form-stack">

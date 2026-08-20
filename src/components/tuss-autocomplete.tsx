@@ -11,8 +11,11 @@ export function TussAutocomplete({
   defaultCode = "",
   defaultName = "",
   onSelectNameField,
+  onSelectCodeField,
   appendToField,
   onSelect,
+  onCustom,
+  resetAfterSelect = false,
 }: {
   table: "20" | "22";
   label: string;
@@ -20,8 +23,11 @@ export function TussAutocomplete({
   defaultCode?: string;
   defaultName?: string;
   onSelectNameField?: string;
+  onSelectCodeField?: string;
   appendToField?: string;
   onSelect?: (item: TussItem) => void;
+  onCustom?: (name: string) => void;
+  resetAfterSelect?: boolean;
 }) {
   const id = useId();
   const [query, setQuery] = useState(defaultCode && defaultName ? `${defaultCode} - ${defaultName}` : "");
@@ -51,12 +57,16 @@ export function TussAutocomplete({
 
   function choose(item: TussItem) {
     setSelected({ code: item.code, name: item.name });
-    setQuery(`${item.code} - ${item.name}${item.presentation ? ` · ${item.presentation}` : ""}`);
+    setQuery(resetAfterSelect ? "" : `${item.code} - ${item.name}${item.presentation ? ` · ${item.presentation}` : ""}`);
     setItems([]);
     onSelect?.(item);
     if (onSelectNameField) {
       const input = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${onSelectNameField}"]`);
       if (input) input.value = item.name;
+    }
+    if (onSelectCodeField) {
+      const input = document.querySelector<HTMLInputElement>(`[name="${onSelectCodeField}"]`);
+      if (input) input.value = item.code;
     }
     if (appendToField) {
       const input = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${appendToField}"]`);
@@ -66,11 +76,12 @@ export function TussAutocomplete({
 
   return <div className="relative grid gap-1">
     <label className="text-sm font-bold" htmlFor={id}>{label}</label>
-    <input id={id} className="field" value={query} onChange={(event) => { setQuery(event.target.value); setSelected({ code: "", name: "" }); setItems([]); }} placeholder={table === "22" ? "Digite código ou nome do procedimento" : "Digite código ou nome do medicamento"} autoComplete="off" />
+    <input id={id} className="field" value={query} onChange={(event) => { setQuery(event.target.value); setSelected({ code: "", name: "" }); setItems([]); }} onKeyDown={(event) => { if (event.key !== "Enter" || query.trim().length < 2) return; event.preventDefault(); if (items[0]) choose(items[0]); else if (onCustom) { onCustom(query.trim()); setQuery(""); setItems([]); } }} placeholder={table === "22" ? "Digite código ou nome do procedimento" : "Digite código ou nome do medicamento"} autoComplete="off" />
     <input type="hidden" name={nameField ?? "tussCode"} value={selected.code} />
     <input type="hidden" name={nameField ? `${nameField}Name` : "tussName"} value={selected.name} />
     <input type="hidden" name={nameField ? `${nameField}Table` : "tussTable"} value={selected.code ? table : ""} />
     {!available && <p className="text-xs font-bold text-amber-700">Catálogo TUSS {table} ainda não instalado. O preenchimento manual continua disponível.</p>}
+    {onCustom && <p className="text-xs text-muted">Selecione uma sugestão. Se não encontrar, digite o nome e pressione Enter.</p>}
     {items.length > 0 && <ul className="absolute top-full z-30 mt-1 max-h-72 w-full overflow-auto rounded-xl border bg-white p-1 shadow-xl">
       {items.map((item) => <li key={`${item.table}-${item.code}`}><button className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50" type="button" onClick={() => choose(item)}><strong>{item.code}</strong><span className="block text-xs text-muted">{item.name}{item.presentation ? ` · ${item.presentation}` : ""}{item.laboratory ? ` · ${item.laboratory}` : ""}{item.validUntil ? ` · vigência encerrada em ${item.validUntil}` : ""}</span></button></li>)}
     </ul>}

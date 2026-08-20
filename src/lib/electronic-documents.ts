@@ -50,6 +50,7 @@ export async function createSignedDocumentPdf(input: {
   organizationBrandColor?: string | null;
   organizationFooter?: string | null;
   title: string;
+  documentType?: string | null;
   content: string;
   signerName: string;
   signerEmail: string;
@@ -62,6 +63,7 @@ export async function createSignedDocumentPdf(input: {
   evidenceHash?: string | null;
   workflowType?: string | null;
   issuedAt?: Date | null;
+  showIssuedDate?: boolean;
   professionalName?: string | null;
   professionalRegistration?: string | null;
 }) {
@@ -146,13 +148,15 @@ export async function createSignedDocumentPdf(input: {
     drawLines(`Hash SHA-256 das evidências: ${input.evidenceHash || "não disponível"}`, regular, 7.5);
   }
   if (input.workflowType === "professional_issue") {
-    if (y < 180) addPage();
-    y -= 24;
+    const reservesManualSignature = input.documentType === "prescription" || input.documentType === "exam_request";
+    const signatureSpace = reservesManualSignature ? 110 : 24;
+    if (y < 156 + signatureSpace) addPage();
+    y -= signatureSpace;
     page.drawLine({ start: { x: margin, y }, end: { x: pageSize[0] - margin, y }, thickness: 0.8, color: rgb(0.75, 0.78, 0.75) });
     y -= 28;
     drawLines(input.professionalName || input.signerName, bold, 11, brand);
     if (input.professionalRegistration) drawLines(input.professionalRegistration, regular, 9);
-    if (input.issuedAt) drawLines(`Emitido em ${input.issuedAt.toLocaleString("pt-BR", { timeZone: "America/Bahia" })}`, regular, 9);
+    if (input.issuedAt && input.showIssuedDate !== false) drawLines(`Emitido em ${input.issuedAt.toLocaleString("pt-BR", { timeZone: "America/Bahia" })}`, regular, 9);
     drawLines(`Código de integridade: ${input.evidenceHash || input.contentHash}`, regular, 7.5);
   }
   const pages = pdf.getPages();

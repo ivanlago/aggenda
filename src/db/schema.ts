@@ -987,6 +987,8 @@ export const services = pgTable(
     tussCode: text("tuss_code"),
     tussTable: text("tuss_table"),
     tussName: text("tuss_name"),
+    shortName: text("short_name"),
+    preparation: text("preparation"),
     durationMinutes: integer("duration_minutes").notNull(),
     priceInCents: integer("price_in_cents"),
     estimatedCostInCents: integer("estimated_cost_in_cents").default(0).notNull(),

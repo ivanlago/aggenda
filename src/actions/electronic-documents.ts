@@ -115,6 +115,10 @@ export async function issueProfessionalDocument(data: FormData) {
   if (template.documentType === "prescription" && prescriptionData) {
     try { structuredData = JSON.parse(prescriptionData) as Record<string, unknown>; } catch { return { error: "Os dados estruturados da receita são inválidos." }; }
   }
+  const genericStructuredData = text(data, "structuredDocumentData").slice(0, 30_000);
+  if (template.documentType === "exam_request" && genericStructuredData) {
+    try { structuredData = JSON.parse(genericStructuredData) as Record<string, unknown>; } catch { return { error: "Os dados estruturados da solicitação são inválidos." }; }
+  }
   const title = renderDocumentTemplate(text(data, "title") || template.title, values);
   const credentials = createDocumentCredentials();
   const contentHash = sha256(contentSnapshot);
@@ -128,8 +132,8 @@ export async function issueProfessionalDocument(data: FormData) {
     issuedAt: now, evidenceHash,
   }).returning({ id: electronicDocuments.id });
   await db.insert(electronicDocumentEvents).values({ organizationId: organization.id, documentId: created.id, eventType: "issued", details: { professionalId: professional.id } });
-  if (template.documentType === "prescription" && text(data, "saveToRecord") === "true") {
-    await db.insert(clientHistoryEntries).values({ organizationId: organization.id, clientId: client.id, authorUserId: session.user.id, electronicDocumentId: created.id, entryType: "prescription", title, content: contentSnapshot, occurredAt: now });
+  if (["prescription", "exam_request"].includes(template.documentType) && text(data, "saveToRecord") === "true") {
+    await db.insert(clientHistoryEntries).values({ organizationId: organization.id, clientId: client.id, authorUserId: session.user.id, electronicDocumentId: created.id, entryType: template.documentType, title, content: contentSnapshot, occurredAt: now });
   }
   let deliveryWarning: string | undefined;
   if (deliveryMethod === "email") {
@@ -144,7 +148,7 @@ export async function issueProfessionalDocument(data: FormData) {
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "issue", entityType: "professional_document", entityId: created.id, details: { professionalId: professional.id, clientId: client.id, deliveryMethod } });
   revalidatePath("/documentos");
   if (deliveryWarning) return { warning: deliveryWarning };
-  if (deliveryMethod === "print") return { openUrl: `/api/documents/${created.id}/pdf` };
+  if (deliveryMethod === "print") return { openUrl: `/api/documents/${created.id}/pdf?v=${created.id}` };
   if (deliveryMethod === "whatsapp") {
     const to = patientPhone.startsWith("55") ? patientPhone : `55${patientPhone}`;
     const publicUrl = `${appUrl()}/api/public/documents/${credentials.token}/pdf`;

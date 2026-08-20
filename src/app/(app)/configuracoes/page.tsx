@@ -150,6 +150,16 @@ export default async function SettingsPage() {
             />
           </label>
           <label className="grid gap-2 text-sm font-bold sm:col-span-3">Apresentação pública<textarea className="field min-h-20" name="publicDescription" defaultValue={organization.publicDescription ?? ""} disabled={!canManage} placeholder="Conte a especialidade e os diferenciais do negócio" /></label>
+          <fieldset className="grid gap-3 rounded-2xl border p-4 sm:col-span-3"><legend className="px-2 font-extrabold">Identidade institucional e papel timbrado</legend>
+            <p className="text-xs text-muted sm:col-span-3">Esses dados aparecem nos documentos clínicos e PDFs emitidos pela organização.</p>
+            <label className="grid gap-2 text-sm font-bold sm:col-span-2">Razão social<input className="field" name="legalName" defaultValue={organization.legalName ?? ""} disabled={!canManage} /></label>
+            <label className="grid gap-2 text-sm font-bold">CNPJ ou CPF institucional<input className="field" name="taxId" defaultValue={organization.taxId ?? ""} disabled={!canManage} inputMode="numeric" /></label>
+            <label className="grid gap-2 text-sm font-bold">Telefone<input className="field" name="phone" defaultValue={organization.phone ?? ""} disabled={!canManage} /></label>
+            <label className="grid gap-2 text-sm font-bold">WhatsApp<input className="field" name="publicWhatsapp" defaultValue={organization.publicWhatsapp ?? ""} disabled={!canManage} /></label>
+            <label className="grid gap-2 text-sm font-bold">E-mail institucional<input className="field" type="email" name="publicEmail" defaultValue={organization.publicEmail ?? ""} disabled={!canManage} /></label>
+            <label className="grid gap-2 text-sm font-bold sm:col-span-2">Site<input className="field" type="url" name="publicWebsite" defaultValue={organization.publicWebsite ?? ""} disabled={!canManage} placeholder="https://..." /></label>
+            <label className="grid gap-2 text-sm font-bold sm:col-span-3">Rodapé dos documentos<textarea className="field min-h-20" name="documentFooter" defaultValue={organization.documentFooter ?? ""} disabled={!canManage} placeholder="Informações adicionais, unidade, horários ou observações institucionais" /></label>
+          </fieldset>
           <label className="grid gap-2 text-sm font-bold sm:col-span-3">Endereço público<input className="field" name="publicAddress" defaultValue={organization.publicAddress ?? ""} disabled={!canManage} /></label>
           <label className="grid gap-2 text-sm font-bold">Logo (URL)<input className="field" name="publicLogoUrl" type="url" defaultValue={organization.publicLogoUrl ?? ""} disabled={!canManage} /></label>
           <label className="grid gap-2 text-sm font-bold">Capa (URL)<input className="field" name="publicCoverUrl" type="url" defaultValue={organization.publicCoverUrl ?? ""} disabled={!canManage} /></label>

@@ -98,3 +98,28 @@ export async function sendElectronicDocumentEmail(input: {
     ),
   });
 }
+
+export async function sendProfessionalDocumentEmail(input: {
+  email: string;
+  patientName: string;
+  organizationName: string;
+  professionalName: string;
+  documentTitle: string;
+  url: string;
+  documentId: string;
+}) {
+  const patient = escapeHtml(input.patientName);
+  const organization = escapeHtml(input.organizationName);
+  const professional = escapeHtml(input.professionalName);
+  const title = escapeHtml(input.documentTitle);
+  const url = escapeHtml(input.url);
+  await sendEmail({
+    to: input.email,
+    subject: `${input.organizationName} enviou ${input.documentTitle}`,
+    idempotencyKey: `professional-document-${input.documentId}`,
+    html: emailLayout(
+      "Documento profissional disponível",
+      `<p style="line-height:1.6">${patient}, a <strong>${organization}</strong> enviou o documento <strong>${title}</strong>, emitido por <strong>${professional}</strong>.</p><p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:#24543a;color:#fff;text-decoration:none;padding:14px 20px;border-radius:12px;font-weight:700">Baixar documento em PDF</a></p><p style="line-height:1.6;color:#647066">O link é pessoal e temporário. Em caso de dúvida sobre o conteúdo, entre em contato com o profissional emissor.</p>`,
+    ),
+  });
+}

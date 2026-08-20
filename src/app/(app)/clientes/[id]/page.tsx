@@ -59,6 +59,7 @@ export default async function ClientHistoryPage({
       entryType: clientHistoryEntries.entryType,
       title: clientHistoryEntries.title,
       content: clientHistoryEntries.content,
+      electronicDocumentId: clientHistoryEntries.electronicDocumentId,
       occurredAt: clientHistoryEntries.occurredAt,
       createdAt: clientHistoryEntries.createdAt,
       author: users.name,
@@ -157,9 +158,14 @@ export default async function ClientHistoryPage({
           <button className="primary-button sm:w-fit">Adicionar ao {recordLabel.toLowerCase()}</button>
         </ActionForm>
         <div className="mt-6 divide-y">
-          {entries.map((entry) => <article key={entry.id} className="py-4">
+          {entries.map((entry) => entry.electronicDocumentId ? <article key={entry.id} className="grid gap-3 py-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center">
+            <p className="truncate font-extrabold">{entry.title || (entry.entryType === "prescription" ? "Receituário" : "Documento")}</p>
+            <span className="text-xs font-bold text-muted md:whitespace-nowrap">{formatOrganizationDateTime(entry.occurredAt, organization.timezone)}</span>
+            <Link className="secondary-button justify-center py-2 md:whitespace-nowrap" href={`/api/documents/${entry.electronicDocumentId}/pdf`}>Abrir PDF original</Link>
+            {entry.entryType === "prescription" ? <Link className="secondary-button justify-center py-2 md:whitespace-nowrap" href={`/documentos?reuse=${entry.electronicDocumentId}`}>Criar nova a partir desta</Link> : <span />}
+          </article> : <article key={entry.id} className="py-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="font-extrabold">{entry.title || (entry.entryType === "evolution" ? "Evolução" : entry.entryType === "anamnesis" ? "Anamnese" : "Anotação")}</p>
+              <p className="font-extrabold">{entry.title || (entry.entryType === "evolution" ? "Evolução" : entry.entryType === "anamnesis" ? "Anamnese" : entry.entryType === "prescription" ? "Receita" : "Anotação")}</p>
               <span className="text-xs font-bold text-muted">{formatOrganizationDateTime(entry.occurredAt, organization.timezone)}</span>
             </div>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{entry.content}</p>

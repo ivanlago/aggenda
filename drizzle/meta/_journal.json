@@ -239,6 +239,20 @@
       "when": 1787047862204,
       "tag": "0033_tough_pet_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1787218902348,
+      "tag": "0034_pretty_master_chief",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1787224937346,
+      "tag": "0035_sharp_sprite",
+      "breakpoints": true
     }
   ]
 }

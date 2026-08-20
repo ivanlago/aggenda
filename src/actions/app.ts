@@ -563,6 +563,9 @@ export async function createService(formData: FormData) {
     organizationId: organization.id,
     name,
     description: optionalText(formData, "description"),
+    tussCode: optionalText(formData, "tussCode"),
+    tussName: optionalText(formData, "tussName"),
+    tussTable: optionalText(formData, "tussTable"),
     durationMinutes,
     priceInCents: optionalMoneyInCents(formData, "price"),
     estimatedCostInCents: optionalMoneyInCents(formData, "estimatedCost") ?? 0,
@@ -599,6 +602,9 @@ export async function updateService(formData: FormData) {
   }
   await db.update(services).set({
     name, description: optionalText(formData, "description"), durationMinutes,
+    tussCode: optionalText(formData, "tussCode"),
+    tussName: optionalText(formData, "tussName"),
+    tussTable: optionalText(formData, "tussTable"),
     priceInCents: optionalMoneyInCents(formData, "price"),
     estimatedCostInCents: optionalMoneyInCents(formData, "estimatedCost") ?? 0,
     depositType: ["none", "fixed", "percentage", "full"].includes(textValue(formData, "depositType")) ? textValue(formData, "depositType") : "none",

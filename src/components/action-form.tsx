@@ -45,7 +45,7 @@ export function ActionForm({
   className,
   children,
 }: {
-  action: (formData: FormData) => Promise<void | { error?: string }>;
+  action: (formData: FormData) => Promise<void | { error?: string; warning?: string; openUrl?: string }>;
   successMessage: string;
   className?: string;
   children: React.ReactNode;
@@ -59,7 +59,8 @@ export function ActionForm({
           return { id: Date.now(), status: "error", message: result.error };
         }
         router.refresh();
-        return { id: Date.now(), status: "success", message: successMessage };
+        if (result?.openUrl) window.open(result.openUrl, "_blank", "noopener,noreferrer");
+        return { id: Date.now(), status: "success", message: result?.warning ?? successMessage };
       } catch (error) {
         console.error("[action-form] Falha ao executar comando", error);
         return {

@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { clientMemberships, clients, organizationServicePlans, outboxEvents, paymentChargeEvents, paymentCharges, servicePackages, vouchers, whatsappChannels } from "@/db/schema";
 import { organizationAsaasRequest } from "@/lib/asaas";
 import { writeAuditLog } from "@/lib/audit";
+import { triggerOutboxWorker } from "@/lib/outbox-trigger";
 import { getOrganizationAsaasCredential } from "@/lib/organization-asaas";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
@@ -66,6 +67,7 @@ export async function sendRecoveryMessage(data: FormData) {
   if (!client || !channel || !phone || plan?.whatsappServiceCode === "assisted") throw new Error("Este contato requer um canal WhatsApp Cloud API ativo.");
   const to = phone.startsWith("55") ? phone : `55${phone}`;
   await db.insert(outboxEvents).values({ organizationId: organization.id, eventKey: `whatsapp:recovery:${client.id}:${new Date().toISOString().slice(0, 10)}`, eventType: "whatsapp.template.send", aggregateType: "client", aggregateId: client.id, payload: { organizationId: organization.id, channelId: channel.id, phoneNumberId: channel.phoneNumberId, to, notificationKind: "recovery", clientId: client.id, languageCode: "pt_BR", parameters: [client.name, organization.name, `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/agendar/${organization.slug}`], preview: `Olá, ${client.name}! Sentimos sua falta na ${organization.name}. Quer reservar um novo horário?` } }).onConflictDoNothing({ target: outboxEvents.eventKey });
+  await triggerOutboxWorker();
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "queue", entityType: "whatsapp_recovery", entityId: client.id });
   revalidatePath("/crescimento");
 }

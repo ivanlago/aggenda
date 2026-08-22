@@ -84,8 +84,40 @@ export async function updateDocumentTemplate(data: FormData) {
   const title = text(data, "title").slice(0, 180);
   const content = text(data, "content").slice(0, 30_000);
   if (!id || name.length < 2 || title.length < 2 || content.length < 20) return { error: "Informe nome, título e conteúdo válidos." };
+  const [existing] = await db.select({ isSystemPreset: documentTemplates.isSystemPreset }).from(documentTemplates).where(and(eq(documentTemplates.id, id), eq(documentTemplates.organizationId, organization.id))).limit(1);
+  if (!existing) return { error: "Modelo não encontrado." };
+  if (existing.isSystemPreset) return { error: "Modelos nativos não podem ser editados. Duplique o modelo para personalizá-lo." };
   await db.update(documentTemplates).set({ name, title, content, isSystemPreset: false, updatedAt: new Date() }).where(and(eq(documentTemplates.id, id), eq(documentTemplates.organizationId, organization.id)));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "update", entityType: "document_template", entityId: id });
+  revalidatePath("/documentos");
+}
+
+export async function duplicateDocumentTemplate(data: FormData) {
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "documents.manage");
+  const id = text(data, "id");
+  const [source] = await db.select().from(documentTemplates).where(and(eq(documentTemplates.id, id), eq(documentTemplates.organizationId, organization.id))).limit(1);
+  if (!source) return { error: "Modelo não encontrado." };
+  const existing = await db.select({ name: documentTemplates.name }).from(documentTemplates).where(eq(documentTemplates.organizationId, organization.id));
+  const names = new Set(existing.map((item) => item.name));
+  let name = `${source.name} — cópia`;
+  let suffix = 2;
+  while (names.has(name)) name = `${source.name} — cópia ${suffix++}`;
+  const [created] = await db.insert(documentTemplates).values({
+    organizationId: organization.id,
+    createdByUserId: session.user.id,
+    name,
+    documentType: source.documentType,
+    title: source.title,
+    content: source.content,
+    workflowType: source.workflowType,
+    responseSchema: source.responseSchema,
+    schemaVersion: source.schemaVersion,
+    serviceId: source.serviceId,
+    isSystemPreset: false,
+    isActive: true,
+  }).returning({ id: documentTemplates.id });
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "duplicate", entityType: "document_template", entityId: created.id, details: { sourceTemplateId: source.id } });
   revalidatePath("/documentos");
 }
 
@@ -163,6 +195,9 @@ export async function setDocumentTemplateActive(data: FormData) {
   assertOrganizationPermission(organization.role, "documents.manage");
   const id = text(data, "id");
   const isActive = text(data, "active") === "true";
+  const [existing] = await db.select({ isSystemPreset: documentTemplates.isSystemPreset }).from(documentTemplates).where(and(eq(documentTemplates.id, id), eq(documentTemplates.organizationId, organization.id))).limit(1);
+  if (!existing) return { error: "Modelo não encontrado." };
+  if (existing.isSystemPreset) return { error: "Modelos nativos permanecem sempre ativos." };
   await db.update(documentTemplates).set({ isActive, updatedAt: new Date() }).where(and(eq(documentTemplates.id, id), eq(documentTemplates.organizationId, organization.id)));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: isActive ? "activate" : "deactivate", entityType: "document_template", entityId: id });
   revalidatePath("/documentos");

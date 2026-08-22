@@ -1,5 +1,7 @@
 import "dotenv/config";
 
+import { timingSafeEqual } from "node:crypto";
+import { createServer } from "node:http";
 import os from "node:os";
 
 import { Client } from "pg";
@@ -22,27 +24,29 @@ const requiredDatabaseUrl: string = databaseUrl;
 const workerId =
   process.env.OUTBOX_WORKER_ID ?? `${os.hostname()}:${process.pid}`;
 const batchSize = boundedNumber(process.env.OUTBOX_BATCH_SIZE, 10, 1, 50);
-const pollInterval = boundedNumber(
-  process.env.OUTBOX_POLL_INTERVAL_MS,
-  2_000,
-  250,
-  60_000
-);
-const idleInterval = boundedNumber(
-  process.env.OUTBOX_IDLE_INTERVAL_MS,
-  15_000,
-  pollInterval,
-  300_000
-);
 const reminderInterval = boundedNumber(
   process.env.WHATSAPP_REMINDER_INTERVAL_MS,
-  300_000,
-  60_000,
+  900_000,
+  600_000,
   3_600_000
 );
+const maxBatchesPerRun = boundedNumber(
+  process.env.OUTBOX_MAX_BATCHES_PER_RUN,
+  20,
+  1,
+  100
+);
+const port = boundedNumber(process.env.PORT, 3000, 1, 65_535);
+const triggerSecret = process.env.OUTBOX_TRIGGER_SECRET ?? process.env.AGGENDA_INTERNAL_API_KEY;
 
 let stopping = false;
-let client: Client | undefined;
+let activeRun: Promise<RunSummary> | undefined;
+
+type RunSummary = {
+  processed: number;
+  reminders: number;
+  paymentReminders: number;
+};
 
 function boundedNumber(
   value: string | undefined,
@@ -54,10 +58,6 @@ function boundedNumber(
   return Number.isFinite(parsed)
     ? Math.min(maximum, Math.max(minimum, parsed))
     : fallback;
-}
-
-function delay(milliseconds: number) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 async function claimEvents(connection: Client) {
@@ -430,58 +430,99 @@ async function markFailed(
   );
 }
 
-async function run() {
-  client = new Client({
-    connectionString: normalizeDatabaseUrl(requiredDatabaseUrl),
-  });
-  await client.connect();
-  console.log(`[outbox] worker ${workerId} iniciado`);
-  let nextReminderScanAt = 0;
-
-  while (!stopping) {
-    if (Date.now() >= nextReminderScanAt) {
-      try {
-        const reminders = await enqueueDueReminders(client);
-        if (reminders) console.log(`[outbox] ${reminders} lembrete(s) reivindicado(s)`);
-        const paymentReminders = await enqueuePaymentReminders(client);
-        if (paymentReminders) console.log(`[outbox] ${paymentReminders} cobrança(s) lembrada(s)`);
-      } catch (error) {
-        console.error("[outbox] falha ao buscar lembretes", error);
-      }
-      nextReminderScanAt = Date.now() + reminderInterval;
-    }
-    const events = await claimEvents(client);
-    if (events.length === 0) {
-      await delay(idleInterval);
-      continue;
+async function drain(includeScheduled: boolean): Promise<RunSummary> {
+  const connection = new Client({ connectionString: normalizeDatabaseUrl(requiredDatabaseUrl) });
+  const summary: RunSummary = { processed: 0, reminders: 0, paymentReminders: 0 };
+  await connection.connect();
+  try {
+    if (includeScheduled) {
+      summary.reminders = await enqueueDueReminders(connection);
+      summary.paymentReminders = await enqueuePaymentReminders(connection);
     }
 
-    for (const event of events) {
-      if (stopping) break;
-      try {
-        await handleEvent(client, event);
-        await markProcessed(client, event);
-      } catch (error) {
-        console.error(`[outbox] falha no evento ${event.id}`, error);
-        await markFailed(client, event, error);
+    for (let batch = 0; batch < maxBatchesPerRun && !stopping; batch += 1) {
+      const events = await claimEvents(connection);
+      if (events.length === 0) break;
+      for (const event of events) {
+        try {
+          await handleEvent(connection, event);
+          await markProcessed(connection, event);
+          summary.processed += 1;
+        } catch (error) {
+          console.error(`[outbox] falha no evento ${event.id}`, error);
+          await markFailed(connection, event, error);
+        }
       }
     }
-
-    await delay(pollInterval);
+    return summary;
+  } finally {
+    await connection.end();
   }
 }
+
+function runOnDemand(includeScheduled: boolean) {
+  if (activeRun) return activeRun;
+  activeRun = drain(includeScheduled)
+    .then((summary) => {
+      console.log(`[outbox] execução concluída: ${JSON.stringify(summary)}`);
+      return summary;
+    })
+    .finally(() => {
+      activeRun = undefined;
+    });
+  return activeRun;
+}
+
+function authorized(header: string | undefined) {
+  if (!triggerSecret || !header?.startsWith("Bearer ")) return false;
+  const supplied = Buffer.from(header.slice(7));
+  const expected = Buffer.from(triggerSecret);
+  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+}
+
+const server = createServer((request, response) => {
+  if (request.method === "GET" && request.url === "/health") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, running: Boolean(activeRun) }));
+    return;
+  }
+
+  if (request.method === "POST" && (request.url === "/drain" || request.url === "/scheduled")) {
+    if (!authorized(request.headers.authorization)) {
+      response.writeHead(401, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "Unauthorized" }));
+      return;
+    }
+    const alreadyRunning = Boolean(activeRun);
+    void runOnDemand(request.url === "/scheduled").catch((error) => {
+      console.error("[outbox] execução sob demanda falhou", error);
+    });
+    response.writeHead(202, { "content-type": "application/json" });
+    response.end(JSON.stringify({ accepted: true, alreadyRunning }));
+    return;
+  }
+
+  response.writeHead(404, { "content-type": "application/json" });
+  response.end(JSON.stringify({ error: "Not found" }));
+});
+
+const schedule = setInterval(() => {
+  if (!stopping) void runOnDemand(true).catch((error) => console.error("[outbox] varredura agendada falhou", error));
+}, reminderInterval);
+schedule.unref();
 
 async function shutdown(signal: string) {
   if (stopping) return;
   stopping = true;
+  clearInterval(schedule);
   console.log(`[outbox] encerrando após ${signal}`);
-  await client?.end();
+  server.close();
+  await activeRun?.catch(() => undefined);
 }
 
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
 
-run().catch((error) => {
-  console.error("[outbox] erro fatal", error);
-  process.exitCode = 1;
+server.listen(port, "0.0.0.0", () => {
+  console.log(`[outbox] worker ${workerId} aguardando acionamentos na porta ${port}; recuperação a cada ${reminderInterval / 60_000} min`);
 });

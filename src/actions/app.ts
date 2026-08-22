@@ -25,6 +25,7 @@ import {
   organizationMembers,
   organizationSubscriptions,
   organizations,
+  documentTemplates,
   professionals,
   servicePackageItems,
   servicePackages,
@@ -48,6 +49,8 @@ import {
 } from "@/lib/finance";
 import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
 import { updateAppointmentAndInventory } from "@/lib/inventory";
+import { documentPresets } from "@/lib/document-presets";
+import { anamnesisPresets } from "@/lib/anamnesis";
 
 function textValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -148,6 +151,22 @@ export async function createOrganization(formData: FormData) {
       status: "trialing",
       trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
+
+    await tx.insert(documentTemplates).values([
+      ...documentPresets.map((preset) => ({ ...preset, organizationId: organization.id, createdByUserId: session.user.id, isSystemPreset: true })),
+      ...anamnesisPresets.map((preset) => ({
+        organizationId: organization.id,
+        createdByUserId: session.user.id,
+        name: preset.name,
+        title: preset.title,
+        content: "Responda às perguntas com atenção. Suas respostas serão registradas no prontuário e integradas ao documento assinado.",
+        documentType: "anamnesis",
+        workflowType: "patient_signature",
+        responseSchema: [...preset.fields],
+        schemaVersion: 1,
+        isSystemPreset: true,
+      })),
+    ]);
 
     const [pipeline] = await tx.insert(crmPipelines).values({
       organizationId: organization.id,

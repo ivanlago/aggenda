@@ -52,6 +52,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     icon: typeof LayoutDashboard;
     permission: OrganizationPermission;
     secondary?: boolean;
+    children?: NavigationItem[];
   };
   const navigationGroups: Array<{ label: string; items: NavigationItem[] }> = [
     { label: "Início", items: [
@@ -66,7 +67,15 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       { href: "/servicos", label: organization.serviceLabelPlural, icon: Wrench, permission: "services.read" },
       { href: "/pacotes", label: "Pacotes", icon: PackageOpen, permission: "services.read" },
       { href: "/estoque", label: "Controle de estoque", icon: Boxes, permission: "inventory.read" },
-      { href: "/documentos", label: "Emissão de documentos", icon: FileSignature, permission: "documents.read" },
+      { href: "/documentos", label: "Documentos", icon: FileSignature, permission: "documents.read", children: [
+        { href: "/documentos", label: "Visão geral e histórico", icon: LayoutDashboard, permission: "documents.read", secondary: true },
+        { href: "/documentos/anamneses", label: "Anamnese", icon: ScrollText, permission: "documents.read", secondary: true },
+        { href: "/documentos/atestados", label: "Atestado médico", icon: FileCheck2, permission: "documents.read", secondary: true },
+        { href: "/documentos/receitas", label: "Receita médica", icon: ReceiptText, permission: "documents.read", secondary: true },
+        { href: "/documentos/exames", label: "Solicitação de exames", icon: FileSignature, permission: "documents.read", secondary: true },
+        { href: "/documentos/termos", label: "Termos e contratos", icon: FileCheck2, permission: "documents.read", secondary: true },
+        { href: "/documentos/termos", label: "Termos e contratos", icon: FileCheck2, permission: "documents.read", secondary: true },
+      ] },
     ] },
     { label: "CRM comercial", items: [
       { href: "/crescimento", label: "Crescimento e recorrência", icon: TrendingUp, permission: "crm.read" },
@@ -125,12 +134,18 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                 <ChevronDown className="size-3.5 transition group-open/nav:rotate-180" />
               </summary>
               <div className="absolute left-0 top-full z-30 mt-2 grid min-w-64 gap-0.5 rounded-2xl bg-brand p-2 shadow-xl ring-1 ring-white/15 lg:static lg:mt-1 lg:min-w-0 lg:bg-transparent lg:p-0 lg:pl-2 lg:shadow-none lg:ring-0">
-                {group.items.map(({ href, label, icon: Icon, secondary }) => (
-                  <Link
-                    key={href}
-                    href={href}
-                    className={`flex shrink-0 items-center rounded-xl py-2 font-bold text-white/75 transition hover:bg-white/10 hover:text-white ${secondary ? "gap-2 px-3 text-xs" : "gap-3 px-3 text-sm"}`}
-                  >
+                {group.items.map(({ href, label, icon: Icon, secondary, children }) => children ? (
+                  <details className="group/submenu" key={href}>
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm font-bold text-white/75 transition hover:bg-white/10 hover:text-white [&::-webkit-details-marker]:hidden">
+                      <span className="flex items-center gap-3"><Icon className="size-4" />{label}</span>
+                      <ChevronDown className="size-3.5 transition group-open/submenu:rotate-180" />
+                    </summary>
+                    <div className="ml-5 grid gap-0.5 border-l border-white/15 pl-2">
+                      {children.filter((child) => hasOrganizationPermission(organization.role, child.permission)).map(({ href: childHref, label: childLabel, icon: ChildIcon }) => <Link key={childHref} href={childHref} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold text-white/70 transition hover:bg-white/10 hover:text-white"><ChildIcon className="size-3.5" />{childLabel}</Link>)}
+                    </div>
+                  </details>
+                ) : (
+                  <Link key={href} href={href} className={`flex shrink-0 items-center rounded-xl py-2 font-bold text-white/75 transition hover:bg-white/10 hover:text-white ${secondary ? "gap-2 px-3 text-xs" : "gap-3 px-3 text-sm"}`}>
                     <Icon className={secondary ? "size-3.5" : "size-4"} /> {label}
                   </Link>
                 ))}

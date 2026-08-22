@@ -15,6 +15,7 @@ import {
   whatsappChannels,
 } from "@/db/schema";
 import { isWhatsAppServiceCode, whatsappServices } from "@/lib/service-plans";
+import { triggerOutboxWorker } from "@/lib/outbox-trigger";
 
 export const runtime = "nodejs";
 
@@ -263,5 +264,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  if (accepted > 0) await triggerOutboxWorker();
   return NextResponse.json({ received: true, accepted });
 }

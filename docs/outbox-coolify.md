@@ -61,7 +61,7 @@ npm run whatsapp:register
 
 O script pode ser executado novamente para atualizar o canal.
 
-## 4. Worker no Coolify
+## 4. Worker sob demanda no Coolify
 
 Crie um serviço a partir do mesmo repositório e use:
 
@@ -77,19 +77,45 @@ Variáveis obrigatórias do serviço:
 - `N8N_COMMERCIAL_WEBHOOK_URL`: somente quando houver automações comerciais publicadas;
 - `N8N_API_KEY`, somente se o webhook comercial exigir o header;
 - `META_WHATSAPP_ACCESS_TOKEN` para futuros eventos de envio direto.
+- `OUTBOX_TRIGGER_SECRET`: segredo usado no `POST /drain`; pode ser o mesmo
+  valor de `AGGENDA_INTERNAL_API_KEY`.
+
+Na aplicação da Vercel, configure também:
+
+- `OUTBOX_WORKER_TRIGGER_URL`: URL pública desse serviço no Coolify, sem barra
+  final, por exemplo `https://worker.aggenda.app.br`;
+- `OUTBOX_TRIGGER_SECRET`: o mesmo segredo configurado no worker.
 
 Valores iniciais recomendados:
 
 ```text
 OUTBOX_WORKER_ID=aggenda-worker-1
 OUTBOX_BATCH_SIZE=10
-OUTBOX_POLL_INTERVAL_MS=2000
-OUTBOX_IDLE_INTERVAL_MS=15000
+OUTBOX_MAX_BATCHES_PER_RUN=20
+WHATSAPP_REMINDER_INTERVAL_MS=900000
+PORT=3000
 ```
 
-Configure política de reinício automático. Um segundo worker pode ser criado
-mais tarde: o bloqueio transacional impede processamento concorrente do mesmo
-evento.
+Configure a porta `3000`, um domínio HTTPS e o health check `GET /health`.
+O health check não acessa o banco. A aplicação aciona `POST /drain` sempre que
+enfileira um evento. O worker abre uma conexão, processa os lotes disponíveis e
+a fecha imediatamente.
+
+Além dos acionamentos imediatos, o próprio serviço executa a cada 15 minutos
+uma varredura de lembretes, cobranças e eventos pendentes. Essa varredura é a
+recuperação automática caso algum acionamento HTTP falhe. Um segundo worker
+pode ser criado mais tarde: o bloqueio transacional impede processamento
+concorrente do mesmo evento.
+
+Para acionar manualmente uma recuperação completa:
+
+```text
+POST https://worker.aggenda.app.br/scheduled
+Authorization: Bearer SEU_SEGREDO
+```
+
+Não configure monitoramento externo contra `/drain` ou `/scheduled`. Use apenas
+`/health`, pois ele não desperta o Neon.
 
 ## 5. Ordem segura da troca
 

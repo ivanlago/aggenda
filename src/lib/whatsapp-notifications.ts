@@ -13,6 +13,7 @@ import {
 } from "@/db/schema";
 import { formatOrganizationDateTime } from "@/lib/appointment-safety";
 import { isWhatsAppServiceCode, whatsappServices } from "@/lib/service-plans";
+import { triggerOutboxWorker } from "@/lib/outbox-trigger";
 
 export type AppointmentNotificationKind = "confirmation" | "reschedule" | "cancellation" | "reminder";
 
@@ -96,5 +97,6 @@ export async function enqueueAppointmentNotification(
     },
   }).onConflictDoNothing({ target: outboxEvents.eventKey });
 
+  await triggerOutboxWorker();
   return true;
 }

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { chatConversations, chatMessages, organizations, organizationUsageCounters, outboxEvents, services } from "@/db/schema";
 import { generateAiJson } from "@/lib/ai/provider";
+import { triggerOutboxWorker } from "@/lib/outbox-trigger";
 
 export const runtime = "nodejs";
 
@@ -103,5 +104,6 @@ export async function POST(request: NextRequest) {
         .onConflictDoUpdate({ target: [organizationUsageCounters.organizationId, organizationUsageCounters.periodStart, organizationUsageCounters.metric], set: { quantity: sql`${organizationUsageCounters.quantity} + 1`, updatedAt: now } });
     }
   });
+  await triggerOutboxWorker();
   return NextResponse.json({ accepted: true, action: result.data.action, model: result.model });
 }

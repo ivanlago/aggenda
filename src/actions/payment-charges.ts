@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { clients, financialEntries, organizationFinancialIntegrations, outboxEvents, paymentChargeEvents, paymentCharges, whatsappChannels } from "@/db/schema";
 import { organizationAsaasRequest } from "@/lib/asaas";
 import { writeAuditLog } from "@/lib/audit";
+import { triggerOutboxWorker } from "@/lib/outbox-trigger";
 import { encryptFinancialCredential } from "@/lib/financial-secret";
 import { getOrganizationAsaasCredential } from "@/lib/organization-asaas";
 import { cancelPagBankCharge, refundPagBankCharge } from "@/actions/pagbank";
@@ -154,5 +155,6 @@ export async function sendPaymentChargeWhatsApp(data: FormData) {
   const [channel] = await db.select().from(whatsappChannels).where(and(eq(whatsappChannels.organizationId, organization.id), eq(whatsappChannels.isActive, true))).limit(1); if (!channel) return { error: "Conecte o WhatsApp da empresa antes de enviar." };
   const to = phone.startsWith("55") ? phone : `55${phone}`; const amount = money(charge.amountInCents); const dueDate = new Date(`${charge.dueDate}T12:00:00Z`).toLocaleDateString("pt-BR");
   await db.insert(outboxEvents).values({ organizationId: organization.id, eventKey: `whatsapp:payment-charge:${charge.id}:${Date.now()}`, eventType: "whatsapp.template.send", aggregateType: "payment_charge", aggregateId: charge.id, payload: { organizationId: organization.id, channelId: channel.id, phoneNumberId: channel.phoneNumberId, to, notificationKind: "payment_charge", chargeId: charge.id, languageCode: "pt_BR", parameters: [charge.customerName, amount, dueDate, link], preview: `Cobrança de ${amount}, vencimento ${dueDate}: ${link}` } });
+  await triggerOutboxWorker();
   await recordLocalEvent({ organizationId: organization.id, chargeId: charge.id, eventType: "whatsapp_queued", previousStatus: charge.status, status: charge.status, payload: { to: `${to.slice(0, 4)}***${to.slice(-4)}` } }); await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "share_whatsapp", entityType: "payment_charge", entityId: charge.id }); revalidateCharges();
 }

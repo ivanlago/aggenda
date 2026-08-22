@@ -9,6 +9,7 @@ import { clientHistoryEntries, clients, documentTemplates, electronicDocumentEve
 import { writeAuditLog } from "@/lib/audit";
 import { createDocumentCredentials, matchesHash, renderDocumentTemplate, sha256 } from "@/lib/electronic-documents";
 import { documentPresets } from "@/lib/document-presets";
+import { anamnesisAnswersToText, isAnamnesisSchema, visibleAnamnesisFields, type AnamnesisAnswers } from "@/lib/anamnesis";
 import { sendElectronicDocumentEmail, sendProfessionalDocumentEmail } from "@/lib/email";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
@@ -226,14 +227,20 @@ export async function resendElectronicDocument(data: FormData) {
   if (!document || !["pending", "viewed", "expired"].includes(document.status)) return { error: "Este documento não pode ser reenviado." };
   const credentials = createDocumentCredentials();
   const now = new Date();
+  try {
+    await sendElectronicDocumentEmail({
+      email: document.signerEmail, signerName: document.signerName, organizationName: organization.name,
+      documentTitle: document.title, url: `${appUrl()}/assinar/${credentials.token}`, verificationCode: credentials.code, documentId: document.id,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha desconhecida no envio";
+    await db.insert(electronicDocumentEvents).values({ organizationId: organization.id, documentId: document.id, eventType: "delivery_failed", details: { channel: "email", recipient: document.signerEmail, message } });
+    return { error: message.includes("RESEND_API_KEY") ? "O serviço de e-mail ainda não está configurado. Configure a RESEND_API_KEY ou crie uma nova anamnese usando Preencher agora." : "Não foi possível reenviar o e-mail. Tente novamente mais tarde." };
+  }
   await db.update(electronicDocuments).set({
     status: "pending", accessTokenHash: credentials.tokenHash, verificationCodeHash: credentials.codeHash,
     verificationExpiresAt: new Date(now.getTime() + 30 * 60_000), tokenExpiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60_000), verificationAttempts: 0, updatedAt: now,
   }).where(eq(electronicDocuments.id, document.id));
-  await sendElectronicDocumentEmail({
-    email: document.signerEmail, signerName: document.signerName, organizationName: organization.name,
-    documentTitle: document.title, url: `${appUrl()}/assinar/${credentials.token}`, verificationCode: credentials.code, documentId: document.id,
-  });
   await db.insert(electronicDocumentEvents).values({ organizationId: organization.id, documentId: document.id, eventType: "resent", details: { channel: "email" } });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "resend", entityType: "electronic_document", entityId: document.id });
   revalidatePath("/documentos");
@@ -262,7 +269,14 @@ export async function signElectronicDocument(_previous: { status: string; messag
   }
   const [document] = await db.select().from(electronicDocuments).where(eq(electronicDocuments.accessTokenHash, sha256(token))).limit(1);
   if (!document || !["pending", "viewed"].includes(document.status)) return { status: "error", message: "Documento indisponível ou já finalizado." };
-  if (document.documentType === "anamnesis" && signerResponses.length < 2) return { status: "error", message: "Preencha as respostas da anamnese antes de assinar." };
+  let anamnesisAnswers: AnamnesisAnswers | null = null;
+  const responseSchema = document.structuredData?.schema;
+  if (document.documentType === "anamnesis") {
+    try { anamnesisAnswers = JSON.parse(signerResponses) as AnamnesisAnswers; } catch { return { status: "error", message: "As respostas da anamnese são inválidas." }; }
+    if (!isAnamnesisSchema(responseSchema)) return { status: "error", message: "O modelo desta anamnese é inválido. Solicite um novo envio." };
+    const missing = visibleAnamnesisFields(responseSchema, anamnesisAnswers).some((field) => field.required && (!anamnesisAnswers?.[field.id] || (Array.isArray(anamnesisAnswers[field.id]) && !anamnesisAnswers[field.id].length)));
+    if (missing) return { status: "error", message: "Preencha todas as perguntas obrigatórias antes de assinar." };
+  }
   const now = new Date();
   if (document.tokenExpiresAt < now || document.verificationExpiresAt < now) return { status: "error", message: "O link ou código expirou. Solicite um novo envio à clínica." };
   if (document.verificationAttempts >= 5) return { status: "error", message: "Limite de tentativas excedido. Solicite um novo envio." };
@@ -276,9 +290,11 @@ export async function signElectronicDocument(_previous: { status: string; messag
   const acceptanceText = "Declaro que li, compreendi e concordo com o conteúdo integral deste documento e confirmo ser o signatário identificado.";
   const evidenceHash = sha256(JSON.stringify({ documentId: document.id, contentHash: document.contentHash, signerName: document.signerName, signerEmail: document.signerEmail, signedAt: now.toISOString(), ipAddress, userAgent, acceptanceText, signatureHash: sha256(signatureData), responsesHash: signerResponses ? sha256(signerResponses) : null }));
   await db.transaction(async (tx) => {
-    await tx.update(electronicDocuments).set({ status: "signed", signedAt: now, signatureData, signerResponses: signerResponses || null, acceptanceText, signerIpAddress: ipAddress, signerUserAgent: userAgent, evidenceHash, updatedAt: now }).where(and(eq(electronicDocuments.id, document.id), eq(electronicDocuments.status, document.status)));
+    const structuredData = anamnesisAnswers ? { ...document.structuredData, answers: anamnesisAnswers, answeredAt: now.toISOString() } : document.structuredData;
+    const storedResponses = anamnesisAnswers && isAnamnesisSchema(responseSchema) ? anamnesisAnswersToText(responseSchema, anamnesisAnswers) : signerResponses || null;
+    await tx.update(electronicDocuments).set({ status: "signed", signedAt: now, signatureData, signerResponses: storedResponses, structuredData, acceptanceText, signerIpAddress: ipAddress, signerUserAgent: userAgent, evidenceHash, updatedAt: now }).where(and(eq(electronicDocuments.id, document.id), eq(electronicDocuments.status, document.status)));
     await tx.insert(electronicDocumentEvents).values({ organizationId: document.organizationId, documentId: document.id, eventType: "signed", ipAddress, userAgent, details: { evidenceHash, verification: "email_otp" } });
-    if (document.createdByUserId) await tx.insert(clientHistoryEntries).values({ organizationId: document.organizationId, clientId: document.clientId, authorUserId: document.createdByUserId, electronicDocumentId: document.id, entryType: "signed_document", title: document.title, content: `Documento assinado eletronicamente. Hash de evidências: ${evidenceHash}` });
+    if (document.createdByUserId) await tx.insert(clientHistoryEntries).values({ organizationId: document.organizationId, clientId: document.clientId, authorUserId: document.createdByUserId, electronicDocumentId: document.id, entryType: document.documentType === "anamnesis" ? "anamnesis" : "signed_document", title: document.title, content: `Documento assinado eletronicamente. Hash de evidências: ${evidenceHash}` });
   });
   await writeAuditLog({ organizationId: document.organizationId, action: "signed", entityType: "electronic_document", entityId: document.id, details: { evidenceHash, verification: "email_otp" } });
   return { status: "success", message: "Documento assinado com sucesso. Você já pode baixar sua via em PDF." };

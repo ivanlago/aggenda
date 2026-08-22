@@ -3,6 +3,7 @@
 import { Download, Mail, MessageCircle, ShieldCheck, X } from "lucide-react";
 import { useState } from "react";
 
+import { CidAutocomplete, type CidItem } from "@/components/cid-autocomplete";
 import { TussAutocomplete, type TussItem } from "@/components/tuss-autocomplete";
 
 type Template = { id: string; name: string; title: string; content: string; documentType: string };
@@ -23,6 +24,7 @@ export function ProfessionalDocumentComposer({ templates, organizationName, clie
   const [previewOpen, setPreviewOpen] = useState(false);
   const client = clients.find((item) => item.id === clientId);
   const professional = professionals.find((item) => item.id === professionalId);
+  const selectedTemplate = templates.find((item) => item.id === templateId);
   const previewContent = content.replaceAll("{{cliente}}", client?.name ?? "").replaceAll("{{clinica}}", organizationName).replaceAll("{{profissional}}", professional?.name ?? "").replaceAll("{{data}}", new Date().toLocaleDateString("pt-BR"));
 
   function chooseTemplate(id: string) {
@@ -36,6 +38,11 @@ export function ProfessionalDocumentComposer({ templates, organizationName, clie
     setContent((current) => `${current}${current.trim() ? "\n" : ""}${item.name}${item.presentation ? ` · ${item.presentation}` : ""} [TUSS ${item.code}] - `);
   }
 
+  function addCid(item: CidItem) {
+    const cidLine = `CID-10: ${item.code} — ${item.description}`;
+    setContent((current) => `${current}${current.trim() ? "\n\n" : ""}${cidLine}`);
+  }
+
   return <>
     <select className="field" name="templateId" required value={templateId} onChange={(event) => chooseTemplate(event.target.value)}>
       <option value="" disabled>Modelo profissional</option>
@@ -44,6 +51,7 @@ export function ProfessionalDocumentComposer({ templates, organizationName, clie
     <select className="field" name="clientId" required value={clientId} onChange={(event) => setClientId(event.target.value)}><option value="" disabled>Paciente</option>{clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
     <select className="field" name="professionalId" required value={professionalId} onChange={(event) => setProfessionalId(event.target.value)}><option value="" disabled>Profissional emissor</option>{professionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
     <input className="field" name="title" value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={180} placeholder="Título do documento" />
+    {selectedTemplate?.documentType === "certificate" && <CidAutocomplete onSelect={addCid} />}
     <TussAutocomplete table="20" label="Guia de medicamentos TUSS 20 (opcional)" nameField="medicationTussCode" onSelect={addMedication} />
     <textarea className="field min-h-72" name="content" value={content} onChange={(event) => setContent(event.target.value)} required maxLength={30000} placeholder="Selecione um modelo e revise todo o conteúdo antes da emissão." />
     <input className="field" name="patientEmail" type="email" placeholder="E-mail do paciente (opcional; usa o cadastro). Sem e-mail, o PDF fica disponível para impressão." />

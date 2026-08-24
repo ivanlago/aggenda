@@ -1029,6 +1029,7 @@ export const retailProductVariants = pgTable("retail_product_variants", {
   name: text("name").default("Padrão").notNull(),
   barcode: text("barcode"),
   salePriceInCents: integer("sale_price_in_cents").notNull(),
+  commissionRateBasisPoints: integer("commission_rate_basis_points").default(0).notNull(),
   isForSale: boolean("is_for_sale").default(true).notNull(),
   isForProcedures: boolean("is_for_procedures").default(true).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
@@ -1054,6 +1055,9 @@ export const retailSales = pgTable("retail_sales", {
   discountInCents: integer("discount_in_cents").default(0).notNull(),
   totalInCents: integer("total_in_cents").notNull(),
   notes: text("notes"),
+  cancelledAt: timestamp("cancelled_at"),
+  cancelledByUserId: text("cancelled_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  cancellationReason: text("cancellation_reason"),
   soldAt: timestamp("sold_at").defaultNow().notNull(),
   createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -1069,8 +1073,21 @@ export const retailSaleItems = pgTable("retail_sale_items", {
   variantName: text("variant_name").notNull(),
   quantity: integer("quantity").notNull(),
   unitPriceInCents: integer("unit_price_in_cents").notNull(),
+  discountInCents: integer("discount_in_cents").default(0).notNull(),
+  unitCostInCents: integer("unit_cost_in_cents").default(0).notNull(),
+  commissionInCents: integer("commission_in_cents").default(0).notNull(),
   totalInCents: integer("total_in_cents").notNull(),
 }, (table) => [index("retail_sale_items_sale_idx").on(table.saleId)]);
+
+export const retailSalePayments = pgTable("retail_sale_payments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  saleId: uuid("sale_id").notNull().references(() => retailSales.id, { onDelete: "cascade" }),
+  method: text("method").notNull(),
+  amountInCents: integer("amount_in_cents").notNull(),
+  status: text("status").default("received").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [index("retail_sale_payments_sale_idx").on(table.saleId), index("retail_sale_payments_org_created_idx").on(table.organizationId, table.createdAt)]);
 
 export const serviceInventoryItems = pgTable("service_inventory_items", {
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), serviceId: uuid("service_id").notNull().references(() => services.id, { onDelete: "cascade" }), productId: uuid("product_id").notNull().references(() => inventoryProducts.id, { onDelete: "cascade" }), quantityMillis: integer("quantity_millis").notNull(),

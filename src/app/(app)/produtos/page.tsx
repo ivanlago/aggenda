@@ -39,6 +39,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
       id: retailProductVariants.id, productId: retailProductVariants.productId, productName: retailProducts.name,
       brand: retailProducts.brand, description: retailProducts.description, name: retailProductVariants.name, barcode: retailProductVariants.barcode,
       salePriceInCents: retailProductVariants.salePriceInCents, isActive: retailProductVariants.isActive,
+      commissionRateBasisPoints: retailProductVariants.commissionRateBasisPoints,
       isForSale: retailProductVariants.isForSale, isForProcedures: retailProductVariants.isForProcedures,
       sku: inventoryProducts.sku, costInCents: inventoryProducts.costInCents,
       unit: inventoryProducts.unit,
@@ -71,6 +72,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
           <select className="field" name="unit"><option value="unit">Unidade</option><option value="ml">Mililitro</option><option value="g">Grama</option><option value="kg">Quilograma</option><option value="l">Litro</option><option value="dose">Dose</option></select>
           <input className="field" name="salePrice" inputMode="decimal" placeholder="Preço de venda (se vendido)" />
           <input className="field" name="cost" inputMode="decimal" placeholder="Custo unitário" />
+          <input className="field" name="commissionRate" inputMode="decimal" placeholder="Comissão sobre a venda (%)" />
           <input className="field" name="initialQuantity" inputMode="numeric" required placeholder="Quantidade inicial" />
           <input className="field" name="minimumQuantity" inputMode="numeric" required placeholder="Estoque mínimo" />
           <textarea className="field min-h-20 sm:col-span-2" name="description" placeholder="Descrição do produto" />
@@ -87,7 +89,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
       {variants.length === 0 && <p className="py-6 text-center text-sm text-muted">{query ? "Nenhum produto encontrado para esta busca." : "Nenhum produto cadastrado."}</p>}
       {variants.map((item) => <article className="py-3" key={item.id}>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate font-extrabold">{item.productName}{item.name !== "Padrão" ? ` · ${item.name}` : ""}</p>{item.isForSale && <span className="status-pill">Venda</span>}{item.isForProcedures && <span className="status-pill">Procedimentos</span>}{!item.isActive && <span className="status-pill">Inativo</span>}</div><p className="truncate text-xs text-muted">{item.brand || "Sem marca"} · SKU {item.sku || "—"}</p></div>
+          <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate font-extrabold">{item.productName}{item.name !== "Padrão" ? ` · ${item.name}` : ""}</p>{item.isForSale && <span className="status-pill">Venda</span>}{item.isForProcedures && <span className="status-pill">Procedimentos</span>}{!item.isActive && <span className="status-pill">Inativo</span>}</div><p className="truncate text-xs text-muted">{item.brand || "Sem marca"} · variação {item.name} · código {item.barcode || "não informado"}</p></div>
           <div className="flex flex-wrap items-center gap-3"><div className="text-right"><p className="font-extrabold text-brand">{item.isForSale ? currency(item.salePriceInCents) : "Uso interno"}</p><p className="text-xs text-muted">{quantity(item.currentQuantityMillis)} {units[item.unit] ?? item.unit} em estoque</p></div>
           {canManage && <details className="relative"><summary className="secondary-button cursor-pointer list-none [&::-webkit-details-marker]:hidden"><Pencil className="size-4" /> Editar</summary><ActionForm action={updateRetailVariant} successMessage="Produto atualizado." className="absolute right-0 z-20 mt-2 grid w-[min(42rem,calc(100vw-2rem))] gap-3 rounded-2xl border bg-white p-4 shadow-2xl sm:grid-cols-2">
           <input type="hidden" name="variantId" value={item.id} />
@@ -99,6 +101,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
           <label className="grid gap-1 text-xs font-bold">Unidade<select className="field" name="unit" defaultValue={item.unit}><option value="unit">Unidade</option><option value="ml">Mililitro</option><option value="g">Grama</option><option value="kg">Quilograma</option><option value="l">Litro</option><option value="dose">Dose</option></select></label>
           <label className="grid gap-1 text-xs font-bold">Preço de venda<input className="field" name="salePrice" inputMode="decimal" defaultValue={(item.salePriceInCents / 100).toFixed(2).replace(".", ",")} /></label>
           <label className="grid gap-1 text-xs font-bold">Custo<input className="field" name="cost" inputMode="decimal" defaultValue={item.costInCents == null ? "" : (item.costInCents / 100).toFixed(2).replace(".", ",")} /></label>
+          <label className="grid gap-1 text-xs font-bold">Comissão (%)<input className="field" name="commissionRate" inputMode="decimal" defaultValue={(item.commissionRateBasisPoints / 100).toFixed(2).replace(".", ",")} /></label>
           <label className="grid gap-1 text-xs font-bold">Estoque mínimo<input className="field" name="minimumQuantity" inputMode="decimal" defaultValue={quantity(item.minimumQuantityMillis)} /></label>
           <label className="grid gap-1 text-xs font-bold sm:col-span-2">Descrição<textarea className="field min-h-20" name="description" defaultValue={item.description ?? ""} /></label>
           <div className="flex flex-wrap gap-4 sm:col-span-2"><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" name="isForSale" defaultChecked={item.isForSale} /> Venda</label><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" name="isForProcedures" defaultChecked={item.isForProcedures} /> Procedimentos</label><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" name="isActive" defaultChecked={item.isActive} /> Ativo</label></div>

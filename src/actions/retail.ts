@@ -14,6 +14,7 @@ import {
   retailProductVariants,
   retailProducts,
   retailSaleItems,
+  retailSalePayments,
   retailSales,
   serviceInventoryItems,
   whatsappChannels,
@@ -22,7 +23,7 @@ import { organizationDate } from "@/lib/appointment-safety";
 import { writeAuditLog } from "@/lib/audit";
 import { sendRetailReceiptEmail } from "@/lib/email";
 import { triggerOutboxWorker } from "@/lib/outbox-trigger";
-import { assertOrganizationPermission } from "@/lib/permissions";
+import { assertOrganizationPermission, hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
 const text = (data: FormData, key: string) => String(data.get(key) ?? "").trim();
@@ -80,6 +81,7 @@ export async function createRetailProduct(data: FormData) {
       name: variantName,
       barcode: text(data, "barcode") || null,
       salePriceInCents,
+      commissionRateBasisPoints: Math.min(10_000, Math.round(Number(text(data, "commissionRate").replace(",", ".") || 0) * 100)),
       isForSale,
       isForProcedures,
     });
@@ -123,6 +125,7 @@ export async function updateRetailVariant(data: FormData) {
     }).where(and(eq(retailProducts.id, variant.productId), eq(retailProducts.organizationId, organization.id)));
     await tx.update(retailProductVariants).set({
       name: variantName, salePriceInCents, barcode: text(data, "barcode") || null, isForSale, isForProcedures,
+      commissionRateBasisPoints: Math.min(10_000, Math.round(Number(text(data, "commissionRate").replace(",", ".") || 0) * 100)),
       isActive: data.get("isActive") === "on", updatedAt: new Date(),
     }).where(eq(retailProductVariants.id, variantId));
     await tx.update(inventoryProducts).set({
@@ -188,21 +191,27 @@ export async function deleteRetailProduct(data: FormData) {
   revalidatePath("/produtos"); revalidatePath("/vendas"); revalidatePath("/estoque");
 }
 
-type SaleInputItem = { variantId?: unknown; quantity?: unknown };
+type SaleInputItem = { variantId?: unknown; quantity?: unknown; discountInCents?: unknown };
+type SalePaymentInput = { method?: unknown; amountInCents?: unknown };
 
 export async function registerRetailSale(data: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "inventory.manage");
+  if (!hasOrganizationPermission(organization.role, "sales.sell") && !hasOrganizationPermission(organization.role, "inventory.manage")) assertOrganizationPermission(organization.role, "sales.sell");
   let parsed: SaleInputItem[];
   try { parsed = JSON.parse(text(data, "items")); } catch { throw new Error("Itens da venda inválidos."); }
   if (!Array.isArray(parsed) || !parsed.length || parsed.length > 50) throw new Error("Adicione ao menos um produto à venda.");
-  const grouped = new Map<string, number>();
+  const grouped = new Map<string, { quantity: number; discountInCents: number }>();
   for (const item of parsed) {
     const variantId = typeof item.variantId === "string" ? item.variantId : "";
     const quantity = Number(item.quantity);
     if (!variantId || !Number.isInteger(quantity) || quantity <= 0 || quantity > 10_000) throw new Error("Revise os produtos e as quantidades da venda.");
-    grouped.set(variantId, (grouped.get(variantId) ?? 0) + quantity);
+    const discountInCents = Number(item.discountInCents ?? 0);
+    if (!Number.isInteger(discountInCents) || discountInCents < 0) throw new Error("Revise os descontos dos itens.");
+    const current = grouped.get(variantId) ?? { quantity: 0, discountInCents: 0 };
+    grouped.set(variantId, { quantity: current.quantity + quantity, discountInCents: current.discountInCents + discountInCents });
   }
+  const hasItemDiscount = [...grouped.values()].some((item) => item.discountInCents > 0);
+  if (hasItemDiscount) assertOrganizationPermission(organization.role, "sales.discount");
   const variantIds = [...grouped.keys()];
   const clientId = text(data, "clientId") || null;
   const [client] = clientId ? await db.select({ id: clients.id, email: clients.email, phone: clients.phone }).from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1) : [];
@@ -212,8 +221,16 @@ export async function registerRetailSale(data: FormData) {
   if (receiptEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(receiptEmail)) throw new Error("Informe um e-mail válido para o recibo.");
   const receiptPhoneDigits = receiptPhone?.replace(/\D/g, "") || null;
   if (receiptPhoneDigits && receiptPhoneDigits.length < 10) throw new Error("Informe um WhatsApp válido para o recibo.");
-  const discountInCents = money(data, "discount", false);
-  const paymentMethod = text(data, "paymentMethod") || null;
+  let payments: SalePaymentInput[];
+  try { payments = JSON.parse(text(data, "payments")); } catch { throw new Error("Formas de pagamento inválidas."); }
+  if (!Array.isArray(payments) || !payments.length || payments.length > 5) throw new Error("Informe ao menos uma forma de pagamento.");
+  const normalizedPayments = payments.map((payment) => {
+    const method = typeof payment.method === "string" ? payment.method : "";
+    const amountInCents = Number(payment.amountInCents);
+    if (!['cash', 'card', 'pix'].includes(method) || !Number.isInteger(amountInCents) || amountInCents <= 0) throw new Error("Revise as formas e os valores de pagamento.");
+    return { method, amountInCents };
+  });
+  const paymentMethod = normalizedPayments.length > 1 ? "mixed" : normalizedPayments[0].method;
   const received = data.get("received") === "on";
   const today = organizationDate(new Date(), organization.timezone);
 
@@ -221,6 +238,7 @@ export async function registerRetailSale(data: FormData) {
     const variants = await tx.select({
       id: retailProductVariants.id, inventoryProductId: retailProductVariants.inventoryProductId,
       variantName: retailProductVariants.name, price: retailProductVariants.salePriceInCents,
+      commissionRateBasisPoints: retailProductVariants.commissionRateBasisPoints,
       productName: retailProducts.name,
     }).from(retailProductVariants).innerJoin(retailProducts, eq(retailProducts.id, retailProductVariants.productId)).where(and(
       eq(retailProductVariants.organizationId, organization.id), eq(retailProductVariants.isActive, true),
@@ -230,18 +248,24 @@ export async function registerRetailSale(data: FormData) {
     if (variants.length !== variantIds.length) throw new Error("Um ou mais produtos não estão disponíveis.");
     const stockIds = variants.map((item) => item.inventoryProductId).sort();
     await tx.execute(sql`select id from inventory_products where id in (${sql.join(stockIds.map((id) => sql`${id}`), sql`, `)}) for update`);
-    const stock = await tx.select({ id: inventoryProducts.id, balance: inventoryProducts.currentQuantityMillis }).from(inventoryProducts).where(and(
+    const stock = await tx.select({ id: inventoryProducts.id, balance: inventoryProducts.currentQuantityMillis, cost: inventoryProducts.costInCents }).from(inventoryProducts).where(and(
       eq(inventoryProducts.organizationId, organization.id), inArray(inventoryProducts.id, stockIds), eq(inventoryProducts.isActive, true),
     ));
     const lines = variants.map((variant) => {
-      const requested = grouped.get(variant.id)!;
+      const requestedLine = grouped.get(variant.id)!;
+      const requested = requestedLine.quantity;
       const balance = stock.find((item) => item.id === variant.inventoryProductId)?.balance;
       if (balance == null || balance < requested * 1000) throw new Error(`Estoque insuficiente de ${variant.productName} — ${variant.variantName}.`);
-      return { ...variant, quantity: requested, balance, total: requested * variant.price };
+      const gross = requested * variant.price;
+      if (requestedLine.discountInCents > gross) throw new Error(`O desconto de ${variant.productName} supera o valor do item.`);
+      const total = gross - requestedLine.discountInCents;
+      const cost = stock.find((item) => item.id === variant.inventoryProductId)?.cost ?? 0;
+      return { ...variant, quantity: requested, balance, discount: requestedLine.discountInCents, cost, total, commission: Math.round(total * variant.commissionRateBasisPoints / 10_000) };
     });
-    const subtotalInCents = lines.reduce((sum, item) => sum + item.total, 0);
-    if (discountInCents > subtotalInCents) throw new Error("O desconto não pode superar o subtotal.");
+    const subtotalInCents = lines.reduce((sum, item) => sum + item.quantity * item.price, 0);
+    const discountInCents = lines.reduce((sum, item) => sum + item.discount, 0);
     const totalInCents = subtotalInCents - discountInCents;
+    if (normalizedPayments.reduce((sum, payment) => sum + payment.amountInCents, 0) !== totalInCents) throw new Error("A soma dos pagamentos deve ser igual ao total da venda.");
     const [financialEntry] = await tx.insert(financialEntries).values({
       organizationId: organization.id, type: "receivable", status: received ? "received" : "pending",
       source: "retail_sale", description: "Venda de produtos", category: "Venda de produtos",
@@ -258,7 +282,9 @@ export async function registerRetailSale(data: FormData) {
       organizationId: organization.id, saleId: sale.id, variantId: item.id, inventoryProductId: item.inventoryProductId,
       productName: item.productName, variantName: item.variantName, quantity: item.quantity,
       unitPriceInCents: item.price, totalInCents: item.total,
+      discountInCents: item.discount, unitCostInCents: item.cost, commissionInCents: item.commission,
     })));
+    await tx.insert(retailSalePayments).values(normalizedPayments.map((payment) => ({ organizationId: organization.id, saleId: sale.id, ...payment, status: received ? "received" : "pending" })));
     for (const item of lines) {
       const newBalance = item.balance - item.quantity * 1000;
       await tx.update(inventoryProducts).set({ currentQuantityMillis: newBalance, updatedAt: new Date() }).where(eq(inventoryProducts.id, item.inventoryProductId));
@@ -285,4 +311,36 @@ export async function registerRetailSale(data: FormData) {
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "retail_sale", entityId: createdSale.id });
   revalidatePath("/vendas"); revalidatePath("/produtos"); revalidatePath("/estoque"); revalidatePath("/financeiro");
   return { openUrl: receiptPath, warning: notificationResults.some((result) => result.status === "rejected") ? "Venda concluída, mas um dos envios do recibo falhou." : undefined };
+}
+
+export async function reverseRetailSale(data: FormData) {
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "sales.cancel");
+  const saleId = text(data, "saleId");
+  const operation = text(data, "operation") === "refund" ? "refunded" : "cancelled";
+  const reason = text(data, "reason");
+  if (reason.length < 5) throw new Error("Informe o motivo com pelo menos 5 caracteres.");
+
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select id from retail_sales where id = ${saleId} for update`);
+    const [sale] = await tx.select({ id: retailSales.id, status: retailSales.status, financialEntryId: retailSales.financialEntryId }).from(retailSales).where(and(eq(retailSales.id, saleId), eq(retailSales.organizationId, organization.id))).limit(1);
+    if (!sale) throw new Error("Venda não encontrada.");
+    if (sale.status !== "completed") throw new Error("Esta venda já foi cancelada ou estornada.");
+    const items = await tx.select({ productId: retailSaleItems.inventoryProductId, quantity: retailSaleItems.quantity }).from(retailSaleItems).where(and(eq(retailSaleItems.saleId, saleId), eq(retailSaleItems.organizationId, organization.id)));
+    const productIds = [...new Set(items.map((item) => item.productId))].sort();
+    await tx.execute(sql`select id from inventory_products where id in (${sql.join(productIds.map((id) => sql`${id}`), sql`, `)}) for update`);
+    for (const item of items) {
+      const [product] = await tx.select({ balance: inventoryProducts.currentQuantityMillis }).from(inventoryProducts).where(and(eq(inventoryProducts.id, item.productId), eq(inventoryProducts.organizationId, organization.id))).limit(1);
+      if (!product) throw new Error("Produto da venda não encontrado no estoque.");
+      const quantityMillis = item.quantity * 1000;
+      const newBalance = product.balance + quantityMillis;
+      await tx.update(inventoryProducts).set({ currentQuantityMillis: newBalance, updatedAt: new Date() }).where(eq(inventoryProducts.id, item.productId));
+      await tx.insert(inventoryMovements).values({ organizationId: organization.id, productId: item.productId, retailSaleId: saleId, type: operation === "refunded" ? "sale_refund" : "sale_cancellation", quantityMillis, balanceAfterMillis: newBalance, notes: reason, createdByUserId: session.user.id });
+    }
+    await tx.update(retailSales).set({ status: operation, cancelledAt: new Date(), cancelledByUserId: session.user.id, cancellationReason: reason }).where(eq(retailSales.id, saleId));
+    await tx.update(retailSalePayments).set({ status: operation }).where(and(eq(retailSalePayments.saleId, saleId), eq(retailSalePayments.organizationId, organization.id)));
+    if (sale.financialEntryId) await tx.update(financialEntries).set({ status: operation, updatedAt: new Date() }).where(and(eq(financialEntries.id, sale.financialEntryId), eq(financialEntries.organizationId, organization.id)));
+  });
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: operation, entityType: "retail_sale", entityId: saleId, details: { reason } });
+  revalidatePath("/vendas"); revalidatePath("/vendas/historico"); revalidatePath("/vendas/relatorios"); revalidatePath("/estoque"); revalidatePath("/financeiro");
 }

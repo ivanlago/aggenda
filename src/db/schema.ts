@@ -1010,12 +1010,74 @@ export const inventoryProducts = pgTable("inventory_products", {
   id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), name: text("name").notNull(), sku: text("sku"), unit: text("unit").default("unit").notNull(), currentQuantityMillis: integer("current_quantity_millis").default(0).notNull(), minimumQuantityMillis: integer("minimum_quantity_millis").default(0).notNull(), costInCents: integer("cost_in_cents"), isActive: boolean("is_active").default(true).notNull(), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [uniqueIndex("inventory_products_org_sku_unique").on(table.organizationId, table.sku), index("inventory_products_org_idx").on(table.organizationId)]);
 
+export const retailProducts = pgTable("retail_products", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  brand: text("brand"),
+  description: text("description"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [index("retail_products_org_idx").on(table.organizationId, table.name)]);
+
+export const retailProductVariants = pgTable("retail_product_variants", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  productId: uuid("product_id").notNull().references(() => retailProducts.id, { onDelete: "cascade" }),
+  inventoryProductId: uuid("inventory_product_id").notNull().references(() => inventoryProducts.id, { onDelete: "restrict" }),
+  name: text("name").default("Padrão").notNull(),
+  barcode: text("barcode"),
+  salePriceInCents: integer("sale_price_in_cents").notNull(),
+  isForSale: boolean("is_for_sale").default(true).notNull(),
+  isForProcedures: boolean("is_for_procedures").default(true).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("retail_variants_inventory_unique").on(table.inventoryProductId),
+  uniqueIndex("retail_variants_org_barcode_unique").on(table.organizationId, table.barcode),
+  index("retail_variants_product_idx").on(table.productId),
+]);
+
+export const retailSales = pgTable("retail_sales", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
+  financialEntryId: uuid("financial_entry_id").references(() => financialEntries.id, { onDelete: "set null" }),
+  status: text("status").default("completed").notNull(),
+  paymentMethod: text("payment_method"),
+  receiptToken: uuid("receipt_token").defaultRandom().notNull(),
+  receiptEmail: text("receipt_email"),
+  receiptPhone: text("receipt_phone"),
+  subtotalInCents: integer("subtotal_in_cents").notNull(),
+  discountInCents: integer("discount_in_cents").default(0).notNull(),
+  totalInCents: integer("total_in_cents").notNull(),
+  notes: text("notes"),
+  soldAt: timestamp("sold_at").defaultNow().notNull(),
+  createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [uniqueIndex("retail_sales_receipt_token_unique").on(table.receiptToken), index("retail_sales_org_sold_idx").on(table.organizationId, table.soldAt)]);
+
+export const retailSaleItems = pgTable("retail_sale_items", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  saleId: uuid("sale_id").notNull().references(() => retailSales.id, { onDelete: "cascade" }),
+  variantId: uuid("variant_id").notNull().references(() => retailProductVariants.id, { onDelete: "restrict" }),
+  inventoryProductId: uuid("inventory_product_id").notNull().references(() => inventoryProducts.id, { onDelete: "restrict" }),
+  productName: text("product_name").notNull(),
+  variantName: text("variant_name").notNull(),
+  quantity: integer("quantity").notNull(),
+  unitPriceInCents: integer("unit_price_in_cents").notNull(),
+  totalInCents: integer("total_in_cents").notNull(),
+}, (table) => [index("retail_sale_items_sale_idx").on(table.saleId)]);
+
 export const serviceInventoryItems = pgTable("service_inventory_items", {
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), serviceId: uuid("service_id").notNull().references(() => services.id, { onDelete: "cascade" }), productId: uuid("product_id").notNull().references(() => inventoryProducts.id, { onDelete: "cascade" }), quantityMillis: integer("quantity_millis").notNull(),
 }, (table) => [primaryKey({ columns: [table.serviceId, table.productId] }), index("service_inventory_items_org_idx").on(table.organizationId)]);
 
 export const inventoryMovements = pgTable("inventory_movements", {
-  id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), productId: uuid("product_id").notNull().references(() => inventoryProducts.id, { onDelete: "restrict" }), appointmentId: uuid("appointment_id").references(() => appointments.id, { onDelete: "set null" }), type: text("type").notNull(), quantityMillis: integer("quantity_millis").notNull(), balanceAfterMillis: integer("balance_after_millis").notNull(), notes: text("notes"), createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }), createdAt: timestamp("created_at").defaultNow().notNull(),
+  id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), productId: uuid("product_id").notNull().references(() => inventoryProducts.id, { onDelete: "restrict" }), appointmentId: uuid("appointment_id").references(() => appointments.id, { onDelete: "set null" }), retailSaleId: uuid("retail_sale_id").references(() => retailSales.id, { onDelete: "set null" }), type: text("type").notNull(), quantityMillis: integer("quantity_millis").notNull(), balanceAfterMillis: integer("balance_after_millis").notNull(), notes: text("notes"), createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }), createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [index("inventory_movements_product_idx").on(table.productId, table.createdAt), index("inventory_movements_org_idx").on(table.organizationId)]);
 
 export const appointmentInventoryConsumptions = pgTable("appointment_inventory_consumptions", {

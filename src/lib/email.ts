@@ -123,3 +123,22 @@ export async function sendProfessionalDocumentEmail(input: {
     ),
   });
 }
+
+export async function sendRetailReceiptEmail(input: {
+  email: string;
+  organizationName: string;
+  receiptUrl: string;
+  saleId: string;
+}) {
+  const organization = escapeHtml(input.organizationName);
+  const url = escapeHtml(input.receiptUrl);
+  await sendEmail({
+    to: input.email,
+    subject: `Recibo de compra - ${input.organizationName}`,
+    idempotencyKey: `retail-receipt-${input.saleId}-${input.email}`,
+    html: emailLayout(
+      "Recibo não fiscal",
+      `<p style="line-height:1.6">Seu recibo de compra na <strong>${organization}</strong> está disponível.</p><p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:#24543a;color:#fff;text-decoration:none;padding:14px 20px;border-radius:12px;font-weight:700">Visualizar recibo</a></p><p style="line-height:1.6;color:#647066">Este documento é um comprovante não fiscal.</p>`,
+    ),
+  });
+}

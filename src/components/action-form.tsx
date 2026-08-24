@@ -44,11 +44,13 @@ export function ActionForm({
   successMessage,
   className,
   children,
+  onSuccess,
 }: {
   action: (formData: FormData) => Promise<void | { error?: string; warning?: string; openUrl?: string }>;
   successMessage: string;
   className?: string;
   children: React.ReactNode;
+  onSuccess?: () => void;
 }) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
@@ -59,6 +61,7 @@ export function ActionForm({
           return { id: Date.now(), status: "error", message: result.error };
         }
         if (result?.openUrl) window.open(result.openUrl, "_blank", "noopener,noreferrer");
+        onSuccess?.();
         router.refresh();
         return { id: Date.now(), status: "success", message: result?.warning ?? successMessage };
       } catch (error) {

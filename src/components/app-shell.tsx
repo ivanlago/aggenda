@@ -27,6 +27,8 @@ import {
   ReceiptText,
   TrendingUp,
   FileSignature,
+  ShoppingCart,
+  Tags,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -64,8 +66,10 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       { href: "/disponibilidade", label: "Disponibilidade", icon: CalendarClock, permission: "availability.read" },
       { href: "/clientes", label: organization.clientLabelPlural, icon: UsersRound, permission: "clients.read" },
       { href: "/profissionais", label: organization.professionalLabelPlural, icon: BriefcaseBusiness, permission: "professionals.read" },
+      { href: "/produtos", label: "Produtos", icon: Tags, permission: "inventory.read" },
       { href: "/servicos", label: organization.serviceLabelPlural, icon: Wrench, permission: "services.read" },
       { href: "/pacotes", label: "Pacotes", icon: PackageOpen, permission: "services.read" },
+      { href: "/vendas", label: "Venda", icon: ShoppingCart, permission: "inventory.read" },
       { href: "/estoque", label: "Controle de estoque", icon: Boxes, permission: "inventory.read" },
       { href: "/documentos", label: "Documentos", icon: FileSignature, permission: "documents.read", children: [
         { href: "/documentos", label: "Visão geral e histórico", icon: LayoutDashboard, permission: "documents.read", secondary: true },
@@ -73,7 +77,6 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
         { href: "/documentos/atestados", label: "Atestado médico", icon: FileCheck2, permission: "documents.read", secondary: true },
         { href: "/documentos/receitas", label: "Receita médica", icon: ReceiptText, permission: "documents.read", secondary: true },
         { href: "/documentos/exames", label: "Solicitação de exames", icon: FileSignature, permission: "documents.read", secondary: true },
-        { href: "/documentos/termos", label: "Termos e contratos", icon: FileCheck2, permission: "documents.read", secondary: true },
         { href: "/documentos/termos", label: "Termos e contratos", icon: FileCheck2, permission: "documents.read", secondary: true },
       ] },
     ] },
@@ -121,7 +124,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
           <div className="lg:hidden"><SignOutButton compact /></div>
         </div>
-        <nav className="app-menu-scrollbar mt-5 flex gap-2 overflow-x-auto pb-1 lg:mt-7 lg:grid lg:min-h-0 lg:flex-1 lg:content-start lg:overflow-x-hidden lg:overflow-y-auto lg:pb-4">
+        <nav className="app-menu-scrollbar mt-5 flex gap-2 overflow-x-auto overflow-y-hidden pb-1 lg:mt-7 lg:grid lg:min-h-0 lg:flex-1 lg:content-start lg:overflow-x-hidden lg:overflow-y-auto lg:pb-4">
           {navigation.map((group, index) => (
             <details
               className="group/nav relative shrink-0 lg:block"

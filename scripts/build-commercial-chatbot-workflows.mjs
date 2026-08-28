@@ -349,8 +349,9 @@ function buildCore(ai = false) {
       );
     agent.parameters.options.systemMessage += `
 
-Você também deve consultar, reagendar e cancelar agendamentos existentes do próprio telefone. Actions adicionais:
+Você também deve consultar, confirmar, reagendar e cancelar agendamentos existentes do próprio telefone. Actions adicionais:
 - "list_appointments": quando o cliente pedir seus próximos agendamentos;
+- "confirm_appointment": somente após identificar um appointmentId e receber confirmação explícita na mensagem atual;
 - "reschedule_appointment": somente após escolher um appointmentId, consultar a nova disponibilidade e confirmar explicitamente;
 - "cancel_appointment": somente após escolher um appointmentId, coletar cancellationReason e confirmar explicitamente.
 
@@ -365,6 +366,7 @@ Inclua sempre no JSON: "appointmentId" e "cancellationReason" (use null quando a
     };
     router.parameters.rules.values.push(
       actionRule("list_appointments"),
+      actionRule("confirm_appointment"),
       actionRule("reschedule_appointment"),
       actionRule("cancel_appointment")
     );
@@ -396,14 +398,18 @@ return [{ json: { reply, appointments: items } }];`,
     update.parameters.url = "=https://www.aggenda.app.br/api/n8n/appointments/{{ $json.appointmentId }}";
     update.parameters.jsonBody = `={{ JSON.stringify($json.action === 'cancel_appointment'
   ? { status: 'cancelled', cancellationReason: $json.cancellationReason }
-  : { startsAt: $json.date + 'T' + $json.time + ':00-03:00', status: 'scheduled' }) }}`;
+  : $json.action === 'confirm_appointment'
+    ? { status: 'confirmed' }
+    : { startsAt: $json.date + 'T' + $json.time + ':00-03:00', status: 'scheduled' }) }}`;
     const formatUpdate = codeNode(
       "Confirmar alteração do agendamento",
       `const decision = $('Interpretar decisão da IA').item.json;
 const item = $json.appointment;
 const reply = decision.action === 'cancel_appointment'
   ? 'Agendamento cancelado com sucesso. Motivo: ' + decision.cancellationReason + '.'
-  : 'Agendamento reagendado com sucesso para ' + (item?.startsAtLocal ?? decision.date + ' às ' + decision.time) + '.';
+  : decision.action === 'confirm_appointment'
+    ? 'Agendamento confirmado com sucesso para ' + (item?.startsAtLocal ?? 'o horário combinado') + '.'
+    : 'Agendamento reagendado com sucesso para ' + (item?.startsAtLocal ?? decision.date + ' às ' + decision.time) + '.';
 return [{ json: { reply } }];`,
       [1300, 620]
     );
@@ -411,6 +417,7 @@ return [{ json: { reply } }];`,
     connect(workflow, "Rotear ação", "Listar agendamentos do cliente", "main", 4);
     connect(workflow, "Rotear ação", "Alterar agendamento confirmado", "main", 5);
     connect(workflow, "Rotear ação", "Alterar agendamento confirmado", "main", 6);
+    connect(workflow, "Rotear ação", "Alterar agendamento confirmado", "main", 7);
     connect(workflow, "Listar agendamentos do cliente", "Formatar agendamentos do cliente");
     connect(workflow, "Formatar agendamentos do cliente", "Send message");
     connect(workflow, "Alterar agendamento confirmado", "Confirmar alteração do agendamento");

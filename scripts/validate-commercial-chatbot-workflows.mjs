@@ -45,6 +45,7 @@ for (const filename of files) {
   if (filename === "aggenda-core-ai.json") {
     for (const capability of [
       "list_appointments",
+      "confirm_appointment",
       "reschedule_appointment",
       "cancel_appointment",
       "Listar agendamentos do cliente",

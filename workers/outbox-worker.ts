@@ -240,6 +240,52 @@ async function processInboundWithAggenda(event: OutboxEvent) {
   if (!response.ok) throw new Error(`Aggenda AI respondeu HTTP ${response.status}`);
 }
 
+async function forwardInboundToN8n(connection: Client, event: OutboxEvent) {
+  const workflowProduct = String(event.payload.workflowProduct ?? "");
+  const urls: Record<string, string | undefined> = {
+    CHAT: process.env.N8N_CHAT_WEBHOOK_URL,
+    CHAT_AI: process.env.N8N_CHAT_AI_WEBHOOK_URL,
+    CORE: process.env.N8N_CORE_WEBHOOK_URL,
+    CORE_AI: process.env.N8N_CORE_AI_WEBHOOK_URL,
+  };
+  const url = urls[workflowProduct] ?? process.env.N8N_FALLBACK_WEBHOOK_URL;
+
+  // Keep the internal assistant as a safe fallback for installations that have
+  // not configured an operational n8n workflow yet.
+  if (!url) {
+    await processInboundWithAggenda(event);
+    return;
+  }
+
+  const originalWebhook = event.payload.metaWebhook;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(process.env.N8N_API_KEY
+        ? { "x-n8n-api-key": process.env.N8N_API_KEY }
+        : {}),
+    },
+    body: JSON.stringify(originalWebhook ?? event.payload),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error(`n8n respondeu HTTP ${response.status}`);
+
+  if (workflowProduct.endsWith("_AI")) {
+    const organizationId = String(event.payload.organizationId ?? "");
+    if (organizationId) {
+      await connection.query(
+        `insert into organization_usage_counters
+           (organization_id, period_start, metric, quantity, updated_at)
+         values ($1, date_trunc('month', now())::date, 'ai.calls', 1, now())
+         on conflict (organization_id, period_start, metric)
+         do update set quantity = organization_usage_counters.quantity + 1, updated_at = now()`,
+        [organizationId]
+      );
+    }
+  }
+}
+
 async function forwardCommercialAutomationToN8n(event: OutboxEvent) {
   const url = process.env.N8N_COMMERCIAL_WEBHOOK_URL;
   if (!url) throw new Error("Webhook comercial do n8n não configurado");
@@ -393,7 +439,7 @@ async function recordOutboundUsage(connection: Client, event: OutboxEvent) {
 async function handleEvent(connection: Client, event: OutboxEvent) {
   switch (event.event_type) {
     case "whatsapp.message.received":
-      await processInboundWithAggenda(event);
+      await forwardInboundToN8n(connection, event);
       return;
     case "commercial.automation.requested":
       await forwardCommercialAutomationToN8n(event);

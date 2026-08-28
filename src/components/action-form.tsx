@@ -62,7 +62,6 @@ export function ActionForm({
         }
         if (result?.openUrl) window.open(result.openUrl, "_blank", "noopener,noreferrer");
         onSuccess?.();
-        router.refresh();
         return { id: Date.now(), status: "success", message: result?.warning ?? successMessage };
       } catch (error) {
         console.error("[action-form] Falha ao executar comando", error);
@@ -75,6 +74,10 @@ export function ActionForm({
     },
     initialState,
   );
+
+  useEffect(() => {
+    if (state.status === "success") router.refresh();
+  }, [router, state.id, state.status]);
 
   return (
     <>

@@ -246,7 +246,9 @@ async function forwardInboundToN8n(connection: Client, event: OutboxEvent) {
     CHAT: process.env.N8N_CHAT_WEBHOOK_URL,
     CHAT_AI: process.env.N8N_CHAT_AI_WEBHOOK_URL,
     CORE: process.env.N8N_CORE_WEBHOOK_URL,
-    CORE_AI: process.env.N8N_CORE_AI_WEBHOOK_URL,
+    CORE_AI:
+      process.env.N8N_CORE_AI_WEBHOOK_URL ??
+      "https://n8n.aggenda.app.br/webhook/aggenda-whatsapp-outbox",
   };
   const url = urls[workflowProduct] ?? process.env.N8N_FALLBACK_WEBHOOK_URL;
 

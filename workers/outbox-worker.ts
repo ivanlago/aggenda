@@ -273,29 +273,40 @@ async function sendWhatsAppText(connection: Client, event: OutboxEvent) {
     throw new Error("Credenciais ou payload de envio do WhatsApp incompletos");
   }
 
-  const response = await fetch(
-    `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        recipient_type: "individual",
-        to,
-        type: "text",
-        text: { preview_url: false, body: text },
-      }),
-      signal: AbortSignal.timeout(30_000),
-    }
-  );
-
-  if (!response.ok) {
-    const detail = (await response.text()).slice(0, 500);
-    throw new Error(`Meta respondeu HTTP ${response.status}: ${detail}`);
+  const recipients = brazilianRecipientCandidates(to);
+  let lastError = "";
+  for (const recipient of recipients) {
+    const response = await fetch(
+      `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to: recipient,
+          type: "text",
+          text: { preview_url: false, body: text },
+        }),
+        signal: AbortSignal.timeout(30_000),
+      }
+    );
+    if (response.ok) return;
+    lastError = `Meta respondeu HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`;
+    if (!lastError.includes("131030")) break;
   }
+  throw new Error(lastError || "Meta recusou o envio do WhatsApp");
+}
+
+function brazilianRecipientCandidates(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (digits.startsWith("55") && digits.length === 12) {
+    return [digits, `${digits.slice(0, 4)}9${digits.slice(4)}`];
+  }
+  return [digits];
 }
 
 async function sendWhatsAppTemplate(connection: Client, event: OutboxEvent) {

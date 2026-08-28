@@ -1,0 +1,640 @@
+{
+  "updatedAt": "2026-07-31T20:14:38Z",
+  "createdAt": "2026-07-15T18:47:32.621Z",
+  "id": "8DQRcrUZb86mmkb8",
+  "name": "CliniHora - Chatbot WhatsApp",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Mensagem recebida:\n  {{ $('Receber mensagem WhatsApp').item.json.messages[0].text.body }}\n\n  Médicos cadastrados:\n  {{ JSON.stringify($json.doctors.map(d => ({\n    id: d.id,\n    name: d.name,\n    specialty: d.specialty,\n    appointmentPriceInCents: d.appointmentPriceInCents,\n    availableDays: d.availableDays\n  }))) }}",
+        "options": {
+          "systemMessage": "Você é o assistente virtual de agendamentos do CliniHora.\n\n  Atenda sempre em português do Brasil, com mensagens curtas e cordiais.\n  Ajude somente com agendamento, consulta de horários, remarcação e cancelamento.\n  Nunca faça diagnósticos, prescrições ou interpretação de exames.\n  Use somente os médicos fornecidos no prompt. Nunca invente profissionais, IDs, especialidades, preços ou horários.\n\n  Para marcar uma consulta, obtenha:\n  - médico;\n  - data;\n  - horário;\n  - nome completo do paciente;\n  - email;\n  - sexo cadastral: male ou female.\n\n  O telefone será obtido automaticamente pelo WhatsApp e não precisa ser perguntado.\n\n  Quando houver médico e data, mas ainda for necessário consultar os horários reais, use action \"check_times\".\n  Antes de criar um agendamento, apresente o resumo e peça confirmação explícita.\n  Use action \"create_appointment\" somente quando:\n  - todos os dados estiverem preenchidos;\n  - a mensagem atual confirmar explicitamente o resumo apresentado imediatamente antes.\n\n  Uma resposta como \"sim\" fora dessa confirmação nunca autoriza um agendamento.\n  Quando faltar informação, use action \"reply\" e pergunte somente o próximo dado necessário.\n  Para assuntos clínicos ou fora do escopo, use action \"handoff\".\n\n  Responda sempre com JSON válido, sem bloco de código, comentários ou texto fora do JSON:\n\n  {\n    \"action\": \"reply\",\n    \"reply\": \"mensagem que será enviada ao paciente\",\n    \"doctorId\": null,\n    \"doctorName\": null,\n    \"date\": null,\n    \"time\": null,\n    \"patientName\": null,\n    \"patientEmail\": null,\n    \"patientSex\": null\n  }\n\n  Valores permitidos para action:\n  - \"reply\"\n  - \"check_times\"\n  - \"create_appointment\"\n  - \"handoff\"\n\n  Use data no formato YYYY-MM-DD, horário no formato HH:mm e patientSex somente como \"male\", \"female\" ou null.\n  Preserve no JSON os dados já informados anteriormente durante a conversa.\n\nAo conversar com o paciente, nunca exiba os termos \"male\" ou \"female\".\n  Pergunte sempre: \"Qual é o seu sexo cadastral: masculino ou feminino?\".\n  Converta internamente:\n  - masculino para patientSex \"male\";\n  - feminino para patientSex \"female\".\n\n  Solicite nome completo, email e sexo cadastral em português"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        80,
+        -112
+      ],
+      "id": "bee6c639-3560-44fb-acb3-839763ccb59a",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        80,
+        48
+      ],
+      "id": "a2ceb74b-6e3d-49bb-b21a-8e96f9911a64",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "1172430959290272",
+        "recipientPhoneNumber": "={{ $('Receber mensagem WhatsApp').item.json.messages[0].from === '557191814240' ? '5571991814240' : $('Receber mensagem WhatsApp').item.json.messages[0].from }}",
+        "textBody": "={{ $json.reply }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        736,
+        -112
+      ],
+      "id": "94ddc2e0-58d0-4d9b-998b-65f11815b01a",
+      "name": "Send message",
+      "webhookId": "b31e1b5b-c260-4235-9697-7e2ef9424c30",
+      "credentials": {
+        "whatsAppApi": {
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "messages"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        -112
+      ],
+      "id": "750a43e9-24b9-489a-a3b2-1e39c7290226",
+      "name": "Receber mensagem WhatsApp",
+      "webhookId": "85c82a2e-ae94-440f-b422-67911b7fc27f",
+      "credentials": {
+        "whatsAppTriggerApi": {
+          "name": "WhatsApp OAuth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://clinihora.vercel.app/api/n8n/doctors",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Clinic-Id",
+              "value": "d7b662e1-732e-407c-bc3a-e3633db95b3a"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -64,
+        -112
+      ],
+      "id": "a886471e-65d4-40c3-b553-c0f43b1040da",
+      "name": "Buscar médicos",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "CliniHora API - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Receber mensagem WhatsApp').item.json.messages[0].from + '-prod-v1' }}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        176,
+        192
+      ],
+      "id": "69beae92-7c0b-47f2-8695-fb059e131307",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = String($json.output ?? \"\").trim();\n\n  const cleaned = raw\n    .replace(/^```json\\s*/i, \"\")\n    .replace(/^```\\s*/i, \"\")\n    .replace(/\\s*```$/i, \"\")\n    .trim();\n\n  try {\n    const decision = JSON.parse(cleaned);\n\n    return [{\n      json: {\n        ...decision,\n        rawOutput: raw\n      }\n    }];\n  } catch (error) {\n    return [{\n      json: {\n        action: \"reply\",\n        reply: raw || \"Desculpe, não consegui interpretar sua solicitação. Poderia repetir?\",\n        doctorId: null,\n        doctorName: null,\n        date: null,\n        time: null,\n        patientName: null,\n        patientEmail: null,\n        patientSex: null,\n        rawOutput: raw,\n        parseError: true\n      }\n    }];\n  }"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        -112
+      ],
+      "id": "ec4a9de1-7a1a-495c-afc2-0a2e509e4032",
+      "name": "Interpretar decisão da IA"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "reply",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "65e2cb0a-761f-4006-868f-0edfe6e12c03"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "daa07d4e-89f0-465e-930e-526af18b2cb2",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "check_times",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "0563f752-79b0-46af-89ad-d030a4ab05c3",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "create_appointment",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "1c46ef21-6f97-43a0-a37c-7bf9a4d26461",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "handoff",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        480,
+        -112
+      ],
+      "id": "6a28fa53-6e56-4516-828c-bf6a2a22f061",
+      "name": "Rotear ação"
+    },
+    {
+      "parameters": {
+        "url": "https://clinihora.vercel.app/api/n8n/available-times",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "doctorId",
+              "value": "={{ $json.doctorId }}"
+            },
+            {
+              "name": "date",
+              "value": "={{ $json.date }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Clinic-Id",
+              "value": "d7b662e1-732e-407c-bc3a-e3633db95b3a"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        480,
+        144
+      ],
+      "id": "65819140-0812-4f7c-a164-f2544c09e04d",
+      "name": "Buscar horários",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "CliniHora API - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const availableTimes = ($json.times ?? [])\n    .filter((time) => time.available)\n    .map((time) => time.label);\n\n  const [year, month, day] = String($json.date).split(\"-\");\n  const formattedDate = `${day}/${month}/${year}`;\n  const doctorName = $json.doctor?.name ?? \"o médico selecionado\";\n\n  let reply;\n\n  if (availableTimes.length === 0) {\n    reply = `Não encontrei horários disponíveis para ${doctorName} em ${formattedDate}. Deseja consultar outra data?`;\n  } else {\n    reply =\n      `Para ${formattedDate}, ${doctorName} possui estes horários disponíveis:\\n\\n` +\n      availableTimes.join(\", \") +\n      \"\\n\\nQual horário você gostaria de escolher?\";\n  }\n\n  return [{\n    json: {\n      reply\n    }\n  }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        336
+      ],
+      "id": "ab0a3c58-31a9-4a46-a45c-62ef1f344b53",
+      "name": "Formatar horários"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://clinihora.vercel.app/api/n8n/patients/find-or-create",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Clinic-Id",
+              "value": "d7b662e1-732e-407c-bc3a-e3633db95b3a"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "name",
+              "value": "={{ $json.patientName }}"
+            },
+            {
+              "name": "email",
+              "value": "={{ $json.patientEmail }}"
+            },
+            {
+              "name": "phone",
+              "value": "={{ $('Receber mensagem WhatsApp').item.json.messages[0].from === '557191814240' ? '5571991814240' : $('Receber mensagem WhatsApp').item.json.messages[0].from }}"
+            },
+            {
+              "name": "sex",
+              "value": "={{ $json.patientSex }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        720,
+        80
+      ],
+      "id": "1cc3769a-344c-4079-9f2f-d4d877294841",
+      "name": "Buscar ou criar paciente",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "CliniHora API - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://clinihora.vercel.app/api/n8n/appointments",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Clinic-Id",
+              "value": "d7b662e1-732e-407c-bc3a-e3633db95b3a"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n    \"patientId\": \"{{ $json.patient.id }}\",\n    \"doctorId\": \"{{ $('Interpretar decisão da IA').item.json.doctorId }}\",\n    \"date\": \"{{ $('Interpretar decisão da IA').item.json.date + 'T' + $('Interpretar decisão da IA').item.json.time + ':00-03:00' }}\"\n  }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        896,
+        80
+      ],
+      "id": "145fe9e5-2bbd-423f-99ef-6513f770c0a6",
+      "name": "Criar agendamento",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "CliniHora API - n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const message = $json.notification?.patient?.message;\n\n  return [{\n    json: {\n      reply:\n        message ??\n        \"Sua consulta foi agendada com sucesso. Em caso de dúvida, fale com nossa equipe.\"\n    }\n  }]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        272
+      ],
+      "id": "5a49faa8-82e8-4b8f-b4c5-0dd9134b9fa5",
+      "name": "Preparar confirmação"
+    }
+  ],
+  "connections": {
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Interpretar decisão da IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Receber mensagem WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Buscar médicos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar médicos": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interpretar decisão da IA": {
+      "main": [
+        [
+          {
+            "node": "Rotear ação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rotear ação": {
+      "main": [
+        [
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Buscar horários",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Buscar ou criar paciente",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar horários": {
+      "main": [
+        [
+          {
+            "node": "Formatar horários",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar horários": {
+      "main": [
+        [
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar ou criar paciente": {
+      "main": [
+        [
+          {
+            "node": "Criar agendamento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar agendamento": {
+      "main": [
+        [
+          {
+            "node": "Preparar confirmação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar confirmação": {
+      "main": [
+        [
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "40df67c9-cf07-4268-93dc-6755f682e3fc",
+  "versionCounter": 62,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-07-15T18:47:32.622Z",
+      "createdAt": "2026-07-15T18:47:32.622Z",
+      "role": "workflow:owner",
+      "workflowId": "8DQRcrUZb86mmkb8",
+      "projectId": "wNc9EX4OqAznp0xu",
+      "project": {
+        "updatedAt": "2025-10-09T11:54:56.356Z",
+        "createdAt": "2025-10-09T11:50:39.551Z",
+        "id": "wNc9EX4OqAznp0xu",
+        "name": "Ivan Silva Lago <ivanslago@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "projectRelations": [
+          {
+            "updatedAt": "2025-10-09T11:50:39.553Z",
+            "createdAt": "2025-10-09T11:50:39.553Z",
+            "userId": "a9c3256c-1996-4536-bd48-02a7a8bd3b43",
+            "projectId": "wNc9EX4OqAznp0xu",
+            "user": {
+              "updatedAt": "2026-08-27T12:11:24Z",
+              "createdAt": "2025-10-09T11:50:39.548Z",
+              "id": "a9c3256c-1996-4536-bd48-02a7a8bd3b43",
+              "email": "ivanslago@gmail.com",
+              "firstName": "Ivan",
+              "lastName": "Silva Lago",
+              "personalizationAnswers": {
+                "version": "v4",
+                "personalization_survey_submitted_at": "2025-10-09T11:56:56.063Z",
+                "personalization_survey_n8n_version": "1.107.4",
+                "automationGoalDevops": [
+                  "other"
+                ],
+                "companySize": "<20",
+                "companyType": "education",
+                "role": "devops",
+                "reportedSource": "google"
+              },
+              "settings": {
+                "easyAIWorkflowOnboarded": true,
+                "firstSuccessfulWorkflowId": "8DQRcrUZb86mmkb8",
+                "userActivated": true,
+                "userActivatedAt": 1784183923820,
+                "npsSurvey": {
+                  "responded": true,
+                  "lastShownAt": 1784921898847
+                }
+              },
+              "disabled": false,
+              "mfaEnabled": false,
+              "lastActiveAt": "2026-08-27",
+              "isPending": false
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "tags": []
+}

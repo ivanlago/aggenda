@@ -962,6 +962,7 @@ export async function createAppointment(formData: FormData) {
     action: "create",
     entityType: "appointment",
     entityId: created.id,
+    details: { clientId, startsAt: startsAt.toISOString(), status: "scheduled" },
   });
   await syncAppointmentToGoogleCalendar(created.id);
   try {
@@ -972,6 +973,7 @@ export async function createAppointment(formData: FormData) {
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
   revalidatePath("/financeiro");
+  revalidatePath(`/clientes/${clientId}`);
 }
 
 export async function updateAppointmentStatus(formData: FormData) {
@@ -993,6 +995,13 @@ export async function updateAppointmentStatus(formData: FormData) {
   }
 
   const appointmentId = textValue(formData, "id");
+  const [previousAppointment] = await db.select({
+    clientId: appointments.clientId,
+    status: appointments.status,
+  }).from(appointments).where(and(
+    eq(appointments.id, appointmentId),
+    eq(appointments.organizationId, organization.id),
+  )).limit(1);
   let updatedAppointment = false;
   try {
     updatedAppointment = await updateAppointmentAndInventory({ organizationId: organization.id, appointmentId, status, cancellationReason, userId: session.user.id });
@@ -1010,7 +1019,11 @@ export async function updateAppointmentStatus(formData: FormData) {
       action: `status:${status}`,
       entityType: "appointment",
       entityId: appointmentId,
-      details: cancellationReason ? { cancellationReason } : {},
+      details: {
+        previousStatus: previousAppointment?.status,
+        status,
+        ...(cancellationReason ? { cancellationReason } : {}),
+      },
     }),
     status === "cancelled"
       ? deleteAppointmentFromGoogleCalendar(appointmentId)
@@ -1035,4 +1048,5 @@ export async function updateAppointmentStatus(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/financeiro");
   revalidatePath("/estoque");
+  if (previousAppointment) revalidatePath(`/clientes/${previousAppointment.clientId}`);
 }

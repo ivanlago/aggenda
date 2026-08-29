@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -7,7 +7,7 @@ import { ActionForm } from "@/components/action-form";
 import { ClinicalMediaGallery } from "@/components/clinical-media-gallery";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
-import { appointments, clientClinicalMedia, clientHistoryEntries, clientPackageBalances, clientPackages, clients, professionals, servicePackages, services, users } from "@/db/schema";
+import { appointments, auditLogs, clientClinicalMedia, clientHistoryEntries, clientPackageBalances, clientPackages, clients, professionals, servicePackages, services, users } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
 import { formatOrganizationDateTime } from "@/lib/appointment-safety";
 
@@ -90,6 +90,22 @@ export default async function ClientHistoryPage({
     current.balances.push(row);
     packages.set(row.id, current);
   }
+  const appointmentById = new Map(history.map((item) => [item.id, item]));
+  const timeline = history.length ? await db.select({
+    id: auditLogs.id,
+    appointmentId: auditLogs.entityId,
+    action: auditLogs.action,
+    details: auditLogs.details,
+    createdAt: auditLogs.createdAt,
+    author: users.name,
+  }).from(auditLogs)
+    .leftJoin(users, eq(users.id, auditLogs.userId))
+    .where(and(
+      eq(auditLogs.organizationId, organization.id),
+      eq(auditLogs.entityType, "appointment"),
+      inArray(auditLogs.entityId, history.map((item) => item.id)),
+    ))
+    .orderBy(desc(auditLogs.createdAt)) : [];
   const isHealth = organization.businessType === "saude";
   const recordLabel = isHealth ? "Prontuário" : "Histórico do cliente";
   const genderLabels: Record<string, string> = { female: "Feminino", male: "Masculino", other: "Outro", not_informed: "Prefere não informar" };
@@ -137,6 +153,50 @@ export default async function ClientHistoryPage({
             </article>
           ))}
           {!packages.size && <p className="empty-state md:col-span-2">Este {organization.clientLabel.toLowerCase()} ainda não possui pacotes.</p>}
+        </div>
+      </section>
+      <section className="panel mb-5">
+        <h2 className="text-lg font-extrabold">Linha do tempo de agendamentos</h2>
+        <p className="mt-1 text-sm text-muted">Acompanhe criação, reagendamentos e mudanças de status em ordem cronológica.</p>
+        <div className="mt-5 divide-y">
+          {timeline.map((event) => {
+            const appointment = event.appointmentId ? appointmentById.get(event.appointmentId) : undefined;
+            const details = event.details ?? {};
+            const previousStatus = typeof details.previousStatus === "string" ? details.previousStatus : null;
+            const nextStatus = typeof details.status === "string" ? details.status : event.action.startsWith("status:") ? event.action.slice(7) : null;
+            const from = typeof details.from === "string" ? new Date(details.from) : null;
+            const to = typeof details.to === "string" ? new Date(details.to) : null;
+            const title = event.action === "create"
+              ? "Agendamento criado"
+              : event.action === "reschedule"
+                ? "Agendamento reagendado"
+                : nextStatus === "confirmed"
+                  ? "Agendamento confirmado"
+                  : nextStatus === "cancelled"
+                    ? "Agendamento cancelado"
+                    : nextStatus === "completed"
+                      ? "Atendimento concluído"
+                      : nextStatus === "no_show"
+                        ? "Não comparecimento registrado"
+                        : nextStatus === "scheduled"
+                          ? "Agendamento marcado como agendado"
+                          : "Agendamento atualizado";
+            return <article key={event.id} className="relative py-4 pl-6 before:absolute before:left-0 before:top-5 before:size-3 before:rounded-full before:bg-brand">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="font-extrabold">{title}</p>
+                  {appointment && <p className="mt-1 text-sm text-muted">{appointment.service}{appointment.professional ? ` · ${appointment.professional}` : ""}</p>}
+                </div>
+                <span className="text-xs font-bold text-muted">{formatOrganizationDateTime(event.createdAt, organization.timezone)}</span>
+              </div>
+              {event.action === "reschedule" && from && to && <p className="mt-2 text-sm">De <strong>{formatOrganizationDateTime(from, organization.timezone)}</strong> para <strong>{formatOrganizationDateTime(to, organization.timezone)}</strong>.</p>}
+              {event.action === "reschedule" && (!from || !to) && appointment && <p className="mt-2 text-sm">Novo horário: <strong>{formatOrganizationDateTime(appointment.startsAt, organization.timezone)}</strong>.</p>}
+              {previousStatus && nextStatus && <p className="mt-2 text-sm">De <strong>{statusLabels[previousStatus as keyof typeof statusLabels] ?? previousStatus}</strong> para <strong>{statusLabels[nextStatus as keyof typeof statusLabels] ?? nextStatus}</strong>.</p>}
+              {typeof details.cancellationReason === "string" && <p className="mt-2 text-sm">Motivo: {details.cancellationReason}</p>}
+              <p className="mt-2 text-xs text-muted">{event.author ? `Registrado por ${event.author}` : "Registro automático do sistema"}</p>
+            </article>;
+          })}
+          {!timeline.length && <p className="empty-state">Nenhum evento automático registrado.</p>}
         </div>
       </section>
       <section className="panel mb-5">

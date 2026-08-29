@@ -1,0 +1,152 @@
+{
+  "updatedAt": "2026-08-18T05:21:28Z",
+  "createdAt": "2026-08-04T08:26:35.38Z",
+  "name": "Aggenda Chat - Horizontal",
+  "description": "Produto CHAT. Recursos: chat.menus, chat.faq, chat.handoff. Gerado de Aggenda - Chatbot - Outbox.json.",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const input = $('Receber mensagem WhatsApp').item.json;\nconst text = String(input.messages?.[0]?.text?.body ?? '').trim().toLowerCase();\nconst config = {\n  companyName: 'CONFIGURE_NOME_DA_EMPRESA',\n  services: ['CONFIGURE_SERVIÇO_1', 'CONFIGURE_SERVIÇO_2'],\n  businessHours: 'CONFIGURE_HORÁRIO_DE_ATENDIMENTO',\n  address: 'CONFIGURE_ENDEREÇO_E_LINK_DO_MAPS',\n};\nconst menu = \"Olá! Seja bem-vindo(a) à {{companyName}}. Como posso ajudar você hoje? Responda com o número de uma opção:\\n\\n1. Conhecer serviços\\n2. Consultar horário de atendimento\\n3. Ver localização\\n4. Solicitar contato ou agendamento\\n5. Falar com atendente\".replace('{{companyName}}', config.companyName);\nlet reply = menu;\nif (/^(1|servi[cç]os?|procedimentos?)$/.test(text)) reply = 'Nossos serviços são:\\n\\n' + config.services.map((value, index) => `${index + 1}. ${value}`).join('\\n') + '\\n\\nDigite menu para voltar.';\nelse if (/^(2|hor[aá]rio|funcionamento)$/.test(text)) reply = config.businessHours + '\\n\\nDigite menu para voltar.';\nelse if (/^(3|endere[cç]o|localiza[cç][aã]o)$/.test(text)) reply = config.address + '\\n\\nDigite menu para voltar.';\nelse if (/^(4|agendar|agendamento|contato)$/.test(text)) reply = 'Informe seu nome, o serviço desejado e a melhor data ou turno. A equipe confirmará a disponibilidade.';\nelse if (/^(5|atendente|humano)$/.test(text)) reply = 'Certo. Pausei o atendimento automático e encaminhei sua conversa para nossa equipe.';\nreturn [{ json: { reply, product: 'chat', handoffRequested: /^(5|atendente|humano)$/.test(text) } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        -208
+      ],
+      "id": "0fc48b9a-9899-4e80-86d5-5b99607651a9",
+      "name": "Atendimento determinístico"
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "1172430959290272",
+        "recipientPhoneNumber": "={{ $('Receber mensagem WhatsApp').item.json.messages[0].from }}",
+        "textBody": "={{ $json.reply }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        848,
+        -224
+      ],
+      "id": "eb6327b0-d8c7-4a6a-899c-1c506d0eeb56",
+      "name": "Send message",
+      "webhookId": "158b21fd-fe2b-4baf-b757-2f7ef3f0fe07",
+      "credentials": {
+        "whatsAppApi": {
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const envelope = $input.first().json;\nconst body = envelope.body ?? envelope;\nconst payload = body.entry?.[0]?.changes?.[0]?.value ?? body;\n\nif (!Array.isArray(payload.messages) || payload.messages.length === 0) {\n  return [];\n}\n\nreturn [{ json: payload }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -16,
+        -208
+      ],
+      "id": "c897b106-7d43-4e38-a463-39d90afc56bd",
+      "name": "Receber mensagem WhatsApp"
+    }
+  ],
+  "connections": {
+    "Receber mensagem WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Atendimento determinístico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atendimento determinístico": {
+      "main": [
+        [
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "pinData": {},
+  "versionId": "369e4f6f-34d2-433e-b7cb-378a919788f2",
+  "versionCounter": 17,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-08-04T08:26:35.381Z",
+      "createdAt": "2026-08-04T08:26:35.381Z",
+      "role": "workflow:owner",
+      "workflowId": "BM44Hqj1EBx443pP",
+      "projectId": "wNc9EX4OqAznp0xu",
+      "project": {
+        "updatedAt": "2025-10-09T11:54:56.356Z",
+        "createdAt": "2025-10-09T11:50:39.551Z",
+        "id": "wNc9EX4OqAznp0xu",
+        "name": "Ivan Silva Lago <ivanslago@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "projectRelations": [
+          {
+            "updatedAt": "2025-10-09T11:50:39.553Z",
+            "createdAt": "2025-10-09T11:50:39.553Z",
+            "userId": "a9c3256c-1996-4536-bd48-02a7a8bd3b43",
+            "projectId": "wNc9EX4OqAznp0xu",
+            "user": {
+              "updatedAt": "2026-08-27T12:11:24Z",
+              "createdAt": "2025-10-09T11:50:39.548Z",
+              "id": "a9c3256c-1996-4536-bd48-02a7a8bd3b43",
+              "email": "ivanslago@gmail.com",
+              "firstName": "Ivan",
+              "lastName": "Silva Lago",
+              "personalizationAnswers": {
+                "version": "v4",
+                "personalization_survey_submitted_at": "2025-10-09T11:56:56.063Z",
+                "personalization_survey_n8n_version": "1.107.4",
+                "automationGoalDevops": [
+                  "other"
+                ],
+                "companySize": "<20",
+                "companyType": "education",
+                "role": "devops",
+                "reportedSource": "google"
+              },
+              "settings": {
+                "easyAIWorkflowOnboarded": true,
+                "firstSuccessfulWorkflowId": "8DQRcrUZb86mmkb8",
+                "userActivated": true,
+                "userActivatedAt": 1784183923820,
+                "npsSurvey": {
+                  "responded": true,
+                  "lastShownAt": 1784921898847
+                }
+              },
+              "disabled": false,
+              "mfaEnabled": false,
+              "lastActiveAt": "2026-08-27",
+              "isPending": false
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "tags": []
+}

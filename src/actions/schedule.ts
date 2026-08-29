@@ -214,8 +214,10 @@ export async function rescheduleAppointment(formData: FormData) {
   const startsAt = parseOrganizationDateTime(value(formData, "startsAt"), organization.timezone);
   const [item] = await db
     .select({
+      clientId: appointments.clientId,
       serviceId: appointments.serviceId,
       professionalId: appointments.professionalId,
+      startsAt: appointments.startsAt,
       duration: services.durationMinutes,
     })
     .from(appointments)
@@ -254,6 +256,7 @@ export async function rescheduleAppointment(formData: FormData) {
       action: "reschedule",
       entityType: "appointment",
       entityId: id,
+      details: { from: item.startsAt.toISOString(), to: startsAt.toISOString() },
     }),
     syncAppointmentToGoogleCalendar(id),
     syncAppointmentFinancialEntry(id),
@@ -269,4 +272,5 @@ export async function rescheduleAppointment(formData: FormData) {
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
   revalidatePath("/financeiro");
+  revalidatePath(`/clientes/${item.clientId}`);
 }

@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "@/db";
 import {
   appointments,
+  auditLogs,
   clients,
   financialEntries,
   organizations,
@@ -127,6 +128,18 @@ export async function POST(
           publicManageToken: manageToken,
         })
         .returning({ id: appointments.id, clientId: appointments.clientId });
+      await tx.insert(auditLogs).values({
+        organizationId: organization.id,
+        action: "create",
+        entityType: "appointment",
+        entityId: created.id,
+        details: {
+          clientId: created.clientId,
+          source: "booking_page",
+          startsAt: startsAt.toISOString(),
+          status: "scheduled",
+        },
+      });
       if (voucher) await tx.update(vouchers).set({ usedCount: voucher.usedCount + 1 }).where(eq(vouchers.id, voucher.id));
       return created;
     });

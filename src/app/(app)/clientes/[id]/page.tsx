@@ -43,6 +43,7 @@ export default async function ClientHistoryPage({
       professional: professionals.name,
       notes: appointments.notes,
       cancellationReason: appointments.cancellationReason,
+      createdAt: appointments.createdAt,
     })
     .from(appointments)
     .innerJoin(services, eq(services.id, appointments.serviceId))
@@ -91,7 +92,7 @@ export default async function ClientHistoryPage({
     packages.set(row.id, current);
   }
   const appointmentById = new Map(history.map((item) => [item.id, item]));
-  const timeline = history.length ? await db.select({
+  const recordedTimeline = history.length ? await db.select({
     id: auditLogs.id,
     appointmentId: auditLogs.entityId,
     action: auditLogs.action,
@@ -106,6 +107,18 @@ export default async function ClientHistoryPage({
       inArray(auditLogs.entityId, history.map((item) => item.id)),
     ))
     .orderBy(desc(auditLogs.createdAt)) : [];
+  const recordedCreations = new Set(recordedTimeline.filter((event) => event.action === "create").map((event) => event.appointmentId));
+  const timeline = [
+    ...recordedTimeline,
+    ...history.filter((appointment) => !recordedCreations.has(appointment.id)).map((appointment) => ({
+      id: `appointment-created:${appointment.id}`,
+      appointmentId: appointment.id,
+      action: "create",
+      details: { status: "scheduled", recoveredFromAppointment: true },
+      createdAt: appointment.createdAt,
+      author: null,
+    })),
+  ].sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
   const isHealth = organization.businessType === "saude";
   const recordLabel = isHealth ? "Prontuário" : "Histórico do cliente";
   const genderLabels: Record<string, string> = { female: "Feminino", male: "Masculino", other: "Outro", not_informed: "Prefere não informar" };
@@ -229,7 +242,7 @@ export default async function ClientHistoryPage({
         <div className="mt-5 divide-y">
           {timeline.map((event) => {
             const appointment = event.appointmentId ? appointmentById.get(event.appointmentId) : undefined;
-            const details = event.details ?? {};
+            const details: Record<string, unknown> = event.details ?? {};
             const previousStatus = typeof details.previousStatus === "string" ? details.previousStatus : null;
             const nextStatus = typeof details.status === "string" ? details.status : event.action.startsWith("status:") ? event.action.slice(7) : null;
             const from = typeof details.from === "string" ? new Date(details.from) : null;
@@ -261,7 +274,7 @@ export default async function ClientHistoryPage({
               {event.action === "reschedule" && (!from || !to) && appointment && <p className="mt-2 text-sm">Novo horário: <strong>{formatOrganizationDateTime(appointment.startsAt, organization.timezone)}</strong>.</p>}
               {previousStatus && nextStatus && <p className="mt-2 text-sm">De <strong>{statusLabels[previousStatus as keyof typeof statusLabels] ?? previousStatus}</strong> para <strong>{statusLabels[nextStatus as keyof typeof statusLabels] ?? nextStatus}</strong>.</p>}
               {typeof details.cancellationReason === "string" && <p className="mt-2 text-sm">Motivo: {details.cancellationReason}</p>}
-              <p className="mt-2 text-xs text-muted">{event.author ? `Registrado por ${event.author}` : "Registro automático do sistema"}</p>
+              <p className="mt-2 text-xs text-muted">{event.author ? `Registrado por ${event.author}` : details.recoveredFromAppointment ? "Registro inicial recuperado do agendamento" : "Registro automático do sistema"}</p>
             </article>;
           })}
           {!timeline.length && <p className="empty-state">Nenhum evento automático registrado.</p>}

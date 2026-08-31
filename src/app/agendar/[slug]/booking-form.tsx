@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 type Item = { id: string; name: string; durationMinutes?: number; priceInCents?: number | null; depositType?: string; depositValue?: number };
 
@@ -17,6 +17,7 @@ export function BookingForm({
   labels: { service: string; professional: string; appointment: string };
   timezone: string;
 }) {
+  const dateInputId = useId();
   const [serviceId, setServiceId] = useState("");
   const [professionalId, setProfessionalId] = useState("");
   const [date, setDate] = useState("");
@@ -68,7 +69,7 @@ export function BookingForm({
 
   const minimumDate = new Date().toISOString().slice(0, 10);
   return (
-    <form action={submit} className="mt-8 grid gap-4">
+    <form action={submit} className="mt-8 grid min-w-0 grid-cols-1 gap-4">
       <select
         className="field"
         name="serviceId"
@@ -101,17 +102,27 @@ export function BookingForm({
           <option key={item.id} value={item.id}>{item.name}</option>
         ))}
       </select>
-      <input
-        className="field"
-        type="date"
-        min={minimumDate}
-        value={date}
-        onChange={(event) => {
-          setDate(event.target.value);
-          setTimes([]);
-        }}
-        required
-      />
+      <div className="min-w-0">
+        <label className="mb-2 block text-sm font-bold" htmlFor={dateInputId}>
+          Data do agendamento
+        </label>
+        <input
+          id={dateInputId}
+          aria-describedby={`${dateInputId}-hint`}
+          className="field box-border min-h-12 min-w-0 max-w-full appearance-none text-base text-foreground [color-scheme:light] [&::-webkit-date-and-time-value]:min-h-6 [&::-webkit-date-and-time-value]:text-left"
+          type="date"
+          min={minimumDate}
+          value={date}
+          onChange={(event) => {
+            setDate(event.target.value);
+            setTimes([]);
+          }}
+          required
+        />
+        <p id={`${dateInputId}-hint`} className="mt-1 text-xs text-muted">
+          Toque no campo para selecionar a data no calendário.
+        </p>
+      </div>
       <select className="field" name="startsAt" required defaultValue="">
         <option value="">
           {loading ? "Consultando horários..." : "Selecione o horário"}

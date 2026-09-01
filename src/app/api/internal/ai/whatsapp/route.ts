@@ -1,109 +1,159 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { chatConversations, chatMessages, organizations, organizationUsageCounters, outboxEvents, services } from "@/db/schema";
+import { appointments, auditLogs, chatConversations, chatMessages, clients, organizations, organizationUsageCounters, outboxEvents, professionals, services, servicesToProfessionals } from "@/db/schema";
 import { generateAiJson } from "@/lib/ai/provider";
+import { getAvailableTimes, isTimeAvailable } from "@/lib/availability";
+import { formatOrganizationDateTime, organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
+import { syncAppointmentFinancialEntry } from "@/lib/finance";
+import { deleteAppointmentFromGoogleCalendar, syncAppointmentToGoogleCalendar } from "@/lib/google-calendar";
+import { reconcilePackageUsage } from "@/lib/package-balance";
 import { triggerOutboxWorker } from "@/lib/outbox-trigger";
+import { isAffirmativeWhatsAppCommand, isNegativeWhatsAppCommand } from "@/lib/whatsapp-command";
 
 export const runtime = "nodejs";
 
 const inputSchema = z.object({
-  organizationId: z.string().uuid(),
-  conversationId: z.string().uuid(),
-  messageId: z.string().uuid(),
-  phoneNumberId: z.string().min(1),
-  from: z.string().min(5),
-  text: z.string().max(4000).default(""),
-  whatsappServiceCode: z.enum(["menu", "chat", "chat_ai", "core_ai"]),
+  organizationId: z.string().uuid(), conversationId: z.string().uuid(), messageId: z.string().uuid(),
+  phoneNumberId: z.string().min(1), from: z.string().min(5), contactName: z.string().optional(),
+  text: z.string().max(4000).default(""), whatsappServiceCode: z.enum(["menu", "chat", "chat_ai", "core_ai"]),
 });
-
-const answerSchema = z.object({
-  action: z.enum(["reply", "handoff"]),
-  reply: z.string().min(1).max(3500),
-  intent: z.string().max(80).default("unknown"),
-  confidence: z.number().min(0).max(1).default(0),
+const coreAnswerSchema = z.object({
+  action: z.enum(["reply", "availability", "prepare_booking", "confirm_appointment", "prepare_reschedule", "prepare_cancel", "handoff"]),
+  reply: z.string().min(1).max(3000), intent: z.string().max(80).default("unknown"), confidence: z.number().min(0).max(1).default(0),
+  serviceId: z.string().uuid().nullable().default(null), professionalId: z.string().uuid().nullable().default(null), appointmentId: z.string().uuid().nullable().default(null),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().default(null), time: z.string().regex(/^\d{2}:\d{2}$/).nullable().default(null), cancellationReason: z.string().max(500).nullable().default(null),
 });
+const chatAnswerSchema = z.object({ action: z.enum(["reply", "handoff"]), reply: z.string().min(1).max(3500), intent: z.string().max(80), confidence: z.number().min(0).max(1) });
+type Input = z.infer<typeof inputSchema>;
+type Conversation = typeof chatConversations.$inferSelect;
+type Pending = { kind: "book"; serviceId: string; professionalId: string; startsAt: string } | { kind: "reschedule"; appointmentId: string; startsAt: string } | { kind: "cancel"; appointmentId: string; reason: string };
 
-function authorized(request: NextRequest) {
-  const expected = process.env.AGGENDA_INTERNAL_API_KEY;
-  return Boolean(expected && request.headers.get("authorization") === `Bearer ${expected}`);
+function authorized(request: NextRequest) { const key = process.env.AGGENDA_INTERNAL_API_KEY; return Boolean(key && request.headers.get("authorization") === `Bearer ${key}`); }
+function localTime(date: Date, timezone: string) { return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: timezone }).format(date); }
+function parsePending(payload?: Record<string, unknown> | null): Pending | null {
+  const result = z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("book"), serviceId: z.string().uuid(), professionalId: z.string().uuid(), startsAt: z.string().datetime() }),
+    z.object({ kind: z.literal("reschedule"), appointmentId: z.string().uuid(), startsAt: z.string().datetime() }),
+    z.object({ kind: z.literal("cancel"), appointmentId: z.string().uuid(), reason: z.string().min(1) }),
+  ]).safeParse(payload?.pendingAction);
+  return result.success ? result.data : null;
+}
+
+async function getClient(input: Input, conversation: Conversation) {
+  if (conversation.clientId) return conversation.clientId;
+  const all = input.from.replace(/\D/g, ""); const phone = all.startsWith("55") && all.length > 11 ? all.slice(2) : all;
+  const [found] = await db.select({ id: clients.id }).from(clients).where(and(eq(clients.organizationId, input.organizationId), sql`right(regexp_replace(coalesce(${clients.phone}, ''), '\D', '', 'g'), 10) = right(${phone}, 10)`)).limit(1);
+  let id = found?.id;
+  if (!id) {
+    const [created] = await db.insert(clients).values({ organizationId: input.organizationId, name: input.contactName?.trim() || conversation.contactName || `WhatsApp ${phone.slice(-4)}`, phone })
+      .onConflictDoUpdate({ target: [clients.organizationId, clients.phone], set: { updatedAt: new Date() } }).returning({ id: clients.id });
+    id = created.id;
+  }
+  await db.update(chatConversations).set({ clientId: id, updatedAt: new Date() }).where(eq(chatConversations.id, conversation.id));
+  return id;
+}
+
+async function send(input: Input, conversation: Conversation, data: { reply: string; model: string; intent: string; confidence: number; pending?: Pending; handoff?: boolean; ai?: boolean }) {
+  const now = new Date(); let inserted = false;
+  await db.transaction(async (tx) => {
+    const [message] = await tx.insert(chatMessages).values({ organizationId: input.organizationId, conversationId: input.conversationId, externalMessageId: `aggenda-ai:${input.messageId}`, direction: "outbound", status: "queued", messageType: "text", body: data.reply, rawPayload: { source: "aggenda_ai", model: data.model, intent: data.intent, confidence: data.confidence, ...(data.pending ? { pendingAction: data.pending } : {}) }, occurredAt: now })
+      .onConflictDoNothing({ target: chatMessages.externalMessageId }).returning({ id: chatMessages.id });
+    if (!message) return; inserted = true;
+    await tx.insert(outboxEvents).values({ organizationId: input.organizationId, eventKey: `whatsapp:ai-reply:${input.messageId}`, eventType: "whatsapp.message.send", aggregateType: "chat_message", aggregateId: message.id, payload: { organizationId: input.organizationId, channelId: conversation.channelId, conversationId: input.conversationId, messageId: message.id, phoneNumberId: input.phoneNumberId, to: input.from, text: data.reply } }).onConflictDoNothing({ target: outboxEvents.eventKey });
+    await tx.update(chatConversations).set({ handoffStatus: data.handoff ? "requested" : conversation.handoffStatus, handoffReason: data.handoff ? `IA: ${data.intent}` : conversation.handoffReason, automationPaused: Boolean(data.handoff), handoffRequestedAt: data.handoff ? now : conversation.handoffRequestedAt, updatedAt: now }).where(eq(chatConversations.id, input.conversationId));
+    if (data.ai) { const periodStart = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`; await tx.insert(organizationUsageCounters).values({ organizationId: input.organizationId, periodStart, metric: "ai.calls", quantity: 1 }).onConflictDoUpdate({ target: [organizationUsageCounters.organizationId, organizationUsageCounters.periodStart, organizationUsageCounters.metric], set: { quantity: sql`${organizationUsageCounters.quantity} + 1`, updatedAt: now } }); }
+  });
+  if (inserted) await triggerOutboxWorker();
+}
+
+async function upcoming(organizationId: string, clientId: string) {
+  return db.select({ id: appointments.id, startsAt: appointments.startsAt, status: appointments.status, serviceId: appointments.serviceId, serviceName: services.name, professionalId: appointments.professionalId, professionalName: professionals.name })
+    .from(appointments).innerJoin(services, eq(services.id, appointments.serviceId)).leftJoin(professionals, eq(professionals.id, appointments.professionalId))
+    .where(and(eq(appointments.organizationId, organizationId), eq(appointments.clientId, clientId), inArray(appointments.status, ["scheduled", "confirmed"]), gte(appointments.startsAt, new Date()))).orderBy(asc(appointments.startsAt)).limit(10);
+}
+
+async function execute(input: Input, pending: Pending, clientId: string, timezone: string) {
+  if (pending.kind === "book") {
+    const startsAt = new Date(pending.startsAt);
+    const [[service], [professional]] = await Promise.all([
+      db.select({ name: services.name, duration: services.durationMinutes, price: services.priceInCents }).from(services).where(and(eq(services.id, pending.serviceId), eq(services.organizationId, input.organizationId), eq(services.isActive, true))).limit(1),
+      db.select({ name: professionals.name }).from(professionals).where(and(eq(professionals.id, pending.professionalId), eq(professionals.organizationId, input.organizationId), eq(professionals.isActive, true), eq(professionals.isBookable, true))).limit(1),
+    ]);
+    if (!service || !professional) throw new Error("O serviço ou profissional não está mais disponível.");
+    const item = await withAppointmentLock(input.organizationId, pending.professionalId, async (tx) => {
+      const [repeat] = await tx.select().from(appointments).where(and(eq(appointments.organizationId, input.organizationId), sql`${appointments.metadata}->>'whatsappCommandMessageId' = ${input.messageId}`)).limit(1); if (repeat) return repeat;
+      if (!await isTimeAvailable({ organizationId: input.organizationId, timezone, date: organizationDate(startsAt, timezone), serviceId: pending.serviceId, professionalId: pending.professionalId, startsAt })) throw new Error("Esse horário acabou de ficar indisponível. Escolha outro horário.");
+      const [created] = await tx.insert(appointments).values({ organizationId: input.organizationId, clientId, serviceId: pending.serviceId, professionalId: pending.professionalId, startsAt, endsAt: new Date(startsAt.getTime() + service.duration * 60000), priceInCents: service.price, source: "whatsapp", metadata: { whatsappCommandMessageId: input.messageId, conversationId: input.conversationId } }).returning();
+      await tx.insert(auditLogs).values({ organizationId: input.organizationId, action: "create", entityType: "appointment", entityId: created.id, details: { clientId, source: "whatsapp", startsAt: startsAt.toISOString(), status: "scheduled", messageId: input.messageId } }); return created;
+    });
+    await Promise.allSettled([syncAppointmentFinancialEntry(item.id), syncAppointmentToGoogleCalendar(item.id)]);
+    return `Agendamento confirmado: ${service.name} com ${professional.name}, em ${formatOrganizationDateTime(item.startsAt, timezone)}.`;
+  }
+  const [current] = await db.select({ id: appointments.id, startsAt: appointments.startsAt, status: appointments.status, metadata: appointments.metadata, serviceId: appointments.serviceId, serviceName: services.name, professionalId: appointments.professionalId, professionalName: professionals.name })
+    .from(appointments).innerJoin(services, eq(services.id, appointments.serviceId)).leftJoin(professionals, eq(professionals.id, appointments.professionalId))
+    .where(and(eq(appointments.id, pending.appointmentId), eq(appointments.organizationId, input.organizationId), eq(appointments.clientId, clientId))).limit(1);
+  if (!current) throw new Error("Não encontrei esse agendamento.");
+  if (current.metadata?.whatsappCommandMessageId === input.messageId) return pending.kind === "cancel" ? `Seu agendamento de ${current.serviceName} já está cancelado.` : `Seu agendamento já foi reagendado para ${formatOrganizationDateTime(current.startsAt, timezone)}.`;
+  if (pending.kind === "cancel") {
+    await db.transaction(async (tx) => { await tx.update(appointments).set({ status: "cancelled", cancellationReason: pending.reason, metadata: { ...(current.metadata ?? {}), whatsappCommandMessageId: input.messageId, conversationId: input.conversationId }, updatedAt: new Date() }).where(eq(appointments.id, current.id)); await tx.insert(auditLogs).values({ organizationId: input.organizationId, action: "status:cancelled", entityType: "appointment", entityId: current.id, details: { previousStatus: current.status, status: "cancelled", cancellationReason: pending.reason, source: "whatsapp", messageId: input.messageId } }); });
+    await Promise.allSettled([deleteAppointmentFromGoogleCalendar(current.id), reconcilePackageUsage(current.id, "cancelled"), syncAppointmentFinancialEntry(current.id)]); return `Seu agendamento de ${current.serviceName}, previsto para ${formatOrganizationDateTime(current.startsAt, timezone)}, foi cancelado.`;
+  }
+  if (!current.professionalId) throw new Error("Esse agendamento não possui profissional definido.");
+  const startsAt = new Date(pending.startsAt); const [service] = await db.select({ duration: services.durationMinutes }).from(services).where(eq(services.id, current.serviceId)).limit(1);
+  const updated = await withAppointmentLock(input.organizationId, current.professionalId, async (tx) => {
+    if (!await isTimeAvailable({ organizationId: input.organizationId, timezone, date: organizationDate(startsAt, timezone), serviceId: current.serviceId, professionalId: current.professionalId, excludeAppointmentId: current.id, startsAt })) throw new Error("Esse horário acabou de ficar indisponível. Escolha outro horário.");
+    const [row] = await tx.update(appointments).set({ startsAt, endsAt: new Date(startsAt.getTime() + service.duration * 60000), status: "scheduled", reminderClaimedAt: null, reminderSentAt: null, metadata: { ...(current.metadata ?? {}), whatsappCommandMessageId: input.messageId, conversationId: input.conversationId }, updatedAt: new Date() }).where(eq(appointments.id, current.id)).returning();
+    await tx.insert(auditLogs).values({ organizationId: input.organizationId, action: "reschedule", entityType: "appointment", entityId: current.id, details: { from: current.startsAt.toISOString(), to: startsAt.toISOString(), source: "whatsapp", messageId: input.messageId } }); return row;
+  });
+  await Promise.allSettled([syncAppointmentToGoogleCalendar(updated.id), syncAppointmentFinancialEntry(updated.id)]); return `Seu agendamento de ${current.serviceName} foi reagendado para ${formatOrganizationDateTime(updated.startsAt, timezone)}.`;
 }
 
 export async function POST(request: NextRequest) {
   if (!authorized(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const input = inputSchema.parse(await request.json());
-  const [conversation] = await db.select().from(chatConversations).where(and(
-    eq(chatConversations.id, input.conversationId),
-    eq(chatConversations.organizationId, input.organizationId),
-  )).limit(1);
+  const parsed = inputSchema.safeParse(await request.json()); if (!parsed.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 }); const input = parsed.data;
+  if ((await db.select({ id: chatMessages.id }).from(chatMessages).where(eq(chatMessages.externalMessageId, `aggenda-ai:${input.messageId}`)).limit(1))[0]) return NextResponse.json({ accepted: true, duplicate: true });
+  const [conversation] = await db.select().from(chatConversations).where(and(eq(chatConversations.id, input.conversationId), eq(chatConversations.organizationId, input.organizationId))).limit(1);
   if (!conversation) return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
-  if (conversation.automationPaused || conversation.handoffStatus === "human") {
-    return NextResponse.json({ accepted: true, skipped: "human_handoff" });
+  if (conversation.automationPaused || conversation.handoffStatus === "human") return NextResponse.json({ accepted: true, skipped: "human_handoff" });
+  const [organization] = await db.select({ name: organizations.name, description: organizations.publicDescription, timezone: organizations.timezone, slotIntervalMinutes: organizations.slotIntervalMinutes }).from(organizations).where(eq(organizations.id, input.organizationId)).limit(1);
+  if (!organization) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+  const [latest] = await db.select({ rawPayload: chatMessages.rawPayload }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), eq(chatMessages.direction, "outbound"))).orderBy(desc(chatMessages.occurredAt)).limit(1);
+  const pending = parsePending(latest?.rawPayload); const clientId = await getClient(input, conversation);
+  if (pending && (isAffirmativeWhatsAppCommand(input.text) || isNegativeWhatsAppCommand(input.text))) {
+    if (isNegativeWhatsAppCommand(input.text)) { await send(input, conversation, { reply: "Tudo bem. A operação não foi realizada. Como mais posso ajudar?", model: "aggenda-transactional-v1", intent: "operation_declined", confidence: 1 }); return NextResponse.json({ accepted: true, action: "declined" }); }
+    try { const reply = await execute(input, pending, clientId, organization.timezone); await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: pending.kind, confidence: 1 }); return NextResponse.json({ accepted: true, action: pending.kind }); }
+    catch (error) { const reply = error instanceof Error ? error.message : "Não foi possível concluir a operação."; await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: `${pending.kind}_failed`, confidence: 1 }); return NextResponse.json({ accepted: true, action: `${pending.kind}_failed` }); }
   }
-
-  const [organization] = await db.select({ name: organizations.name, description: organizations.publicDescription }).from(organizations)
-    .where(eq(organizations.id, input.organizationId)).limit(1);
-  const catalog = await db.select({ name: services.name, description: services.description, durationMinutes: services.durationMinutes, priceInCents: services.priceInCents })
-    .from(services).where(and(eq(services.organizationId, input.organizationId), eq(services.isActive, true))).limit(50);
-  const history = await db.select({ direction: chatMessages.direction, body: chatMessages.body }).from(chatMessages)
-    .where(and(eq(chatMessages.organizationId, input.organizationId), eq(chatMessages.conversationId, input.conversationId)))
-    .orderBy(desc(chatMessages.occurredAt)).limit(12);
-
-  const usesAi = input.whatsappServiceCode === "chat_ai" || input.whatsappServiceCode === "core_ai";
-  const result = usesAi ? await generateAiJson({
-    schema: answerSchema,
-    messages: [
-      { role: "system", content: "Você é o atendimento comercial do Aggenda para a empresa informada. Responda em português do Brasil, com objetividade e cordialidade. Use somente o contexto aprovado. Nunca invente preços, serviços, horários ou políticas. Não faça diagnóstico clínico. Não execute ações operacionais: quando a pessoa quiser agendar, cancelar, pagar ou falar com alguém, colete o necessário e encaminhe para atendimento humano. Responda somente JSON com action, reply, intent e confidence. Use action=handoff em pedido humano, ação operacional, risco ou confiança abaixo de 0.65." },
-      { role: "user", content: JSON.stringify({ organization, catalog, recentMessages: history.reverse(), currentMessage: input.text }) },
-    ],
-  }) : {
-    data: {
-      action: "reply" as const,
-      reply: `Olá! Você está falando com ${organization?.name ?? "nossa equipe"}. Como podemos ajudar?`,
-      intent: "greeting",
-      confidence: 1,
-    },
-    model: "aggenda-deterministic-v1",
-  };
-
-  const externalMessageId = `aggenda-ai:${input.messageId}`;
-  const now = new Date();
-  await db.transaction(async (tx) => {
-    const [stored] = await tx.insert(chatMessages).values({
-      organizationId: input.organizationId,
-      conversationId: input.conversationId,
-      externalMessageId,
-      direction: "outbound",
-      status: "queued",
-      messageType: "text",
-      body: result.data.reply,
-      rawPayload: { source: "aggenda_ai", model: result.model, intent: result.data.intent, confidence: result.data.confidence },
-      occurredAt: now,
-    }).onConflictDoNothing({ target: chatMessages.externalMessageId }).returning({ id: chatMessages.id });
-    if (!stored) return;
-    await tx.insert(outboxEvents).values({
-      organizationId: input.organizationId,
-      eventKey: `whatsapp:ai-reply:${input.messageId}`,
-      eventType: "whatsapp.message.send",
-      aggregateType: "chat_message",
-      aggregateId: stored.id,
-      payload: { organizationId: input.organizationId, channelId: conversation.channelId, conversationId: input.conversationId, messageId: stored.id, phoneNumberId: input.phoneNumberId, to: input.from, text: result.data.reply },
-    }).onConflictDoNothing({ target: outboxEvents.eventKey });
-    await tx.update(chatConversations).set({
-      handoffStatus: result.data.action === "handoff" ? "requested" : conversation.handoffStatus,
-      handoffReason: result.data.action === "handoff" ? `IA: ${result.data.intent}` : conversation.handoffReason,
-      automationPaused: result.data.action === "handoff",
-      handoffRequestedAt: result.data.action === "handoff" ? now : conversation.handoffRequestedAt,
-      updatedAt: now,
-    }).where(eq(chatConversations.id, input.conversationId));
-    if (usesAi) {
-      const periodStart = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
-      await tx.insert(organizationUsageCounters).values({ organizationId: input.organizationId, periodStart, metric: "ai.calls", quantity: 1 })
-        .onConflictDoUpdate({ target: [organizationUsageCounters.organizationId, organizationUsageCounters.periodStart, organizationUsageCounters.metric], set: { quantity: sql`${organizationUsageCounters.quantity} + 1`, updatedAt: now } });
+  const [catalog, professionalRows, future, history] = await Promise.all([
+    db.select({ id: services.id, name: services.name, description: services.description, durationMinutes: services.durationMinutes, priceInCents: services.priceInCents }).from(services).where(and(eq(services.organizationId, input.organizationId), eq(services.isActive, true))).limit(50),
+    db.select({ id: professionals.id, name: professionals.name, serviceId: servicesToProfessionals.serviceId }).from(professionals).leftJoin(servicesToProfessionals, and(eq(servicesToProfessionals.professionalId, professionals.id), eq(servicesToProfessionals.organizationId, input.organizationId))).where(and(eq(professionals.organizationId, input.organizationId), eq(professionals.isActive, true), eq(professionals.isBookable, true))),
+    upcoming(input.organizationId, clientId), db.select({ direction: chatMessages.direction, body: chatMessages.body }).from(chatMessages).where(eq(chatMessages.conversationId, input.conversationId)).orderBy(desc(chatMessages.occurredAt)).limit(12),
+  ]);
+  const ai = input.whatsappServiceCode === "chat_ai" || input.whatsappServiceCode === "core_ai";
+  if (input.whatsappServiceCode !== "core_ai") {
+    const result = ai ? await generateAiJson({ schema: chatAnswerSchema, messages: [{ role: "system", content: "Atenda em português usando somente o contexto. Não execute operações; transfira ações operacionais ou casos ambíguos para humano. Responda JSON com action, reply, intent e confidence." }, { role: "user", content: JSON.stringify({ organization, catalog, recentMessages: history.reverse(), currentMessage: input.text }) }] }) : { data: { action: "reply" as const, reply: `Olá! Você está falando com ${organization.name}. Como podemos ajudar?`, intent: "greeting", confidence: 1 }, model: "aggenda-deterministic-v1" };
+    await send(input, conversation, { reply: result.data.reply, model: result.model, intent: result.data.intent, confidence: result.data.confidence, handoff: result.data.action === "handoff", ai }); return NextResponse.json({ accepted: true, action: result.data.action });
+  }
+  const result = await generateAiJson({ schema: coreAnswerSchema, messages: [{ role: "system", content: "Você é o agente de agendamentos do Aggenda. Nunca invente IDs ou dados. Use availability para horários, prepare_booking para agendar, prepare_reschedule para reagendar, prepare_cancel para cancelar e confirm_appointment para confirmar. A aplicação fará validações e pedirá confirmação antes de alterações. Se faltar dado, use reply e pergunte somente o próximo. Use handoff em ambiguidade relevante ou confiança abaixo de 0,65. Datas YYYY-MM-DD, horas HH:mm. Responda somente JSON." }, { role: "user", content: JSON.stringify({ today: organizationDate(new Date(), organization.timezone), timezone: organization.timezone, organization, catalog, professionals: professionalRows, upcomingAppointments: future.map(x => ({ ...x, startsAtLocal: formatOrganizationDateTime(x.startsAt, organization.timezone) })), recentMessages: history.reverse(), currentMessage: input.text }) }] });
+  const answer = result.data; let reply = answer.reply; let nextPending: Pending | undefined;
+  const service = answer.serviceId ? catalog.find(x => x.id === answer.serviceId) : undefined; const professional = answer.professionalId ? professionalRows.find(x => x.id === answer.professionalId) : undefined; const appointment = answer.appointmentId ? future.find(x => x.id === answer.appointmentId) : future.length === 1 ? future[0] : undefined;
+  if (answer.action === "availability" || answer.action === "prepare_booking") {
+    if (!service || !professional || !answer.date) reply = !service ? `Qual serviço você deseja? ${catalog.map(x => x.name).join(", ")}` : !professional ? `Com qual profissional? ${professionalRows.map(x => x.name).join(", ")}` : "Para qual data deseja consultar?";
+    else { const slots = await getAvailableTimes({ organizationId: input.organizationId, timezone: organization.timezone, date: answer.date, serviceId: service.id, professionalId: professional.id, slotIntervalMinutes: organization.slotIntervalMinutes }); const selected = answer.time ? slots?.find(x => localTime(new Date(x), organization.timezone) === answer.time) : undefined;
+      if (answer.action === "prepare_booking" && selected) { nextPending = { kind: "book", serviceId: service.id, professionalId: professional.id, startsAt: selected }; reply = `Confirma ${service.name} com ${professional.name} em ${formatOrganizationDateTime(new Date(selected), organization.timezone)}? Responda CONFIRMAR.`; }
+      else reply = slots?.length ? `Horários disponíveis: ${slots.slice(0, 10).map(x => localTime(new Date(x), organization.timezone)).join(", ")}. Qual prefere?` : "Não há horários disponíveis nessa data. Deseja outro dia?";
     }
-  });
-  await triggerOutboxWorker();
-  return NextResponse.json({ accepted: true, action: result.data.action, model: result.model });
+  } else if (answer.action === "prepare_reschedule") {
+    if (!appointment) reply = future.length ? "Qual agendamento deseja alterar?" : "Não encontrei agendamentos futuros.";
+    else if (!answer.date || !answer.time || !appointment.professionalId) reply = "Para qual data e horário deseja reagendar?";
+    else { const slots = await getAvailableTimes({ organizationId: input.organizationId, timezone: organization.timezone, date: answer.date, serviceId: appointment.serviceId, professionalId: appointment.professionalId, slotIntervalMinutes: organization.slotIntervalMinutes, excludeAppointmentId: appointment.id }); const selected = slots?.find(x => localTime(new Date(x), organization.timezone) === answer.time); if (!selected) reply = "Esse horário não está disponível."; else { nextPending = { kind: "reschedule", appointmentId: appointment.id, startsAt: selected }; reply = `Confirma reagendar ${appointment.serviceName} de ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)} para ${formatOrganizationDateTime(new Date(selected), organization.timezone)}? Responda CONFIRMAR.`; } }
+  } else if (answer.action === "prepare_cancel") {
+    if (!appointment) reply = future.length ? "Qual agendamento deseja cancelar?" : "Não encontrei agendamentos futuros."; else { nextPending = { kind: "cancel", appointmentId: appointment.id, reason: answer.cancellationReason || "Cancelado pelo cliente via WhatsApp" }; reply = `Confirma cancelar ${appointment.serviceName}, marcado para ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)}? Responda CONFIRMAR.`; }
+  } else if (answer.action === "confirm_appointment") {
+    if (!appointment) reply = future.length ? "Qual agendamento deseja confirmar?" : "Não encontrei agendamentos futuros."; else { await db.transaction(async tx => { await tx.update(appointments).set({ status: "confirmed", confirmedAt: new Date(), metadata: { whatsappCommandMessageId: input.messageId, conversationId: input.conversationId }, updatedAt: new Date() }).where(eq(appointments.id, appointment.id)); await tx.insert(auditLogs).values({ organizationId: input.organizationId, action: "status:confirmed", entityType: "appointment", entityId: appointment.id, details: { previousStatus: appointment.status, status: "confirmed", source: "whatsapp", messageId: input.messageId } }); }); reply = `Agendamento de ${appointment.serviceName}, em ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)}, confirmado.`; }
+  }
+  await send(input, conversation, { reply, model: result.model, intent: answer.intent, confidence: answer.confidence, pending: nextPending, handoff: answer.action === "handoff", ai: true }); return NextResponse.json({ accepted: true, action: answer.action });
 }

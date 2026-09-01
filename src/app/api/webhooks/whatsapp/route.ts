@@ -258,7 +258,7 @@ export async function POST(request: NextRequest) {
 
         if (inserted) {
           accepted += 1;
-          if (message.type === "text") await applyAppointmentReply(channel.organizationId, message.from, message.text?.body);
+          if (message.type === "text" && !workflowProduct) await applyAppointmentReply(channel.organizationId, message.from, message.text?.body);
         }
       }
     }

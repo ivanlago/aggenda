@@ -246,9 +246,6 @@ async function forwardInboundToN8n(connection: Client, event: OutboxEvent) {
     CHAT: process.env.N8N_CHAT_WEBHOOK_URL,
     CHAT_AI: process.env.N8N_CHAT_AI_WEBHOOK_URL,
     CORE: process.env.N8N_CORE_WEBHOOK_URL,
-    CORE_AI:
-      process.env.N8N_CORE_AI_WEBHOOK_URL ??
-      "https://n8n.aggenda.app.br/webhook/aggenda-whatsapp-outbox",
   };
   const url = urls[workflowProduct] ?? process.env.N8N_FALLBACK_WEBHOOK_URL;
 
@@ -441,7 +438,8 @@ async function recordOutboundUsage(connection: Client, event: OutboxEvent) {
 async function handleEvent(connection: Client, event: OutboxEvent) {
   switch (event.event_type) {
     case "whatsapp.message.received":
-      await forwardInboundToN8n(connection, event);
+      if (String(event.payload.workflowProduct ?? "") === "CORE_AI") await processInboundWithAggenda(event);
+      else await forwardInboundToN8n(connection, event);
       return;
     case "commercial.automation.requested":
       await forwardCommercialAutomationToN8n(event);

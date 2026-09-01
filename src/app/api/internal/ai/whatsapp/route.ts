@@ -115,9 +115,18 @@ export async function POST(request: NextRequest) {
   if (!authorized(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const parsed = inputSchema.safeParse(await request.json()); if (!parsed.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 }); const input = parsed.data;
   if ((await db.select({ id: chatMessages.id }).from(chatMessages).where(eq(chatMessages.externalMessageId, `aggenda-ai:${input.messageId}`)).limit(1))[0]) return NextResponse.json({ accepted: true, duplicate: true });
-  const [conversation] = await db.select().from(chatConversations).where(and(eq(chatConversations.id, input.conversationId), eq(chatConversations.organizationId, input.organizationId))).limit(1);
-  if (!conversation) return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
-  if (conversation.automationPaused || conversation.handoffStatus === "human") return NextResponse.json({ accepted: true, skipped: "human_handoff" });
+  const [loadedConversation] = await db.select().from(chatConversations).where(and(eq(chatConversations.id, input.conversationId), eq(chatConversations.organizationId, input.organizationId))).limit(1);
+  if (!loadedConversation) return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+  const legacySchedulingPause = input.whatsappServiceCode === "core_ai" && loadedConversation.handoffStatus === "requested" && /^IA: (schedule|appointment)/i.test(loadedConversation.handoffReason ?? "");
+  const conversation = legacySchedulingPause ? { ...loadedConversation, handoffStatus: "bot", handoffReason: null, automationPaused: false, handoffResolvedAt: new Date() } : loadedConversation;
+  if (legacySchedulingPause) {
+    await db.update(chatConversations).set({ handoffStatus: "bot", handoffReason: null, automationPaused: false, handoffResolvedAt: conversation.handoffResolvedAt, updatedAt: new Date() }).where(eq(chatConversations.id, input.conversationId));
+    console.info("[whatsapp-agent] pausa legada de agendamento removida", { conversationId: input.conversationId });
+  }
+  if (conversation.automationPaused || conversation.handoffStatus === "human") {
+    console.info("[whatsapp-agent] conversa sob atendimento humano", { conversationId: input.conversationId, handoffStatus: conversation.handoffStatus });
+    return NextResponse.json({ accepted: true, skipped: "human_handoff" });
+  }
   const [organization] = await db.select({ name: organizations.name, description: organizations.publicDescription, timezone: organizations.timezone, slotIntervalMinutes: organizations.slotIntervalMinutes }).from(organizations).where(eq(organizations.id, input.organizationId)).limit(1);
   if (!organization) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
   const [latest] = await db.select({ rawPayload: chatMessages.rawPayload }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), eq(chatMessages.direction, "outbound"))).orderBy(desc(chatMessages.occurredAt)).limit(1);

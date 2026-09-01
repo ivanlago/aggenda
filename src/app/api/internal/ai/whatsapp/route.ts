@@ -52,6 +52,11 @@ function parseBrazilianTime(value: string) {
   const match = value.match(/\b([01]?\d|2[0-3])(?::|h)([0-5]\d)?\b/i);
   return match ? `${match[1].padStart(2, "0")}:${match[2] ?? "00"}` : null;
 }
+function asksForUpcomingAppointments(value: string) {
+  const normalized = normalizedText(value);
+  return /(meus?|quais|listar|consultar|ver).*(agendamentos?|horarios?|consultas?)/.test(normalized)
+    || /(agendamentos?|horarios?|consultas?).*(marcados?|proximos?|futuros?)/.test(normalized);
+}
 function parsePending(payload?: Record<string, unknown> | null): Pending | null {
   const result = z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("book"), serviceId: z.string().uuid(), professionalId: z.string().uuid(), startsAt: z.string().datetime() }),
@@ -168,6 +173,13 @@ export async function POST(request: NextRequest) {
     const result = ai ? await generateAiJson({ schema: chatAnswerSchema, messages: [{ role: "system", content: "Atenda em português usando somente o contexto. Não execute operações; transfira ações operacionais ou casos ambíguos para humano. Responda JSON com action, reply, intent e confidence." }, { role: "user", content: JSON.stringify({ organization, catalog, recentMessages: history.reverse(), currentMessage: input.text }) }] }) : { data: { action: "reply" as const, reply: `Olá! Você está falando com ${organization.name}. Como podemos ajudar?`, intent: "greeting", confidence: 1 }, model: "aggenda-deterministic-v1" };
     await send(input, conversation, { reply: result.data.reply, model: result.model, intent: result.data.intent, confidence: result.data.confidence, handoff: result.data.action === "handoff", ai }); return NextResponse.json({ accepted: true, action: result.data.action });
   }
+  if (asksForUpcomingAppointments(input.text)) {
+    const reply = future.length
+      ? `Seus próximos agendamentos:\n${future.map((appointment) => `• ${appointment.serviceName} com ${appointment.professionalName ?? "profissional a definir"}, em ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)} (${appointment.status === "confirmed" ? "confirmado" : "agendado"})`).join("\n")}`
+      : "Você não possui agendamentos futuros ativos.";
+    await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "list_appointments", confidence: 1 });
+    return NextResponse.json({ accepted: true, action: "reply" });
+  }
   const contextTexts = [input.text, ...history.map((message) => message.body ?? "")];
   const directlyMentionedProfessional = mentionedByName(professionalRows, [input.text]);
   const contextualService = mentionedByName(catalog, contextTexts);
@@ -210,7 +222,7 @@ export async function POST(request: NextRequest) {
     result = await generateAiJson({ schema: coreAnswerSchema, messages: [{ role: "system", content: "Você é o agente de agendamentos do Aggenda. Nunca invente IDs ou dados. Use availability para horários, prepare_booking para agendar, prepare_reschedule para reagendar, prepare_cancel para cancelar e confirm_appointment para confirmar. A aplicação fará validações e pedirá confirmação antes de alterações. Se faltar dado, use reply e pergunte somente o próximo. Use handoff em ambiguidade relevante ou confiança abaixo de 0,65. Datas YYYY-MM-DD, horas HH:mm. Responda somente JSON." }, { role: "user", content: JSON.stringify({ today: organizationDate(new Date(), organization.timezone), timezone: organization.timezone, organization, catalog, professionals: professionalRows, upcomingAppointments: future.map(x => ({ ...x, startsAtLocal: formatOrganizationDateTime(x.startsAt, organization.timezone) })), recentMessages: history.reverse(), currentMessage: input.text }) }] });
   } catch (error) {
     console.error("[whatsapp-agent] falha ao interpretar mensagem", { conversationId: input.conversationId, messageId: input.messageId, error: error instanceof Error ? error.message : String(error) });
-    await send(input, conversation, { reply: "Não consegui interpretar essa informação. Pode informar somente a data desejada no formato dia/mês/ano?", model: "aggenda-transactional-v1", intent: "interpretation_failed", confidence: 1 });
+    await send(input, conversation, { reply: "Não consegui interpretar essa solicitação. Pode reformular em uma frase?", model: "aggenda-transactional-v1", intent: "interpretation_failed", confidence: 1 });
     return NextResponse.json({ accepted: true, action: "reply_fallback" });
   }
   const answer = result.data; let reply = answer.reply; let nextPending: Pending | undefined;

@@ -57,6 +57,12 @@ function asksForUpcomingAppointments(value: string) {
   return /(meus?|quais|listar|consultar|ver).*(agendamentos?|horarios?|consultas?)/.test(normalized)
     || /(agendamentos?|horarios?|consultas?).*(marcados?|proximos?|futuros?)/.test(normalized);
 }
+function asksToReschedule(value: string) {
+  return /\b(reagend|remarc|alterar? (?:a )?(?:data|hora|horario))/.test(normalizedText(value));
+}
+function asksToCancel(value: string) {
+  return /\b(cancel|desmarc)/.test(normalizedText(value));
+}
 function parsePending(payload?: Record<string, unknown> | null): Pending | null {
   const result = z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("book"), serviceId: z.string().uuid(), professionalId: z.string().uuid(), startsAt: z.string().datetime() }),
@@ -194,6 +200,40 @@ export async function POST(request: NextRequest) {
       : `${directlyMentionedProfessional.name} não realiza ${contextualService.name}. Deseja consultar outro profissional?`;
     await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "select_professional", confidence: 1 });
     return NextResponse.json({ accepted: true, action: "reply" });
+  }
+  if (asksToReschedule(input.text)) {
+    const matchingAppointments = contextualService ? future.filter((item) => item.serviceId === contextualService.id) : [];
+    const appointment = future.length === 1 ? future[0] : matchingAppointments.length === 1 ? matchingAppointments[0] : undefined;
+    if (!appointment) {
+      const reply = future.length ? "Qual dos seus agendamentos você deseja reagendar?" : "Você não possui agendamentos futuros ativos.";
+      await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "prepare_reschedule", confidence: 1 });
+      return NextResponse.json({ accepted: true, action: "reply" });
+    }
+    if (!directDate || !directTime || !appointment.professionalId) {
+      await send(input, conversation, { reply: "Para qual data e horário deseja reagendar?", model: "aggenda-transactional-v1", intent: "prepare_reschedule", confidence: 1 });
+      return NextResponse.json({ accepted: true, action: "reply" });
+    }
+    const slots = await getAvailableTimes({ organizationId: input.organizationId, timezone: organization.timezone, date: directDate, serviceId: appointment.serviceId, professionalId: appointment.professionalId, slotIntervalMinutes: organization.slotIntervalMinutes, excludeAppointmentId: appointment.id });
+    const selected = slots?.find((slot) => localTime(new Date(slot), organization.timezone) === directTime);
+    if (!selected) {
+      await send(input, conversation, { reply: "Esse horário não está disponível. Escolha outro horário.", model: "aggenda-transactional-v1", intent: "prepare_reschedule", confidence: 1 });
+      return NextResponse.json({ accepted: true, action: "reply" });
+    }
+    const nextPending: Pending = { kind: "reschedule", appointmentId: appointment.id, startsAt: selected };
+    await send(input, conversation, { reply: `Confirma reagendar ${appointment.serviceName} de ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)} para ${formatOrganizationDateTime(new Date(selected), organization.timezone)}? Responda CONFIRMAR.`, model: "aggenda-transactional-v1", intent: "prepare_reschedule", confidence: 1, pending: nextPending });
+    return NextResponse.json({ accepted: true, action: "prepare_reschedule" });
+  }
+  if (asksToCancel(input.text)) {
+    const matchingAppointments = contextualService ? future.filter((item) => item.serviceId === contextualService.id) : [];
+    const appointment = future.length === 1 ? future[0] : matchingAppointments.length === 1 ? matchingAppointments[0] : undefined;
+    if (!appointment) {
+      const reply = future.length ? "Qual dos seus agendamentos você deseja cancelar?" : "Você não possui agendamentos futuros ativos.";
+      await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "prepare_cancel", confidence: 1 });
+      return NextResponse.json({ accepted: true, action: "reply" });
+    }
+    const nextPending: Pending = { kind: "cancel", appointmentId: appointment.id, reason: "Cancelado pelo cliente via WhatsApp" };
+    await send(input, conversation, { reply: `Confirma cancelar ${appointment.serviceName}, marcado para ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)}? Responda CONFIRMAR.`, model: "aggenda-transactional-v1", intent: "prepare_cancel", confidence: 1, pending: nextPending });
+    return NextResponse.json({ accepted: true, action: "prepare_cancel" });
   }
   if (contextualService && contextualProfessional && (directDate || (directTime && contextualDate))) {
     const date = directDate ?? contextualDate!;

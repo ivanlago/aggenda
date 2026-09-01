@@ -33,6 +33,13 @@ type Pending = { kind: "book"; serviceId: string; professionalId: string; starts
 
 function authorized(request: NextRequest) { const key = process.env.AGGENDA_INTERNAL_API_KEY; return Boolean(key && request.headers.get("authorization") === `Bearer ${key}`); }
 function localTime(date: Date, timezone: string) { return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: timezone }).format(date); }
+function normalizedText(value: string) { return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR"); }
+function mentionedByName<T extends { name: string }>(rows: T[], texts: string[]) {
+  return texts.flatMap((text) => {
+    const normalized = normalizedText(text);
+    return rows.filter((row) => normalized.includes(normalizedText(row.name)));
+  })[0];
+}
 function parsePending(payload?: Record<string, unknown> | null): Pending | null {
   const result = z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("book"), serviceId: z.string().uuid(), professionalId: z.string().uuid(), startsAt: z.string().datetime() }),
@@ -146,7 +153,25 @@ export async function POST(request: NextRequest) {
     const result = ai ? await generateAiJson({ schema: chatAnswerSchema, messages: [{ role: "system", content: "Atenda em português usando somente o contexto. Não execute operações; transfira ações operacionais ou casos ambíguos para humano. Responda JSON com action, reply, intent e confidence." }, { role: "user", content: JSON.stringify({ organization, catalog, recentMessages: history.reverse(), currentMessage: input.text }) }] }) : { data: { action: "reply" as const, reply: `Olá! Você está falando com ${organization.name}. Como podemos ajudar?`, intent: "greeting", confidence: 1 }, model: "aggenda-deterministic-v1" };
     await send(input, conversation, { reply: result.data.reply, model: result.model, intent: result.data.intent, confidence: result.data.confidence, handoff: result.data.action === "handoff", ai }); return NextResponse.json({ accepted: true, action: result.data.action });
   }
-  const result = await generateAiJson({ schema: coreAnswerSchema, messages: [{ role: "system", content: "Você é o agente de agendamentos do Aggenda. Nunca invente IDs ou dados. Use availability para horários, prepare_booking para agendar, prepare_reschedule para reagendar, prepare_cancel para cancelar e confirm_appointment para confirmar. A aplicação fará validações e pedirá confirmação antes de alterações. Se faltar dado, use reply e pergunte somente o próximo. Use handoff em ambiguidade relevante ou confiança abaixo de 0,65. Datas YYYY-MM-DD, horas HH:mm. Responda somente JSON." }, { role: "user", content: JSON.stringify({ today: organizationDate(new Date(), organization.timezone), timezone: organization.timezone, organization, catalog, professionals: professionalRows, upcomingAppointments: future.map(x => ({ ...x, startsAtLocal: formatOrganizationDateTime(x.startsAt, organization.timezone) })), recentMessages: history.reverse(), currentMessage: input.text }) }] });
+  const contextTexts = [input.text, ...history.map((message) => message.body ?? "")];
+  const directlyMentionedProfessional = mentionedByName(professionalRows, [input.text]);
+  const contextualService = mentionedByName(catalog, contextTexts);
+  if (directlyMentionedProfessional && contextualService) {
+    const professionalPerformsService = professionalRows.some((row) => row.id === directlyMentionedProfessional.id && row.serviceId === contextualService.id);
+    const reply = professionalPerformsService
+      ? `Para qual data você deseja agendar ${contextualService.name} com ${directlyMentionedProfessional.name}?`
+      : `${directlyMentionedProfessional.name} não realiza ${contextualService.name}. Deseja consultar outro profissional?`;
+    await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "select_professional", confidence: 1 });
+    return NextResponse.json({ accepted: true, action: "reply" });
+  }
+  let result: { data: z.infer<typeof coreAnswerSchema>; model: string };
+  try {
+    result = await generateAiJson({ schema: coreAnswerSchema, messages: [{ role: "system", content: "Você é o agente de agendamentos do Aggenda. Nunca invente IDs ou dados. Use availability para horários, prepare_booking para agendar, prepare_reschedule para reagendar, prepare_cancel para cancelar e confirm_appointment para confirmar. A aplicação fará validações e pedirá confirmação antes de alterações. Se faltar dado, use reply e pergunte somente o próximo. Use handoff em ambiguidade relevante ou confiança abaixo de 0,65. Datas YYYY-MM-DD, horas HH:mm. Responda somente JSON." }, { role: "user", content: JSON.stringify({ today: organizationDate(new Date(), organization.timezone), timezone: organization.timezone, organization, catalog, professionals: professionalRows, upcomingAppointments: future.map(x => ({ ...x, startsAtLocal: formatOrganizationDateTime(x.startsAt, organization.timezone) })), recentMessages: history.reverse(), currentMessage: input.text }) }] });
+  } catch (error) {
+    console.error("[whatsapp-agent] falha ao interpretar mensagem", { conversationId: input.conversationId, messageId: input.messageId, error: error instanceof Error ? error.message : String(error) });
+    await send(input, conversation, { reply: "Não consegui interpretar essa informação. Pode informar somente a data desejada no formato dia/mês/ano?", model: "aggenda-transactional-v1", intent: "interpretation_failed", confidence: 1 });
+    return NextResponse.json({ accepted: true, action: "reply_fallback" });
+  }
   const answer = result.data; let reply = answer.reply; let nextPending: Pending | undefined;
   const service = answer.serviceId ? catalog.find(x => x.id === answer.serviceId) : undefined; const professional = answer.professionalId ? professionalRows.find(x => x.id === answer.professionalId) : undefined; const appointment = answer.appointmentId ? future.find(x => x.id === answer.appointmentId) : future.length === 1 ? future[0] : undefined;
   if (answer.action === "availability" || answer.action === "prepare_booking") {

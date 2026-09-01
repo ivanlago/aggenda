@@ -40,6 +40,18 @@ function mentionedByName<T extends { name: string }>(rows: T[], texts: string[])
     return rows.filter((row) => normalized.includes(normalizedText(row.name)));
   })[0];
 }
+function parseBrazilianDate(value: string) {
+  const match = value.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
+  if (!match) return null;
+  const [, day, month, year] = match;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (date.getUTCFullYear() !== Number(year) || date.getUTCMonth() !== Number(month) - 1 || date.getUTCDate() !== Number(day)) return null;
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+}
+function parseBrazilianTime(value: string) {
+  const match = value.match(/\b([01]?\d|2[0-3])(?::|h)([0-5]\d)?\b/i);
+  return match ? `${match[1].padStart(2, "0")}:${match[2] ?? "00"}` : null;
+}
 function parsePending(payload?: Record<string, unknown> | null): Pending | null {
   const result = z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("book"), serviceId: z.string().uuid(), professionalId: z.string().uuid(), startsAt: z.string().datetime() }),
@@ -66,6 +78,9 @@ async function getClient(input: Input, conversation: Conversation) {
 async function send(input: Input, conversation: Conversation, data: { reply: string; model: string; intent: string; confidence: number; pending?: Pending; handoff?: boolean; ai?: boolean }) {
   const now = new Date(); let inserted = false;
   await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.conversationId}))`);
+    const [recentDuplicate] = await tx.select({ id: chatMessages.id }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), eq(chatMessages.direction, "outbound"), eq(chatMessages.body, data.reply), gte(chatMessages.occurredAt, new Date(now.getTime() - 120_000)))).limit(1);
+    if (recentDuplicate) return;
     const [message] = await tx.insert(chatMessages).values({ organizationId: input.organizationId, conversationId: input.conversationId, externalMessageId: `aggenda-ai:${input.messageId}`, direction: "outbound", status: "queued", messageType: "text", body: data.reply, rawPayload: { source: "aggenda_ai", model: data.model, intent: data.intent, confidence: data.confidence, ...(data.pending ? { pendingAction: data.pending } : {}) }, occurredAt: now })
       .onConflictDoNothing({ target: chatMessages.externalMessageId }).returning({ id: chatMessages.id });
     if (!message) return; inserted = true;
@@ -156,6 +171,10 @@ export async function POST(request: NextRequest) {
   const contextTexts = [input.text, ...history.map((message) => message.body ?? "")];
   const directlyMentionedProfessional = mentionedByName(professionalRows, [input.text]);
   const contextualService = mentionedByName(catalog, contextTexts);
+  const contextualProfessional = mentionedByName(professionalRows, contextTexts);
+  const directDate = parseBrazilianDate(input.text);
+  const contextualDate = contextTexts.map(parseBrazilianDate).find(Boolean) ?? null;
+  const directTime = parseBrazilianTime(input.text);
   if (directlyMentionedProfessional && contextualService) {
     const professionalPerformsService = professionalRows.some((row) => row.id === directlyMentionedProfessional.id && row.serviceId === contextualService.id);
     const reply = professionalPerformsService
@@ -163,6 +182,28 @@ export async function POST(request: NextRequest) {
       : `${directlyMentionedProfessional.name} não realiza ${contextualService.name}. Deseja consultar outro profissional?`;
     await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "select_professional", confidence: 1 });
     return NextResponse.json({ accepted: true, action: "reply" });
+  }
+  if (contextualService && contextualProfessional && (directDate || (directTime && contextualDate))) {
+    const date = directDate ?? contextualDate!;
+    const professionalPerformsService = professionalRows.some((row) => row.id === contextualProfessional.id && row.serviceId === contextualService.id);
+    if (!professionalPerformsService) {
+      await send(input, conversation, { reply: `${contextualProfessional.name} não realiza ${contextualService.name}. Deseja consultar outro profissional?`, model: "aggenda-transactional-v1", intent: "invalid_professional", confidence: 1 });
+      return NextResponse.json({ accepted: true, action: "reply" });
+    }
+    const slots = await getAvailableTimes({ organizationId: input.organizationId, timezone: organization.timezone, date, serviceId: contextualService.id, professionalId: contextualProfessional.id, slotIntervalMinutes: organization.slotIntervalMinutes });
+    const selected = directTime ? slots?.find((slot) => localTime(new Date(slot), organization.timezone) === directTime) : undefined;
+    if (directTime && selected) {
+      const nextPending: Pending = { kind: "book", serviceId: contextualService.id, professionalId: contextualProfessional.id, startsAt: selected };
+      await send(input, conversation, { reply: `Confirma ${contextualService.name} com ${contextualProfessional.name} em ${formatOrganizationDateTime(new Date(selected), organization.timezone)}? Responda CONFIRMAR.`, model: "aggenda-transactional-v1", intent: "prepare_booking", confidence: 1, pending: nextPending });
+      return NextResponse.json({ accepted: true, action: "prepare_booking" });
+    }
+    const reply = directTime
+      ? "Esse horário não está disponível. Escolha outro horário."
+      : slots?.length
+        ? `Horários disponíveis em ${input.text.trim()}: ${slots.slice(0, 10).map((slot) => localTime(new Date(slot), organization.timezone)).join(", ")}. Qual prefere?`
+        : `Não há horários disponíveis em ${input.text.trim()}. Deseja consultar outro dia?`;
+    await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "availability", confidence: 1 });
+    return NextResponse.json({ accepted: true, action: "availability" });
   }
   let result: { data: z.infer<typeof coreAnswerSchema>; model: string };
   try {

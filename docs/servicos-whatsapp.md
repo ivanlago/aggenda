@@ -22,13 +22,15 @@
 
 ## Roteamento do worker
 
-O evento recebido inclui `whatsappServiceCode` e `workflowProduct`. O worker procura
-o webhook específico e usa `N8N_FALLBACK_WEBHOOK_URL` apenas como compatibilidade:
+O evento recebido inclui `whatsappServiceCode` e `workflowProduct`.
 
-- `N8N_CHAT_WEBHOOK_URL`;
-- `N8N_CHAT_AI_WEBHOOK_URL`;
-- `N8N_CORE_WEBHOOK_URL`;
-- `N8N_CORE_AI_WEBHOOK_URL`.
+- `CORE_AI` é processado exclusivamente pelo agente transacional interno do Aggenda,
+  autenticado por `AGGENDA_INTERNAL_API_URL` e `AGGENDA_INTERNAL_API_KEY`.
+- O worker possui uma proteção explícita para impedir que `CORE_AI` seja enviado ao
+  fallback ou a qualquer webhook do n8n.
+- Produtos legados ainda não migrados podem continuar usando temporariamente
+  `N8N_CHAT_WEBHOOK_URL`, `N8N_CHAT_AI_WEBHOOK_URL` e `N8N_CORE_WEBHOOK_URL`.
+- `N8N_COMMERCIAL_WEBHOOK_URL` permanece reservado a automações comerciais publicadas.
 
 ## Estado da implementação
 
@@ -36,7 +38,8 @@ o webhook específico e usa `N8N_FALLBACK_WEBHOOK_URL` apenas como compatibilida
 - Notify: confirmação, reagendamento, cancelamento e lembrete 24 horas antes via templates Meta e outbox com retentativa.
 - Menu e Chat: workflow determinístico parametrizado, com menu, informações e handoff.
 - Chat + AI: workflow com linguagem natural, base aprovada e handoff.
-- Core + AI: dez cenários do MVP, incluindo consulta, reagendamento e cancelamento com confirmação.
+- Core + AI: agente interno com consulta, criação, reagendamento e cancelamento com
+  confirmação, idempotência, auditoria e bloqueio contra horários duplicados.
 - Métricas: entradas, saídas e chamadas de IA contabilizadas mensalmente; alertas de franquia visíveis no painel.
 
 ## Dependências para ativação comercial
@@ -45,5 +48,6 @@ o webhook específico e usa `N8N_FALLBACK_WEBHOOK_URL` apenas como compatibilida
    `META_TEMPLATE_APPOINTMENT_CONFIRMATION`, `META_TEMPLATE_APPOINTMENT_RESCHEDULE`,
    `META_TEMPLATE_APPOINTMENT_CANCELLATION` e `META_TEMPLATE_APPOINTMENT_REMINDER`.
 2. Manter o worker do Coolify ativo; ele consulta e enfileira lembretes a cada cinco minutos. O intervalo pode ser alterado por `WHATSAPP_REMINDER_INTERVAL_MS`.
-3. Importar e homologar os workflows de `workflows/commercial`, configurar a credencial `Aggenda API - n8n`, o ID da organização e as URLs `N8N_*_WEBHOOK_URL` no worker.
+3. Para Core + AI, configurar o agente interno no worker. Importar workflows no n8n
+   somente para produtos legados ainda não migrados ou automações comerciais publicadas.
 4. Executar os dez cenários em número Meta de teste antes de ativar cada organização.

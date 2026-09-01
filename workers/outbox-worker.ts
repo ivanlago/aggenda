@@ -242,6 +242,9 @@ async function processInboundWithAggenda(event: OutboxEvent) {
 
 async function forwardInboundToN8n(connection: Client, event: OutboxEvent) {
   const workflowProduct = String(event.payload.workflowProduct ?? "");
+  if (workflowProduct === "CORE_AI") {
+    throw new Error("CORE_AI deve ser processado exclusivamente pelo agente interno do Aggenda");
+  }
   const urls: Record<string, string | undefined> = {
     CHAT: process.env.N8N_CHAT_WEBHOOK_URL,
     CHAT_AI: process.env.N8N_CHAT_AI_WEBHOOK_URL,

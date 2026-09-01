@@ -42,7 +42,7 @@ export default async function AutomationsPage() {
     CHAT: process.env.N8N_CHAT_WEBHOOK_URL,
     CHAT_AI: process.env.N8N_CHAT_AI_WEBHOOK_URL,
     CORE: process.env.N8N_CORE_WEBHOOK_URL,
-    CORE_AI: process.env.N8N_CORE_AI_WEBHOOK_URL,
+    CORE_AI: undefined,
   };
   const templatesReady = [
     process.env.META_TEMPLATE_APPOINTMENT_CONFIRMATION,
@@ -51,7 +51,9 @@ export default async function AutomationsPage() {
     process.env.META_TEMPLATE_APPOINTMENT_REMINDER,
   ].every(Boolean);
   const channelReady = !current.usesCloudApi || activeChannel;
-  const workflowReady = !current.workflowProduct || Boolean(workflowUrls[current.workflowProduct]);
+  const internalAgentReady = Boolean(process.env.AGGENDA_INTERNAL_API_URL && process.env.AGGENDA_INTERNAL_API_KEY);
+  const workflowReady = !current.workflowProduct
+    || (current.workflowProduct === "CORE_AI" ? internalAgentReady : Boolean(workflowUrls[current.workflowProduct]));
   const serviceReady = channelReady && (!current.usesCloudApi || templatesReady) && workflowReady;
 
   return (
@@ -76,7 +78,7 @@ export default async function AutomationsPage() {
             {serviceReady ? "Serviço pronto para homologação." : "Configuração incompleta: "}
             {!channelReady && "conecte um canal Meta ativo; "}
             {current.usesCloudApi && !templatesReady && "configure os quatro templates transacionais; "}
-            {!workflowReady && `configure o webhook ${current.workflowProduct};`}
+            {!workflowReady && (current.workflowProduct === "CORE_AI" ? "configure o agente interno do Aggenda;" : `configure o webhook ${current.workflowProduct};`)}
           </div>
           {(whatsappLimitReached || aiLimitReached) && (
             <p className="mt-5 rounded-xl bg-amber-50 p-3 text-sm font-bold text-amber-800" role="alert">

@@ -66,9 +66,11 @@ export default async function ImplantationPage() {
     CHAT: process.env.N8N_CHAT_WEBHOOK_URL,
     CHAT_AI: process.env.N8N_CHAT_AI_WEBHOOK_URL,
     CORE: process.env.N8N_CORE_WEBHOOK_URL,
-    CORE_AI: process.env.N8N_CORE_AI_WEBHOOK_URL,
+    CORE_AI: undefined,
   };
-  const automationReady = !product.workflowProduct || Boolean(workflowUrls[product.workflowProduct]);
+  const internalAgentReady = Boolean(process.env.AGGENDA_INTERNAL_API_URL && process.env.AGGENDA_INTERNAL_API_KEY);
+  const automationReady = !product.workflowProduct
+    || (product.workflowProduct === "CORE_AI" ? internalAgentReady : Boolean(workflowUrls[product.workflowProduct]));
 
   const steps: Step[] = [
     {

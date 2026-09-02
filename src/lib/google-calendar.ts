@@ -61,10 +61,21 @@ function getApplicationSecret() {
   return secret;
 }
 
-function encryptToken(value: string) {
-  const key = createHmac("sha256", getApplicationSecret())
+function getTokenDecryptionSecrets() {
+  return [...new Set([
+    process.env.GOOGLE_TOKEN_ENCRYPTION_KEY,
+    process.env.BETTER_AUTH_SECRET,
+  ].filter((secret): secret is string => Boolean(secret && secret.length >= 32)))];
+}
+
+function deriveTokenKey(secret: string) {
+  return createHmac("sha256", secret)
     .update("aggenda-google-calendar-tokens")
     .digest();
+}
+
+function encryptToken(value: string) {
+  const key = deriveTokenKey(getApplicationSecret());
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
   const encrypted = Buffer.concat([
@@ -85,19 +96,26 @@ function decryptToken(value: string) {
   if (!encodedIv || !encodedTag || !encodedValue) {
     throw new Error("Token Google armazenado em formato inválido.");
   }
-  const key = createHmac("sha256", getApplicationSecret())
-    .update("aggenda-google-calendar-tokens")
-    .digest();
-  const decipher = createDecipheriv(
-    "aes-256-gcm",
-    key,
-    Buffer.from(encodedIv, "base64url")
-  );
-  decipher.setAuthTag(Buffer.from(encodedTag, "base64url"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(encodedValue, "base64url")),
-    decipher.final(),
-  ]).toString("utf8");
+  let lastError: unknown;
+  for (const secret of getTokenDecryptionSecrets()) {
+    try {
+      const decipher = createDecipheriv(
+        "aes-256-gcm",
+        deriveTokenKey(secret),
+        Buffer.from(encodedIv, "base64url")
+      );
+      decipher.setAuthTag(Buffer.from(encodedTag, "base64url"));
+      return Buffer.concat([
+        decipher.update(Buffer.from(encodedValue, "base64url")),
+        decipher.final(),
+      ]).toString("utf8");
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw new Error("Não foi possível descriptografar o token Google armazenado.", {
+    cause: lastError,
+  });
 }
 
 async function assertGoogleResponse(response: Response) {

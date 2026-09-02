@@ -31,6 +31,7 @@ export default async function ClientHistoryPage({
     ? await requireProfessionalScope(organization.id, session.user.id)
     : null;
   const canManage = hasOrganizationPermission(organization.role, "clients.manage");
+  const canReadDocuments = hasOrganizationPermission(organization.role, "documents.read");
   const [client] = await db
     .select()
     .from(clients)
@@ -131,6 +132,7 @@ export default async function ClientHistoryPage({
   ].sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
   const isHealth = organization.businessType === "saude";
   const recordLabel = isHealth ? "Prontuário" : "Histórico do cliente";
+  const visibleEntries = entries.filter((entry) => !entry.electronicDocumentId || canReadDocuments);
   const genderLabels: Record<string, string> = { female: "Feminino", male: "Masculino", other: "Outro", not_informed: "Prefere não informar" };
   return (
     <div className="page-wrap">
@@ -197,7 +199,7 @@ export default async function ClientHistoryPage({
           <button className="primary-button sm:w-fit">Adicionar ao {recordLabel.toLowerCase()}</button>
         </ActionForm>}
         <div className="mt-6 divide-y">
-          {entries.map((entry) => entry.electronicDocumentId ? <article key={entry.id} className="grid gap-3 py-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center">
+          {visibleEntries.map((entry) => entry.electronicDocumentId ? <article key={entry.id} className="grid gap-3 py-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center">
             <p className="truncate font-extrabold">{entry.title || (entry.entryType === "prescription" ? "Receituário" : "Documento")}</p>
             <span className="text-xs font-bold text-muted md:whitespace-nowrap">{formatOrganizationDateTime(entry.occurredAt, organization.timezone)}</span>
             <Link className="secondary-button justify-center py-2 md:whitespace-nowrap" href={`/api/documents/${entry.electronicDocumentId}/pdf`}>Abrir PDF original</Link>
@@ -210,7 +212,7 @@ export default async function ClientHistoryPage({
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{entry.content}</p>
             <p className="mt-2 text-xs text-muted">Registrado por {entry.author} em {formatOrganizationDateTime(entry.createdAt, organization.timezone)}</p>
           </article>)}
-          {!entries.length && <p className="empty-state">Nenhum registro adicionado.</p>}
+          {!visibleEntries.length && <p className="empty-state">Nenhum registro adicionado.</p>}
         </div>
       </section>
       <section className="panel">

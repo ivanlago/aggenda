@@ -35,6 +35,7 @@ export default async function AppointmentsPage() {
     ? await requireProfessionalScope(organization.id, session.user.id)
     : null;
   const canManage = hasOrganizationPermission(organization.role, "appointments.manage");
+  const canSendWhatsApp = !["viewer", "member"].includes(organization.role);
   const today = organizationDayRange(new Date(), organization.timezone);
   const [clientItems, professionalItems, serviceItems, serviceProfessionalLinks, packageBalanceRows, items] = await Promise.all([
     db.select().from(clients).where(and(
@@ -137,7 +138,7 @@ export default async function AppointmentsPage() {
                     statuses={statuses}
                   />}
                 </div>
-                {item.clientPhone && (() => {
+                {canSendWhatsApp && item.clientPhone && (() => {
                   const formattedDate = formatOrganizationDateTime(item.startsAt, organization.timezone);
                   const professionalMessage = item.professional ? ` Profissional: ${item.professional}.` : "";
                   const cancellationMessage = item.cancellationReason

@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import Link from "next/link";
 
 import { createDocumentTemplate, duplicateDocumentTemplate, issueElectronicDocument, setDocumentTemplateActive, updateDocumentTemplate } from "@/actions/electronic-documents";
 import { ActionForm } from "@/components/action-form";
@@ -25,6 +26,9 @@ export default async function TermsPage() {
 
   return <div className="page-wrap">
     <PageHeader eyebrow="Documentos para assinatura" title="Termos e contratos" description="Envie consentimentos, termos e contratos para assinatura eletrônica do paciente." />
+    <div className="mb-5 flex justify-end">
+      <Link className="secondary-button" href="/documentos">Ver documentos emitidos</Link>
+    </div>
 
     {canManage ? <ActionForm action={issueElectronicDocument} successMessage="Documento enviado para assinatura." className="panel form-stack">
       <div><h2 className="text-xl font-extrabold">Enviar para assinatura</h2><p className="mt-1 text-sm text-muted">Selecione um modelo nativo ou personalizado. O conteúdo será congelado no momento do envio.</p></div>

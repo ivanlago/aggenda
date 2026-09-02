@@ -5,7 +5,10 @@ import {
   CalendarClock,
   CheckCircle2,
   Circle,
+  FileSignature,
+  Globe2,
   MessageCircleMore,
+  Plug,
   Rocket,
   Sparkles,
   Wrench,
@@ -72,7 +75,7 @@ export default async function ImplantationPage() {
   const automationReady = !product.workflowProduct
     || (product.workflowProduct === "CORE_AI" ? internalAgentReady : Boolean(workflowUrls[product.workflowProduct]));
 
-  const steps: Step[] = [
+  const essentialSteps: Step[] = [
     {
       title: "Confirme os dados do negócio",
       description: "Informe telefone, segmento, endereço e identidade que seus clientes reconhecerão.",
@@ -82,48 +85,60 @@ export default async function ImplantationPage() {
     },
     {
       title: `Cadastre ${organization.serviceLabelPlural.toLowerCase()}`,
-      description: product.usesAi
-        ? "Nome, descrição e duração ensinam à IA exatamente o que sua empresa oferece. Evite abreviações."
-        : "Esses dados serão usados nas mensagens e no atendimento.",
-      done: catalogReady && knowledgeReady,
+      description: "Informe nome, duração e preço para disponibilizar os atendimentos na agenda.",
+      done: catalogReady,
       href: "/servicos",
-      action: product.usesAi ? "Preparar base da IA" : `Cadastrar ${organization.serviceLabelPlural.toLowerCase()}`,
+      action: `Cadastrar ${organization.serviceLabelPlural.toLowerCase()}`,
     },
-    ...(scheduleRequired ? [{
-      title: "Prepare a agenda que a IA poderá consultar",
-      description: `Cadastre ${organization.professionalLabelPlural.toLowerCase()} e os horários reais de atendimento. A IA só oferecerá horários disponíveis no Aggenda.`,
-      done: scheduleReady,
+    {
+      title: "Prepare a agenda de atendimento",
+      description: `Cadastre ${organization.professionalLabelPlural.toLowerCase()}, jornadas e horários reais de atendimento.`,
+      done: professionalTotal.value > 0 && availabilityTotal.value > 0,
       href: professionalTotal.value > 0 ? "/disponibilidade" : "/profissionais",
       action: professionalTotal.value > 0 ? "Definir horários" : `Cadastrar ${organization.professionalLabel.toLowerCase()}`,
-    }] : []),
-    {
-      title: "Conecte o número oficial do WhatsApp",
-      description: "Você entrará na Meta, escolherá ou adicionará o número e confirmará o código recebido. O Aggenda conclui a parte técnica.",
-      done: channelReady,
     },
     {
-      title: "Configuração técnica do atendimento",
-      description: "Webhooks, modelos de mensagem, segurança, automação e roteamento são configurados pela equipe Aggenda.",
-      done: templatesReady && automationReady,
-      automatic: true,
-    },
-    {
-      title: "Homologação assistida",
-      description: "Depois das etapas anteriores, a equipe Aggenda testa uma conversa completa antes de liberar o número aos clientes.",
-      done: profileReady && catalogReady && knowledgeReady && scheduleReady && channelReady && templatesReady && automationReady,
-      automatic: true,
+      title: "Publique e teste a página de agendamento",
+      description: "Habilite o agendamento online e conclua um teste pelo celular. Integrações podem ser configuradas depois.",
+      done: organization.bookingEnabled,
+      href: "/configuracoes",
+      action: organization.bookingEnabled ? "Revisar página pública" : "Habilitar página pública",
     },
   ];
-  const complete = steps.filter((step) => step.done).length;
-  const nextStep = steps.find((step) => !step.done);
-  const percentage = Math.round((complete / steps.length) * 100);
+
+  const optionalSteps: Step[] = [
+    {
+      title: "WhatsApp transacional",
+      description: product.usesCloudApi
+        ? "Ative confirmações, lembretes, reagendamentos e cancelamentos automáticos, sem exigir um agente de IA."
+        : "Este recurso é opcional e pode ser contratado ou configurado posteriormente.",
+      done: channelReady && templatesReady,
+    },
+    {
+      title: "Integrações complementares",
+      description: "Conecte Google Calendar, documentos, pagamentos e emissão fiscal somente quando fizerem parte da sua operação.",
+      done: false,
+      href: "/configuracoes",
+      action: "Ver integrações",
+    },
+    {
+      title: "Agente de IA no WhatsApp",
+      description: product.usesAi
+        ? "Última etapa: após a agenda funcionar, configure conhecimento, limites, Meta e uma homologação protegida antes da ativação."
+        : "Não contratado. A agenda e os demais recursos funcionam normalmente sem agente de IA.",
+      done: product.usesAi && knowledgeReady && scheduleReady && channelReady && automationReady,
+    },
+  ];
+  const complete = essentialSteps.filter((step) => step.done).length;
+  const nextStep = essentialSteps.find((step) => !step.done);
+  const percentage = Math.round((complete / essentialSteps.length) * 100);
 
   return (
     <div className="page-wrap">
       <PageHeader
-        eyebrow={`${organization.name} · ${product.name}`}
-        title="Vamos colocar seu atendimento no ar"
-        description="Siga apenas o próximo passo indicado. O Aggenda cuida automaticamente das configurações técnicas."
+        eyebrow={organization.name}
+        title="Coloque sua agenda no ar primeiro"
+        description="Conclua somente a configuração essencial. WhatsApp, integrações e agente de IA são opcionais e podem ser ativados depois."
       />
 
       <section className="grid gap-5 lg:grid-cols-[1.2fr_.8fr]">
@@ -131,7 +146,7 @@ export default async function ImplantationPage() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-xs font-extrabold uppercase tracking-widest text-brand">Progresso da implantação</p>
-              <h2 className="mt-2 text-2xl font-extrabold">{complete} de {steps.length} etapas concluídas</h2>
+              <h2 className="mt-2 text-2xl font-extrabold">{complete} de {essentialSteps.length} etapas essenciais concluídas</h2>
             </div>
             <span className="status-pill">{percentage}%</span>
           </div>
@@ -144,12 +159,6 @@ export default async function ImplantationPage() {
               <p className="mt-2 text-lg font-extrabold">{nextStep.title}</p>
               <p className="mt-2 text-sm leading-6 text-muted">{nextStep.description}</p>
               {nextStep.href && <Link className="primary-button mt-4 inline-flex" href={nextStep.href}>{nextStep.action}</Link>}
-              {!nextStep.href && !nextStep.automatic && product.usesCloudApi && (
-                <WhatsAppConnectButton
-                  appId={process.env.NEXT_PUBLIC_META_APP_ID}
-                  configurationId={process.env.NEXT_PUBLIC_META_WHATSAPP_CONFIGURATION_ID}
-                />
-              )}
               {nextStep.automatic && <p className="mt-3 text-sm font-bold text-brand">Nenhuma ação sua é necessária nesta etapa.</p>}
             </div>
           ) : (
@@ -161,23 +170,23 @@ export default async function ImplantationPage() {
         </article>
 
         <aside className="panel">
-          <Sparkles className="size-6 text-brand" />
-          <h2 className="mt-4 text-xl font-extrabold">O que a IA poderá fazer</h2>
+          <Rocket className="size-6 text-brand" />
+          <h2 className="mt-4 text-xl font-extrabold">O que funciona sem IA</h2>
           <div className="mt-4 grid gap-3 text-sm leading-6 text-muted">
-            <p>• Responder somente com informações aprovadas do seu negócio.</p>
-            <p>• Entender pedidos escritos em linguagem natural.</p>
-            {plan.whatsappServiceCode === "core_ai" && <p>• Consultar horários e criar, remarcar ou cancelar após confirmação do cliente.</p>}
-            <p>• Encaminhar para uma pessoa quando não tiver segurança para responder.</p>
+            <p>• Agenda, clientes, profissionais e serviços.</p>
+            <p>• Página pública de agendamento.</p>
+            <p>• Histórico, documentos e operação administrativa.</p>
+            <p>• Recursos contratados que não dependam do agente.</p>
           </div>
           <p className="mt-5 rounded-xl bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-800">
-            A IA não recebe sua senha da Meta e não pode alterar configurações administrativas.
+            Você poderá configurar integrações depois sem interromper o que já estiver funcionando.
           </p>
         </aside>
       </section>
 
       <section className="mt-5 grid gap-3">
-        {steps.map((step, index) => {
-          const icons = [Building2, Wrench, CalendarClock, MessageCircleMore, Bot, Sparkles];
+        {essentialSteps.map((step, index) => {
+          const icons = [Building2, Wrench, CalendarClock, Globe2];
           const Icon = icons[index] ?? Bot;
           return (
             <article className={`panel flex gap-4 ${step.done ? "border-brand/20 bg-[#fbfffc]" : ""}`} key={step.title}>
@@ -199,6 +208,35 @@ export default async function ImplantationPage() {
             </article>
           );
         })}
+      </section>
+
+      <section className="panel mt-5">
+        <p className="text-xs font-extrabold uppercase tracking-widest text-brand">Configure quando precisar</p>
+        <h2 className="mt-2 text-xl font-extrabold">Recursos opcionais</h2>
+        <p className="mt-2 text-sm leading-6 text-muted">Nenhum item abaixo bloqueia a ativação da sua agenda. O agente de IA fica sempre por último.</p>
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          {optionalSteps.map((step, index) => {
+            const icons = [MessageCircleMore, Plug, Sparkles];
+            const Icon = icons[index] ?? FileSignature;
+            return (
+              <article className="rounded-2xl border p-5" key={step.title}>
+                <Icon className="size-6 text-brand" />
+                <div className="mt-4 flex items-start justify-between gap-3">
+                  <h3 className="font-extrabold">{step.title}</h3>
+                  <span className={`shrink-0 text-xs font-bold ${step.done ? "text-brand" : "text-muted"}`}>{step.done ? "Ativo" : "Opcional"}</span>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-muted">{step.description}</p>
+                {step.href && <Link className="mt-4 inline-flex text-sm font-extrabold text-brand" href={step.href}>{step.action} →</Link>}
+                {!step.href && !step.done && product.usesCloudApi && step.title === "WhatsApp transacional" && (
+                  <WhatsAppConnectButton appId={process.env.NEXT_PUBLIC_META_APP_ID} configurationId={process.env.NEXT_PUBLIC_META_WHATSAPP_CONFIGURATION_ID} />
+                )}
+                {step.title === "Agente de IA no WhatsApp" && product.usesAi && !step.done && (
+                  <p className="mt-4 rounded-xl bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-800">Disponível após a conclusão da agenda e da conexão do WhatsApp, com homologação assistida.</p>
+                )}
+              </article>
+            );
+          })}
+        </div>
       </section>
 
       <section className="panel mt-5">
@@ -265,12 +303,12 @@ export default async function ImplantationPage() {
       </section>
 
       <section className="panel mt-5">
-        <h2 className="text-xl font-extrabold">O que o cliente precisa ter em mãos</h2>
+        <h2 className="text-xl font-extrabold">O que você precisa para começar</h2>
         <div className="mt-4 grid gap-3 text-sm text-muted sm:grid-cols-2 lg:grid-cols-4">
-          <p className="rounded-xl border p-3"><strong className="block text-foreground">Acesso ao Facebook</strong>Perfil com permissão para administrar a empresa.</p>
-          <p className="rounded-xl border p-3"><strong className="block text-foreground">Número do WhatsApp</strong>Linha ativa que receba SMS ou ligação.</p>
           <p className="rounded-xl border p-3"><strong className="block text-foreground">Dados do negócio</strong>Nome, segmento, endereço e horários.</p>
           <p className="rounded-xl border p-3"><strong className="block text-foreground">Catálogo</strong>Serviços, descrições, duração e profissionais.</p>
+          <p className="rounded-xl border p-3"><strong className="block text-foreground">Disponibilidade</strong>Dias, turnos, intervalos e bloqueios da agenda.</p>
+          <p className="rounded-xl border p-3"><strong className="block text-foreground">Um celular</strong>Para conferir a página pública antes de divulgá-la.</p>
         </div>
       </section>
     </div>

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -39,6 +39,7 @@ export async function enqueueAppointmentNotification(
       serviceName: services.name,
       professionalName: professionals.name,
       timezone: organizations.timezone,
+      reminderOffsetsHours: organizations.reminderOffsetsHours,
       channelId: whatsappChannels.id,
       phoneNumberId: whatsappChannels.phoneNumberId,
       whatsappServiceCode: organizationServicePlans.whatsappServiceCode,
@@ -76,6 +77,21 @@ export async function enqueueAppointmentNotification(
       ? `Olá, ${item.clientName}! Lembrete: seu agendamento de ${item.serviceName} será em ${scheduledFor}. Profissional: ${professional}.`
       : `Olá, ${item.clientName}! Seu agendamento de ${item.serviceName} foi ${kind === "reschedule" ? "reagendado" : "confirmado"} para ${scheduledFor}. Profissional: ${professional}.`;
 
+  if (kind === "reschedule" || kind === "cancellation") {
+    await db.update(outboxEvents).set({
+      status: "failed",
+      lastError: kind === "reschedule"
+        ? "Lembrete substituído por reagendamento"
+        : "Lembrete cancelado junto com o agendamento",
+      updatedAt: new Date(),
+    }).where(and(
+      eq(outboxEvents.aggregateType, "appointment"),
+      eq(outboxEvents.aggregateId, appointmentId),
+      eq(outboxEvents.status, "pending"),
+      sql`${outboxEvents.payload}->>'notificationKind' = 'reminder'`,
+    ));
+  }
+
   await db.insert(outboxEvents).values({
     organizationId: item.organizationId,
     eventKey: `whatsapp:${kind}:${appointmentId}:${kind === "reminder" ? occurrence : item.updatedAt.getTime()}`,
@@ -96,6 +112,42 @@ export async function enqueueAppointmentNotification(
       preview,
     },
   }).onConflictDoNothing({ target: outboxEvents.eventKey });
+
+  if (kind === "confirmation" || kind === "reschedule") {
+    const now = Date.now();
+    const offsets = item.reminderOffsetsHours.length
+      ? [...new Set(item.reminderOffsetsHours)]
+      : [24];
+    const reminders = offsets.flatMap((offset) => {
+      const availableAt = new Date(item.startsAt.getTime() - offset * 60 * 60_000);
+      if (!Number.isFinite(offset) || offset <= 0 || availableAt.getTime() <= now) return [];
+      return [{
+        organizationId: item.organizationId,
+        eventKey: `whatsapp:reminder:${appointmentId}:${item.startsAt.getTime()}:${offset}h`,
+        eventType: "whatsapp.template.send",
+        aggregateType: "appointment",
+        aggregateId: appointmentId,
+        availableAt,
+        payload: {
+          organizationId: item.organizationId,
+          channelId: item.channelId,
+          phoneNumberId: item.phoneNumberId,
+          to,
+          notificationKind: "reminder",
+          appointmentId,
+          reminderFor: item.startsAt.toISOString(),
+          reminderOffsetHours: offset,
+          languageCode: "pt_BR",
+          parameters: [item.clientName, item.serviceName, scheduledFor, professional],
+          preview: `Olá, ${item.clientName}! Lembrete: seu agendamento de ${item.serviceName} será em ${scheduledFor}. Profissional: ${professional}.`,
+        },
+      }];
+    });
+    if (reminders.length) {
+      await db.insert(outboxEvents).values(reminders)
+        .onConflictDoNothing({ target: outboxEvents.eventKey });
+    }
+  }
 
   await triggerOutboxWorker();
   return true;

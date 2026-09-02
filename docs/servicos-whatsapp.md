@@ -47,7 +47,7 @@ O evento recebido inclui `whatsappServiceCode` e `workflowProduct`.
 1. Criar e aprovar na Meta quatro templates com quatro variáveis no corpo:
    `META_TEMPLATE_APPOINTMENT_CONFIRMATION`, `META_TEMPLATE_APPOINTMENT_RESCHEDULE`,
    `META_TEMPLATE_APPOINTMENT_CANCELLATION` e `META_TEMPLATE_APPOINTMENT_REMINDER`.
-2. Manter o worker do Coolify ativo; ele consulta e enfileira lembretes a cada cinco minutos. O intervalo pode ser alterado por `WHATSAPP_REMINDER_INTERVAL_MS`.
+2. Manter o worker do Coolify ativo; os lembretes ficam agendados na Outbox e o worker faz uma varredura de recuperação a cada seis horas. O intervalo pode ser alterado por `OUTBOX_RECOVERY_INTERVAL_MS`.
 3. Para Core + AI, configurar o agente interno no worker. Importar workflows no n8n
    somente para produtos legados ainda não migrados ou automações comerciais publicadas.
 4. Executar os dez cenários em número Meta de teste antes de ativar cada organização.

@@ -92,7 +92,7 @@ Valores iniciais recomendados:
 OUTBOX_WORKER_ID=aggenda-worker-1
 OUTBOX_BATCH_SIZE=10
 OUTBOX_MAX_BATCHES_PER_RUN=20
-WHATSAPP_REMINDER_INTERVAL_MS=900000
+OUTBOX_RECOVERY_INTERVAL_MS=21600000
 PORT=3000
 ```
 
@@ -101,11 +101,18 @@ O health check não acessa o banco. A aplicação aciona `POST /drain` sempre qu
 enfileira um evento. O worker abre uma conexão, processa os lotes disponíveis e
 a fecha imediatamente.
 
-Além dos acionamentos imediatos, o próprio serviço executa a cada 15 minutos
-uma varredura de lembretes, cobranças e eventos pendentes. Essa varredura é a
-recuperação automática caso algum acionamento HTTP falhe. Um segundo worker
+Os lembretes são gravados antecipadamente na Outbox com o horário exato de
+liberação. O worker mantém um temporizador local e os processa no horário sem
+consultar continuamente o banco. Além dos acionamentos imediatos, o serviço
+executa a cada 6 horas uma varredura de recuperação de cobranças e eventos
+pendentes, inclusive depois de reiniciar. Essa varredura é a recuperação
+automática caso algum acionamento HTTP falhe. Um segundo worker
 pode ser criado mais tarde: o bloqueio transacional impede processamento
 concorrente do mesmo evento.
+
+`WHATSAPP_REMINDER_INTERVAL_MS` foi descontinuada. Use
+`OUTBOX_RECOVERY_INTERVAL_MS` somente se precisar alterar as 6 horas padrão
+(mínimo de 1 hora). Intervalos menores aumentam o tempo ativo e o custo do Neon.
 
 Para acionar manualmente uma recuperação completa:
 

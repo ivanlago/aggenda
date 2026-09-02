@@ -24,11 +24,11 @@ const requiredDatabaseUrl: string = databaseUrl;
 const workerId =
   process.env.OUTBOX_WORKER_ID ?? `${os.hostname()}:${process.pid}`;
 const batchSize = boundedNumber(process.env.OUTBOX_BATCH_SIZE, 10, 1, 50);
-const reminderInterval = boundedNumber(
-  process.env.WHATSAPP_REMINDER_INTERVAL_MS,
-  900_000,
-  600_000,
-  3_600_000
+const recoveryInterval = boundedNumber(
+  process.env.OUTBOX_RECOVERY_INTERVAL_MS,
+  21_600_000,
+  3_600_000,
+  86_400_000
 );
 const maxBatchesPerRun = boundedNumber(
   process.env.OUTBOX_MAX_BATCHES_PER_RUN,
@@ -46,6 +46,7 @@ type RunSummary = {
   processed: number;
   reminders: number;
   paymentReminders: number;
+  nextEventAt: string | null;
 };
 
 function boundedNumber(
@@ -97,10 +98,18 @@ async function enqueueDueReminders(connection: Client) {
        inner join organization_service_plans as plan
          on plan.organization_id = appointment.organization_id
        where appointment.status in ('scheduled', 'confirmed')
-         and appointment.starts_at between now() + interval '23 hours 50 minutes'
-           and now() + interval '24 hours 10 minutes'
+         and appointment.starts_at > now()
+         and appointment.starts_at <= now() + interval '24 hours'
          and appointment.reminder_claimed_at is null
          and plan.whatsapp_service_code in ('notify', 'menu', 'chat', 'chat_ai', 'core_ai')
+         and not exists (
+           select 1
+           from outbox_events as reminder
+           where reminder.aggregate_type = 'appointment'
+             and reminder.aggregate_id = appointment.id::text
+             and reminder.payload->>'notificationKind' = 'reminder'
+             and reminder.status in ('pending', 'processing', 'processed')
+         )
        order by appointment.starts_at
        for update skip locked
        limit 100
@@ -361,6 +370,18 @@ async function sendWhatsAppTemplate(connection: Client, event: OutboxEvent) {
   const phoneNumberId = String(event.payload.phoneNumberId ?? "");
   const to = String(event.payload.to ?? "");
   const notificationKind = String(event.payload.notificationKind ?? "");
+  if (notificationKind === "reminder" && event.payload.appointmentId) {
+    const current = await connection.query<{ starts_at: Date; status: string }>(
+      `select starts_at, status from appointments where id = $1 limit 1`,
+      [String(event.payload.appointmentId)]
+    );
+    const appointment = current.rows[0];
+    const reminderFor = String(event.payload.reminderFor ?? "");
+    if (!appointment || !["scheduled", "confirmed"].includes(appointment.status)
+      || (reminderFor && appointment.starts_at.toISOString() !== reminderFor)) {
+      return false;
+    }
+  }
   const templateNames: Record<string, string | undefined> = {
     confirmation: process.env.META_TEMPLATE_APPOINTMENT_CONFIRMATION,
     reschedule: process.env.META_TEMPLATE_APPOINTMENT_RESCHEDULE,
@@ -410,6 +431,7 @@ async function sendWhatsAppTemplate(connection: Client, event: OutboxEvent) {
     const detail = (await response.text()).slice(0, 500);
     throw new Error(`Meta respondeu HTTP ${response.status}: ${detail}`);
   }
+  return true;
 }
 
 async function recordOutboundUsage(connection: Client, event: OutboxEvent) {
@@ -452,8 +474,9 @@ async function handleEvent(connection: Client, event: OutboxEvent) {
       await recordOutboundUsage(connection, event);
       return;
     case "whatsapp.template.send":
-      await sendWhatsAppTemplate(connection, event);
-      await recordOutboundUsage(connection, event);
+      if (await sendWhatsAppTemplate(connection, event)) {
+        await recordOutboundUsage(connection, event);
+      }
       return;
     default:
       throw new Error(`Evento sem handler: ${event.event_type}`);
@@ -492,7 +515,7 @@ async function markFailed(
 
 async function drain(includeScheduled: boolean): Promise<RunSummary> {
   const connection = new Client({ connectionString: normalizeDatabaseUrl(requiredDatabaseUrl) });
-  const summary: RunSummary = { processed: 0, reminders: 0, paymentReminders: 0 };
+  const summary: RunSummary = { processed: 0, reminders: 0, paymentReminders: 0, nextEventAt: null };
   await connection.connect();
   try {
     if (includeScheduled) {
@@ -514,6 +537,12 @@ async function drain(includeScheduled: boolean): Promise<RunSummary> {
         }
       }
     }
+    const next = await connection.query<{ available_at: Date | null }>(
+      `select min(available_at) as available_at
+       from outbox_events
+       where status = 'pending' and available_at > now()`
+    );
+    summary.nextEventAt = next.rows[0]?.available_at?.toISOString() ?? null;
     return summary;
   } finally {
     await connection.end();
@@ -525,12 +554,27 @@ function runOnDemand(includeScheduled: boolean) {
   activeRun = drain(includeScheduled)
     .then((summary) => {
       console.log(`[outbox] execução concluída: ${JSON.stringify(summary)}`);
+      armNextEvent(summary.nextEventAt);
       return summary;
     })
     .finally(() => {
       activeRun = undefined;
     });
   return activeRun;
+}
+
+let nextEventTimer: NodeJS.Timeout | undefined;
+
+function armNextEvent(nextEventAt: string | null) {
+  if (nextEventTimer) clearTimeout(nextEventTimer);
+  nextEventTimer = undefined;
+  if (!nextEventAt || stopping) return;
+  const delay = new Date(nextEventAt).getTime() - Date.now();
+  if (delay <= 0 || delay > recoveryInterval) return;
+  nextEventTimer = setTimeout(() => {
+    if (!stopping) void runOnDemand(false).catch((error) => console.error("[outbox] evento agendado falhou", error));
+  }, Math.max(1_000, delay));
+  nextEventTimer.unref();
 }
 
 function authorized(header: string | undefined) {
@@ -568,13 +612,14 @@ const server = createServer((request, response) => {
 
 const schedule = setInterval(() => {
   if (!stopping) void runOnDemand(true).catch((error) => console.error("[outbox] varredura agendada falhou", error));
-}, reminderInterval);
+}, recoveryInterval);
 schedule.unref();
 
 async function shutdown(signal: string) {
   if (stopping) return;
   stopping = true;
   clearInterval(schedule);
+  if (nextEventTimer) clearTimeout(nextEventTimer);
   console.log(`[outbox] encerrando após ${signal}`);
   server.close();
   await activeRun?.catch(() => undefined);
@@ -584,5 +629,6 @@ process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
 
 server.listen(port, "0.0.0.0", () => {
-  console.log(`[outbox] worker ${workerId} aguardando acionamentos na porta ${port}; recuperação a cada ${reminderInterval / 60_000} min`);
+  console.log(`[outbox] worker ${workerId} aguardando acionamentos na porta ${port}; recuperação a cada ${recoveryInterval / 60_000} min`);
+  void runOnDemand(true).catch((error) => console.error("[outbox] recuperação inicial falhou", error));
 });

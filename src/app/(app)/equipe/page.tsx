@@ -4,12 +4,14 @@ import { Copy, Trash2, UserPlus } from "lucide-react";
 import {
   inviteTeamMember,
   removeTeamMember,
+  updateTeamMemberAccess,
 } from "@/actions/team";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import {
   organizationInvitations,
   organizationMembers,
+  professionals,
   users,
 } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
@@ -19,16 +21,18 @@ export const metadata = { title: "Equipe e acesso" };
 
 export default async function TeamPage() {
   const { organization } = await requireOrganization();
-  const [members, invitations] = await Promise.all([
+  const [members, invitations, professionalItems] = await Promise.all([
     db
       .select({
         userId: users.id,
         name: users.name,
         email: users.email,
         role: organizationMembers.role,
+        professionalId: professionals.id,
       })
       .from(organizationMembers)
       .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .leftJoin(professionals, and(eq(professionals.organizationId, organizationMembers.organizationId), eq(professionals.userId, users.id)))
       .where(eq(organizationMembers.organizationId, organization.id)),
     db
       .select()
@@ -39,6 +43,10 @@ export default async function TeamPage() {
           isNull(organizationInvitations.acceptedAt)
         )
       ),
+    db.select({ id: professionals.id, name: professionals.name, userId: professionals.userId })
+      .from(professionals)
+      .where(and(eq(professionals.organizationId, organization.id), eq(professionals.isActive, true)))
+      .orderBy(professionals.name),
   ]);
   const canManage = hasOrganizationPermission(organization.role, "team.manage");
   const canRead = hasOrganizationPermission(organization.role, "team.read");
@@ -89,7 +97,17 @@ export default async function TeamPage() {
                 <p className="font-bold">{member.name}</p>
                 <p className="truncate text-sm text-muted">{member.email}</p>
               </div>
-              <span className="status-pill">{member.role}</span>
+              {organization.role === "owner" && member.role !== "owner" ? <form action={updateTeamMemberAccess} className="grid gap-2 sm:grid-cols-2">
+                <input type="hidden" name="userId" value={member.userId} />
+                <select className="field py-2" name="role" defaultValue={member.role}>
+                  <option value="admin">Administrador</option><option value="manager">Gerente</option><option value="receptionist">Recepção</option><option value="professional">Profissional</option><option value="staff">Funcionário</option><option value="viewer">Somente leitura</option>
+                </select>
+                <select className="field py-2" name="professionalId" defaultValue={member.professionalId ?? ""}>
+                  <option value="">Sem vínculo profissional</option>
+                  {professionalItems.filter((item) => !item.userId || item.userId === member.userId).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+                <button className="secondary-button py-2 sm:col-span-2">Salvar acesso</button>
+              </form> : <span className="status-pill">{member.role}</span>}
               {organization.role === "owner" && member.role !== "owner" && (
                 <form action={removeTeamMember}>
                   <input type="hidden" name="userId" value={member.userId} />

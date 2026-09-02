@@ -8,6 +8,7 @@ import { db } from "@/db";
 import {
   organizationInvitations,
   organizationMembers,
+  professionals,
 } from "@/db/schema";
 import {
   requireOrganization,
@@ -133,5 +134,43 @@ export async function removeTeamMember(formData: FormData) {
         eq(organizationMembers.userId, userId)
       )
     );
+  revalidatePath("/equipe");
+}
+
+export async function updateTeamMemberAccess(formData: FormData) {
+  const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "team.manage");
+  const userId = String(formData.get("userId") ?? "");
+  const requestedRole = String(formData.get("role") ?? "viewer");
+  const professionalId = String(formData.get("professionalId") ?? "");
+  const allowedRoles = ["admin", "manager", "receptionist", "professional", "staff", "viewer"] as const;
+  const role = allowedRoles.includes(requestedRole as (typeof allowedRoles)[number])
+    ? requestedRole as (typeof allowedRoles)[number]
+    : "viewer";
+  const [member] = await db.select({ userId: organizationMembers.userId })
+    .from(organizationMembers)
+    .where(and(eq(organizationMembers.organizationId, organization.id), eq(organizationMembers.userId, userId)))
+    .limit(1);
+  if (!member) throw new Error("Membro não encontrado nesta empresa.");
+  if (role === "professional" && !professionalId) throw new Error("Selecione o profissional vinculado a esta conta.");
+
+  await db.transaction(async (tx) => {
+    await tx.update(organizationMembers).set({ role }).where(and(
+      eq(organizationMembers.organizationId, organization.id),
+      eq(organizationMembers.userId, userId),
+    ));
+    await tx.update(professionals).set({ userId: null, updatedAt: new Date() }).where(and(
+      eq(professionals.organizationId, organization.id),
+      eq(professionals.userId, userId),
+    ));
+    if (role === "professional") {
+      const updated = await tx.update(professionals).set({ userId, updatedAt: new Date() }).where(and(
+        eq(professionals.id, professionalId),
+        eq(professionals.organizationId, organization.id),
+        eq(professionals.isActive, true),
+      )).returning({ id: professionals.id });
+      if (!updated.length) throw new Error("Profissional inválido para esta empresa.");
+    }
+  });
   revalidatePath("/equipe");
 }

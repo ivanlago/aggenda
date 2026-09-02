@@ -8,8 +8,9 @@ import { ClinicalMediaGallery } from "@/components/clinical-media-gallery";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { appointments, auditLogs, clientClinicalMedia, clientHistoryEntries, clientPackageBalances, clientPackages, clients, professionals, servicePackages, services, users } from "@/db/schema";
-import { requireOrganization } from "@/lib/session";
+import { requireOrganization, requireProfessionalScope } from "@/lib/session";
 import { formatOrganizationDateTime } from "@/lib/appointment-safety";
+import { hasOrganizationPermission } from "@/lib/permissions";
 
 const statusLabels = {
   scheduled: "Agendado",
@@ -25,12 +26,20 @@ export default async function ClientHistoryPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { organization } = await requireOrganization();
+  const { session, organization } = await requireOrganization();
+  const professionalScopeId = organization.role === "professional"
+    ? await requireProfessionalScope(organization.id, session.user.id)
+    : null;
+  const canManage = hasOrganizationPermission(organization.role, "clients.manage");
   const [client] = await db
     .select()
     .from(clients)
     .where(
-      and(eq(clients.id, id), eq(clients.organizationId, organization.id))
+      and(
+        eq(clients.id, id),
+        eq(clients.organizationId, organization.id),
+        professionalScopeId ? inArray(clients.id, db.select({ id: appointments.clientId }).from(appointments).where(and(eq(appointments.organizationId, organization.id), eq(appointments.professionalId, professionalScopeId)))) : undefined,
+      )
     )
     .limit(1);
   if (!client) notFound();
@@ -51,7 +60,8 @@ export default async function ClientHistoryPage({
     .where(
       and(
         eq(appointments.clientId, client.id),
-        eq(appointments.organizationId, organization.id)
+        eq(appointments.organizationId, organization.id),
+        professionalScopeId ? eq(appointments.professionalId, professionalScopeId) : undefined,
       )
     )
     .orderBy(desc(appointments.startsAt)),
@@ -140,20 +150,20 @@ export default async function ClientHistoryPage({
       {isHealth && <section className="panel mb-5">
         <h2 className="text-lg font-extrabold">Fotografias clínicas</h2>
         <p className="mt-1 text-sm text-muted">Organize registros de antes, durante e depois. As imagens são compactadas, entregues por acesso autenticado e vinculadas ao consentimento.</p>
-        <ActionForm action={createClientClinicalMedia} successMessage="Fotografia clínica enviada." className="mt-4 grid gap-3 sm:grid-cols-2">
+        {canManage && <ActionForm action={createClientClinicalMedia} successMessage="Fotografia clínica enviada." className="mt-4 grid gap-3 sm:grid-cols-2">
           <input type="hidden" name="clientId" value={client.id} />
           <select className="field" name="phase"><option value="before">Antes</option><option value="during">Durante</option><option value="after">Depois</option><option value="clinical">Registro clínico</option></select>
           <input className="field" name="title" placeholder="Área ou procedimento" />
           <input className="field sm:col-span-2" name="file" type="file" accept="image/jpeg,image/png,image/webp" required />
           <label className="flex items-start gap-2 text-sm font-bold sm:col-span-2"><input className="mt-1" name="consentConfirmed" type="checkbox" required />Confirmo que há consentimento para este registro clínico.</label>
           <button className="primary-button sm:w-fit">Adicionar fotografia</button>
-        </ActionForm>
+        </ActionForm>}
         <ClinicalMediaGallery clientId={client.id} media={clinicalMedia.map((item) => ({ id: item.id, title: item.title, phase: item.phase, src: item.storageProvider === "cloudinary" ? `/api/clinical-media/${item.id}?width=1200` : item.url }))} />
       </section>}
       <section className="panel mb-5">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-extrabold">Pacotes e saldos</h2>
-          <Link href="/pacotes" className="text-sm font-bold text-brand">Gerenciar pacotes</Link>
+          {canManage && <Link href="/pacotes" className="text-sm font-bold text-brand">Gerenciar pacotes</Link>}
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {[...packages.entries()].map(([packageId, item]) => (
@@ -171,7 +181,7 @@ export default async function ClientHistoryPage({
       <section className="panel mb-5">
         <h2 className="text-lg font-extrabold">{recordLabel}</h2>
         <p className="mt-1 text-sm text-muted">Registre evoluções e informações relevantes com autoria e data.</p>
-        <ActionForm action={createClientHistoryEntry} successMessage={`${recordLabel} atualizado com sucesso.`} className="mt-5 grid gap-3">
+        {canManage && <ActionForm action={createClientHistoryEntry} successMessage={`${recordLabel} atualizado com sucesso.`} className="mt-5 grid gap-3">
           <input type="hidden" name="clientId" value={client.id} />
           <div className="grid gap-3 sm:grid-cols-2">
             <select className="field" name="entryType" defaultValue={isHealth ? "evolution" : "note"}>
@@ -185,7 +195,7 @@ export default async function ClientHistoryPage({
           <input className="field" name="title" placeholder="Título (opcional)" />
           <textarea className="field min-h-28" name="content" required placeholder={isHealth ? "Evolução, observações clínicas e conduta" : "Informações relevantes do atendimento"} />
           <button className="primary-button sm:w-fit">Adicionar ao {recordLabel.toLowerCase()}</button>
-        </ActionForm>
+        </ActionForm>}
         <div className="mt-6 divide-y">
           {entries.map((entry) => entry.electronicDocumentId ? <article key={entry.id} className="grid gap-3 py-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center">
             <p className="truncate font-extrabold">{entry.title || (entry.entryType === "prescription" ? "Receituário" : "Documento")}</p>

@@ -1,19 +1,25 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db } from "@/db";
-import { clientClinicalMedia } from "@/db/schema";
+import { appointments, clientClinicalMedia } from "@/db/schema";
 import { clinicalImageDeliveryUrl } from "@/lib/cloudinary";
-import { requireOrganization } from "@/lib/session";
+import { requireOrganization, requireProfessionalScope } from "@/lib/session";
+import { assertOrganizationPermission } from "@/lib/permissions";
 
 const allowedWidths = new Set([320, 640, 800, 1200, 1600]);
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
-  const { organization } = await requireOrganization();
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "clients.read");
+  const professionalScopeId = organization.role === "professional"
+    ? await requireProfessionalScope(organization.id, session.user.id)
+    : null;
   const { id } = await context.params;
   const [media] = await db.select().from(clientClinicalMedia).where(and(
     eq(clientClinicalMedia.id, id),
     eq(clientClinicalMedia.organizationId, organization.id),
+    professionalScopeId ? inArray(clientClinicalMedia.clientId, db.select({ id: appointments.clientId }).from(appointments).where(and(eq(appointments.organizationId, organization.id), eq(appointments.professionalId, professionalScopeId)))) : undefined,
   )).limit(1);
 
   if (!media) return NextResponse.json({ error: "Imagem não encontrada." }, { status: 404 });

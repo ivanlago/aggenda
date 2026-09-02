@@ -518,6 +518,7 @@ export const professionals = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     email: text("email"),
     phone: text("phone"),
@@ -540,6 +541,7 @@ export const professionals = pgTable(
   (table) => [
     index("professionals_organization_idx").on(table.organizationId),
     index("professionals_profession_idx").on(table.professionId),
+    uniqueIndex("professionals_organization_user_unique").on(table.organizationId, table.userId),
   ]
 );
 

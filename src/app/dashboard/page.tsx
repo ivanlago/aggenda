@@ -1,4 +1,4 @@
-import { and, count, eq, gte, lt } from "drizzle-orm";
+import { and, count, eq, gte, inArray, lt } from "drizzle-orm";
 import { CalendarDays, Clock3, UsersRound, Wrench } from "lucide-react";
 import Link from "next/link";
 
@@ -6,7 +6,7 @@ import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { appointments, clients, professionals, services, weeklyAvailability } from "@/db/schema";
-import { requireOrganization } from "@/lib/session";
+import { requireOrganization, requireProfessionalScope } from "@/lib/session";
 import { formatOrganizationDateTime, organizationDayRange } from "@/lib/appointment-safety";
 
 export const metadata = { title: "Visão geral" };
@@ -25,16 +25,19 @@ export default async function DashboardPage({
   searchParams: Promise<{ compra?: string }>;
 }) {
   const { session, organization } = await requireOrganization();
+  const professionalScopeId = organization.role === "professional"
+    ? await requireProfessionalScope(organization.id, session.user.id)
+    : null;
   const purchaseConfirmed = (await searchParams).compra === "sucesso";
   const { start, end } = organizationDayRange(new Date(), organization.timezone);
 
   const [[clientTotal], [professionalTotal], [serviceTotal], [todayAppointmentTotal], [allAppointmentTotal], [availabilityTotal], next] =
     await Promise.all([
-      db.select({ value: count() }).from(clients).where(eq(clients.organizationId, organization.id)),
+      db.select({ value: count() }).from(clients).where(and(eq(clients.organizationId, organization.id), professionalScopeId ? inArray(clients.id, db.select({ id: appointments.clientId }).from(appointments).where(and(eq(appointments.organizationId, organization.id), eq(appointments.professionalId, professionalScopeId)))) : undefined)),
       db.select({ value: count() }).from(professionals).where(eq(professionals.organizationId, organization.id)),
       db.select({ value: count() }).from(services).where(eq(services.organizationId, organization.id)),
-      db.select({ value: count() }).from(appointments).where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, start), lt(appointments.startsAt, end))),
-      db.select({ value: count() }).from(appointments).where(eq(appointments.organizationId, organization.id)),
+      db.select({ value: count() }).from(appointments).where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, start), lt(appointments.startsAt, end), professionalScopeId ? eq(appointments.professionalId, professionalScopeId) : undefined)),
+      db.select({ value: count() }).from(appointments).where(and(eq(appointments.organizationId, organization.id), professionalScopeId ? eq(appointments.professionalId, professionalScopeId) : undefined)),
       db.select({ value: count() }).from(weeklyAvailability).where(eq(weeklyAvailability.organizationId, organization.id)),
       db.select({
         id: appointments.id,
@@ -45,7 +48,7 @@ export default async function DashboardPage({
       }).from(appointments)
         .innerJoin(clients, eq(clients.id, appointments.clientId))
         .innerJoin(services, eq(services.id, appointments.serviceId))
-        .where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, start)))
+        .where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, start), professionalScopeId ? eq(appointments.professionalId, professionalScopeId) : undefined))
         .orderBy(appointments.startsAt)
         .limit(6),
     ]);
@@ -105,7 +108,7 @@ export default async function DashboardPage({
             </article>
           ))}
         </section>
-        {completedOnboarding < onboarding.length && (
+        {!professionalScopeId && completedOnboarding < onboarding.length && (
           <section className="panel mt-5 border-brand/20 bg-[#f7fff9]">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>

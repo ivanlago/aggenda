@@ -1,4 +1,4 @@
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, gte, inArray } from "drizzle-orm";
 
 import { createAppointment, updateAppointmentStatus } from "@/actions/app";
 import { rescheduleAppointment } from "@/actions/schedule";
@@ -8,8 +8,9 @@ import { AppointmentStatusForm } from "@/components/appointment-status-form";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { appointments, clientPackageBalances, clientPackages, clients, packageUsages, professionals, servicePackages, services, servicesToProfessionals } from "@/db/schema";
-import { requireOrganization } from "@/lib/session";
+import { requireOrganization, requireProfessionalScope } from "@/lib/session";
 import { formatOrganizationDateTime, organizationDayRange } from "@/lib/appointment-safety";
+import { hasOrganizationPermission } from "@/lib/permissions";
 
 export const metadata = { title: "Agendamentos" };
 
@@ -29,21 +30,29 @@ function whatsappLink(phone: string, message: string) {
 }
 
 export default async function AppointmentsPage() {
-  const { organization } = await requireOrganization();
+  const { session, organization } = await requireOrganization();
+  const professionalScopeId = organization.role === "professional"
+    ? await requireProfessionalScope(organization.id, session.user.id)
+    : null;
+  const canManage = hasOrganizationPermission(organization.role, "appointments.manage");
   const today = organizationDayRange(new Date(), organization.timezone);
   const [clientItems, professionalItems, serviceItems, serviceProfessionalLinks, packageBalanceRows, items] = await Promise.all([
-    db.select().from(clients).where(eq(clients.organizationId, organization.id)).orderBy(clients.name),
+    db.select().from(clients).where(and(
+      eq(clients.organizationId, organization.id),
+      professionalScopeId ? inArray(clients.id, db.select({ id: appointments.clientId }).from(appointments).where(and(eq(appointments.organizationId, organization.id), eq(appointments.professionalId, professionalScopeId)))) : undefined,
+    )).orderBy(clients.name),
     db.select().from(professionals).where(
       and(
         eq(professionals.organizationId, organization.id),
         eq(professionals.isBookable, true),
-        eq(professionals.isActive, true)
+        eq(professionals.isActive, true),
+        professionalScopeId ? eq(professionals.id, professionalScopeId) : undefined,
       )
     ).orderBy(professionals.name),
     db.select().from(services).where(and(eq(services.organizationId, organization.id), eq(services.isActive, true))).orderBy(services.name),
     db.select({ serviceId: servicesToProfessionals.serviceId, professionalId: servicesToProfessionals.professionalId })
       .from(servicesToProfessionals)
-      .where(eq(servicesToProfessionals.organizationId, organization.id)),
+      .where(and(eq(servicesToProfessionals.organizationId, organization.id), professionalScopeId ? eq(servicesToProfessionals.professionalId, professionalScopeId) : undefined)),
     db.select({
       clientPackageId: clientPackages.id,
       clientId: clientPackages.clientId,
@@ -79,7 +88,7 @@ export default async function AppointmentsPage() {
       .leftJoin(packageUsages, eq(packageUsages.appointmentId, appointments.id))
       .leftJoin(clientPackages, eq(clientPackages.id, packageUsages.clientPackageId))
       .leftJoin(servicePackages, eq(servicePackages.id, clientPackages.packageId))
-      .where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, today.start)))
+      .where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, today.start), professionalScopeId ? eq(appointments.professionalId, professionalScopeId) : undefined))
       .orderBy(appointments.startsAt),
   ]);
 
@@ -91,7 +100,7 @@ export default async function AppointmentsPage() {
         description={`Crie ${organization.appointmentLabelPlural.toLowerCase()} e acompanhe cada etapa da operação.`}
       />
       <div className="content-grid">
-        <AppointmentCreateForm
+        {canManage && <AppointmentCreateForm
           action={createAppointment}
           clients={clientItems}
           services={serviceItems}
@@ -102,7 +111,7 @@ export default async function AppointmentsPage() {
             .map((item) => ({ ...item, remaining: item.total - item.used, expiresAt: item.expiresAt?.toISOString() ?? null }))}
           labels={{ client: organization.clientLabel, service: organization.serviceLabel, professional: organization.professionalLabel, appointment: organization.appointmentLabel }}
           timezone={organization.timezone}
-        />
+        />}
         <section className="panel">
           <h2 className="text-lg font-extrabold">{items.length} próximos</h2>
           <div className="mt-5 divide-y">
@@ -120,13 +129,13 @@ export default async function AppointmentsPage() {
                       </p>
                     )}
                   </div>
-                  <AppointmentStatusForm
+                  {canManage && <AppointmentStatusForm
                     action={updateAppointmentStatus}
                     appointmentId={item.id}
                     initialStatus={item.status}
                     initialCancellationReason={item.cancellationReason}
                     statuses={statuses}
-                  />
+                  />}
                 </div>
                 {item.clientPhone && (() => {
                   const formattedDate = formatOrganizationDateTime(item.startsAt, organization.timezone);
@@ -143,7 +152,7 @@ export default async function AppointmentsPage() {
                   );
                   return href ? <a className="mt-3 inline-flex rounded-xl border px-3 py-2 text-xs font-extrabold text-brand transition hover:bg-[#edf7f1]" href={href} target="_blank" rel="noreferrer">{item.status === "cancelled" ? "Enviar cancelamento pelo WhatsApp" : "Enviar pelo WhatsApp"}</a> : null;
                 })()}
-                <details className="mt-3">
+                {canManage && <details className="mt-3">
                   <summary className="cursor-pointer text-xs font-extrabold text-brand">
                     Reagendar
                   </summary>
@@ -156,7 +165,7 @@ export default async function AppointmentsPage() {
                       timezone={organization.timezone}
                     />
                   )}
-                </details>
+                </details>}
               </article>
             ))}
             {!items.length && (

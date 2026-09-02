@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const type = url.searchParams.get("type") === "services" ? "services" : "clients";
   const format = url.searchParams.get("format") === "xlsx" ? "xlsx" : "csv";
   const template = url.searchParams.get("template") === "1";
-  assertOrganizationPermission(organization.role, type === "clients" ? "clients.read" : "services.read");
+  assertOrganizationPermission(organization.role, type === "clients" ? "clients.manage" : "services.read");
 
   const headers = type === "clients"
     ? ["nome", "telefone", "email", "data_nascimento", "sexo", "observacoes"]

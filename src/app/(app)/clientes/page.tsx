@@ -1,4 +1,4 @@
-import { and, eq, ilike } from "drizzle-orm";
+import { and, eq, ilike, inArray } from "drizzle-orm";
 import { Pencil, Search, Trash2, X } from "lucide-react";
 import Link from "next/link";
 
@@ -6,8 +6,9 @@ import { createClient, deleteClient, updateClient } from "@/actions/app";
 import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
-import { clients } from "@/db/schema";
-import { requireOrganization } from "@/lib/session";
+import { appointments, clients } from "@/db/schema";
+import { requireOrganization, requireProfessionalScope } from "@/lib/session";
+import { hasOrganizationPermission } from "@/lib/permissions";
 
 export const metadata = { title: "Clientes" };
 
@@ -16,13 +17,18 @@ export default async function ClientsPage({
 }: {
   searchParams: Promise<{ busca?: string }>;
 }) {
-  const { organization } = await requireOrganization();
+  const { session, organization } = await requireOrganization();
+  const professionalScopeId = organization.role === "professional"
+    ? await requireProfessionalScope(organization.id, session.user.id)
+    : null;
+  const canManage = hasOrganizationPermission(organization.role, "clients.manage");
   const query = await searchParams;
   const search = String(query.busca ?? "").trim().slice(0, 100);
   const items = await db.select().from(clients)
     .where(
       and(
         eq(clients.organizationId, organization.id),
+        professionalScopeId ? inArray(clients.id, db.select({ id: appointments.clientId }).from(appointments).where(and(eq(appointments.organizationId, organization.id), eq(appointments.professionalId, professionalScopeId)))) : undefined,
         search ? ilike(clients.name, `%${search}%`) : undefined
       )
     )
@@ -36,7 +42,7 @@ export default async function ClientsPage({
         description={`Mantenha ${organization.clientLabelPlural.toLowerCase()} e observações importantes organizados.`}
       />
       <div className="content-grid">
-        <form action={createClient} className="panel form-stack">
+        {canManage && <form action={createClient} className="panel form-stack">
           <h2 className="text-lg font-extrabold">
             Novo {organization.clientLabel.toLowerCase()}
           </h2>
@@ -55,7 +61,7 @@ export default async function ClientsPage({
           <button className="primary-button">
             Adicionar {organization.clientLabel.toLowerCase()}
           </button>
-        </form>
+        </form>}
         <section className="panel">
           <div className="flex flex-col gap-4">
             <h2 className="text-lg font-extrabold">
@@ -103,7 +109,7 @@ export default async function ClientsPage({
                     {item.name}
                   </Link>
                   <p className="truncate text-sm text-muted">{item.phone || item.email || "Sem contato informado"}</p>
-                  <details className="mt-2">
+                  {canManage && <details className="mt-2">
                     <summary className="flex w-fit items-center gap-1 text-xs font-extrabold text-brand">
                       <Pencil className="size-3" /> Editar dados
                     </summary>
@@ -120,12 +126,12 @@ export default async function ClientsPage({
                       <textarea className="field min-h-20 py-2" name="notes" defaultValue={item.notes ?? ""} placeholder="Observações" />
                       <button className="primary-button py-2">Salvar alterações</button>
                     </ActionForm>
-                  </details>
+                  </details>}
                 </div>
-                <form action={deleteClient}>
+                {canManage && <form action={deleteClient}>
                   <input type="hidden" name="id" value={item.id} />
                   <button className="icon-button" aria-label={`Excluir ${item.name}`}><Trash2 className="size-4" /></button>
-                </form>
+                </form>}
               </div>
             ))}
             {!items.length && (

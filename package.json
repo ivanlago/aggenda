@@ -15,7 +15,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "worker:outbox": "tsx workers/outbox-worker.ts",
-    "test:whatsapp-agent": "tsx --test tests/whatsapp-command.test.ts"
+    "test:whatsapp-agent": "tsx --test tests/whatsapp-command.test.ts",
+    "test:permissions": "tsx --test tests/permissions.test.ts"
   },
   "dependencies": {
     "better-auth": "^1.6.25",

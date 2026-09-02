@@ -176,6 +176,16 @@ export default function Home() {
           ))}
         </div>
       </section>
+      <footer className="border-t bg-white/70 px-6 py-8">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 text-sm text-muted">
+          <p>© {new Date().getFullYear()} Aggenda</p>
+          <nav className="flex flex-wrap gap-5" aria-label="Informações legais">
+            <Link className="font-bold hover:text-brand" href="/privacidade">Política de Privacidade</Link>
+            <Link className="font-bold hover:text-brand" href="/termos">Termos de Uso</Link>
+            <a className="font-bold hover:text-brand" href="mailto:contato@aggenda.app.br">Suporte</a>
+          </nav>
+        </div>
+      </footer>
     </main>
   );
 }

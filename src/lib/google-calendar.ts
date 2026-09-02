@@ -19,7 +19,7 @@ import {
 } from "@/db/schema";
 
 const GOOGLE_CALENDAR_SCOPE =
-  "https://www.googleapis.com/auth/calendar.events";
+  "https://www.googleapis.com/auth/calendar.events.owned";
 const GOOGLE_EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email";
 const STATE_MAX_AGE_MS = 10 * 60 * 1000;
 

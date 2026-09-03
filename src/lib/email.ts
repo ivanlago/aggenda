@@ -168,3 +168,26 @@ export async function sendAppointmentManagementEmail(input: {
     ),
   });
 }
+
+export async function sendClientPortalAccessEmail(input: {
+  email: string;
+  clientName: string;
+  organizationName: string;
+  accessUrl: string;
+  code: string;
+  requestId: string;
+}) {
+  const client = escapeHtml(input.clientName);
+  const organization = escapeHtml(input.organizationName);
+  const accessUrl = escapeHtml(input.accessUrl);
+  const code = escapeHtml(input.code);
+  await sendEmail({
+    to: input.email,
+    subject: `Acesse seus agendamentos - ${input.organizationName}`,
+    idempotencyKey: `client-portal-${input.requestId}`,
+    html: emailLayout(
+      "Acesso à área do cliente",
+      `<p style="line-height:1.6">${client}, use uma das opções abaixo para acessar seus agendamentos na <strong>${organization}</strong>.</p><p style="margin:24px 0"><a href="${accessUrl}" style="display:inline-block;background:#24543a;color:#fff;text-decoration:none;padding:14px 20px;border-radius:12px;font-weight:700">Entrar com link seguro</a></p><p style="line-height:1.6">Ou informe este código na página: <strong style="font-size:22px;letter-spacing:4px">${code}</strong></p><p style="line-height:1.6;color:#647066">O link e o código expiram em 15 minutos e só podem ser usados uma vez.</p>`,
+    ),
+  });
+}

@@ -980,6 +980,43 @@ export const clientAccounts = pgTable(
   ]
 );
 
+export const clientPortalAccessRequests = pgTable(
+  "client_portal_access_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    codeHash: text("code_hash").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    usedAt: timestamp("used_at"),
+    attempts: integer("attempts").default(0).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("client_portal_requests_client_idx").on(table.clientId, table.createdAt),
+    index("client_portal_requests_expiry_idx").on(table.expiresAt),
+  ]
+);
+
+export const clientPortalSessions = pgTable(
+  "client_portal_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: timestamp("expires_at").notNull(),
+    lastUsedAt: timestamp("last_used_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("client_portal_sessions_client_idx").on(table.clientId, table.expiresAt),
+    index("client_portal_sessions_expiry_idx").on(table.expiresAt),
+  ]
+);
+
 export const services = pgTable(
   "services",
   {

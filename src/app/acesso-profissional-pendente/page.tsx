@@ -1,7 +1,7 @@
 import { CalendarCheck, Link2 } from "lucide-react";
 
-import { SignOutButton } from "@/components/sign-out-button";
 import { requireOrganizationMembership } from "@/lib/session";
+import { PendingSignOutButton } from "./pending-sign-out-button";
 
 export const metadata = { title: "Vínculo profissional pendente" };
 
@@ -20,11 +20,14 @@ export default async function PendingProfessionalAccessPage() {
         <h1 className="mt-3 text-3xl font-extrabold">Falta vincular seu perfil profissional</h1>
         <p className="mt-4 leading-7 text-muted">
           A conta <strong>{session.user.email}</strong> já faz parte de <strong>{organization.name}</strong>,
-          mas ainda não foi associada ao profissional correspondente. Peça ao administrador para abrir
-          <strong> Equipe e acesso</strong>, selecionar seu nome profissional e salvar.
+          mas ainda não foi associada ao profissional correspondente.
+        </p>
+        <p className="mt-3 leading-7 text-muted">
+          Peça ao administrador para abrir a página <strong>Equipe e acesso</strong>, selecionar seu nome
+          profissional e salvar.
         </p>
         <div className="mt-7 flex justify-center">
-          <SignOutButton />
+          <PendingSignOutButton />
         </div>
         <p className="mt-5 flex items-center justify-center gap-2 text-xs text-muted">
           <CalendarCheck className="size-4" /> Seus dados permanecem preservados até a conclusão do vínculo.

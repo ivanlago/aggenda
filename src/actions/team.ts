@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, ilike, isNull, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -106,6 +106,26 @@ export async function acceptInvitation(token: string) {
         ],
         set: { role: invitation.role },
       });
+    if (invitation.role === "professional") {
+      const [matchingProfessional] = await tx
+        .select({ id: professionals.id })
+        .from(professionals)
+        .where(
+          and(
+            eq(professionals.organizationId, invitation.organizationId),
+            eq(professionals.isActive, true),
+            ilike(professionals.email, invitation.email),
+            or(isNull(professionals.userId), eq(professionals.userId, session.user.id))
+          )
+        )
+        .limit(1);
+      if (matchingProfessional) {
+        await tx
+          .update(professionals)
+          .set({ userId: session.user.id, updatedAt: new Date() })
+          .where(eq(professionals.id, matchingProfessional.id));
+      }
+    }
     await tx
       .update(organizationInvitations)
       .set({ acceptedAt: new Date() })

@@ -5,6 +5,7 @@ import { acceptInvitation } from "@/actions/team";
 import { db } from "@/db";
 import { organizationInvitations, organizations } from "@/db/schema";
 import { getSession } from "@/lib/session";
+import { InvitationAccountButton } from "./invitation-account-button";
 
 export default async function InvitationPage({
   params,
@@ -50,6 +51,12 @@ export default async function InvitationPage({
               <form action={acceptInvitation.bind(null, token)} className="mt-7">
                 <button className="primary-button w-full">Aceitar convite</button>
               </form>
+            ) : session?.user ? (
+              <InvitationAccountButton
+                token={token}
+                currentEmail={session.user.email}
+                invitedEmail={invitation.email}
+              />
             ) : (
               <Link
                 className="primary-button mt-7 inline-block w-full"

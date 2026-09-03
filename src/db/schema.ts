@@ -985,8 +985,10 @@ export const clientPortalAccessRequests = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
-    clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id").references(() => clients.id, { onDelete: "cascade" }),
     email: text("email").notNull(),
+    pendingName: text("pending_name"),
+    pendingPhone: text("pending_phone"),
     tokenHash: text("token_hash").notNull().unique(),
     codeHash: text("code_hash").notNull(),
     expiresAt: timestamp("expires_at").notNull(),

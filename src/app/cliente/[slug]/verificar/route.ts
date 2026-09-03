@@ -18,7 +18,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
   catch (error) { if (error instanceof Error && error.message === "REGISTRATION_CONFLICT") return NextResponse.redirect(new URL(`/cliente/${slug}?erro=cadastro-existente`, request.url)); throw error; }
   if (!session) return NextResponse.redirect(new URL(`/cliente/${slug}?erro=link-expirado`, request.url));
   const response = NextResponse.redirect(new URL(`/cliente/${slug}`, request.url));
-  response.cookies.set(CLIENT_PORTAL_COOKIE, session.token, { httpOnly: true, secure: secureCookie(), sameSite: "lax", path: `/cliente/${slug}`, maxAge: CLIENT_SESSION_TTL_DAYS * 86_400 });
+  response.cookies.set(CLIENT_PORTAL_COOKIE, "", { httpOnly: true, secure: secureCookie(), sameSite: "lax", path: `/cliente/${slug}`, maxAge: 0 });
+  response.cookies.set(CLIENT_PORTAL_COOKIE, session.token, { httpOnly: true, secure: secureCookie(), sameSite: "lax", path: "/", maxAge: CLIENT_SESSION_TTL_DAYS * 86_400 });
   response.cookies.delete({ name: CLIENT_CHALLENGE_COOKIE, path: "/" });
   return response;
 }

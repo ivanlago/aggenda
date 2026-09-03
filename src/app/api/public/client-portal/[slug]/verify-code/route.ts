@@ -25,7 +25,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
   catch (error) { if (error instanceof Error && error.message === "REGISTRATION_CONFLICT") return NextResponse.json({ error: "Já existe um cadastro com estes dados. Entre em contato com a empresa para confirmar seu acesso." }, { status: 409 }); throw error; }
   if (!session) return NextResponse.json({ error: "Este código já foi utilizado." }, { status: 409 });
   const response = NextResponse.json({ authenticated: true });
-  response.cookies.set(CLIENT_PORTAL_COOKIE, session.token, { httpOnly: true, secure: secureCookie(), sameSite: "lax", path: `/cliente/${slug}`, maxAge: CLIENT_SESSION_TTL_DAYS * 86_400 });
+  response.cookies.set(CLIENT_PORTAL_COOKIE, "", { httpOnly: true, secure: secureCookie(), sameSite: "lax", path: `/cliente/${slug}`, maxAge: 0 });
+  response.cookies.set(CLIENT_PORTAL_COOKIE, session.token, { httpOnly: true, secure: secureCookie(), sameSite: "lax", path: "/", maxAge: CLIENT_SESSION_TTL_DAYS * 86_400 });
   response.cookies.delete({ name: CLIENT_CHALLENGE_COOKIE, path: "/" });
   return response;
 }

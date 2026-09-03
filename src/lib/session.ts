@@ -12,6 +12,7 @@ import {
   professionals,
 } from "@/db/schema";
 import { auth } from "@/lib/auth";
+import { selectCurrentOrganization } from "@/lib/organization-selection";
 import type { PlatformRole } from "@/lib/permissions";
 
 export const activeOrganizationCookie = "aggenda_active_organization";
@@ -91,10 +92,7 @@ export const getCurrentOrganization = cache(async (
   requestedOrganizationId: string | null = null
 ) => {
   const memberships = await getOrganizationMemberships(userId);
-  return (
-    memberships.find((membership) => membership.id === requestedOrganizationId) ??
-    memberships[0]
-  );
+  return selectCurrentOrganization(memberships, requestedOrganizationId);
 });
 
 export async function requireOrganizationMembership() {

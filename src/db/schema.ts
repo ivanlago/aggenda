@@ -465,6 +465,7 @@ export const organizationInvitations = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     email: text("email").notNull(),
     role: organizationRoleEnum("role").default("member").notNull(),
+    professionalId: uuid("professional_id"),
     token: text("token").notNull().unique(),
     expiresAt: timestamp("expires_at").notNull(),
     acceptedAt: timestamp("accepted_at"),

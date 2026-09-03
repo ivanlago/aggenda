@@ -70,7 +70,7 @@ export default async function TeamPage() {
             <UserPlus className="size-5 text-brand" />
             <h2 className="text-xl font-extrabold">Convidar pessoa</h2>
           </div>
-          <form action={inviteTeamMember} className="mt-5 grid gap-3 md:grid-cols-[1fr_180px_auto]">
+          <form action={inviteTeamMember} className="mt-5 grid gap-3 md:grid-cols-[1fr_180px_220px_auto]">
             <input className="field" name="email" type="email" required placeholder="pessoa@empresa.com" />
             <select className="field" name="role" defaultValue="viewer">
               <option value="admin">Administrador</option>
@@ -80,10 +80,16 @@ export default async function TeamPage() {
               <option value="staff">Funcionário</option>
               <option value="viewer">Somente leitura</option>
             </select>
+            <select className="field" name="professionalId" defaultValue="">
+              <option value="">Vínculo profissional</option>
+              {professionalItems.filter((item) => !item.userId).map((item) => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </select>
             <button className="primary-button">Gerar convite</button>
           </form>
           <p className="mt-3 text-xs text-muted">
-            O convite vale por 7 dias. Copie o link abaixo e envie ao destinatário.
+            O convite vale por 7 dias. Para o perfil Profissional, selecione também o cadastro correspondente.
           </p>
         </section>
       )}
@@ -97,7 +103,7 @@ export default async function TeamPage() {
                 <p className="font-bold">{member.name}</p>
                 <p className="truncate text-sm text-muted">{member.email}</p>
               </div>
-              {organization.role === "owner" && member.role !== "owner" ? <form action={updateTeamMemberAccess} className="grid gap-2 sm:grid-cols-2">
+              {canManage && member.role !== "owner" ? <form action={updateTeamMemberAccess} className="grid gap-2 sm:grid-cols-2">
                 <input type="hidden" name="userId" value={member.userId} />
                 <select className="field py-2" name="role" defaultValue={member.role}>
                   <option value="admin">Administrador</option><option value="manager">Gerente</option><option value="receptionist">Recepção</option><option value="professional">Profissional</option><option value="staff">Funcionário</option><option value="viewer">Somente leitura</option>

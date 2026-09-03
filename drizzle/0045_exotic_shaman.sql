@@ -1,0 +1,1 @@
+ALTER TABLE "organization_invitations" ADD COLUMN "professional_id" uuid;

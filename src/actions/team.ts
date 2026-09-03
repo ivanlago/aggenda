@@ -24,6 +24,7 @@ export async function inviteTeamMember(formData: FormData) {
 
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const requestedRole = String(formData.get("role") ?? "viewer");
+  const professionalId = String(formData.get("professionalId") ?? "");
   const allowedRoles = [
     "admin",
     "manager",
@@ -36,6 +37,25 @@ export async function inviteTeamMember(formData: FormData) {
     ? (requestedRole as (typeof allowedRoles)[number])
     : "viewer";
   if (!email.includes("@")) throw new Error("Informe um e-mail válido.");
+  if (role === "professional" && !professionalId) {
+    throw new Error("Selecione o profissional que utilizará esta conta.");
+  }
+
+  if (professionalId) {
+    const [professional] = await db
+      .select({ id: professionals.id })
+      .from(professionals)
+      .where(
+        and(
+          eq(professionals.id, professionalId),
+          eq(professionals.organizationId, organization.id),
+          eq(professionals.isActive, true),
+          isNull(professionals.userId)
+        )
+      )
+      .limit(1);
+    if (!professional) throw new Error("O profissional selecionado não está disponível para vínculo.");
+  }
 
   const token = crypto.randomUUID();
   await db
@@ -45,6 +65,7 @@ export async function inviteTeamMember(formData: FormData) {
       invitedByUserId: session.user.id,
       email,
       role,
+      professionalId: role === "professional" ? professionalId : null,
       token,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     })
@@ -56,6 +77,7 @@ export async function inviteTeamMember(formData: FormData) {
       set: {
         invitedByUserId: session.user.id,
         role,
+        professionalId: role === "professional" ? professionalId : null,
         token,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         acceptedAt: null,
@@ -114,7 +136,9 @@ export async function acceptInvitation(token: string) {
           and(
             eq(professionals.organizationId, invitation.organizationId),
             eq(professionals.isActive, true),
-            ilike(professionals.email, invitation.email),
+            invitation.professionalId
+              ? eq(professionals.id, invitation.professionalId)
+              : ilike(professionals.email, invitation.email),
             or(isNull(professionals.userId), eq(professionals.userId, session.user.id))
           )
         )

@@ -125,7 +125,7 @@ export const getOrganizationProfessionalId = cache(async (
 export async function requireProfessionalScope(organizationId: string, userId: string) {
   const professionalId = await getOrganizationProfessionalId(organizationId, userId);
   if (!professionalId) {
-    throw new Error("Sua conta profissional ainda não foi vinculada ao cadastro da equipe.");
+    redirect("/acesso-profissional-pendente");
   }
   return professionalId;
 }

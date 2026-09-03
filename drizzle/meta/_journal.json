@@ -316,6 +316,13 @@
       "when": 1788468881522,
       "tag": "0044_lucky_warpath",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1788474833207,
+      "tag": "0045_exotic_shaman",
+      "breakpoints": true
     }
   ]
 }

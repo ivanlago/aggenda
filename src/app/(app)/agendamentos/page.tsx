@@ -67,7 +67,8 @@ export default async function AppointmentsPage() {
       .innerJoin(servicePackages, eq(servicePackages.id, clientPackages.packageId))
       .where(and(
         eq(clientPackageBalances.organizationId, organization.id),
-        eq(clientPackages.status, "active")
+        eq(clientPackages.status, "active"),
+        professionalScopeId ? inArray(clientPackages.clientId, db.select({ id: appointments.clientId }).from(appointments).where(and(eq(appointments.organizationId, organization.id), eq(appointments.professionalId, professionalScopeId)))) : undefined
       )),
     db.select({
       id: appointments.id,

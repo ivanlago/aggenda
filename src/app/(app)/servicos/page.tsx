@@ -7,11 +7,13 @@ import { TussAutocomplete } from "@/components/tuss-autocomplete";
 import { db } from "@/db";
 import { services } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
+import { hasOrganizationPermission } from "@/lib/permissions";
 
 export const metadata = { title: "Serviços" };
 
 export default async function ServicesPage() {
   const { organization } = await requireOrganization();
+  const canManage = hasOrganizationPermission(organization.role, "services.manage");
   const items = await db.select().from(services)
     .where(eq(services.organizationId, organization.id))
     .orderBy(services.name);
@@ -24,7 +26,7 @@ export default async function ServicesPage() {
         description={`Defina duração e preço dos ${organization.serviceLabelPlural.toLowerCase()} oferecidos.`}
       />
       <div className="content-grid xl:grid-cols-2">
-        <form action={createService} className="panel form-stack">
+        {canManage && <form action={createService} className="panel form-stack">
           <h2 className="text-lg font-extrabold">
             Novo {organization.serviceLabel.toLowerCase()}
           </h2>
@@ -48,7 +50,7 @@ export default async function ServicesPage() {
           <button className="primary-button">
             Adicionar {organization.serviceLabel.toLowerCase()}
           </button>
-        </form>
+        </form>}
         <section className="panel">
           <h2 className="text-lg font-extrabold">
             {items.length}{" "}
@@ -67,7 +69,7 @@ export default async function ServicesPage() {
                     {item.priceInCents != null ? ` · ${(item.priceInCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}
                   </p>
                 </div>
-                <details className="relative">
+                {canManage && <details className="relative">
                   <summary className="cursor-pointer text-sm font-bold text-brand">Editar</summary>
                   <form action={updateService} className="absolute right-0 z-10 mt-2 grid w-72 gap-2 rounded-2xl border bg-white p-4 shadow-xl">
                     <input type="hidden" name="id" value={item.id} />
@@ -84,11 +86,11 @@ export default async function ServicesPage() {
                     <label className="flex gap-2 text-sm"><input type="checkbox" name="isActive" defaultChecked={item.isActive} /> Ativo</label>
                     <button className="primary-button">Salvar</button>
                   </form>
-                </details>
-                <form action={deleteService}>
+                </details>}
+                {canManage && <form action={deleteService}>
                   <input type="hidden" name="id" value={item.id} />
                   <button className="icon-button" aria-label={`Excluir ${item.name}`}><Trash2 className="size-4" /></button>
-                </form>
+                </form>}
               </div>
             ))}
             {!items.length && (

@@ -6,8 +6,8 @@ A aplicação trata três públicos sem misturar seus vínculos:
 
 1. Administração global do SaaS em `platform_members`.
 2. Equipe das empresas em `organization_members`.
-3. Consumidores finais em `clients`, futuramente vinculados a uma conta por
-   `client_accounts`.
+3. Consumidores finais em `clients`, com acesso próprio por link mágico ou OTP
+   e sessões isoladas do painel empresarial.
 
 Um papel global nunca substitui uma membership empresarial. O acesso de suporte
 deve ser registrado em `support_sessions`, com empresa, motivo, nível e expiração.
@@ -46,10 +46,16 @@ pelo navegador nunca é aceito sem conferir a membership.
 
 ## Consumidor final
 
-A página pública permanece disponível sem conta. A tabela `client_accounts`
-prepara o vínculo de uma identidade autenticada com um cadastro `clients` de uma
-empresa. A implementação futura do portal deve usar magic link ou OTP e expor
-somente dados autorizados, nunca observações internas.
+O portal `/cliente/[slug]` usa e-mail ou celular como identificador, link mágico
+ou OTP como comprovação e uma sessão própria. O primeiro acesso só cria o cliente
+depois da verificação. O portal expõe agenda e histórico de compromissos, nunca
+observações internas.
+
+## Escopo profissional
+
+O papel `professional` depende do vínculo `professionals.user_id`. Consultas e
+ações de agenda, clientes e disponibilidade recebem o `professionalId` resolvido
+no servidor. IDs enviados pelo navegador não ampliam esse escopo.
 
 ## Ativação
 
@@ -72,7 +78,5 @@ Papéis válidos para `PLATFORM_ADMIN_ROLE`: `super_admin`, `support`, `billing`
 
 - Fluxo de encerramento manual de sessão de suporte.
 - Elevação operacional de suporte com reautenticação.
-- Escopo de profissionais limitado aos próprios agendamentos/clientes.
-- Portal autenticado do consumidor final e processo de vinculação por OTP.
 - Permissões customizadas por usuário além dos papéis predefinidos.
 - Testes automatizados de matriz de autorização e isolamento entre tenants.

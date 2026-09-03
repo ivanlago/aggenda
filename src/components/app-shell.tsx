@@ -59,7 +59,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   const navigationGroups: Array<{ label: string; items: NavigationItem[] }> = [
     { label: "Início", items: [
       { href: "/dashboard", label: "Visão geral", icon: LayoutDashboard, permission: "organization.read" },
-      { href: "/implantacao", label: "Implantação guiada", icon: Rocket, permission: "organization.read" },
+      ...(organization.role === "professional" ? [] : [{ href: "/implantacao", label: "Implantação guiada", icon: Rocket, permission: "organization.read" as OrganizationPermission }]),
     ] },
     { label: "Atendimento", items: [
       { href: "/agendamentos", label: organization.appointmentLabelPlural, icon: CalendarDays, permission: "appointments.read" },
@@ -100,7 +100,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       { href: "/automacoes", label: "WhatsApp e IA", icon: Bot, permission: "integrations.manage" },
     ] },
     { label: "Administração", items: [
-      { href: "/dados", label: "Importar e exportar", icon: DatabaseBackup, permission: "clients.read" },
+      { href: "/dados", label: "Importar e exportar", icon: DatabaseBackup, permission: "clients.manage" },
       { href: "/equipe", label: "Equipe e acesso", icon: UserRoundCog, permission: "team.read" },
       { href: "/configuracoes", label: "Configurações", icon: Settings2, permission: "organization.settings.manage" },
       { href: "/auditoria", label: "Auditoria", icon: ScrollText, permission: "audit.read" },

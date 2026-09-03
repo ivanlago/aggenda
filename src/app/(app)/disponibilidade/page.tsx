@@ -14,7 +14,7 @@ import {
   professionals,
   weeklyAvailability,
 } from "@/db/schema";
-import { requireOrganization } from "@/lib/session";
+import { requireOrganization, requireProfessionalScope } from "@/lib/session";
 import { formatOrganizationDateTime } from "@/lib/appointment-safety";
 
 export const metadata = { title: "Disponibilidade" };
@@ -30,8 +30,9 @@ const days = [
 ];
 
 export default async function AvailabilityPage({ searchParams }: { searchParams: Promise<{ professionalId?: string }> }) {
-  const { organization } = await requireOrganization();
-  const selectedProfessionalId = (await searchParams).professionalId ?? "";
+  const { session, organization } = await requireOrganization();
+  const professionalScopeId = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
+  const selectedProfessionalId = professionalScopeId || (await searchParams).professionalId || "";
   const [professionalItems, ranges, exceptions] = await Promise.all([
     db
       .select()
@@ -40,7 +41,8 @@ export default async function AvailabilityPage({ searchParams }: { searchParams:
         and(
           eq(professionals.organizationId, organization.id),
           eq(professionals.isActive, true),
-          eq(professionals.isBookable, true)
+          eq(professionals.isBookable, true),
+          professionalScopeId ? eq(professionals.id, professionalScopeId) : undefined
         )
       )
       .orderBy(professionals.name),
@@ -57,7 +59,7 @@ export default async function AvailabilityPage({ searchParams }: { searchParams:
         professionals,
         eq(professionals.id, weeklyAvailability.professionalId)
       )
-      .where(eq(weeklyAvailability.organizationId, organization.id))
+      .where(and(eq(weeklyAvailability.organizationId, organization.id), professionalScopeId ? eq(weeklyAvailability.professionalId, professionalScopeId) : undefined))
       .orderBy(
         weeklyAvailability.dayOfWeek,
         weeklyAvailability.startsAt
@@ -80,6 +82,7 @@ export default async function AvailabilityPage({ searchParams }: { searchParams:
         and(
           eq(availabilityExceptions.organizationId, organization.id),
           gte(availabilityExceptions.endsAt, new Date())
+          , professionalScopeId ? eq(availabilityExceptions.professionalId, professionalScopeId) : undefined
         )
       )
       .orderBy(availabilityExceptions.startsAt),
@@ -100,7 +103,7 @@ export default async function AvailabilityPage({ searchParams }: { searchParams:
             className="mt-5 grid gap-3 sm:grid-cols-2"
           >
             <select className="field sm:col-span-2" name="professionalId" required defaultValue={selectedProfessionalId}>
-              <option value="">Selecione o profissional</option>
+              {!professionalScopeId && <option value="">Selecione o profissional</option>}
               {professionalItems.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
@@ -155,7 +158,7 @@ export default async function AvailabilityPage({ searchParams }: { searchParams:
           <h2 className="text-lg font-extrabold">Exceções e bloqueios</h2>
           <form action={createAvailabilityException} className="mt-5 grid gap-3">
             <select className="field" name="professionalId">
-              <option value="">Toda a organização</option>
+              {!professionalScopeId && <option value="">Toda a organização</option>}
               {professionalItems.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}

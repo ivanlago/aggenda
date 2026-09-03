@@ -16,7 +16,7 @@ import { isTimeAvailable } from "@/lib/availability";
 import { organizationDate, parseOrganizationDateTime, withAppointmentLock } from "@/lib/appointment-safety";
 import { writeAuditLog } from "@/lib/audit";
 import { assertOrganizationPermission } from "@/lib/permissions";
-import { requireOrganization } from "@/lib/session";
+import { requireOrganization, requireProfessionalScope } from "@/lib/session";
 import { syncAppointmentToGoogleCalendar } from "@/lib/google-calendar";
 import { syncAppointmentFinancialEntry } from "@/lib/finance";
 import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
@@ -29,6 +29,7 @@ export async function saveWeeklyAvailability(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "availability.manage");
   const professionalId = value(formData, "professionalId");
+  const professionalScopeId = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
   const dayOfWeek = Number(value(formData, "dayOfWeek"));
   const startsAt = value(formData, "startsAt");
   const endsAt = value(formData, "endsAt");
@@ -43,6 +44,7 @@ export async function saveWeeklyAvailability(formData: FormData) {
   ) {
     throw new Error("Informe uma jornada válida.");
   }
+  if (professionalScopeId && professionalId !== professionalScopeId) throw new Error("Você só pode alterar a própria disponibilidade.");
   const [professional] = await db
     .select({ id: professionals.id })
     .from(professionals)
@@ -80,12 +82,14 @@ export async function deleteWeeklyAvailability(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "availability.manage");
   const id = value(formData, "id");
+  const professionalScopeId = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
   await db
     .delete(weeklyAvailability)
     .where(
       and(
         eq(weeklyAvailability.id, id),
         eq(weeklyAvailability.organizationId, organization.id)
+        , professionalScopeId ? eq(weeklyAvailability.professionalId, professionalScopeId) : undefined
       )
     );
   await writeAuditLog({
@@ -102,6 +106,7 @@ export async function createAvailabilityException(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "availability.manage");
   const professionalId = value(formData, "professionalId") || null;
+  const professionalScopeId = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
   const startsAt = parseOrganizationDateTime(value(formData, "startsAt"), organization.timezone);
   const endsAt = parseOrganizationDateTime(value(formData, "endsAt"), organization.timezone);
   const type = value(formData, "type") === "available" ? "available" : "blocked";
@@ -112,6 +117,7 @@ export async function createAvailabilityException(formData: FormData) {
   ) {
     throw new Error("Informe o início e o fim do período.");
   }
+  if (professionalScopeId && professionalId !== professionalScopeId) throw new Error("Você só pode alterar a própria disponibilidade.");
   const [created] = await db
     .insert(availabilityExceptions)
     .values({
@@ -138,12 +144,14 @@ export async function deleteAvailabilityException(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "availability.manage");
   const id = value(formData, "id");
+  const professionalScopeId = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
   await db
     .delete(availabilityExceptions)
     .where(
       and(
         eq(availabilityExceptions.id, id),
         eq(availabilityExceptions.organizationId, organization.id)
+        , professionalScopeId ? eq(availabilityExceptions.professionalId, professionalScopeId) : undefined
       )
     );
   await writeAuditLog({
@@ -211,6 +219,7 @@ export async function rescheduleAppointment(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "appointments.manage");
   const id = value(formData, "id");
+  const professionalScopeId = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
   const startsAt = parseOrganizationDateTime(value(formData, "startsAt"), organization.timezone);
   const [item] = await db
     .select({
@@ -226,6 +235,7 @@ export async function rescheduleAppointment(formData: FormData) {
       and(
         eq(appointments.id, id),
         eq(appointments.organizationId, organization.id)
+        , professionalScopeId ? eq(appointments.professionalId, professionalScopeId) : undefined
       )
     )
     .limit(1);

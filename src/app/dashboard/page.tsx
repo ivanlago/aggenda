@@ -34,11 +34,11 @@ export default async function DashboardPage({
   const [[clientTotal], [professionalTotal], [serviceTotal], [todayAppointmentTotal], [allAppointmentTotal], [availabilityTotal], next] =
     await Promise.all([
       db.select({ value: count() }).from(clients).where(and(eq(clients.organizationId, organization.id), professionalScopeId ? inArray(clients.id, db.select({ id: appointments.clientId }).from(appointments).where(and(eq(appointments.organizationId, organization.id), eq(appointments.professionalId, professionalScopeId)))) : undefined)),
-      db.select({ value: count() }).from(professionals).where(eq(professionals.organizationId, organization.id)),
+      db.select({ value: count() }).from(professionals).where(and(eq(professionals.organizationId, organization.id), professionalScopeId ? eq(professionals.id, professionalScopeId) : undefined)),
       db.select({ value: count() }).from(services).where(eq(services.organizationId, organization.id)),
       db.select({ value: count() }).from(appointments).where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, start), lt(appointments.startsAt, end), professionalScopeId ? eq(appointments.professionalId, professionalScopeId) : undefined)),
       db.select({ value: count() }).from(appointments).where(and(eq(appointments.organizationId, organization.id), professionalScopeId ? eq(appointments.professionalId, professionalScopeId) : undefined)),
-      db.select({ value: count() }).from(weeklyAvailability).where(eq(weeklyAvailability.organizationId, organization.id)),
+      db.select({ value: count() }).from(weeklyAvailability).where(and(eq(weeklyAvailability.organizationId, organization.id), professionalScopeId ? eq(weeklyAvailability.professionalId, professionalScopeId) : undefined)),
       db.select({
         id: appointments.id,
         startsAt: appointments.startsAt,

@@ -13,7 +13,7 @@ export const metadata = { title: "Importar e exportar dados" };
 
 export default async function DataPage() {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "clients.read");
+  assertOrganizationPermission(organization.role, "clients.manage");
   const history = await db.select().from(dataImports).where(eq(dataImports.organizationId, organization.id)).orderBy(desc(dataImports.createdAt)).limit(20);
   return <div className="page-wrap">
     <PageHeader eyebrow="Portabilidade" title="Importar e exportar dados" description="Traga sua carteira de outra plataforma ou baixe uma cópia dos dados cadastrados no Aggenda." />

@@ -32,7 +32,7 @@ import {
   services,
   specialties,
 } from "@/db/schema";
-import { requireOrganization, requireSession } from "@/lib/session";
+import { requireOrganization, requireProfessionalScope, requireSession } from "@/lib/session";
 import { isTimeAvailable } from "@/lib/availability";
 import { organizationDate, parseOrganizationDateTime, withAppointmentLock } from "@/lib/appointment-safety";
 import { writeAuditLog } from "@/lib/audit";
@@ -876,6 +876,8 @@ export async function createAppointment(formData: FormData) {
   const serviceId = textValue(formData, "serviceId");
   const clientId = textValue(formData, "clientId");
   const professionalId = optionalText(formData, "professionalId");
+  const professionalScopeId = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
+  if (professionalScopeId && professionalId !== professionalScopeId) throw new Error("Você só pode criar agendamentos na própria agenda.");
   const clientPackageId = optionalText(formData, "clientPackageId");
   const startsAt = parseOrganizationDateTime(textValue(formData, "startsAt"), organization.timezone);
 
@@ -902,6 +904,7 @@ export async function createAppointment(formData: FormData) {
         and(
           eq(clients.id, clientId),
           eq(clients.organizationId, organization.id)
+          , professionalScopeId ? inArray(clients.id, db.select({ id: appointments.clientId }).from(appointments).where(and(eq(appointments.organizationId, organization.id), eq(appointments.professionalId, professionalScopeId)))) : undefined
         )
       )
       .limit(1),
@@ -995,13 +998,16 @@ export async function updateAppointmentStatus(formData: FormData) {
   }
 
   const appointmentId = textValue(formData, "id");
+  const professionalScopeId = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
   const [previousAppointment] = await db.select({
     clientId: appointments.clientId,
     status: appointments.status,
   }).from(appointments).where(and(
     eq(appointments.id, appointmentId),
     eq(appointments.organizationId, organization.id),
+    professionalScopeId ? eq(appointments.professionalId, professionalScopeId) : undefined,
   )).limit(1);
+  if (!previousAppointment) return { error: "Agendamento não encontrado ou fora da sua agenda." };
   let updatedAppointment = false;
   try {
     updatedAppointment = await updateAppointmentAndInventory({ organizationId: organization.id, appointmentId, status, cancellationReason, userId: session.user.id });

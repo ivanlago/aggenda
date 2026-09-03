@@ -14,6 +14,7 @@ import {
   Wrench,
 } from "lucide-react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { saveImplementationPreferences } from "@/actions/implementation";
 import { ActionForm } from "@/components/action-form";
@@ -42,6 +43,7 @@ type Step = {
 
 export default async function ImplantationPage() {
   const { organization } = await requireOrganization();
+  if (organization.role === "professional") redirect("/dashboard");
   const [plan, [professionalTotal], [serviceTotal], [describedServiceTotal], [availabilityTotal], channels, [implementation]] = await Promise.all([
     getOrganizationServicePlan(organization.id),
     db.select({ value: count() }).from(professionals).where(eq(professionals.organizationId, organization.id)),

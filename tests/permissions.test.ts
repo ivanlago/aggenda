@@ -8,10 +8,11 @@ test("catálogo de permissões não contém entradas duplicadas", () => {
   assert.equal(new Set(organizationPermissions).size, organizationPermissions.length);
 });
 
-test("profissional possui leitura operacional mínima e não acessa áreas globais sensíveis", () => {
+test("profissional administra somente agenda e disponibilidade, sem áreas globais sensíveis", () => {
   assert.equal(hasOrganizationPermission("professional", "appointments.read"), true);
   assert.equal(hasOrganizationPermission("professional", "clients.read"), true);
-  assert.equal(hasOrganizationPermission("professional", "appointments.manage"), false);
+  assert.equal(hasOrganizationPermission("professional", "appointments.manage"), true);
+  assert.equal(hasOrganizationPermission("professional", "availability.manage"), true);
   assert.equal(hasOrganizationPermission("professional", "clients.manage"), false);
   assert.equal(hasOrganizationPermission("professional", "documents.read"), false);
   assert.equal(hasOrganizationPermission("professional", "chat.inbox"), false);

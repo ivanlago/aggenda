@@ -22,7 +22,7 @@ export function PendingSignOutButton() {
       onClick={signOut}
     >
       <LogOut className="size-4" />
-      {loading ? "Saindo..." : "Sair e trocar de conta"}
+      {loading ? "Saindo..." : "Sair"}
     </button>
   );
 }

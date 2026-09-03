@@ -31,7 +31,9 @@ import {
   servicePackages,
   services,
   specialties,
+  users,
 } from "@/db/schema";
+import { auth } from "@/lib/auth";
 import { requireOrganization, requireProfessionalScope, requireSession } from "@/lib/session";
 import { isTimeAvailable } from "@/lib/availability";
 import { organizationDate, parseOrganizationDateTime, withAppointmentLock } from "@/lib/appointment-safety";
@@ -191,6 +193,8 @@ export async function createProfessional(formData: FormData) {
   assertOrganizationPermission(organization.role, "professionals.manage");
   const name = textValue(formData, "name");
   if (name.length < 2) throw new Error("Informe o nome do profissional.");
+  const email = textValue(formData, "email").trim().toLowerCase();
+  if (!email.includes("@")) throw new Error("Informe um e-mail válido para criar o acesso profissional.");
 
   const professionId = optionalText(formData, "professionId");
   const specialtyIds = [
@@ -228,6 +232,34 @@ export async function createProfessional(formData: FormData) {
     }
   }
 
+  const [existingUser] = await db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+
+  if (existingUser) {
+    const [existingMembership] = await db
+      .select({ role: organizationMembers.role })
+      .from(organizationMembers)
+      .where(and(
+        eq(organizationMembers.organizationId, organization.id),
+        eq(organizationMembers.userId, existingUser.id),
+      ))
+      .limit(1);
+    if (existingMembership) {
+      throw new Error("Este e-mail já possui acesso à empresa. Ajuste o vínculo em Equipe e acesso.");
+    }
+  }
+
+  const provisionedUser = existingUser ?? (await auth.api.signUpEmail({
+    body: {
+      name,
+      email,
+      password: `${crypto.randomUUID()}-${crypto.randomUUID()}`,
+    },
+  })).user;
+
   await db.transaction(async (tx) => {
     const [professional] = await tx
       .insert(professionals)
@@ -240,12 +272,19 @@ export async function createProfessional(formData: FormData) {
         customHonorific: optionalText(formData, "customHonorific"),
         title: optionalText(formData, "title"),
         bio: optionalText(formData, "bio"),
-        email: optionalText(formData, "email"),
+        email,
         phone: optionalText(formData, "phone"),
         color: textValue(formData, "color") || "#18664a",
         isBookable: formData.get("isBookable") === "on",
+        userId: provisionedUser.id,
       })
       .returning({ id: professionals.id });
+
+    await tx.insert(organizationMembers).values({
+      organizationId: organization.id,
+      userId: provisionedUser.id,
+      role: "professional",
+    });
 
     if (specialtyIds.length) {
       await tx.insert(professionalSpecialties).values(
@@ -267,7 +306,15 @@ export async function createProfessional(formData: FormData) {
       });
     }
   });
+
+  await auth.api.requestPasswordReset({
+    body: {
+      email,
+      redirectTo: `/redefinir-senha?primeiroAcesso=1&email=${encodeURIComponent(email)}`,
+    },
+  });
   revalidatePath("/profissionais");
+  revalidatePath("/equipe");
   revalidatePath("/dashboard");
 }
 

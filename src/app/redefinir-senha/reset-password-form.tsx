@@ -5,7 +5,15 @@ import { useRouter } from "next/navigation";
 
 import { authClient } from "@/lib/auth-client";
 
-export function ResetPasswordForm({ token }: { token: string }) {
+export function ResetPasswordForm({
+  token,
+  firstAccess = false,
+  email,
+}: {
+  token: string;
+  firstAccess?: boolean;
+  email?: string;
+}) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -28,6 +36,15 @@ export function ResetPasswordForm({ token }: { token: string }) {
       setError("Não foi possível redefinir a senha. Solicite um novo link.");
       setLoading(false);
       return;
+    }
+    if (firstAccess && email) {
+      await authClient.signOut();
+      const signInResult = await authClient.signIn.email({ email, password: newPassword });
+      if (!signInResult.error) {
+        router.push("/dashboard");
+        router.refresh();
+        return;
+      }
     }
     router.push("/entrar?senha=alterada");
   }

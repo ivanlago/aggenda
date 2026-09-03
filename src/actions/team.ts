@@ -24,12 +24,10 @@ export async function inviteTeamMember(formData: FormData) {
 
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const requestedRole = String(formData.get("role") ?? "viewer");
-  const professionalId = String(formData.get("professionalId") ?? "");
   const allowedRoles = [
     "admin",
     "manager",
     "receptionist",
-    "professional",
     "staff",
     "viewer",
   ] as const;
@@ -37,26 +35,6 @@ export async function inviteTeamMember(formData: FormData) {
     ? (requestedRole as (typeof allowedRoles)[number])
     : "viewer";
   if (!email.includes("@")) throw new Error("Informe um e-mail válido.");
-  if (role === "professional" && !professionalId) {
-    throw new Error("Selecione o profissional que utilizará esta conta.");
-  }
-
-  if (professionalId) {
-    const [professional] = await db
-      .select({ id: professionals.id })
-      .from(professionals)
-      .where(
-        and(
-          eq(professionals.id, professionalId),
-          eq(professionals.organizationId, organization.id),
-          eq(professionals.isActive, true),
-          isNull(professionals.userId)
-        )
-      )
-      .limit(1);
-    if (!professional) throw new Error("O profissional selecionado não está disponível para vínculo.");
-  }
-
   const token = crypto.randomUUID();
   await db
     .insert(organizationInvitations)
@@ -65,7 +43,7 @@ export async function inviteTeamMember(formData: FormData) {
       invitedByUserId: session.user.id,
       email,
       role,
-      professionalId: role === "professional" ? professionalId : null,
+      professionalId: null,
       token,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     })
@@ -77,7 +55,7 @@ export async function inviteTeamMember(formData: FormData) {
       set: {
         invitedByUserId: session.user.id,
         role,
-        professionalId: role === "professional" ? professionalId : null,
+        professionalId: null,
         token,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         acceptedAt: null,
@@ -181,7 +159,13 @@ export async function removeTeamMember(formData: FormData) {
   revalidatePath("/equipe");
 }
 
-export async function updateTeamMemberAccess(formData: FormData) {
+export type TeamAccessActionState = { error?: string; success?: boolean };
+
+export async function updateTeamMemberAccess(
+  _previousState: TeamAccessActionState,
+  formData: FormData
+): Promise<TeamAccessActionState> {
+  try {
   const { organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "team.manage");
   const userId = String(formData.get("userId") ?? "");
@@ -195,8 +179,10 @@ export async function updateTeamMemberAccess(formData: FormData) {
     .from(organizationMembers)
     .where(and(eq(organizationMembers.organizationId, organization.id), eq(organizationMembers.userId, userId)))
     .limit(1);
-  if (!member) throw new Error("Membro não encontrado nesta empresa.");
-  if (role === "professional" && !professionalId) throw new Error("Selecione o profissional vinculado a esta conta.");
+  if (!member) return { error: "Membro não encontrado nesta empresa." };
+  if (role === "professional" && !professionalId) {
+    return { error: "Selecione qual profissional esta conta representa." };
+  }
 
   await db.transaction(async (tx) => {
     await tx.update(organizationMembers).set({ role }).where(and(
@@ -217,4 +203,13 @@ export async function updateTeamMemberAccess(formData: FormData) {
     }
   });
   revalidatePath("/equipe");
+  return { success: true };
+  } catch (error) {
+    console.error(JSON.stringify({
+      level: "error",
+      message: "Falha ao atualizar acesso da equipe",
+      error: error instanceof Error ? error.message : String(error),
+    }));
+    return { error: "Não foi possível salvar o acesso. Atualize a página e tente novamente." };
+  }
 }

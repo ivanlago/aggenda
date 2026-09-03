@@ -226,7 +226,13 @@ export default async function ProfessionalsPage({
               placeholder="UF"
             />
           </div>
-          <input className="field" name="email" type="email" placeholder="E-mail" />
+          <label className="grid gap-2 text-sm font-bold">
+            E-mail de acesso
+            <input className="field" name="email" type="email" required placeholder="profissional@empresa.com" />
+            <span className="text-xs font-normal text-muted">
+              O Aggenda criará o usuário e enviará um link seguro para definição da senha.
+            </span>
+          </label>
           <input className="field" name="phone" type="tel" placeholder="Telefone" />
           <label className="flex items-center gap-3 text-sm font-bold">
             Cor na agenda

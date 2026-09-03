@@ -23,8 +23,7 @@ export default async function PendingProfessionalAccessPage() {
           mas ainda não foi associada ao profissional correspondente.
         </p>
         <p className="mt-3 leading-7 text-muted">
-          Peça ao administrador para abrir a página <strong>Equipe e acesso</strong>, selecionar seu nome
-          profissional e salvar.
+          Saia e aguarde o administrador aceitá-lo.
         </p>
         <div className="mt-7 flex justify-center">
           <PendingSignOutButton />

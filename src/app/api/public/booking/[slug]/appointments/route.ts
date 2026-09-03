@@ -15,12 +15,13 @@ import {
   vouchers,
 } from "@/db/schema";
 import { isTimeAvailable } from "@/lib/availability";
-import { organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
+import { formatOrganizationDateTime, organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
 import { syncAppointmentToGoogleCalendar } from "@/lib/google-calendar";
 import { syncAppointmentFinancialEntry } from "@/lib/finance";
 import { organizationAsaasRequest } from "@/lib/asaas";
 import { getOrganizationAsaasCredential } from "@/lib/organization-asaas";
 import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
+import { sendAppointmentManagementEmail } from "@/lib/email";
 
 export async function POST(
   request: Request,
@@ -165,6 +166,23 @@ export async function POST(
       paymentUrl = payment.invoiceUrl;
     }
     if (!depositAmount) await enqueueAppointmentNotification(appointment.id, "confirmation");
+    if (email) {
+      const manageUrl = new URL(`/agendamento/${manageToken}`, request.url).toString();
+      try {
+        await sendAppointmentManagementEmail({
+          email,
+          clientName: name,
+          organizationName: organization.name,
+          serviceName: service.name,
+          scheduledFor: formatOrganizationDateTime(startsAt, organization.timezone),
+          manageUrl,
+          appointmentId: appointment.id,
+          version: "created",
+        });
+      } catch (emailError) {
+        console.error("[public-booking] Falha ao enviar link de gerenciamento", emailError);
+      }
+    }
     return Response.json({ id: appointment.id, manageToken, paymentUrl, manageUrl: `/agendamento/${manageToken}` }, { status: 201 });
   } catch (error) {
     if (error instanceof Error && error.message === "APPOINTMENT_CONFLICT") {

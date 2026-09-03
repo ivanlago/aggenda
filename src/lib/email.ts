@@ -142,3 +142,29 @@ export async function sendRetailReceiptEmail(input: {
     ),
   });
 }
+
+export async function sendAppointmentManagementEmail(input: {
+  email: string;
+  clientName: string;
+  organizationName: string;
+  serviceName: string;
+  scheduledFor: string;
+  manageUrl: string;
+  appointmentId: string;
+  version: string;
+}) {
+  const client = escapeHtml(input.clientName);
+  const organization = escapeHtml(input.organizationName);
+  const service = escapeHtml(input.serviceName);
+  const scheduledFor = escapeHtml(input.scheduledFor);
+  const manageUrl = escapeHtml(input.manageUrl);
+  await sendEmail({
+    to: input.email,
+    subject: `Gerencie seu agendamento - ${input.organizationName}`,
+    idempotencyKey: `appointment-management-${input.appointmentId}-${input.version}`,
+    html: emailLayout(
+      "Seu agendamento",
+      `<p style="line-height:1.6">${client}, seu agendamento de <strong>${service}</strong> na <strong>${organization}</strong> está marcado para <strong>${scheduledFor}</strong>.</p><p style="margin:24px 0"><a href="${manageUrl}" style="display:inline-block;background:#24543a;color:#fff;text-decoration:none;padding:14px 20px;border-radius:12px;font-weight:700">Confirmar, reagendar ou cancelar</a></p><p style="line-height:1.6;color:#647066">Este link é pessoal. Não o encaminhe para outras pessoas.</p>`,
+    ),
+  });
+}

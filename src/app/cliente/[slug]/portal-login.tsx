@@ -5,7 +5,7 @@ import { FormEvent, useState } from "react";
 
 export function PortalLogin({ slug, hasChallenge, expiredLink }: { slug: string; hasChallenge: boolean; expiredLink: boolean }) {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [code, setCode] = useState("");
   const [showCode, setShowCode] = useState(hasChallenge);
   const [message, setMessage] = useState(expiredLink ? "Este link expirou. Solicite um novo acesso." : "");
@@ -13,7 +13,7 @@ export function PortalLogin({ slug, hasChallenge, expiredLink }: { slug: string;
 
   async function requestCode(event: FormEvent) {
     event.preventDefault(); setLoading(true); setMessage("");
-    const response = await fetch(`/api/public/client-portal/${slug}/request-code`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+    const response = await fetch(`/api/public/client-portal/${slug}/request-code`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identifier }) });
     const result = await response.json(); setLoading(false);
     if (!response.ok) return setMessage(result.error);
     setShowCode(true); setMessage(result.message);
@@ -27,7 +27,7 @@ export function PortalLogin({ slug, hasChallenge, expiredLink }: { slug: string;
   }
   return <div className="mt-6 grid gap-5">
     <form className="grid gap-3" onSubmit={requestCode}>
-      <label className="grid gap-2 text-sm font-bold">Seu e-mail<input className="field" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="voce@email.com" /></label>
+      <label className="grid gap-2 text-sm font-bold">E-mail ou celular<input className="field" autoComplete="username" required value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder="voce@email.com ou (71) 99999-9999" /></label>
       <button className="primary-button" disabled={loading}>{loading ? "Enviando..." : "Receber link e código"}</button>
     </form>
     {showCode && <form className="grid gap-3 rounded-2xl border bg-[#f8faf7] p-4" onSubmit={verifyCode}>

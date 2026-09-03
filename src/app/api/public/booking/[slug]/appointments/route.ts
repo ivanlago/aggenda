@@ -1,10 +1,11 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, inArray, lt } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 import { db } from "@/db";
 import {
   appointments,
   auditLogs,
+  clientPortalSessions,
   clients,
   financialEntries,
   organizations,
@@ -22,6 +23,7 @@ import { organizationAsaasRequest } from "@/lib/asaas";
 import { getOrganizationAsaasCredential } from "@/lib/organization-asaas";
 import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
 import { sendAppointmentManagementEmail } from "@/lib/email";
+import { CLIENT_PORTAL_COOKIE, portalHash } from "@/lib/client-portal";
 
 export async function POST(
   request: Request,
@@ -29,17 +31,15 @@ export async function POST(
 ) {
   const { slug } = await params;
   const body = (await request.json()) as Record<string, unknown>;
-  const name = String(body.name ?? "").trim();
-  const phone = String(body.phone ?? "").replace(/\D/g, "");
-  const email = String(body.email ?? "").trim() || null;
+  let name = String(body.name ?? "").trim();
+  let phone = String(body.phone ?? "").replace(/\D/g, "");
+  let email = String(body.email ?? "").trim() || null;
   const document = String(body.document ?? "").replace(/\D/g, "");
   const voucherCode = String(body.voucherCode ?? "").trim().toUpperCase();
   const serviceId = String(body.serviceId ?? "");
   const professionalId = String(body.professionalId ?? "");
   const startsAt = new Date(String(body.startsAt ?? ""));
-  if (name.length < 2 || phone.length < 10 || Number.isNaN(startsAt.getTime())) {
-    return Response.json({ error: "Preencha nome, telefone e horário." }, { status: 400 });
-  }
+  if (Number.isNaN(startsAt.getTime())) return Response.json({ error: "Selecione um horário válido." }, { status: 400 });
   const [organization] = await db
     .select()
     .from(organizations)
@@ -49,6 +49,15 @@ export async function POST(
     .limit(1);
   if (!organization) {
     return Response.json({ error: "Agenda indisponível." }, { status: 404 });
+  }
+  const sessionToken = request.headers.get("cookie")?.match(new RegExp(`(?:^|; )${CLIENT_PORTAL_COOKIE}=([^;]+)`))?.[1];
+  const [portalClient] = sessionToken ? await db.select({ id: clients.id, name: clients.name, phone: clients.phone, email: clients.email })
+    .from(clientPortalSessions).innerJoin(clients, eq(clients.id, clientPortalSessions.clientId))
+    .where(and(eq(clientPortalSessions.organizationId, organization.id), eq(clientPortalSessions.tokenHash, portalHash(decodeURIComponent(sessionToken))), gt(clientPortalSessions.expiresAt, new Date()))).limit(1) : [];
+  if (portalClient) {
+    name = portalClient.name; phone = portalClient.phone || ""; email = portalClient.email;
+  } else if (name.length < 2 || phone.length < 10) {
+    return Response.json({ error: "Preencha nome, telefone e horário." }, { status: 400 });
   }
   const [[service], [professional]] = await Promise.all([
     db
@@ -94,7 +103,7 @@ export async function POST(
         noticeHours: organization.bookingNoticeHours, startsAt,
       });
       if (!available) throw new Error("APPOINTMENT_CONFLICT");
-      const [existing] = await tx
+      const [existing] = portalClient ? [{ id: portalClient.id }] : await tx
         .select({ id: clients.id })
         .from(clients)
         .where(
@@ -112,6 +121,12 @@ export async function POST(
           .returning({ id: clients.id });
         clientId = created.id;
       }
+      const appointmentEnd = new Date(startsAt.getTime() + service.duration * 60_000);
+      const [overlapping] = await tx.select({ id: appointments.id }).from(appointments).where(and(
+        eq(appointments.organizationId, organization.id), eq(appointments.clientId, clientId),
+        inArray(appointments.status, ["scheduled", "confirmed"]), lt(appointments.startsAt, appointmentEnd), gt(appointments.endsAt, startsAt)
+      )).limit(1);
+      if (overlapping) throw new Error("CLIENT_APPOINTMENT_CONFLICT");
       const [created] = await tx
         .insert(appointments)
         .values({
@@ -120,7 +135,7 @@ export async function POST(
           serviceId,
           professionalId,
           startsAt,
-          endsAt: new Date(startsAt.getTime() + service.duration * 60_000),
+          endsAt: appointmentEnd,
           priceInCents: finalPrice,
           source: "booking_page",
           depositStatus: depositAmount > 0 ? "pending" : "not_required",
@@ -191,6 +206,7 @@ export async function POST(
         { status: 409 }
       );
     }
+    if (error instanceof Error && error.message === "CLIENT_APPOINTMENT_CONFLICT") return Response.json({ error: "Você já possui outro agendamento neste horário." }, { status: 409 });
     return Response.json(
       { error: "Não foi possível concluir o agendamento." },
       { status: 500 }

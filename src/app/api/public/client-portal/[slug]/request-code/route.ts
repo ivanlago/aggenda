@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db } from "@/db";
@@ -11,13 +11,16 @@ const genericMessage = "Se o e-mail estiver cadastrado, enviaremos um link e um 
 export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const body = await request.json().catch(() => ({}));
-  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-  if (!/^\S+@\S+\.\S+$/.test(email)) return NextResponse.json({ error: "Informe um e-mail válido." }, { status: 400 });
+  const identifier = typeof body.identifier === "string" ? body.identifier.trim().toLowerCase() : "";
+  const isEmail = /^\S+@\S+\.\S+$/.test(identifier);
+  const phone = identifier.replace(/\D/g, "");
+  if (!isEmail && phone.length < 10) return NextResponse.json({ error: "Informe um e-mail ou celular com DDD." }, { status: 400 });
 
-  const [match] = await db.select({ clientId: clients.id, clientName: clients.name, organizationId: organizations.id, organizationName: organizations.name })
+  const [match] = await db.select({ clientId: clients.id, clientName: clients.name, clientEmail: clients.email, organizationId: organizations.id, organizationName: organizations.name })
     .from(organizations).innerJoin(clients, eq(clients.organizationId, organizations.id))
-    .where(and(eq(organizations.slug, slug), eq(organizations.bookingEnabled, true), sql`lower(${clients.email}) = ${email}`)).limit(1);
-  if (!match) return NextResponse.json({ message: genericMessage });
+    .where(and(eq(organizations.slug, slug), eq(organizations.bookingEnabled, true), or(sql`lower(${clients.email}) = ${identifier}`, eq(clients.phone, phone)))).limit(1);
+  if (!match?.clientEmail) return NextResponse.json({ message: genericMessage });
+  const email = match.clientEmail.trim().toLowerCase();
 
   const recentSince = new Date(Date.now() - 60_000);
   const [recent] = await db.select({ id: clientPortalAccessRequests.id }).from(clientPortalAccessRequests)

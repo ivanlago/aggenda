@@ -28,7 +28,7 @@ export function PortalLogin({ slug, hasChallenge, expiredLink }: { slug: string;
   return <div className="mt-6 grid gap-5">
     <form className="grid gap-3" onSubmit={requestCode}>
       <label className="grid gap-2 text-sm font-bold">E-mail ou celular<input className="field" autoComplete="username" required value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder="voce@email.com ou (71) 99999-9999" /></label>
-      <button className="primary-button" disabled={loading}>{loading ? "Enviando..." : "Receber link e código"}</button>
+      <button className="primary-button" disabled={loading}>{loading ? "Enviando..." : "Login"}</button>
     </form>
     {showCode && <form className="grid gap-3 rounded-2xl border bg-[#f8faf7] p-4" onSubmit={verifyCode}>
       <div><h2 className="font-extrabold">Já recebeu o código?</h2><p className="mt-1 text-sm text-muted">Digite os seis números enviados ao seu e-mail.</p></div>

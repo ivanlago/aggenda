@@ -210,7 +210,12 @@ export async function removeTeamMember(formData: FormData) {
   revalidatePath("/equipe");
 }
 
-export type TeamAccessActionState = { error?: string; success?: boolean };
+export type TeamAccessActionState = {
+  error?: string;
+  success?: boolean;
+  savedRole?: "admin" | "manager" | "receptionist" | "professional" | "financial";
+  submissionId?: string;
+};
 
 export async function updateTeamMemberAccess(
   _previousState: TeamAccessActionState,
@@ -236,10 +241,13 @@ export async function updateTeamMemberAccess(
   }
 
   await db.transaction(async (tx) => {
-    await tx.update(organizationMembers).set({ role }).where(and(
+    const [updatedMember] = await tx.update(organizationMembers).set({ role }).where(and(
       eq(organizationMembers.organizationId, organization.id),
       eq(organizationMembers.userId, userId),
-    ));
+    )).returning({ role: organizationMembers.role });
+    if (!updatedMember || updatedMember.role !== role) {
+      throw new Error("O perfil salvo não corresponde ao perfil solicitado.");
+    }
     await tx.update(professionals).set({ userId: null, updatedAt: new Date() }).where(and(
       eq(professionals.organizationId, organization.id),
       eq(professionals.userId, userId),
@@ -254,7 +262,7 @@ export async function updateTeamMemberAccess(
     }
   });
   revalidatePath("/equipe");
-  return { success: true };
+  return { success: true, savedRole: role, submissionId: crypto.randomUUID() };
   } catch (error) {
     console.error(JSON.stringify({
       level: "error",

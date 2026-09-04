@@ -1,10 +1,10 @@
 import { AppShell } from "@/components/app-shell";
-import { DashboardView } from "@/components/dashboard-view";
+import { DashboardReferenceView } from "@/components/dashboard-reference-view";
 
 export const metadata = { title: "Dashboard" };
 
 export default async function DashboardPage() {
-  return <AppShell><DashboardView /></AppShell>;
+  return <AppShell><DashboardReferenceView /></AppShell>;
 }
 
 /* Legacy dashboard retained temporarily for migration reference.

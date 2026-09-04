@@ -12,6 +12,7 @@ import {
   crmStages,
   clientPackageBalances,
   clientPackages,
+  packageUsages,
   financialEntries,
   financialAccounts,
   financialCategories,
@@ -899,20 +900,32 @@ export async function registerAppointmentPayment(formData: FormData) {
   const amountInCents = optionalMoneyInCents(formData, "amount");
   const paymentMethod = textValue(formData, "paymentMethod");
   const otherMethod = optionalText(formData, "otherPaymentMethod");
-  const allowedMethods = ["cash", "credit_card", "debit_card", "pix", "bank_transfer", "boleto", "other"];
-  if (!amountInCents || !allowedMethods.includes(paymentMethod) || (paymentMethod === "other" && !otherMethod)) throw new Error("Informe valor e forma de pagamento válidos.");
-  const [appointment] = await db.select({ clientId: appointments.clientId, service: services.name })
+  const allowedMethods = ["cash", "credit_card", "debit_card", "pix", "bank_transfer", "boleto", "other", "package"];
+  if (!allowedMethods.includes(paymentMethod) || (paymentMethod !== "package" && !amountInCents) || (paymentMethod === "other" && !otherMethod)) throw new Error("Informe valor e forma de pagamento válidos.");
+  const [appointment] = await db.select({ clientId: appointments.clientId, serviceId: appointments.serviceId, status: appointments.status, service: services.name })
     .from(appointments).innerJoin(services, eq(services.id, appointments.serviceId))
     .where(and(eq(appointments.id, appointmentId), eq(appointments.organizationId, organization.id))).limit(1);
   if (!appointment) throw new Error("Agendamento não encontrado.");
+  if (paymentMethod === "package") {
+    const clientPackageId = textValue(formData, "clientPackageId");
+    const [existingUsage] = await db.select({ clientPackageId: packageUsages.clientPackageId }).from(packageUsages).where(eq(packageUsages.appointmentId, appointmentId)).limit(1);
+    if (existingUsage && existingUsage.clientPackageId !== clientPackageId) throw new Error("Este atendimento já está vinculado a outro pacote.");
+    if (!existingUsage) await reservePackageSession({ appointmentId, organizationId: organization.id, clientId: appointment.clientId, serviceId: appointment.serviceId, clientPackageId });
+    await db.update(appointments).set({ priceInCents: 0, updatedAt: new Date() }).where(eq(appointments.id, appointmentId));
+    await db.delete(financialEntries).where(and(eq(financialEntries.organizationId, organization.id), eq(financialEntries.appointmentId, appointmentId)));
+    if (appointment.status === "completed" || appointment.status === "no_show") await reconcilePackageUsage(appointmentId, appointment.status);
+    await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "payment:package", entityType: "appointment", entityId: appointmentId, details: { clientPackageId } });
+    revalidatePath("/dashboard"); revalidatePath("/financeiro"); revalidatePath(`/clientes/${appointment.clientId}`); revalidatePath("/pacotes");
+    return;
+  }
   const realizedDate = organizationDate(new Date(), organization.timezone);
   const description = `Atendimento - ${appointment.service}`;
   const notes = paymentMethod === "other" ? `Forma de pagamento: ${otherMethod}` : null;
   const [entry] = await db.insert(financialEntries).values({
     organizationId: organization.id, appointmentId, clientId: appointment.clientId, type: "receivable",
     status: "received", source: "appointment", description, category: "Atendimentos",
-    amountInCents, dueDate: realizedDate, realizedDate, paymentMethod, notes, createdByUserId: session.user.id,
-  }).onConflictDoUpdate({ target: financialEntries.appointmentId, set: { status: "received", description, amountInCents, realizedDate, paymentMethod, notes, updatedAt: new Date() } }).returning({ id: financialEntries.id });
+    amountInCents: amountInCents!, dueDate: realizedDate, realizedDate, paymentMethod, notes, createdByUserId: session.user.id,
+  }).onConflictDoUpdate({ target: financialEntries.appointmentId, set: { status: "received", description, amountInCents: amountInCents!, realizedDate, paymentMethod, notes, updatedAt: new Date() } }).returning({ id: financialEntries.id });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "payment", entityType: "appointment", entityId: appointmentId, details: { financialEntryId: entry.id, amountInCents, paymentMethod } });
   revalidatePath("/dashboard"); revalidatePath("/financeiro");
 }

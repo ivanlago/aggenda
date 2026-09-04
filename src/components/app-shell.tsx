@@ -55,8 +55,11 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     children?: NavigationItem[];
   };
   const navigationGroups: Array<{ label: string; items: NavigationItem[] }> = [
+    { label: "Dashboard", items: [
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "organization.read" },
+    ] },
     { label: "Agenda", items: [
-      { href: "/dashboard", label: "Agenda", icon: CalendarDays, permission: "organization.read" },
+      { href: "/agenda", label: "Agenda", icon: CalendarDays, permission: "appointments.read" },
     ] },
     { label: "Atendimento", items: [
       { href: "/clientes", label: organization.clientLabelPlural, icon: UsersRound, permission: "clients.read" },
@@ -119,8 +122,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           <div className="lg:hidden"><SignOutButton compact /></div>
         </div>
         <nav className="app-menu-scrollbar mt-5 flex gap-2 overflow-x-auto overflow-y-hidden pb-1 lg:mt-7 lg:grid lg:min-h-0 lg:flex-1 lg:content-start lg:overflow-x-hidden lg:overflow-y-auto lg:pb-4">
-          {hasOrganizationPermission(organization.role, "appointments.manage") && <Link href="/dashboard?novo=1" className="primary-button shrink-0 bg-accent text-brand-dark hover:bg-lime-300"><span className="text-lg leading-none">+</span> Novo Agendamento</Link>}
-          {navigation.map((group, index) => group.items.length === 1 && group.items[0].label === group.label ? (
+          {navigation.map((group) => group.items.length === 1 && group.items[0].label === group.label ? (
             <Link
               key={group.label}
               href={group.items[0].href}
@@ -131,7 +133,6 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           ) : (
             <details
               className="group/nav relative shrink-0 lg:block"
-              open={index === 1 ? true : undefined}
               key={group.label}
               name="app-navigation"
             >

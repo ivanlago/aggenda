@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 export default function AppointmentsRedirect() {
-  redirect("/dashboard");
+  redirect("/agenda");
 }
 
 /* Legacy page retained temporarily for migration reference.

@@ -1,10 +1,10 @@
-import { AgendaPage } from "@/components/agenda-page";
 import { AppShell } from "@/components/app-shell";
+import { DashboardView } from "@/components/dashboard-view";
 
-export const metadata = { title: "Agenda" };
+export const metadata = { title: "Dashboard" };
 
-export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ novo?: string }> }) {
-  return <AppShell><AgendaPage openNewAppointment={(await searchParams).novo === "1"} /></AppShell>;
+export default async function DashboardPage() {
+  return <AppShell><DashboardView /></AppShell>;
 }
 
 /* Legacy dashboard retained temporarily for migration reference.

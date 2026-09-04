@@ -30,8 +30,8 @@ export default async function ResetPasswordPage({
         ) : (
           <ResetPasswordForm token={token} firstAccess={primeiroAcesso === "1"} email={email} />
         )}
-        <Link className="mt-6 inline-block text-sm font-bold text-brand" href="/entrar">
-          Voltar ao acesso
+        <Link className="mt-6 inline-block text-sm font-bold text-brand" href={primeiroAcesso === "1" ? "/ativar-acesso" : "/entrar"}>
+          {primeiroAcesso === "1" ? "Solicitar novo link" : "Voltar ao acesso"}
         </Link>
       </section>
     </main>

@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import * as schema from "@/db/schema";
@@ -27,6 +28,12 @@ export const auth = betterAuth({
         url,
         token,
       });
+    },
+    onPasswordReset: async ({ user }) => {
+      await db
+        .update(schema.users)
+        .set({ mustChangePassword: false, updatedAt: new Date() })
+        .where(eq(schema.users.id, user.id));
     },
   },
   socialProviders:

@@ -27,6 +27,9 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
         <p className="mt-3 text-muted">
           Criaremos seu espaço de trabalho. Você poderá ajustar tudo depois.
         </p>
+        <div className="mt-5 rounded-2xl border border-brand/20 bg-[#edf7f1] p-4 text-sm leading-6 text-brand">
+          Ao criar o espaço, enviaremos ao seu e-mail o acesso do primeiro administrador. O link para definir a senha é individual e válido por 24 horas.
+        </div>
         <form action={createOrganization} className="mt-8 grid gap-5">
           <input type="hidden" name="next" value={next} />
           <label className="grid gap-2 text-sm font-bold">

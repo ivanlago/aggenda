@@ -4,8 +4,10 @@ import { Copy, Trash2, UserPlus } from "lucide-react";
 import {
   inviteTeamMember,
   removeTeamMember,
+  resendTeamMemberAccess,
 } from "@/actions/team";
 import { PageHeader } from "@/components/page-header";
+import { ActionForm } from "@/components/action-form";
 import { db } from "@/db";
 import {
   organizationInvitations,
@@ -30,6 +32,7 @@ export default async function TeamPage() {
         role: organizationMembers.role,
         professionalId: professionals.id,
         professionalName: professionals.name,
+        mustChangePassword: users.mustChangePassword,
       })
       .from(organizationMembers)
       .innerJoin(users, eq(users.id, organizationMembers.userId))
@@ -71,7 +74,7 @@ export default async function TeamPage() {
             <UserPlus className="size-5 text-brand" />
             <h2 className="text-xl font-extrabold">Criar acesso de usuário</h2>
           </div>
-          <form action={inviteTeamMember} className="mt-5 grid gap-3 md:grid-cols-[1fr_1fr_180px_auto]">
+          <ActionForm action={inviteTeamMember} successMessage="Acesso criado e e-mail enviado." className="mt-5 grid gap-3 md:grid-cols-[1fr_1fr_180px_auto]">
             <input className="field" name="name" required placeholder="Nome completo" />
             <input className="field" name="email" type="email" required placeholder="pessoa@empresa.com" />
             <select className="field" name="role" defaultValue="viewer">
@@ -82,7 +85,7 @@ export default async function TeamPage() {
               <option value="viewer">Somente leitura</option>
             </select>
             <button className="primary-button">Criar acesso</button>
-          </form>
+          </ActionForm>
           <p className="mt-3 text-xs text-muted">
             O Aggenda cria o usuário e envia um link de definição de senha válido por 24 horas. Profissionais recebem acesso ao serem cadastrados na página Profissionais.
           </p>
@@ -101,6 +104,17 @@ export default async function TeamPage() {
                   <p className="font-bold">{member.name}</p>
                 ) : null}
                 <p className="truncate text-sm text-muted">{member.email}</p>
+                {member.mustChangePassword && (
+                  <div className="mt-2">
+                    <span className="text-xs font-bold text-amber-700">Aguardando criação da senha</span>
+                    {canManage && (
+                      <ActionForm action={resendTeamMemberAccess} successMessage="Novo link enviado.">
+                        <input type="hidden" name="userId" value={member.userId} />
+                        <button className="mt-2 text-xs font-extrabold text-brand underline">Reenviar acesso por e-mail</button>
+                      </ActionForm>
+                    )}
+                  </div>
+                )}
               </div>
               {member.role === "professional" && member.professionalId ? (
                 <div className="text-right">

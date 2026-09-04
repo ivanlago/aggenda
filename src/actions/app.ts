@@ -147,6 +147,11 @@ export async function createOrganization(formData: FormData) {
       role: "owner",
     });
 
+    await tx
+      .update(users)
+      .set({ mustChangePassword: true, updatedAt: new Date() })
+      .where(eq(users.id, session.user.id));
+
     await tx.insert(organizationSubscriptions).values({
       organizationId: organization.id,
       plan: "trial",
@@ -184,8 +189,25 @@ export async function createOrganization(formData: FormData) {
     ]);
   });
 
+  try {
+    await auth.api.requestPasswordReset({
+      body: {
+        email: session.user.email,
+        redirectTo: `/redefinir-senha?primeiroAcesso=1&email=${encodeURIComponent(session.user.email)}`,
+      },
+    });
+  } catch (error) {
+    console.error(JSON.stringify({
+      level: "error",
+      message: "Falha ao enviar acesso inicial do administrador",
+      userId: session.user.id,
+      error: error instanceof Error ? error.message : String(error),
+    }));
+  }
+
   const requestedNext = textValue(formData, "next");
-  redirect(requestedNext.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : "/dashboard");
+  const destination = requestedNext.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : "/dashboard";
+  redirect(`/ativar-acesso?next=${encodeURIComponent(destination)}`);
 }
 
 export async function createProfessional(formData: FormData) {
@@ -285,6 +307,10 @@ export async function createProfessional(formData: FormData) {
       userId: provisionedUser.id,
       role: "professional",
     });
+    await tx
+      .update(users)
+      .set({ mustChangePassword: true, updatedAt: new Date() })
+      .where(eq(users.id, provisionedUser.id));
 
     if (specialtyIds.length) {
       await tx.insert(professionalSpecialties).values(

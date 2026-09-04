@@ -10,6 +10,7 @@ import {
   organizations,
   platformMembers,
   professionals,
+  users,
 } from "@/db/schema";
 import { auth } from "@/lib/auth";
 import { selectCurrentOrganization } from "@/lib/organization-selection";
@@ -97,6 +98,12 @@ export const getCurrentOrganization = cache(async (
 
 export async function requireOrganizationMembership() {
   const session = await requireSession();
+  const [userAccess] = await db
+    .select({ mustChangePassword: users.mustChangePassword })
+    .from(users)
+    .where(eq(users.id, session.user.id))
+    .limit(1);
+  if (userAccess?.mustChangePassword) redirect("/ativar-acesso");
   const cookieStore = await cookies();
   const organization = await getCurrentOrganization(
     session.user.id,

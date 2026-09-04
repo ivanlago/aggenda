@@ -262,6 +262,9 @@ export default async function SubscriptionPage({
             <p className="mt-3 text-center text-xs leading-5 text-muted">
               Implantação e configuração fiscal assistidas são serviços opcionais, solicitados separadamente.
             </p>
+            <p className="mt-3 rounded-xl bg-[#edf7f1] p-3 text-center text-xs font-semibold leading-5 text-brand">
+              O primeiro administrador recebe por e-mail um link individual de acesso, válido por 24 horas, e cadastra os demais usuários no Aggenda.
+            </p>
           </aside>
         </section>
         {payments.length > 0 && (

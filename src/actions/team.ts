@@ -74,6 +74,10 @@ export async function inviteTeamMember(formData: FormData) {
       eq(organizationInvitations.organizationId, organization.id),
       eq(organizationInvitations.email, email),
     ));
+    await tx
+      .update(users)
+      .set({ mustChangePassword: true, updatedAt: new Date() })
+      .where(eq(users.id, provisionedUser.id));
   });
 
   await auth.api.requestPasswordReset({
@@ -84,6 +88,42 @@ export async function inviteTeamMember(formData: FormData) {
   });
 
   revalidatePath("/equipe");
+}
+
+export async function resendTeamMemberAccess(formData: FormData) {
+  const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "team.manage");
+  const userId = String(formData.get("userId") ?? "");
+  const [member] = await db
+    .select({ email: users.email, mustChangePassword: users.mustChangePassword })
+    .from(organizationMembers)
+    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .where(and(
+      eq(organizationMembers.organizationId, organization.id),
+      eq(organizationMembers.userId, userId),
+    ))
+    .limit(1);
+  if (!member) return { error: "Usuário não encontrado nesta empresa." };
+  if (!member.mustChangePassword) return { warning: "Este usuário já concluiu a criação da senha." };
+
+  try {
+    await auth.api.requestPasswordReset({
+      body: {
+        email: member.email,
+        redirectTo: `/redefinir-senha?primeiroAcesso=1&email=${encodeURIComponent(member.email)}`,
+      },
+    });
+    return { warning: "Novo link enviado. Ele será válido por 24 horas." };
+  } catch (error) {
+    console.error(JSON.stringify({
+      level: "error",
+      message: "Falha ao reenviar acesso de usuário",
+      organizationId: organization.id,
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    }));
+    return { error: "Não foi possível reenviar o e-mail agora. Tente novamente em alguns minutos." };
+  }
 }
 
 export async function acceptInvitation(token: string) {

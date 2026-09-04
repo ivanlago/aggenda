@@ -146,7 +146,7 @@ export default async function ProfessionalsPage({
         </div>
       )}
       <div className="content-grid">
-        <form action={createProfessional} className="panel form-stack">
+        <ActionForm action={createProfessional} successMessage="Profissional cadastrado e acesso enviado por e-mail." className="panel form-stack">
           <h2 className="text-lg font-extrabold">
             Novo {organization.professionalLabel.toLowerCase()}
           </h2>
@@ -245,7 +245,7 @@ export default async function ProfessionalsPage({
           <button className="primary-button">
             Adicionar {organization.professionalLabel.toLowerCase()}
           </button>
-        </form>
+        </ActionForm>
         <section className="panel">
           <h2 className="text-lg font-extrabold">
             {items.length}{" "}

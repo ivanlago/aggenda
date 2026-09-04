@@ -127,6 +127,7 @@ export const honorifics = pgTable("honorifics", {
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  shortName: text("short_name"),
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").default(false).notNull(),
   mustChangePassword: boolean("must_change_password").default(false).notNull(),

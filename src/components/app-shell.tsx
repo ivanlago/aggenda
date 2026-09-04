@@ -2,7 +2,6 @@ import {
   BriefcaseBusiness,
   CalendarCheck,
   CalendarDays,
-  CalendarClock,
   LayoutDashboard,
   Settings2,
   UsersRound,
@@ -63,7 +62,6 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     ] },
     { label: "Atendimento", items: [
       { href: "/agendamentos", label: organization.appointmentLabelPlural, icon: CalendarDays, permission: "appointments.read" },
-      { href: "/disponibilidade", label: "Disponibilidade", icon: CalendarClock, permission: "availability.read" },
       { href: "/clientes", label: organization.clientLabelPlural, icon: UsersRound, permission: "clients.read" },
       { href: "/produtos", label: "Produtos", icon: Tags, permission: "inventory.read" },
       { href: "/servicos", label: organization.serviceLabelPlural, icon: Wrench, permission: "services.read" },

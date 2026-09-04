@@ -1,199 +1,62 @@
-import { and, eq, isNull } from "drizzle-orm";
-import { Copy, Trash2, UserPlus } from "lucide-react";
+import { and, eq } from "drizzle-orm";
 
-import {
-  inviteTeamMember,
-  removeTeamMember,
-  resendTeamMemberAccess,
-} from "@/actions/team";
 import { PageHeader } from "@/components/page-header";
-import { ActionForm } from "@/components/action-form";
 import { db } from "@/db";
-import {
-  organizationInvitations,
-  organizationMembers,
-  professionals,
-  users,
-} from "@/db/schema";
-import { requireOrganization } from "@/lib/session";
+import { organizationMembers, professionalRegistrations, professionalSpecialties, professionals, professions, specialties, users, weeklyAvailability } from "@/db/schema";
 import { hasOrganizationPermission } from "@/lib/permissions";
-import { TeamMemberAccessForm } from "./team-member-access-form";
-import ProfessionalsPage from "../profissionais/page";
+import { requireOrganization } from "@/lib/session";
+
+import { TeamCreateForm } from "./team-create-form";
+import { TeamMemberCard, type TeamMemberCardData } from "./team-member-card";
 
 export const metadata = { title: "Equipe e acesso" };
 
-const roleLabels: Record<string, string> = {
-  owner: "Administrador",
-  admin: "Administrador",
-  manager: "Gerente",
-  professional: "Profissional",
-  receptionist: "Recepcionista",
-  financial: "Financeiro",
-  staff: "Perfil legado",
-  viewer: "Perfil legado",
-  member: "Perfil legado",
-};
-
-export default async function TeamPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ googleCalendar?: string }>;
-}) {
-  const { organization } = await requireOrganization();
-  const [members, invitations, professionalItems] = await Promise.all([
-    db
-      .select({
-        userId: users.id,
-        name: users.name,
-        email: users.email,
-        role: organizationMembers.role,
-        professionalId: professionals.id,
-        professionalName: professionals.name,
-        mustChangePassword: users.mustChangePassword,
-      })
-      .from(organizationMembers)
-      .innerJoin(users, eq(users.id, organizationMembers.userId))
-      .leftJoin(professionals, and(eq(professionals.organizationId, organizationMembers.organizationId), eq(professionals.userId, users.id)))
-      .where(eq(organizationMembers.organizationId, organization.id)),
-    db
-      .select()
-      .from(organizationInvitations)
-      .where(
-        and(
-          eq(organizationInvitations.organizationId, organization.id),
-          isNull(organizationInvitations.acceptedAt)
-        )
-      ),
-    db.select({ id: professionals.id, name: professionals.name, userId: professionals.userId })
-      .from(professionals)
-      .where(and(eq(professionals.organizationId, organization.id), eq(professionals.isActive, true)))
-      .orderBy(professionals.name),
-  ]);
-  const canManage = hasOrganizationPermission(organization.role, "team.manage");
-  const canManageProfessionals = hasOrganizationPermission(organization.role, "professionals.manage");
+export default async function TeamPage() {
+  const { session, organization } = await requireOrganization();
   const canRead = hasOrganizationPermission(organization.role, "team.read");
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const canManage = hasOrganizationPermission(organization.role, "team.manage");
+  if (!canRead) return <div className="page-wrap"><p className="panel">Acesso restrito à gestão da equipe.</p></div>;
 
-  if (!canRead) {
-    return <div className="page-wrap"><p className="panel">Acesso restrito à gestão da equipe.</p></div>;
-  }
+  const [members, professionOptions, specialtyOptions, specialtyRows, registrationRows, availabilityRows] = await Promise.all([
+    db.select({ userId: users.id, fullName: users.name, shortName: users.shortName, email: users.email, role: organizationMembers.role, professionalId: professionals.id, professionalName: professionals.name, professionId: professionals.professionId, professionName: professions.name, phone: professionals.phone, bio: professionals.bio })
+      .from(organizationMembers).innerJoin(users, eq(users.id, organizationMembers.userId))
+      .leftJoin(professionals, and(eq(professionals.organizationId, organization.id), eq(professionals.userId, users.id)))
+      .leftJoin(professions, eq(professions.id, professionals.professionId))
+      .where(eq(organizationMembers.organizationId, organization.id)).orderBy(users.name),
+    db.select({ id: professions.id, name: professions.name }).from(professions).where(eq(professions.isActive, true)).orderBy(professions.sortOrder, professions.name),
+    db.select({ id: specialties.id, name: specialties.name, professionId: specialties.professionId }).from(specialties).where(eq(specialties.isActive, true)).orderBy(specialties.sortOrder, specialties.name),
+    db.select({ professionalId: professionalSpecialties.professionalId, specialtyId: professionalSpecialties.specialtyId }).from(professionalSpecialties).where(eq(professionalSpecialties.organizationId, organization.id)),
+    db.select({ professionalId: professionalRegistrations.professionalId, council: professionalRegistrations.council, registrationNumber: professionalRegistrations.registrationNumber, state: professionalRegistrations.state }).from(professionalRegistrations).where(eq(professionalRegistrations.organizationId, organization.id)),
+    db.select({ professionalId: weeklyAvailability.professionalId, dayOfWeek: weeklyAvailability.dayOfWeek, startsAt: weeklyAvailability.startsAt, endsAt: weeklyAvailability.endsAt }).from(weeklyAvailability).where(eq(weeklyAvailability.organizationId, organization.id)),
+  ]);
+
+  const memberCards: TeamMemberCardData[] = members.map((member) => {
+    const registration = registrationRows.find((row) => row.professionalId === member.professionalId);
+    return {
+      userId: member.userId, fullName: member.fullName,
+      shortName: member.shortName || member.professionalName || member.fullName,
+      email: member.email, role: member.role, professionalId: member.professionalId,
+      professionId: member.professionId, professionName: member.professionName,
+      phone: member.phone, bio: member.bio, council: registration?.council ?? null,
+      registrationNumber: registration?.registrationNumber ?? null,
+      registrationState: registration?.state ?? null,
+      specialtyIds: specialtyRows.filter((row) => row.professionalId === member.professionalId).map((row) => row.specialtyId),
+      availability: availabilityRows.filter((row) => row.professionalId === member.professionalId).map((row) => ({ dayOfWeek: row.dayOfWeek, startsAt: row.startsAt, endsAt: row.endsAt })),
+    };
+  });
 
   return (
     <div className="page-wrap">
-      <PageHeader
-        eyebrow={organization.name}
-        title="Equipe e acesso"
-        description="Convide cada pessoa para usar uma conta própria e controle suas permissões."
-      />
-
-      {canManageProfessionals && (
-        <section className="panel mb-5">
-          <div className="flex items-center gap-3">
-            <UserPlus className="size-5 text-brand" />
-            <h2 className="text-xl font-extrabold">Criar acesso de usuário</h2>
-          </div>
-          <ActionForm action={inviteTeamMember} successMessage="Acesso criado e e-mail enviado." className="mt-5 grid gap-3 md:grid-cols-[1fr_1fr_180px_auto]">
-            <input className="field" name="name" required placeholder="Nome completo" />
-            <input className="field" name="email" type="email" required placeholder="pessoa@empresa.com" />
-            <select className="field" name="role" defaultValue="receptionist">
-              <option value="admin">Administrador</option>
-              <option value="manager">Gerente</option>
-              <option value="receptionist">Recepcionista</option>
-              <option value="financial">Financeiro</option>
-            </select>
-            <button className="primary-button">Criar acesso</button>
-          </ActionForm>
-          <p className="mt-3 text-xs text-muted">
-            O Aggenda cria o usuário e envia um link de definição de senha válido por 24 horas. Profissionais recebem acesso ao serem cadastrados na página Profissionais.
-          </p>
-        </section>
-      )}
-
-      <section className="panel">
-        <h2 className="text-xl font-extrabold">Pessoas com acesso</h2>
-        <div className="mt-5 divide-y">
-          {members.map((member) => (
-            <div key={member.userId} className="flex items-center gap-4 py-4">
-              <div className="min-w-0 flex-1">
-                {member.professionalName ? (
-                  <p className="font-bold">{member.professionalName}</p>
-                ) : (
-                  <p className="font-bold">{member.name}</p>
-                )}
-                <p className="truncate text-sm text-muted">{member.email}</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <span className="status-pill">{roleLabels[member.role] ?? member.role}</span>
-                  {member.professionalId && member.role !== "professional" && (
-                    <span className="status-pill">Também atende</span>
-                  )}
-                </div>
-                {member.mustChangePassword && (
-                  <div className="mt-2">
-                    <span className="text-xs font-bold text-amber-700">Aguardando criação da senha</span>
-                    {canManage && (
-                      <ActionForm action={resendTeamMemberAccess} successMessage="Novo link enviado.">
-                        <input type="hidden" name="userId" value={member.userId} />
-                        <button className="mt-2 text-xs font-extrabold text-brand underline">Reenviar acesso por e-mail</button>
-                      </ActionForm>
-                    )}
-                  </div>
-                )}
-              </div>
-              {canManage && member.role !== "owner" ? (
-                <TeamMemberAccessForm
-                  userId={member.userId}
-                  initialRole={member.role}
-                  initialProfessionalId={member.professionalId ?? ""}
-                  professionals={professionalItems
-                    .filter((item) => !item.userId || item.userId === member.userId)
-                    .map(({ id, name }) => ({ id, name }))}
-                />
-              ) : member.professionalId ? (
-                <p className="text-right text-xs text-muted">Perfil de atendimento vinculado</p>
-              ) : null}
-              {organization.role === "owner" && member.role !== "owner" && (
-                <form action={removeTeamMember}>
-                  <input type="hidden" name="userId" value={member.userId} />
-                  <button className="icon-button" aria-label={`Remover ${member.name}`}>
-                    <Trash2 className="size-4" />
-                  </button>
-                </form>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {canManage && invitations.length > 0 && (
-        <section className="panel mt-5">
-          <h2 className="text-xl font-extrabold">Convites pendentes</h2>
+      <PageHeader eyebrow={organization.name} title="Equipe e acesso" description="Cadastre a equipe, defina os acessos e configure quem realiza atendimentos." />
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(360px,0.85fr)_minmax(520px,1.15fr)]">
+        {canManage && <section className="panel xl:sticky xl:top-5"><h2 className="mb-5 text-xl font-extrabold">Cadastrar membro da equipe</h2><TeamCreateForm professions={professionOptions} specialties={specialtyOptions} /></section>}
+        <section className="panel">
+          <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-extrabold">Equipe cadastrada</h2><span className="status-pill">{memberCards.length} {memberCards.length === 1 ? "membro" : "membros"}</span></div>
           <div className="mt-5 grid gap-3">
-            {invitations.map((invitation) => {
-              const url = `${appUrl}/convite/${invitation.token}`;
-              return (
-                <div key={invitation.id} className="rounded-2xl border p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-bold">{invitation.email}</p>
-                      <p className="text-xs text-muted">
-                        {roleLabels[invitation.role] ?? invitation.role} · expira em {invitation.expiresAt.toLocaleDateString("pt-BR")}
-                      </p>
-                    </div>
-                    <Copy className="size-4 text-brand" />
-                  </div>
-                  <input className="field mt-3 text-xs" readOnly value={url} aria-label="Link do convite" />
-                </div>
-              );
-            })}
+            {memberCards.map((member) => <TeamMemberCard key={member.userId} member={member} professions={professionOptions} specialties={specialtyOptions} canEdit={canManage} canDelete={canManage && member.role !== "owner" && member.userId !== session.user.id} />)}
           </div>
         </section>
-      )}
-
-      {canManage && (
-        <div className="mt-8 border-t border-slate-200 pt-3">
-          {await ProfessionalsPage({ searchParams })}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

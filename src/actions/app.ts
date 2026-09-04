@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, ilike, inArray, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -260,8 +260,21 @@ export async function createProfessional(formData: FormData) {
     .where(eq(users.email, email))
     .limit(1);
 
+  const [existingProfessional] = await db
+    .select({ id: professionals.id })
+    .from(professionals)
+    .where(and(
+      eq(professionals.organizationId, organization.id),
+      ilike(professionals.email, email),
+    ))
+    .limit(1);
+  if (existingProfessional) {
+    throw new Error("Este e-mail já está associado a um perfil de atendimento nesta empresa.");
+  }
+
+  let existingMembership: { role: typeof organizationMembers.$inferSelect.role } | undefined;
   if (existingUser) {
-    const [existingMembership] = await db
+    [existingMembership] = await db
       .select({ role: organizationMembers.role })
       .from(organizationMembers)
       .where(and(
@@ -269,9 +282,6 @@ export async function createProfessional(formData: FormData) {
         eq(organizationMembers.userId, existingUser.id),
       ))
       .limit(1);
-    if (existingMembership) {
-      throw new Error("Este e-mail já possui acesso à empresa. Ajuste o vínculo em Equipe e acesso.");
-    }
   }
 
   const provisionedUser = existingUser ?? (await auth.api.signUpEmail({
@@ -302,15 +312,19 @@ export async function createProfessional(formData: FormData) {
       })
       .returning({ id: professionals.id });
 
-    await tx.insert(organizationMembers).values({
-      organizationId: organization.id,
-      userId: provisionedUser.id,
-      role: "professional",
-    });
-    await tx
-      .update(users)
-      .set({ mustChangePassword: true, updatedAt: new Date() })
-      .where(eq(users.id, provisionedUser.id));
+    if (!existingMembership) {
+      await tx.insert(organizationMembers).values({
+        organizationId: organization.id,
+        userId: provisionedUser.id,
+        role: "professional",
+      });
+    }
+    if (!existingUser) {
+      await tx
+        .update(users)
+        .set({ mustChangePassword: true, updatedAt: new Date() })
+        .where(eq(users.id, provisionedUser.id));
+    }
 
     if (specialtyIds.length) {
       await tx.insert(professionalSpecialties).values(
@@ -333,12 +347,14 @@ export async function createProfessional(formData: FormData) {
     }
   });
 
-  await auth.api.requestPasswordReset({
-    body: {
-      email,
-      redirectTo: `/redefinir-senha?primeiroAcesso=1&email=${encodeURIComponent(email)}`,
-    },
-  });
+  if (!existingUser) {
+    await auth.api.requestPasswordReset({
+      body: {
+        email,
+        redirectTo: `/redefinir-senha?primeiroAcesso=1&email=${encodeURIComponent(email)}`,
+      },
+    });
+  }
   revalidatePath("/profissionais");
   revalidatePath("/equipe");
   revalidatePath("/dashboard");
@@ -375,6 +391,7 @@ export async function addProfessionalRegistration(formData: FormData) {
     state,
   });
   revalidatePath("/profissionais");
+  revalidatePath("/equipe");
 }
 
 export async function deleteProfessionalRegistration(formData: FormData) {
@@ -389,6 +406,7 @@ export async function deleteProfessionalRegistration(formData: FormData) {
       )
     );
   revalidatePath("/profissionais");
+  revalidatePath("/equipe");
 }
 
 export async function updateOrganizationTerminology(formData: FormData) {
@@ -428,6 +446,7 @@ export async function deleteProfessional(formData: FormData) {
       )
     );
   revalidatePath("/profissionais");
+  revalidatePath("/equipe");
   revalidatePath("/dashboard");
 }
 
@@ -444,6 +463,7 @@ export async function disconnectProfessionalGoogleCalendar(formData: FormData) {
       )
     );
   revalidatePath("/profissionais");
+  revalidatePath("/equipe");
 }
 
 export async function updateProfessional(formData: FormData) {
@@ -490,6 +510,7 @@ export async function updateProfessional(formData: FormData) {
     );
   });
   revalidatePath("/profissionais");
+  revalidatePath("/equipe");
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
 }

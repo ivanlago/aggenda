@@ -132,8 +132,8 @@ export default async function ProfessionalsPage({
     <div className="page-wrap">
       <PageHeader
         eyebrow="Equipe de atendimento"
-        title={organization.professionalLabelPlural}
-        description="Cadastre profissões, especialidades, tratamentos e registros sem limitar a composição da equipe."
+        title="Perfis de atendimento"
+        description="Defina quem realiza atendimentos, suas especialidades, registros, disponibilidade e integrações. O nível de acesso permanece independente."
       />
       {query.googleCalendar === "connected" && (
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">

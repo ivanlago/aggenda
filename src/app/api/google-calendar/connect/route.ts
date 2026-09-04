@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   assertOrganizationPermission(organization.role, "professionals.manage");
   const professionalId = request.nextUrl.searchParams.get("professionalId");
   if (!professionalId) {
-    return NextResponse.redirect(new URL("/profissionais?googleCalendar=invalid", request.url));
+    return NextResponse.redirect(new URL("/equipe?googleCalendar=invalid", request.url));
   }
   const [professional] = await db
     .select({ id: professionals.id })
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     )
     .limit(1);
   if (!professional) {
-    return NextResponse.redirect(new URL("/profissionais?googleCalendar=invalid", request.url));
+    return NextResponse.redirect(new URL("/equipe?googleCalendar=invalid", request.url));
   }
   return NextResponse.redirect(
     getGoogleCalendarAuthorizationUrl({

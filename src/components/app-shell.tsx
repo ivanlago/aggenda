@@ -65,7 +65,6 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       { href: "/agendamentos", label: organization.appointmentLabelPlural, icon: CalendarDays, permission: "appointments.read" },
       { href: "/disponibilidade", label: "Disponibilidade", icon: CalendarClock, permission: "availability.read" },
       { href: "/clientes", label: organization.clientLabelPlural, icon: UsersRound, permission: "clients.read" },
-      { href: "/profissionais", label: organization.professionalLabelPlural, icon: BriefcaseBusiness, permission: "professionals.read" },
       { href: "/produtos", label: "Produtos", icon: Tags, permission: "inventory.read" },
       { href: "/servicos", label: organization.serviceLabelPlural, icon: Wrench, permission: "services.read" },
       { href: "/pacotes", label: "Pacotes", icon: PackageOpen, permission: "services.read" },

@@ -236,7 +236,16 @@ export async function updateTeamMemberAccess(
     .where(and(eq(organizationMembers.organizationId, organization.id), eq(organizationMembers.userId, userId)))
     .limit(1);
   if (!member) return { error: "Membro não encontrado nesta empresa." };
-  if (role === "professional" && !professionalId) {
+  const [linkedProfessional] = await db.select({ id: professionals.id })
+    .from(professionals)
+    .where(and(
+      eq(professionals.organizationId, organization.id),
+      eq(professionals.userId, userId),
+      eq(professionals.isActive, true),
+    ))
+    .limit(1);
+  const effectiveProfessionalId = professionalId || linkedProfessional?.id || "";
+  if (role === "professional" && !effectiveProfessionalId) {
     return { error: "Selecione qual profissional esta conta representa." };
   }
 
@@ -248,13 +257,9 @@ export async function updateTeamMemberAccess(
     if (!updatedMember || updatedMember.role !== role) {
       throw new Error("O perfil salvo não corresponde ao perfil solicitado.");
     }
-    await tx.update(professionals).set({ userId: null, updatedAt: new Date() }).where(and(
-      eq(professionals.organizationId, organization.id),
-      eq(professionals.userId, userId),
-    ));
     if (role === "professional") {
       const updated = await tx.update(professionals).set({ userId, updatedAt: new Date() }).where(and(
-        eq(professionals.id, professionalId),
+        eq(professionals.id, effectiveProfessionalId),
         eq(professionals.organizationId, organization.id),
         eq(professionals.isActive, true),
       )).returning({ id: professionals.id });

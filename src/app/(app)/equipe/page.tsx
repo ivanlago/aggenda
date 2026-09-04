@@ -18,6 +18,7 @@ import {
 import { requireOrganization } from "@/lib/session";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { TeamMemberAccessForm } from "./team-member-access-form";
+import ProfessionalsPage from "../profissionais/page";
 
 export const metadata = { title: "Equipe e acesso" };
 
@@ -33,7 +34,11 @@ const roleLabels: Record<string, string> = {
   member: "Perfil legado",
 };
 
-export default async function TeamPage() {
+export default async function TeamPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ googleCalendar?: string }>;
+}) {
   const { organization } = await requireOrganization();
   const [members, invitations, professionalItems] = await Promise.all([
     db
@@ -65,6 +70,7 @@ export default async function TeamPage() {
       .orderBy(professionals.name),
   ]);
   const canManage = hasOrganizationPermission(organization.role, "team.manage");
+  const canManageProfessionals = hasOrganizationPermission(organization.role, "professionals.manage");
   const canRead = hasOrganizationPermission(organization.role, "team.read");
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
@@ -80,7 +86,7 @@ export default async function TeamPage() {
         description="Convide cada pessoa para usar uma conta própria e controle suas permissões."
       />
 
-      {canManage && (
+      {canManageProfessionals && (
         <section className="panel mb-5">
           <div className="flex items-center gap-3">
             <UserPlus className="size-5 text-brand" />
@@ -109,12 +115,18 @@ export default async function TeamPage() {
           {members.map((member) => (
             <div key={member.userId} className="flex items-center gap-4 py-4">
               <div className="min-w-0 flex-1">
-                {member.role === "professional" && member.professionalName ? (
+                {member.professionalName ? (
                   <p className="font-bold">{member.professionalName}</p>
-                ) : member.role !== "professional" ? (
+                ) : (
                   <p className="font-bold">{member.name}</p>
-                ) : null}
+                )}
                 <p className="truncate text-sm text-muted">{member.email}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="status-pill">{roleLabels[member.role] ?? member.role}</span>
+                  {member.professionalId && member.role !== "professional" && (
+                    <span className="status-pill">Também atende</span>
+                  )}
+                </div>
                 {member.mustChangePassword && (
                   <div className="mt-2">
                     <span className="text-xs font-bold text-amber-700">Aguardando criação da senha</span>
@@ -127,12 +139,7 @@ export default async function TeamPage() {
                   </div>
                 )}
               </div>
-              {member.role === "professional" && member.professionalId ? (
-                <div className="text-right">
-                  <span className="status-pill">Profissional</span>
-                  <p className="mt-2 text-xs text-muted">Vínculo automático concluído</p>
-                </div>
-              ) : canManage && member.role !== "owner" ? (
+              {canManage && member.role !== "owner" ? (
                 <TeamMemberAccessForm
                   userId={member.userId}
                   initialRole={member.role}
@@ -141,7 +148,9 @@ export default async function TeamPage() {
                     .filter((item) => !item.userId || item.userId === member.userId)
                     .map(({ id, name }) => ({ id, name }))}
                 />
-              ) : <span className="status-pill">{roleLabels[member.role] ?? member.role}</span>}
+              ) : member.professionalId ? (
+                <p className="text-right text-xs text-muted">Perfil de atendimento vinculado</p>
+              ) : null}
               {organization.role === "owner" && member.role !== "owner" && (
                 <form action={removeTeamMember}>
                   <input type="hidden" name="userId" value={member.userId} />
@@ -178,6 +187,12 @@ export default async function TeamPage() {
             })}
           </div>
         </section>
+      )}
+
+      {canManage && (
+        <div className="mt-8 border-t border-slate-200 pt-3">
+          {await ProfessionalsPage({ searchParams })}
+        </div>
       )}
     </div>
   );

@@ -45,10 +45,10 @@ export async function GET(request: NextRequest) {
       organizationId: organization.id,
       tokens,
     });
-    revalidatePath("/profissionais");
-    return NextResponse.redirect(new URL("/profissionais?googleCalendar=connected", request.url));
+    revalidatePath("/equipe");
+    return NextResponse.redirect(new URL("/equipe?googleCalendar=connected", request.url));
   } catch (error) {
     console.error("Falha no retorno do Google Calendar", error);
-    return NextResponse.redirect(new URL("/profissionais?googleCalendar=error", request.url));
+    return NextResponse.redirect(new URL("/equipe?googleCalendar=error", request.url));
   }
 }

@@ -43,7 +43,7 @@ export function TeamMemberAccessForm({
         <option value="receptionist">Recepcionista</option><option value="professional">Profissional</option>
         <option value="financial">Financeiro</option>
       </select>
-      {professionalRole && (
+      {professionalRole && !initialProfessionalId && (
         <select
           className="field py-2"
           name="professionalId"
@@ -56,7 +56,9 @@ export function TeamMemberAccessForm({
         </select>
       )}
       <p className="text-xs text-muted sm:col-span-2">
-        {professionalRole
+        {initialProfessionalId
+          ? "Esta conta também possui perfil de atendimento e continuará vinculada à própria agenda."
+          : professionalRole
           ? "Escolha qual profissional esta conta representa. Ela verá apenas a própria agenda."
           : "Defina o nível de acesso desta conta."}
       </p>

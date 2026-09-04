@@ -1,3 +1,13 @@
+import { AgendaPage } from "@/components/agenda-page";
+import { AppShell } from "@/components/app-shell";
+
+export const metadata = { title: "Agenda" };
+
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ novo?: string }> }) {
+  return <AppShell><AgendaPage openNewAppointment={(await searchParams).novo === "1"} /></AppShell>;
+}
+
+/* Legacy dashboard retained temporarily for migration reference.
 import { and, count, eq, gte, inArray, lt } from "drizzle-orm";
 import { CalendarDays, Clock3, UsersRound, Wrench } from "lucide-react";
 import Link from "next/link";
@@ -165,3 +175,4 @@ export default async function DashboardPage({
     </AppShell>
   );
 }
+*/

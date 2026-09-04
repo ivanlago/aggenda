@@ -1,3 +1,10 @@
+import { redirect } from "next/navigation";
+
+export default function AppointmentsRedirect() {
+  redirect("/dashboard");
+}
+
+/* Legacy page retained temporarily for migration reference.
 import { and, eq, gte, inArray } from "drizzle-orm";
 
 import { createAppointment, updateAppointmentStatus } from "@/actions/app";
@@ -181,3 +188,4 @@ export default async function AppointmentsPage() {
     </div>
   );
 }
+*/

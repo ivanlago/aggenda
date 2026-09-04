@@ -59,7 +59,6 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       { href: "/dashboard", label: "Agenda", icon: CalendarDays, permission: "organization.read" },
     ] },
     { label: "Atendimento", items: [
-      { href: "/agendamentos", label: organization.appointmentLabelPlural, icon: CalendarDays, permission: "appointments.read" },
       { href: "/clientes", label: organization.clientLabelPlural, icon: UsersRound, permission: "clients.read" },
       { href: "/servicos", label: organization.serviceLabelPlural, icon: Wrench, permission: "services.read" },
       { href: "/pacotes", label: "Pacotes", icon: PackageOpen, permission: "services.read" },
@@ -120,6 +119,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           <div className="lg:hidden"><SignOutButton compact /></div>
         </div>
         <nav className="app-menu-scrollbar mt-5 flex gap-2 overflow-x-auto overflow-y-hidden pb-1 lg:mt-7 lg:grid lg:min-h-0 lg:flex-1 lg:content-start lg:overflow-x-hidden lg:overflow-y-auto lg:pb-4">
+          {hasOrganizationPermission(organization.role, "appointments.manage") && <Link href="/dashboard?novo=1" className="primary-button shrink-0 bg-accent text-brand-dark hover:bg-lime-300"><span className="text-lg leading-none">+</span> Novo Agendamento</Link>}
           {navigation.map((group, index) => group.items.length === 1 && group.items[0].label === group.label ? (
             <Link
               key={group.label}

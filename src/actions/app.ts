@@ -892,6 +892,31 @@ export async function createFinancialEntry(formData: FormData) {
   revalidatePath("/financeiro");
 }
 
+export async function registerAppointmentPayment(formData: FormData) {
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "finance.manage");
+  const appointmentId = textValue(formData, "appointmentId");
+  const amountInCents = optionalMoneyInCents(formData, "amount");
+  const paymentMethod = textValue(formData, "paymentMethod");
+  const otherMethod = optionalText(formData, "otherPaymentMethod");
+  const allowedMethods = ["cash", "credit_card", "debit_card", "pix", "bank_transfer", "boleto", "other"];
+  if (!amountInCents || !allowedMethods.includes(paymentMethod) || (paymentMethod === "other" && !otherMethod)) throw new Error("Informe valor e forma de pagamento válidos.");
+  const [appointment] = await db.select({ clientId: appointments.clientId, service: services.name })
+    .from(appointments).innerJoin(services, eq(services.id, appointments.serviceId))
+    .where(and(eq(appointments.id, appointmentId), eq(appointments.organizationId, organization.id))).limit(1);
+  if (!appointment) throw new Error("Agendamento não encontrado.");
+  const realizedDate = organizationDate(new Date(), organization.timezone);
+  const description = `Atendimento - ${appointment.service}`;
+  const notes = paymentMethod === "other" ? `Forma de pagamento: ${otherMethod}` : null;
+  const [entry] = await db.insert(financialEntries).values({
+    organizationId: organization.id, appointmentId, clientId: appointment.clientId, type: "receivable",
+    status: "received", source: "appointment", description, category: "Atendimentos",
+    amountInCents, dueDate: realizedDate, realizedDate, paymentMethod, notes, createdByUserId: session.user.id,
+  }).onConflictDoUpdate({ target: financialEntries.appointmentId, set: { status: "received", description, amountInCents, realizedDate, paymentMethod, notes, updatedAt: new Date() } }).returning({ id: financialEntries.id });
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "payment", entityType: "appointment", entityId: appointmentId, details: { financialEntryId: entry.id, amountInCents, paymentMethod } });
+  revalidatePath("/dashboard"); revalidatePath("/financeiro");
+}
+
 export async function createFinancialAccount(formData: FormData) {
   const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage");
   const name = textValue(formData, "name"); const accountType = textValue(formData, "accountType");

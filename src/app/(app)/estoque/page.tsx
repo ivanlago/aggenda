@@ -22,8 +22,9 @@ export default async function InventoryPage() {
   const canManage = hasOrganizationPermission(organization.role, "inventory.manage");
   const [items, categories, subcategories, serviceConsumption, manualConsumption] = await Promise.all([
     db.select({
-      id: inventoryProducts.id, name: retailProducts.name, presentation: retailProductVariants.name,
-      brand: retailProducts.brand, unit: inventoryProducts.unit,
+      id: inventoryProducts.id, variantId: retailProductVariants.id, name: retailProducts.name, presentation: retailProductVariants.name,
+      brand: retailProducts.brand, description: retailProducts.description, barcode: retailProductVariants.barcode,
+      sku: inventoryProducts.sku, unit: inventoryProducts.unit,
       quantity: inventoryProducts.currentQuantityMillis, minimum: inventoryProducts.minimumQuantityMillis,
       cost: inventoryProducts.costInCents, salePrice: retailProductVariants.salePriceInCents,
       categoryId: retailProducts.categoryId, category: inventoryCategories.name,
@@ -44,8 +45,12 @@ export default async function InventoryPage() {
   const costValue = items.reduce((sum, item) => sum + (item.cost ?? 0) * item.quantity / 1000, 0);
   const saleValue = items.reduce((sum, item) => sum + item.salePrice * item.quantity / 1000, 0);
   const rows: StockProductRow[] = items.map((item) => ({
-    id: item.id, name: item.name, presentation: item.presentation === "Padrão" ? "—" : item.presentation,
-    brand: item.brand || "—", quantity: item.quantity, minimum: item.minimum,
+    id: item.id, variantId: item.variantId, name: item.name,
+    presentation: item.presentation === "Padrão" ? "—" : item.presentation, rawPresentation: item.presentation === "Padrão" ? "" : item.presentation,
+    brand: item.brand || "—", rawBrand: item.brand ?? "", sku: item.sku ?? "", barcode: item.barcode ?? "",
+    unit: item.unit, description: item.description ?? "", quantity: item.quantity, minimum: item.minimum,
+    costValue: ((item.cost ?? 0) / 100).toFixed(2).replace(".", ","), saleValue: (item.salePrice / 100).toFixed(2).replace(".", ","),
+    minimumValue: quantity(item.minimum),
     quantityLabel: `${quantity(item.quantity)} ${units[item.unit] ?? item.unit}`,
     costUnit: currency(item.cost ?? 0), costTotal: currency((item.cost ?? 0) * item.quantity / 1000),
     saleUnit: currency(item.salePrice), saleTotal: currency(item.salePrice * item.quantity / 1000),
@@ -61,6 +66,6 @@ export default async function InventoryPage() {
       <article className="panel"><CircleDollarSign className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{currency(saleValue)}</p><p className="text-sm text-muted">valor de venda</p></article>
     </section>
     {canManage && <div className="mt-5 flex flex-wrap gap-2"><StockProductForm categories={categories} subcategories={subcategories} /><StockMovementForm products={rows.map((item) => ({ id: item.id, name: `${item.name} ${item.presentation === "—" ? "" : item.presentation}`.trim(), balance: item.quantityLabel }))} /></div>}
-    <StockProductList products={rows} categories={categories} subcategories={subcategories} />
+    <StockProductList products={rows} categories={categories} subcategories={subcategories} canManage={canManage} />
   </div>;
 }

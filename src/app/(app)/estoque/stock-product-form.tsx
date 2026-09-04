@@ -21,7 +21,7 @@ export function StockProductForm({ categories, subcategories }: { categories: Ca
       <button className="primary-button" type="button" onClick={() => setOpen(true)}><Plus className="mr-2 inline size-4" />Novo produto</button>
       <button className="secondary-button" type="button" onClick={() => setCategoriesOpen(true)}><Tags className="mr-2 inline size-4" />Categorias</button>
     </div>
-    {open && <section className="panel mt-4">
+    {open && <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-label="Novo produto"><section className="panel mx-auto my-6 w-full max-w-4xl">
       <div className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-extrabold">Novo produto</h2><p className="text-sm text-muted">Cadastre identificação, classificação, preços e saldo inicial.</p></div><button type="button" className="icon-button" onClick={() => setOpen(false)} aria-label="Fechar"><X className="size-4" /></button></div>
       <ActionForm action={createRetailProduct} successMessage="Produto cadastrado." className="mt-5 grid gap-3 sm:grid-cols-2" onSuccess={() => setOpen(false)}>
         <label className="grid gap-1 text-sm font-bold">Nome do produto<input className="field" name="name" required /></label>
@@ -39,7 +39,7 @@ export function StockProductForm({ categories, subcategories }: { categories: Ca
         <label className="grid gap-1 text-sm font-bold sm:col-span-2">Descrição<textarea className="field min-h-20" name="description" /></label>
         <button className="primary-button sm:col-span-2">Cadastrar produto</button>
       </ActionForm>
-    </section>}
+    </section></div>}
     {categoriesOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-label="Categorias de produtos"><div className="w-full max-w-xl rounded-3xl bg-white p-5 shadow-2xl"><div className="flex justify-between gap-3"><div><p className="eyebrow">Classificação</p><h2 className="text-xl font-extrabold">Categorias e subcategorias</h2></div><button className="icon-button" type="button" onClick={() => setCategoriesOpen(false)}><X className="size-5" /></button></div><div className="mt-5 grid gap-5 sm:grid-cols-2"><ActionForm action={createInventoryCategory} successMessage="Categoria cadastrada." className="grid gap-3"><h3 className="font-extrabold">Nova categoria</h3><input className="field" name="name" required placeholder="Ex.: Cabelo" /><button className="secondary-button">Cadastrar</button></ActionForm><ActionForm action={createInventorySubcategory} successMessage="Subcategoria cadastrada." className="grid gap-3"><h3 className="font-extrabold">Nova subcategoria</h3><select className="field" name="categoryId" required defaultValue=""><option value="" disabled>Categoria</option>{categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input className="field" name="name" required placeholder="Ex.: Shampoo" /><button className="secondary-button">Cadastrar</button></ActionForm></div><div className="mt-5 border-t pt-4 text-sm text-muted">{categories.map((category) => <p className="py-1" key={category.id}><strong>{category.name}:</strong> {subcategories.filter((item) => item.categoryId === category.id).map((item) => item.name).join(", ") || "sem subcategorias"}</p>)}</div></div></div>}
   </>;
 }

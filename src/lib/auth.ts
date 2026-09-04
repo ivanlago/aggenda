@@ -19,7 +19,7 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
-    resetPasswordTokenExpiresIn: 60 * 60,
+    resetPasswordTokenExpiresIn: 24 * 60 * 60,
     sendResetPassword: async ({ user, url, token }) => {
       await sendPasswordResetEmail({
         email: user.email,

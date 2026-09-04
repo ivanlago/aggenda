@@ -9,19 +9,21 @@ import {
   organizationInvitations,
   organizationMembers,
   professionals,
+  users,
 } from "@/db/schema";
+import { auth } from "@/lib/auth";
 import {
   requireOrganization,
   requireOrganizationMembership,
   requireSession,
 } from "@/lib/session";
 import { assertOrganizationPermission } from "@/lib/permissions";
-import { sendTeamInvitationEmail } from "@/lib/email";
 
 export async function inviteTeamMember(formData: FormData) {
-  const { session, organization } = await requireOrganization();
+  const { organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "team.manage");
 
+  const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const requestedRole = String(formData.get("role") ?? "viewer");
   const allowedRoles = [
@@ -34,41 +36,51 @@ export async function inviteTeamMember(formData: FormData) {
   const role = allowedRoles.includes(requestedRole as (typeof allowedRoles)[number])
     ? (requestedRole as (typeof allowedRoles)[number])
     : "viewer";
+  if (name.length < 2) throw new Error("Informe o nome da pessoa.");
   if (!email.includes("@")) throw new Error("Informe um e-mail válido.");
-  const token = crypto.randomUUID();
-  await db
-    .insert(organizationInvitations)
-    .values({
-      organizationId: organization.id,
-      invitedByUserId: session.user.id,
-      email,
-      role,
-      professionalId: null,
-      token,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    })
-    .onConflictDoUpdate({
-      target: [
-        organizationInvitations.organizationId,
-        organizationInvitations.email,
-      ],
-      set: {
-        invitedByUserId: session.user.id,
-        role,
-        professionalId: null,
-        token,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        acceptedAt: null,
-      },
-    });
 
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
-  await sendTeamInvitationEmail({
-    email,
-    inviterName: session.user.name,
-    organizationName: organization.name,
-    invitationUrl: `${appUrl}/convite/${token}`,
-    token,
+  const [existingUser] = await db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+  if (existingUser) {
+    const [membership] = await db
+      .select({ userId: organizationMembers.userId })
+      .from(organizationMembers)
+      .where(and(
+        eq(organizationMembers.organizationId, organization.id),
+        eq(organizationMembers.userId, existingUser.id),
+      ))
+      .limit(1);
+    if (membership) throw new Error("Este e-mail já possui acesso à empresa.");
+  }
+
+  const provisionedUser = existingUser ?? (await auth.api.signUpEmail({
+    body: {
+      name,
+      email,
+      password: `${crypto.randomUUID()}-${crypto.randomUUID()}`,
+    },
+  })).user;
+
+  await db.transaction(async (tx) => {
+    await tx.insert(organizationMembers).values({
+      organizationId: organization.id,
+      userId: provisionedUser.id,
+      role,
+    });
+    await tx.delete(organizationInvitations).where(and(
+      eq(organizationInvitations.organizationId, organization.id),
+      eq(organizationInvitations.email, email),
+    ));
+  });
+
+  await auth.api.requestPasswordReset({
+    body: {
+      email,
+      redirectTo: `/redefinir-senha?primeiroAcesso=1&email=${encodeURIComponent(email)}`,
+    },
   });
 
   revalidatePath("/equipe");

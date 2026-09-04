@@ -69,9 +69,10 @@ export default async function TeamPage() {
         <section className="panel mb-5">
           <div className="flex items-center gap-3">
             <UserPlus className="size-5 text-brand" />
-            <h2 className="text-xl font-extrabold">Convidar pessoa</h2>
+            <h2 className="text-xl font-extrabold">Criar acesso de usuário</h2>
           </div>
-          <form action={inviteTeamMember} className="mt-5 grid gap-3 md:grid-cols-[1fr_180px_auto]">
+          <form action={inviteTeamMember} className="mt-5 grid gap-3 md:grid-cols-[1fr_1fr_180px_auto]">
+            <input className="field" name="name" required placeholder="Nome completo" />
             <input className="field" name="email" type="email" required placeholder="pessoa@empresa.com" />
             <select className="field" name="role" defaultValue="viewer">
               <option value="admin">Administrador</option>
@@ -80,10 +81,10 @@ export default async function TeamPage() {
               <option value="staff">Funcionário</option>
               <option value="viewer">Somente leitura</option>
             </select>
-            <button className="primary-button">Gerar convite</button>
+            <button className="primary-button">Criar acesso</button>
           </form>
           <p className="mt-3 text-xs text-muted">
-            O convite vale por 7 dias. Profissionais recebem acesso automaticamente ao serem cadastrados na página Profissionais.
+            O Aggenda cria o usuário e envia um link de definição de senha válido por 24 horas. Profissionais recebem acesso ao serem cadastrados na página Profissionais.
           </p>
         </section>
       )}

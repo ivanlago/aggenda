@@ -48,8 +48,8 @@ export async function sendPasswordResetEmail(input: {
     subject: firstAccess ? "Crie sua senha de acesso ao Aggenda" : "Redefina sua senha do Aggenda",
     idempotencyKey: `password-reset-${input.token}`,
     html: emailLayout(
-      firstAccess ? "Seu acesso profissional foi criado" : "Redefinição de senha",
-      `<p style="line-height:1.6">${name}, ${firstAccess ? "você foi cadastrado como profissional no Aggenda. Crie sua senha para acessar sua agenda." : "recebemos uma solicitação para redefinir sua senha."}</p><p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:#24543a;color:#fff;text-decoration:none;padding:14px 20px;border-radius:12px;font-weight:700">${firstAccess ? "Criar senha e acessar" : "Criar nova senha"}</a></p><p style="line-height:1.6;color:#647066">O link expira em 1 hora.</p>`,
+        firstAccess ? "Seu acesso ao Aggenda foi criado" : "Redefinição de senha",
+      `<p style="line-height:1.6">${name}, ${firstAccess ? "sua conta de usuário no Aggenda foi criada. Defina sua senha para acessar o sistema." : "recebemos uma solicitação para redefinir sua senha."}</p><p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:#24543a;color:#fff;text-decoration:none;padding:14px 20px;border-radius:12px;font-weight:700">${firstAccess ? "Criar senha e acessar" : "Criar nova senha"}</a></p><p style="line-height:1.6;color:#647066">O link expira em 24 horas.</p>`,
     ),
   });
 }

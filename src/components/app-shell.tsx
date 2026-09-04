@@ -55,9 +55,8 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     children?: NavigationItem[];
   };
   const navigationGroups: Array<{ label: string; items: NavigationItem[] }> = [
-    { label: "Início", items: [
-      { href: "/dashboard", label: "Visão geral", icon: LayoutDashboard, permission: "organization.read" },
-      ...(organization.role === "professional" ? [] : [{ href: "/implantacao", label: "Implantação guiada", icon: Rocket, permission: "organization.read" as OrganizationPermission }]),
+    { label: "Agenda", items: [
+      { href: "/dashboard", label: "Agenda", icon: CalendarDays, permission: "organization.read" },
     ] },
     { label: "Atendimento", items: [
       { href: "/agendamentos", label: organization.appointmentLabelPlural, icon: CalendarDays, permission: "appointments.read" },
@@ -95,6 +94,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       { href: "/automacoes", label: "WhatsApp e IA", icon: Bot, permission: "integrations.manage" },
     ] },
     { label: "Administração", items: [
+      ...(organization.role === "professional" ? [] : [{ href: "/implantacao", label: "Implantação guiada", icon: Rocket, permission: "organization.read" as OrganizationPermission }]),
       { href: "/dados", label: "Importar e exportar", icon: DatabaseBackup, permission: "clients.manage" },
       { href: "/equipe", label: "Equipe e acesso", icon: UserRoundCog, permission: "team.read" },
       { href: "/configuracoes", label: "Configurações", icon: Settings2, permission: "organization.settings.manage" },
@@ -120,10 +120,18 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           <div className="lg:hidden"><SignOutButton compact /></div>
         </div>
         <nav className="app-menu-scrollbar mt-5 flex gap-2 overflow-x-auto overflow-y-hidden pb-1 lg:mt-7 lg:grid lg:min-h-0 lg:flex-1 lg:content-start lg:overflow-x-hidden lg:overflow-y-auto lg:pb-4">
-          {navigation.map((group, index) => (
+          {navigation.map((group, index) => group.items.length === 1 && group.items[0].label === group.label ? (
+            <Link
+              key={group.label}
+              href={group.items[0].href}
+              className="flex shrink-0 items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold text-white/75 transition hover:bg-white/10 hover:text-white"
+            >
+              {(() => { const Icon = group.items[0].icon; return <Icon className="size-4" />; })()} {group.label}
+            </Link>
+          ) : (
             <details
               className="group/nav relative shrink-0 lg:block"
-              open={index === 0 ? true : undefined}
+              open={index === 1 ? true : undefined}
               key={group.label}
               name="app-navigation"
             >

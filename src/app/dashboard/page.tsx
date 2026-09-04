@@ -9,7 +9,7 @@ import { appointments, clients, professionals, services, weeklyAvailability } fr
 import { requireOrganization, requireProfessionalScope } from "@/lib/session";
 import { formatOrganizationDateTime, organizationDayRange } from "@/lib/appointment-safety";
 
-export const metadata = { title: "Visão geral" };
+export const metadata = { title: "Agenda" };
 
 const statusLabel = {
   scheduled: "Agendado",

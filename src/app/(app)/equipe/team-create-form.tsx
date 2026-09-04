@@ -43,7 +43,7 @@ export function TeamCreateForm({ professions, specialties }: { professions: Prof
       </div>
 
       {isAttendant === "yes" && (
-        <div className="grid gap-4 rounded-2xl border border-brand/15 bg-[#f7faf7] p-4 md:grid-cols-2">
+        <div className="grid items-start gap-4 rounded-2xl border border-brand/15 bg-[#f7faf7] p-4 md:grid-cols-2">
           <label className="grid gap-2 text-sm font-bold">Profissão
             <select className="field" name="professionId" value={professionId} onChange={(event) => setProfessionId(event.target.value)}>
               <option value="">Selecione</option>{professions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}

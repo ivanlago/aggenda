@@ -50,7 +50,7 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
       </div>
 
       {editing && (
-        <ActionForm action={updateUnifiedTeamMember} successMessage="Dados e acesso atualizados." className="mt-4 grid gap-3 rounded-2xl bg-[#f7faf7] p-4 md:grid-cols-2" onSuccess={() => setEditing(false)}>
+        <ActionForm action={updateUnifiedTeamMember} successMessage="Dados e acesso atualizados." className="mt-4 grid items-start gap-3 rounded-2xl bg-[#f7faf7] p-4 md:grid-cols-2" onSuccess={() => setEditing(false)}>
           <input type="hidden" name="userId" value={member.userId} /><input type="hidden" name="professionalId" value={member.professionalId ?? ""} />
           <label className="grid gap-1 text-sm font-bold">Nome completo<input className="field" name="fullName" defaultValue={member.fullName} required /></label>
           <label className="grid gap-1 text-sm font-bold">Nome curto<input className="field" name="shortName" defaultValue={member.shortName} required /></label>

@@ -167,44 +167,48 @@ export async function deleteAvailabilityException(formData: FormData) {
 export async function updateBookingSettings(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "organization.settings.manage");
-  const notice = Math.max(0, Number(value(formData, "bookingNoticeHours") || 0));
-  const horizon = Math.min(
-    365,
-    Math.max(1, Number(value(formData, "bookingHorizonDays") || 60))
-  );
-  const interval = Number(value(formData, "slotIntervalMinutes"));
-  if (![5, 10, 15, 20, 30, 60].includes(interval)) {
-    throw new Error("Intervalo de horários inválido.");
-  }
-  await db
-    .update(organizations)
-    .set({
-      bookingEnabled: formData.get("bookingEnabled") === "on",
-      bookingNoticeHours: notice,
-      bookingHorizonDays: horizon,
-      slotIntervalMinutes: interval,
-      publicDescription: value(formData, "publicDescription") || null,
-      phone: value(formData, "phone") || null,
-      publicAddress: value(formData, "publicAddress") || null,
-      publicLogoUrl: value(formData, "publicLogoUrl") || null,
-      publicCoverUrl: value(formData, "publicCoverUrl") || null,
-      legalName: value(formData, "legalName") || null,
+  const section = value(formData, "settingsSection");
+  const updates: Partial<typeof organizations.$inferInsert> = { updatedAt: new Date() };
+  if (section === "booking") {
+    const notice = Math.max(0, Number(value(formData, "bookingNoticeHours") || 0));
+    const horizon = Math.min(365, Math.max(1, Number(value(formData, "bookingHorizonDays") || 60)));
+    const interval = Number(value(formData, "slotIntervalMinutes"));
+    if (![5, 10, 15, 20, 30, 60].includes(interval)) throw new Error("Intervalo de horários inválido.");
+    Object.assign(updates, {
+      bookingEnabled: formData.get("bookingEnabled") === "on", bookingNoticeHours: notice,
+      bookingHorizonDays: horizon, slotIntervalMinutes: interval,
+    });
+  } else if (section === "identity") {
+    Object.assign(updates, {
+      publicDescription: value(formData, "publicDescription") || null, phone: value(formData, "phone") || null,
+      publicAddress: value(formData, "publicAddress") || null, publicLogoUrl: value(formData, "publicLogoUrl") || null,
+      publicCoverUrl: value(formData, "publicCoverUrl") || null, legalName: value(formData, "legalName") || null,
       taxId: value(formData, "taxId").replace(/\D/g, "") || null,
       publicEmail: value(formData, "publicEmail").toLowerCase() || null,
-      publicWebsite: value(formData, "publicWebsite") || null,
-      publicWhatsapp: value(formData, "publicWhatsapp") || null,
+      publicWebsite: value(formData, "publicWebsite") || null, publicWhatsapp: value(formData, "publicWhatsapp") || null,
       documentFooter: value(formData, "documentFooter") || null,
       brandColor: /^#[0-9a-f]{6}$/i.test(value(formData, "brandColor")) ? value(formData, "brandColor") : "#37664f",
       customDomain: value(formData, "customDomain").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "") || null,
+    });
+  } else if (section === "reminders") {
+    Object.assign(updates, {
       reminderOffsetsHours: [...new Set(value(formData, "reminderOffsetsHours").split(",").map(Number).filter((item) => Number.isFinite(item) && item > 0 && item <= 720))].sort((a, b) => b - a),
       reminderConfirmationEnabled: formData.get("reminderConfirmationEnabled") === "on",
       patientRecoveryDays: Math.min(730, Math.max(30, Number(value(formData, "patientRecoveryDays")) || 90)),
+    });
+  } else if (section === "policies") {
+    Object.assign(updates, {
       cancellationPolicy: value(formData, "cancellationPolicy") || null,
       depositRefundPolicy: value(formData, "depositRefundPolicy") || null,
       latenessPolicy: value(formData, "latenessPolicy") || null,
       publicPrivacyPolicy: value(formData, "publicPrivacyPolicy") || null,
-      updatedAt: new Date(),
-    })
+    });
+  } else {
+    throw new Error("Bloco de configurações inválido.");
+  }
+  await db
+    .update(organizations)
+    .set(updates)
     .where(eq(organizations.id, organization.id));
   await writeAuditLog({
     organizationId: organization.id,

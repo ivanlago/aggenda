@@ -26,23 +26,22 @@ export function TeamMemberAccessForm({
         <option value="receptionist">Recepção</option><option value="professional">Profissional</option>
         <option value="staff">Funcionário</option><option value="viewer">Somente leitura</option>
       </select>
-      <select
-        className="field py-2"
-        name="professionalId"
-        defaultValue={initialProfessionalId}
-        required={professionalRole}
-        disabled={!professionalRole}
-        aria-label="Profissional representado por esta conta"
-      >
-        <option value="" disabled={professionalRole}>
-          {professionalRole ? "Selecione o profissional" : "Vínculo não necessário"}
-        </option>
-        {professionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-      </select>
+      {professionalRole && (
+        <select
+          className="field py-2"
+          name="professionalId"
+          defaultValue={initialProfessionalId}
+          required
+          aria-label="Profissional representado por esta conta"
+        >
+          <option value="" disabled>Selecione o profissional</option>
+          {professionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </select>
+      )}
       <p className="text-xs text-muted sm:col-span-2">
         {professionalRole
           ? "Escolha qual profissional esta conta representa. Ela verá apenas a própria agenda."
-          : "Este perfil não precisa ser associado a um profissional."}
+          : "Defina o nível de acesso desta conta."}
       </p>
       {state.error && <p className="rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700 sm:col-span-2" role="alert">{state.error}</p>}
       {state.success && <p className="rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-800 sm:col-span-2" role="status">Acesso salvo com sucesso.</p>}

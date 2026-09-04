@@ -29,6 +29,7 @@ export default async function TeamPage() {
         email: users.email,
         role: organizationMembers.role,
         professionalId: professionals.id,
+        professionalName: professionals.name,
       })
       .from(organizationMembers)
       .innerJoin(users, eq(users.id, organizationMembers.userId))
@@ -93,10 +94,19 @@ export default async function TeamPage() {
           {members.map((member) => (
             <div key={member.userId} className="flex items-center gap-4 py-4">
               <div className="min-w-0 flex-1">
-                <p className="font-bold">{member.name}</p>
+                {member.role === "professional" && member.professionalName ? (
+                  <p className="font-bold">{member.professionalName}</p>
+                ) : member.role !== "professional" ? (
+                  <p className="font-bold">{member.name}</p>
+                ) : null}
                 <p className="truncate text-sm text-muted">{member.email}</p>
               </div>
-              {canManage && member.role !== "owner" ? (
+              {member.role === "professional" && member.professionalId ? (
+                <div className="text-right">
+                  <span className="status-pill">Profissional</span>
+                  <p className="mt-2 text-xs text-muted">Vínculo automático concluído</p>
+                </div>
+              ) : canManage && member.role !== "owner" ? (
                 <TeamMemberAccessForm
                   userId={member.userId}
                   initialRole={member.role}

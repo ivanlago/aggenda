@@ -8,8 +8,10 @@ import {
   appointmentInventoryConsumptions,
   clients,
   financialEntries,
+  inventoryCategories,
   inventoryMovements,
   inventoryProducts,
+  inventorySubcategories,
   outboxEvents,
   retailProductVariants,
   retailProducts,
@@ -49,11 +51,18 @@ export async function createRetailProduct(data: FormData) {
   const name = text(data, "name");
   const variantName = text(data, "variantName") || "Padrão";
   if (name.length < 2) throw new Error("Informe o nome do produto.");
-  const isForSale = data.get("isForSale") === "on";
-  const isForProcedures = data.get("isForProcedures") === "on";
-  if (!isForSale && !isForProcedures) throw new Error("Escolha se o produto será vendido, usado em procedimentos ou ambos.");
-  const salePriceInCents = money(data, "salePrice", isForSale);
-  if (isForSale && salePriceInCents <= 0) throw new Error("Informe o preço de venda do produto.");
+  const categoryId = text(data, "categoryId") || null;
+  const subcategoryId = text(data, "subcategoryId") || null;
+  const salePriceInCents = money(data, "salePrice", false);
+  if (subcategoryId && !categoryId) throw new Error("Selecione a categoria da subcategoria.");
+  if (categoryId) {
+    const [category] = await db.select({ id: inventoryCategories.id }).from(inventoryCategories).where(and(eq(inventoryCategories.id, categoryId), eq(inventoryCategories.organizationId, organization.id))).limit(1);
+    if (!category) throw new Error("Categoria inválida.");
+  }
+  if (subcategoryId) {
+    const [subcategory] = await db.select({ id: inventorySubcategories.id }).from(inventorySubcategories).where(and(eq(inventorySubcategories.id, subcategoryId), eq(inventorySubcategories.categoryId, categoryId!), eq(inventorySubcategories.organizationId, organization.id))).limit(1);
+    if (!subcategory) throw new Error("Subcategoria inválida para a categoria selecionada.");
+  }
   const initialQuantity = quantity(data, "initialQuantity");
   const minimumQuantity = quantity(data, "minimumQuantity");
   const displayName = variantName === "Padrão" ? name : `${name} — ${variantName}`;
@@ -72,6 +81,8 @@ export async function createRetailProduct(data: FormData) {
       organizationId: organization.id,
       name,
       brand: text(data, "brand") || null,
+      categoryId,
+      subcategoryId,
       description: text(data, "description") || null,
     }).returning({ id: retailProducts.id });
     await tx.insert(retailProductVariants).values({
@@ -82,8 +93,8 @@ export async function createRetailProduct(data: FormData) {
       barcode: text(data, "barcode") || null,
       salePriceInCents,
       commissionRateBasisPoints: Math.min(10_000, Math.round(Number(text(data, "commissionRate").replace(",", ".") || 0) * 100)),
-      isForSale,
-      isForProcedures,
+      isForSale: true,
+      isForProcedures: true,
     });
     if (initialQuantity > 0) await tx.insert(inventoryMovements).values({
       organizationId: organization.id,
@@ -107,11 +118,18 @@ export async function updateRetailVariant(data: FormData) {
   const { organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "inventory.manage");
   const variantId = text(data, "variantId");
-  const isForSale = data.get("isForSale") === "on";
-  const isForProcedures = data.get("isForProcedures") === "on";
-  if (!isForSale && !isForProcedures) throw new Error("Escolha ao menos uma finalidade para o produto.");
-  const salePriceInCents = money(data, "salePrice", isForSale);
-  if (isForSale && salePriceInCents <= 0) throw new Error("Informe o preço de venda do produto.");
+  const salePriceInCents = money(data, "salePrice", false);
+  const categoryId = text(data, "categoryId") || null;
+  const subcategoryId = text(data, "subcategoryId") || null;
+  if (subcategoryId && !categoryId) throw new Error("Selecione a categoria da subcategoria.");
+  if (categoryId) {
+    const [category] = await db.select({ id: inventoryCategories.id }).from(inventoryCategories).where(and(eq(inventoryCategories.id, categoryId), eq(inventoryCategories.organizationId, organization.id))).limit(1);
+    if (!category) throw new Error("Categoria inválida.");
+  }
+  if (subcategoryId) {
+    const [subcategory] = await db.select({ id: inventorySubcategories.id }).from(inventorySubcategories).where(and(eq(inventorySubcategories.id, subcategoryId), eq(inventorySubcategories.categoryId, categoryId!), eq(inventorySubcategories.organizationId, organization.id))).limit(1);
+    if (!subcategory) throw new Error("Subcategoria inválida para a categoria selecionada.");
+  }
   const name = text(data, "name");
   const variantName = text(data, "variantName") || "Padrão";
   if (name.length < 2) throw new Error("Informe o nome do produto.");
@@ -121,10 +139,11 @@ export async function updateRetailVariant(data: FormData) {
   if (!variant) throw new Error("Variação não encontrada.");
   await db.transaction(async (tx) => {
     await tx.update(retailProducts).set({
-      name, brand: text(data, "brand") || null, description: text(data, "description") || null, updatedAt: new Date(),
+      name, brand: text(data, "brand") || null, categoryId, subcategoryId,
+      description: text(data, "description") || null, updatedAt: new Date(),
     }).where(and(eq(retailProducts.id, variant.productId), eq(retailProducts.organizationId, organization.id)));
     await tx.update(retailProductVariants).set({
-      name: variantName, salePriceInCents, barcode: text(data, "barcode") || null, isForSale, isForProcedures,
+      name: variantName, salePriceInCents, barcode: text(data, "barcode") || null, isForSale: true, isForProcedures: true,
       commissionRateBasisPoints: Math.min(10_000, Math.round(Number(text(data, "commissionRate").replace(",", ".") || 0) * 100)),
       isActive: data.get("isActive") === "on", updatedAt: new Date(),
     }).where(eq(retailProductVariants.id, variantId));
@@ -134,10 +153,6 @@ export async function updateRetailVariant(data: FormData) {
       minimumQuantityMillis: quantity(data, "minimumQuantity"),
       isActive: data.get("isActive") === "on", updatedAt: new Date(),
     }).where(and(eq(inventoryProducts.id, variant.inventoryProductId), eq(inventoryProducts.organizationId, organization.id)));
-    if (!isForProcedures) await tx.delete(serviceInventoryItems).where(and(
-      eq(serviceInventoryItems.organizationId, organization.id),
-      eq(serviceInventoryItems.productId, variant.inventoryProductId),
-    ));
   });
   revalidatePath("/produtos"); revalidatePath("/vendas"); revalidatePath("/estoque");
 }

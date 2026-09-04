@@ -344,6 +344,13 @@
       "when": 1788495880724,
       "tag": "0048_dizzy_quentin_quire",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1788536696108,
+      "tag": "0049_small_vertigo",
+      "breakpoints": true
     }
   ]
 }

@@ -1,24 +1,66 @@
-import { and, asc, desc, eq } from "drizzle-orm";
-import { AlertTriangle, Boxes, Trash2 } from "lucide-react";
-import { removeServiceInventoryItem, setServiceInventoryItem } from "@/actions/inventory";
-import { ActionForm } from "@/components/action-form";
-import { InventoryProductBalanceList } from "@/components/inventory-product-balance-list";
-import { InventoryEntryForm } from "@/components/inventory-entry-form";
+import { and, asc, eq } from "drizzle-orm";
+import { Boxes, CircleDollarSign, WalletCards } from "lucide-react";
+
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
-import { inventoryMovements, inventoryProducts, retailProductVariants, serviceInventoryItems, services } from "@/db/schema";
+import { inventoryCategories, inventoryMovements, inventoryProducts, inventorySubcategories, retailProductVariants, retailProducts, serviceInventoryItems } from "@/db/schema";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
+
+import { StockMovementForm } from "./stock-movement-form";
+import { StockProductForm } from "./stock-product-form";
+import { StockProductList, type StockProductRow } from "./stock-product-list";
+
+const currency = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const units: Record<string, string> = { unit: "un", ml: "ml", g: "g", kg: "kg", l: "l", dose: "dose" };
-const movementLabels: Record<string, string> = { initial: "Estoque inicial", entry: "Entrada", adjustment_add: "Ajuste positivo", adjustment_remove: "Ajuste negativo", loss: "Perda", consumption: "Uso em procedimento", reversal: "Estorno de procedimento", sale: "Venda" };
-const qty = (value: number) => (value / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+const quantity = (millis: number) => (millis / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+
 export const metadata = { title: "Estoque" };
-export default async function InventoryPage() { const { organization } = await requireOrganization(); const canManage = hasOrganizationPermission(organization.role, "inventory.manage"); const [products, serviceList, recipe, movements, procedureProductRows, barcodeRows] = await Promise.all([db.select().from(inventoryProducts).where(eq(inventoryProducts.organizationId, organization.id)).orderBy(asc(inventoryProducts.name)), db.select({ id: services.id, name: services.name }).from(services).where(and(eq(services.organizationId, organization.id), eq(services.isActive, true))).orderBy(asc(services.name)), db.select({ serviceId: serviceInventoryItems.serviceId, serviceName: services.name, productId: serviceInventoryItems.productId, productName: inventoryProducts.name, unit: inventoryProducts.unit, quantity: serviceInventoryItems.quantityMillis }).from(serviceInventoryItems).innerJoin(services, eq(services.id, serviceInventoryItems.serviceId)).innerJoin(inventoryProducts, eq(inventoryProducts.id, serviceInventoryItems.productId)).where(eq(serviceInventoryItems.organizationId, organization.id)).orderBy(asc(services.name)), db.select({ id: inventoryMovements.id, productName: inventoryProducts.name, unit: inventoryProducts.unit, type: inventoryMovements.type, quantity: inventoryMovements.quantityMillis, balance: inventoryMovements.balanceAfterMillis, notes: inventoryMovements.notes, createdAt: inventoryMovements.createdAt }).from(inventoryMovements).innerJoin(inventoryProducts, eq(inventoryProducts.id, inventoryMovements.productId)).where(eq(inventoryMovements.organizationId, organization.id)).orderBy(desc(inventoryMovements.createdAt)).limit(30), db.select({ id: retailProductVariants.inventoryProductId }).from(retailProductVariants).where(and(eq(retailProductVariants.organizationId, organization.id), eq(retailProductVariants.isForProcedures, true), eq(retailProductVariants.isActive, true))), db.select({ id: retailProductVariants.inventoryProductId, barcode: retailProductVariants.barcode }).from(retailProductVariants).where(eq(retailProductVariants.organizationId, organization.id))]); const low = products.filter((item) => item.currentQuantityMillis <= item.minimumQuantityMillis); const procedureProductIds = new Set(procedureProductRows.map((item) => item.id)); const procedureProducts = products.filter((item) => procedureProductIds.has(item.id)); const barcodes = new Map(barcodeRows.map((item) => [item.id, item.barcode]));
-return <div className="page-wrap"><PageHeader eyebrow="Operação" title="Controle de estoque" description="Acompanhe saldos, registre entradas e ajustes e consulte as saídas geradas por vendas ou procedimentos." /><section className="grid gap-4 sm:grid-cols-3"><article className="panel"><Boxes className="size-5 text-brand" /><p className="mt-4 text-3xl font-extrabold">{products.length}</p><p className="text-sm text-muted">produtos cadastrados</p></article><article className="panel"><AlertTriangle className="size-5 text-amber-600" /><p className="mt-4 text-3xl font-extrabold">{low.length}</p><p className="text-sm text-muted">no mínimo ou abaixo</p></article><article className="panel"><p className="text-sm text-muted">Valor estimado em estoque</p><p className="mt-4 text-2xl font-extrabold">{(products.reduce((sum, item) => sum + (item.costInCents ?? 0) * item.currentQuantityMillis / 1000, 0) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p></article></section>
-{canManage && <section className="mt-5 grid gap-5 xl:grid-cols-2">
-  <InventoryEntryForm products={products.map((item) => ({ id: item.id, name: item.name, barcode: barcodes.get(item.id) ?? null, stockLabel: `${qty(item.currentQuantityMillis)} ${units[item.unit] ?? item.unit}` }))} />
-  <ActionForm action={setServiceInventoryItem} successMessage="Produto vinculado ao procedimento." className="panel form-stack"><h2 className="text-lg font-extrabold">Consumo por procedimento</h2><p className="text-sm text-muted">Defina a saída automática dos produtos utilizados quando o procedimento for concluído.</p><select className="field" name="serviceId" required><option value="">Procedimento</option>{serviceList.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select className="field" name="productId" required><option value="">Produto utilizado</option>{procedureProducts.map((item) => <option key={item.id} value={item.id}>{item.name} ({units[item.unit] ?? item.unit})</option>)}</select><input className="field" name="quantity" inputMode="decimal" required placeholder="Quantidade consumida" /><button className="primary-button">Adicionar à ficha técnica</button></ActionForm>
-</section>}
-<section className="mt-5 grid gap-5 xl:grid-cols-2"><article className="panel"><h2 className="text-lg font-extrabold">Fichas técnicas</h2><div className="mt-4 divide-y">{recipe.map((item) => <div className="flex items-center justify-between gap-3 py-3 text-sm" key={`${item.serviceId}-${item.productId}`}><span><strong>{item.serviceName}</strong><br />{item.productName}: {qty(item.quantity)} {units[item.unit] ?? item.unit}</span>{canManage && <ActionForm action={removeServiceInventoryItem} successMessage="Item removido."><input type="hidden" name="serviceId" value={item.serviceId} /><input type="hidden" name="productId" value={item.productId} /><button className="icon-button" aria-label="Remover item"><Trash2 className="size-4" /></button></ActionForm>}</div>)}</div></article><article className="panel"><h2 className="text-lg font-extrabold">Movimentações recentes</h2><div className="mt-4 divide-y">{movements.map((item) => <div className="grid grid-cols-[1fr_auto] gap-2 py-3 text-sm" key={item.id}><span><strong>{item.productName}</strong><br /><span className="text-xs text-muted">{movementLabels[item.type] ?? item.type} · {item.createdAt.toLocaleString("pt-BR")}</span></span><span className={item.quantity >= 0 ? "text-emerald-700" : "text-red-700"}>{item.quantity >= 0 ? "+" : ""}{qty(item.quantity)} {units[item.unit] ?? item.unit}<br /><span className="text-xs text-muted">saldo {qty(item.balance)}</span></span></div>)}</div></article></section>
-<InventoryProductBalanceList products={products.map((item) => ({ id: item.id, name: item.name, sku: item.sku, unitLabel: units[item.unit] ?? item.unit, balanceLabel: qty(item.currentQuantityMillis), minimumLabel: qty(item.minimumQuantityMillis), needsRestock: item.currentQuantityMillis <= item.minimumQuantityMillis }))} />
-</div>; }
+
+export default async function InventoryPage() {
+  const { organization } = await requireOrganization();
+  const canManage = hasOrganizationPermission(organization.role, "inventory.manage");
+  const [items, categories, subcategories, serviceConsumption, manualConsumption] = await Promise.all([
+    db.select({
+      id: inventoryProducts.id, name: retailProducts.name, presentation: retailProductVariants.name,
+      brand: retailProducts.brand, unit: inventoryProducts.unit,
+      quantity: inventoryProducts.currentQuantityMillis, minimum: inventoryProducts.minimumQuantityMillis,
+      cost: inventoryProducts.costInCents, salePrice: retailProductVariants.salePriceInCents,
+      categoryId: retailProducts.categoryId, category: inventoryCategories.name,
+      subcategoryId: retailProducts.subcategoryId, subcategory: inventorySubcategories.name,
+    }).from(retailProductVariants)
+      .innerJoin(retailProducts, eq(retailProducts.id, retailProductVariants.productId))
+      .innerJoin(inventoryProducts, eq(inventoryProducts.id, retailProductVariants.inventoryProductId))
+      .leftJoin(inventoryCategories, eq(inventoryCategories.id, retailProducts.categoryId))
+      .leftJoin(inventorySubcategories, eq(inventorySubcategories.id, retailProducts.subcategoryId))
+      .where(and(eq(retailProductVariants.organizationId, organization.id), eq(retailProductVariants.isActive, true)))
+      .orderBy(asc(retailProducts.name), asc(retailProductVariants.name)),
+    db.select({ id: inventoryCategories.id, name: inventoryCategories.name }).from(inventoryCategories).where(eq(inventoryCategories.organizationId, organization.id)).orderBy(inventoryCategories.name),
+    db.select({ id: inventorySubcategories.id, categoryId: inventorySubcategories.categoryId, name: inventorySubcategories.name }).from(inventorySubcategories).where(eq(inventorySubcategories.organizationId, organization.id)).orderBy(inventorySubcategories.name),
+    db.select({ productId: serviceInventoryItems.productId }).from(serviceInventoryItems).where(eq(serviceInventoryItems.organizationId, organization.id)),
+    db.select({ productId: inventoryMovements.productId }).from(inventoryMovements).where(and(eq(inventoryMovements.organizationId, organization.id), eq(inventoryMovements.type, "consumption"))),
+  ]);
+  const consumptionIds = new Set([...serviceConsumption, ...manualConsumption].map((item) => item.productId));
+  const costValue = items.reduce((sum, item) => sum + (item.cost ?? 0) * item.quantity / 1000, 0);
+  const saleValue = items.reduce((sum, item) => sum + item.salePrice * item.quantity / 1000, 0);
+  const rows: StockProductRow[] = items.map((item) => ({
+    id: item.id, name: item.name, presentation: item.presentation === "Padrão" ? "—" : item.presentation,
+    brand: item.brand || "—", quantity: item.quantity, minimum: item.minimum,
+    quantityLabel: `${quantity(item.quantity)} ${units[item.unit] ?? item.unit}`,
+    costUnit: currency(item.cost ?? 0), costTotal: currency((item.cost ?? 0) * item.quantity / 1000),
+    saleUnit: currency(item.salePrice), saleTotal: currency(item.salePrice * item.quantity / 1000),
+    categoryId: item.categoryId, category: item.category ?? "", subcategoryId: item.subcategoryId,
+    subcategory: item.subcategory ?? "", hasConsumption: consumptionIds.has(item.id),
+  }));
+
+  return <div className="page-wrap">
+    <PageHeader eyebrow="Operação" title="Estoque" description="Cadastre produtos, registre entradas e saídas e acompanhe os valores do estoque." />
+    <section className="grid gap-4 sm:grid-cols-3">
+      <article className="panel"><Boxes className="size-5 text-brand" /><p className="mt-4 text-3xl font-extrabold">{items.length}</p><p className="text-sm text-muted">produtos cadastrados</p></article>
+      <article className="panel"><WalletCards className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{currency(costValue)}</p><p className="text-sm text-muted">valor de custo</p></article>
+      <article className="panel"><CircleDollarSign className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{currency(saleValue)}</p><p className="text-sm text-muted">valor de venda</p></article>
+    </section>
+    {canManage && <div className="mt-5 flex flex-wrap gap-2"><StockProductForm categories={categories} subcategories={subcategories} /><StockMovementForm products={rows.map((item) => ({ id: item.id, name: `${item.name} ${item.presentation === "—" ? "" : item.presentation}`.trim(), balance: item.quantityLabel }))} /></div>}
+    <StockProductList products={rows} categories={categories} subcategories={subcategories} />
+  </div>;
+}

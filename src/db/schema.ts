@@ -1055,11 +1055,36 @@ export const inventoryProducts = pgTable("inventory_products", {
   id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), name: text("name").notNull(), sku: text("sku"), unit: text("unit").default("unit").notNull(), currentQuantityMillis: integer("current_quantity_millis").default(0).notNull(), minimumQuantityMillis: integer("minimum_quantity_millis").default(0).notNull(), costInCents: integer("cost_in_cents"), isActive: boolean("is_active").default(true).notNull(), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [uniqueIndex("inventory_products_org_sku_unique").on(table.organizationId, table.sku), index("inventory_products_org_idx").on(table.organizationId)]);
 
+export const inventoryCategories = pgTable("inventory_categories", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("inventory_categories_org_name_unique").on(table.organizationId, table.name),
+  index("inventory_categories_org_idx").on(table.organizationId),
+]);
+
+export const inventorySubcategories = pgTable("inventory_subcategories", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  categoryId: uuid("category_id").notNull().references(() => inventoryCategories.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("inventory_subcategories_category_name_unique").on(table.categoryId, table.name),
+  index("inventory_subcategories_org_idx").on(table.organizationId),
+]);
+
 export const retailProducts = pgTable("retail_products", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   brand: text("brand"),
+  categoryId: uuid("category_id").references(() => inventoryCategories.id, { onDelete: "set null" }),
+  subcategoryId: uuid("subcategory_id").references(() => inventorySubcategories.id, { onDelete: "set null" }),
   description: text("description"),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),

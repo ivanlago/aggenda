@@ -3,13 +3,14 @@ import { Boxes, CircleDollarSign, WalletCards } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
-import { inventoryCategories, inventoryMovements, inventoryProducts, inventorySubcategories, retailProductVariants, retailProducts, serviceInventoryItems } from "@/db/schema";
+import { inventoryCategories, inventoryProducts, inventorySubcategories, retailProductVariants, retailProducts } from "@/db/schema";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
 import { StockMovementForm } from "./stock-movement-form";
 import { StockProductForm } from "./stock-product-form";
 import { StockProductList, type StockProductRow } from "./stock-product-list";
+import { ConsumptionProductList } from "./consumption-product-list";
 
 const currency = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const quantity = (millis: number) => (millis / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
@@ -19,12 +20,13 @@ export const metadata = { title: "Estoque" };
 export default async function InventoryPage() {
   const { organization } = await requireOrganization();
   const canManage = hasOrganizationPermission(organization.role, "inventory.manage");
-  const [items, categories, subcategories, serviceConsumption, manualConsumption] = await Promise.all([
+  const [items, categories, subcategories] = await Promise.all([
     db.select({
       id: inventoryProducts.id, variantId: retailProductVariants.id, name: retailProducts.name, presentation: retailProductVariants.name,
       brand: retailProducts.brand, description: retailProducts.description, barcode: retailProductVariants.barcode,
       sku: inventoryProducts.sku, unit: inventoryProducts.unit,
-      quantity: inventoryProducts.currentQuantityMillis, minimum: inventoryProducts.minimumQuantityMillis,
+      quantity: inventoryProducts.currentQuantityMillis, consumptionQuantity: inventoryProducts.consumptionQuantityMillis,
+      minimum: inventoryProducts.minimumQuantityMillis,
       cost: inventoryProducts.costInCents, salePrice: retailProductVariants.salePriceInCents,
       categoryId: retailProducts.categoryId, category: inventoryCategories.name,
       subcategoryId: retailProducts.subcategoryId, subcategory: inventorySubcategories.name,
@@ -37,24 +39,24 @@ export default async function InventoryPage() {
       .orderBy(asc(retailProducts.name), asc(retailProductVariants.name)),
     db.select({ id: inventoryCategories.id, name: inventoryCategories.name }).from(inventoryCategories).where(eq(inventoryCategories.organizationId, organization.id)).orderBy(inventoryCategories.name),
     db.select({ id: inventorySubcategories.id, categoryId: inventorySubcategories.categoryId, name: inventorySubcategories.name }).from(inventorySubcategories).where(eq(inventorySubcategories.organizationId, organization.id)).orderBy(inventorySubcategories.name),
-    db.select({ productId: serviceInventoryItems.productId }).from(serviceInventoryItems).where(eq(serviceInventoryItems.organizationId, organization.id)),
-    db.select({ productId: inventoryMovements.productId }).from(inventoryMovements).where(and(eq(inventoryMovements.organizationId, organization.id), eq(inventoryMovements.type, "consumption"))),
   ]);
-  const consumptionIds = new Set([...serviceConsumption, ...manualConsumption].map((item) => item.productId));
   const costValue = items.reduce((sum, item) => sum + (item.cost ?? 0) * item.quantity / 1000, 0);
   const saleValue = items.reduce((sum, item) => sum + item.salePrice * item.quantity / 1000, 0);
   const rows: StockProductRow[] = items.map((item) => ({
     id: item.id, variantId: item.variantId, name: item.name,
     presentation: item.presentation === "Padrão" ? "—" : item.presentation, rawPresentation: item.presentation === "Padrão" ? "" : item.presentation,
     brand: item.brand || "—", rawBrand: item.brand ?? "", sku: item.sku ?? "", barcode: item.barcode ?? "",
-    unit: item.unit, description: item.description ?? "", quantity: item.quantity, minimum: item.minimum,
+    unit: item.unit, description: item.description ?? "", quantity: item.quantity,
+    consumptionQuantity: item.consumptionQuantity, consumptionQuantityLabel: quantity(item.consumptionQuantity), minimum: item.minimum,
     costValue: ((item.cost ?? 0) / 100).toFixed(2).replace(".", ","), saleValue: (item.salePrice / 100).toFixed(2).replace(".", ","),
     minimumValue: quantity(item.minimum),
     quantityLabel: quantity(item.quantity),
     costUnit: currency(item.cost ?? 0), costTotal: currency((item.cost ?? 0) * item.quantity / 1000),
     saleUnit: currency(item.salePrice), saleTotal: currency(item.salePrice * item.quantity / 1000),
+    consumptionCostTotal: currency((item.cost ?? 0) * item.consumptionQuantity / 1000),
+    consumptionSaleTotal: currency(item.salePrice * item.consumptionQuantity / 1000),
     categoryId: item.categoryId, category: item.category ?? "", subcategoryId: item.subcategoryId,
-    subcategory: item.subcategory ?? "", hasConsumption: consumptionIds.has(item.id),
+    subcategory: item.subcategory ?? "", hasConsumption: item.consumptionQuantity > 0,
   }));
 
   return <div className="page-wrap">
@@ -66,5 +68,6 @@ export default async function InventoryPage() {
     </section>
     {canManage && <div className="mt-5 flex flex-wrap gap-2"><StockProductForm categories={categories} subcategories={subcategories} /><StockMovementForm products={rows.map((item) => ({ id: item.id, name: `${item.name} ${item.presentation === "—" ? "" : item.presentation}`.trim(), balance: item.quantityLabel }))} /></div>}
     <StockProductList products={rows} categories={categories} subcategories={subcategories} canManage={canManage} />
+    <ConsumptionProductList products={rows} categories={categories} subcategories={subcategories} />
   </div>;
 }

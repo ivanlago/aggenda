@@ -351,6 +351,13 @@
       "when": 1788536696108,
       "tag": "0049_small_vertigo",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1788542436738,
+      "tag": "0050_brown_thaddeus_ross",
+      "breakpoints": true
     }
   ]
 }

@@ -61,11 +61,15 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     { label: "Agenda", items: [
       { href: "/agenda", label: "Agenda", icon: CalendarDays, permission: "appointments.read" },
     ] },
-    { label: "Atendimento", items: [
+    { label: organization.clientLabelPlural, items: [
       { href: "/clientes", label: organization.clientLabelPlural, icon: UsersRound, permission: "clients.read" },
+    ] },
+    { label: "Venda", items: [
+      { href: "/vendas", label: "Venda", icon: ShoppingCart, permission: "inventory.read" },
+    ] },
+    { label: "Atendimento", items: [
       { href: "/servicos", label: organization.serviceLabelPlural, icon: Wrench, permission: "services.read" },
       { href: "/pacotes", label: "Pacotes", icon: PackageOpen, permission: "services.read" },
-      { href: "/vendas", label: "Venda", icon: ShoppingCart, permission: "inventory.read" },
       { href: "/estoque", label: "Estoque", icon: Boxes, permission: "inventory.read" },
       { href: "/documentos", label: "Documentos", icon: FileSignature, permission: "documents.read", children: [
         { href: "/documentos", label: "Visão geral e histórico", icon: LayoutDashboard, permission: "documents.read", secondary: true },

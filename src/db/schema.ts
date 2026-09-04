@@ -19,6 +19,7 @@ export const organizationRoleEnum = pgEnum("organization_role", [
   "manager",
   "receptionist",
   "professional",
+  "financial",
   "staff",
   "viewer",
   "member",

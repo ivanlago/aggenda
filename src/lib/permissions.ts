@@ -39,6 +39,7 @@ export type OrganizationRole =
   | "manager"
   | "receptionist"
   | "professional"
+  | "financial"
   | "staff"
   | "viewer"
   | "member";
@@ -67,9 +68,6 @@ const rolePermissions: Record<OrganizationRole, ReadonlySet<OrganizationPermissi
     "appointments.manage",
     "availability.manage",
     "team.read",
-    "audit.read",
-    "finance.read",
-    "finance.manage",
     "chat.inbox",
     "crm.manage",
     "inventory.manage",
@@ -80,12 +78,18 @@ const rolePermissions: Record<OrganizationRole, ReadonlySet<OrganizationPermissi
     "documents.manage",
   ]),
   receptionist: new Set([
-    ...operationalRead,
+    "organization.read",
+    "clients.read",
+    "professionals.read",
+    "services.read",
+    "appointments.read",
+    "availability.read",
+    "crm.read",
+    "documents.read",
     "clients.manage",
     "appointments.manage",
     "chat.inbox",
     "crm.manage",
-    "inventory.manage",
     "sales.sell",
     "cash.close",
     "documents.manage",
@@ -98,6 +102,18 @@ const rolePermissions: Record<OrganizationRole, ReadonlySet<OrganizationPermissi
     "appointments.manage",
     "availability.read",
     "availability.manage",
+  ]),
+  financial: new Set([
+    "organization.read",
+    "clients.read",
+    "professionals.read",
+    "services.read",
+    "appointments.read",
+    "audit.read",
+    "finance.read",
+    "finance.manage",
+    "inventory.read",
+    "cash.close",
   ]),
   staff: new Set([...operationalRead, "chat.inbox", "sales.sell"]),
   viewer: new Set(operationalRead),

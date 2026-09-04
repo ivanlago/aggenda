@@ -37,7 +37,7 @@ test("administrador possui acesso integral, exceto cobrança", () => {
 
 test("papéis operacionais não recebem permissões administrativas indevidas", () => {
   const forbiddenByRole = {
-    manager: ["organization.settings.manage", "team.manage", "billing.manage", "integrations.manage"],
+    manager: ["organization.settings.manage", "team.manage", "billing.manage", "integrations.manage", "finance.manage", "finance.read"],
     receptionist: ["organization.settings.manage", "team.manage", "billing.manage", "finance.manage", "audit.read"],
     staff: ["organization.settings.manage", "team.manage", "billing.manage", "appointments.manage", "clients.manage"],
     viewer: ["organization.settings.manage", "team.manage", "billing.manage", "appointments.manage", "clients.manage", "chat.inbox"],
@@ -48,6 +48,15 @@ test("papéis operacionais não recebem permissões administrativas indevidas", 
     for (const permission of permissions) {
       assert.equal(hasOrganizationPermission(role, permission), false, `${role}:${permission}`);
     }
+  }
+});
+
+test("financeiro acessa finanças e consultas de apoio sem alterar a operação", () => {
+  for (const permission of ["finance.read", "finance.manage", "cash.close", "audit.read"] as const) {
+    assert.equal(hasOrganizationPermission("financial", permission), true, permission);
+  }
+  for (const permission of ["appointments.manage", "clients.manage", "professionals.manage", "services.manage", "team.manage", "billing.manage", "crm.manage", "inventory.manage"] as const) {
+    assert.equal(hasOrganizationPermission("financial", permission), false, permission);
   }
 });
 

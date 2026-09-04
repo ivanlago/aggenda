@@ -22,9 +22,12 @@ export function TeamMemberAccessForm({
     <form action={formAction} className="grid gap-2 sm:grid-cols-2">
       <input type="hidden" name="userId" value={userId} />
       <select className="field py-2" name="role" value={role} onChange={(event) => setRole(event.target.value)}>
+        {!['admin', 'manager', 'receptionist', 'professional', 'financial'].includes(initialRole) && (
+          <option value={initialRole} disabled>Perfil legado — selecione um novo</option>
+        )}
         <option value="admin">Administrador</option><option value="manager">Gerente</option>
-        <option value="receptionist">Recepção</option><option value="professional">Profissional</option>
-        <option value="staff">Funcionário</option><option value="viewer">Somente leitura</option>
+        <option value="receptionist">Recepcionista</option><option value="professional">Profissional</option>
+        <option value="financial">Financeiro</option>
       </select>
       {professionalRole && (
         <select

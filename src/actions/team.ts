@@ -30,12 +30,11 @@ export async function inviteTeamMember(formData: FormData) {
     "admin",
     "manager",
     "receptionist",
-    "staff",
-    "viewer",
+    "financial",
   ] as const;
   const role = allowedRoles.includes(requestedRole as (typeof allowedRoles)[number])
     ? (requestedRole as (typeof allowedRoles)[number])
-    : "viewer";
+    : "receptionist";
   if (name.length < 2) throw new Error("Informe o nome da pessoa.");
   if (!email.includes("@")) throw new Error("Informe um e-mail válido.");
 
@@ -221,12 +220,12 @@ export async function updateTeamMemberAccess(
   const { organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "team.manage");
   const userId = String(formData.get("userId") ?? "");
-  const requestedRole = String(formData.get("role") ?? "viewer");
+  const requestedRole = String(formData.get("role") ?? "receptionist");
   const professionalId = String(formData.get("professionalId") ?? "");
-  const allowedRoles = ["admin", "manager", "receptionist", "professional", "staff", "viewer"] as const;
+  const allowedRoles = ["admin", "manager", "receptionist", "professional", "financial"] as const;
   const role = allowedRoles.includes(requestedRole as (typeof allowedRoles)[number])
     ? requestedRole as (typeof allowedRoles)[number]
-    : "viewer";
+    : "receptionist";
   const [member] = await db.select({ userId: organizationMembers.userId })
     .from(organizationMembers)
     .where(and(eq(organizationMembers.organizationId, organization.id), eq(organizationMembers.userId, userId)))

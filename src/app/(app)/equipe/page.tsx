@@ -21,6 +21,18 @@ import { TeamMemberAccessForm } from "./team-member-access-form";
 
 export const metadata = { title: "Equipe e acesso" };
 
+const roleLabels: Record<string, string> = {
+  owner: "Administrador",
+  admin: "Administrador",
+  manager: "Gerente",
+  professional: "Profissional",
+  receptionist: "Recepcionista",
+  financial: "Financeiro",
+  staff: "Perfil legado",
+  viewer: "Perfil legado",
+  member: "Perfil legado",
+};
+
 export default async function TeamPage() {
   const { organization } = await requireOrganization();
   const [members, invitations, professionalItems] = await Promise.all([
@@ -77,12 +89,11 @@ export default async function TeamPage() {
           <ActionForm action={inviteTeamMember} successMessage="Acesso criado e e-mail enviado." className="mt-5 grid gap-3 md:grid-cols-[1fr_1fr_180px_auto]">
             <input className="field" name="name" required placeholder="Nome completo" />
             <input className="field" name="email" type="email" required placeholder="pessoa@empresa.com" />
-            <select className="field" name="role" defaultValue="viewer">
+            <select className="field" name="role" defaultValue="receptionist">
               <option value="admin">Administrador</option>
               <option value="manager">Gerente</option>
-              <option value="receptionist">Recepção</option>
-              <option value="staff">Funcionário</option>
-              <option value="viewer">Somente leitura</option>
+              <option value="receptionist">Recepcionista</option>
+              <option value="financial">Financeiro</option>
             </select>
             <button className="primary-button">Criar acesso</button>
           </ActionForm>
@@ -130,7 +141,7 @@ export default async function TeamPage() {
                     .filter((item) => !item.userId || item.userId === member.userId)
                     .map(({ id, name }) => ({ id, name }))}
                 />
-              ) : <span className="status-pill">{member.role}</span>}
+              ) : <span className="status-pill">{roleLabels[member.role] ?? member.role}</span>}
               {organization.role === "owner" && member.role !== "owner" && (
                 <form action={removeTeamMember}>
                   <input type="hidden" name="userId" value={member.userId} />
@@ -156,7 +167,7 @@ export default async function TeamPage() {
                     <div>
                       <p className="font-bold">{invitation.email}</p>
                       <p className="text-xs text-muted">
-                        {invitation.role} · expira em {invitation.expiresAt.toLocaleDateString("pt-BR")}
+                        {roleLabels[invitation.role] ?? invitation.role} · expira em {invitation.expiresAt.toLocaleDateString("pt-BR")}
                       </p>
                     </div>
                     <Copy className="size-4 text-brand" />

@@ -12,7 +12,6 @@ import { StockProductForm } from "./stock-product-form";
 import { StockProductList, type StockProductRow } from "./stock-product-list";
 
 const currency = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const units: Record<string, string> = { unit: "un", ml: "ml", g: "g", kg: "kg", l: "l", dose: "dose" };
 const quantity = (millis: number) => (millis / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
 
 export const metadata = { title: "Estoque" };
@@ -51,7 +50,7 @@ export default async function InventoryPage() {
     unit: item.unit, description: item.description ?? "", quantity: item.quantity, minimum: item.minimum,
     costValue: ((item.cost ?? 0) / 100).toFixed(2).replace(".", ","), saleValue: (item.salePrice / 100).toFixed(2).replace(".", ","),
     minimumValue: quantity(item.minimum),
-    quantityLabel: `${quantity(item.quantity)} ${units[item.unit] ?? item.unit}`,
+    quantityLabel: quantity(item.quantity),
     costUnit: currency(item.cost ?? 0), costTotal: currency((item.cost ?? 0) * item.quantity / 1000),
     saleUnit: currency(item.salePrice), saleTotal: currency(item.salePrice * item.quantity / 1000),
     categoryId: item.categoryId, category: item.category ?? "", subcategoryId: item.subcategoryId,

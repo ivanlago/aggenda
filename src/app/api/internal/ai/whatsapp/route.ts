@@ -34,10 +34,37 @@ type Pending = { kind: "book"; serviceId: string; professionalId: string; starts
 function authorized(request: NextRequest) { const key = process.env.AGGENDA_INTERNAL_API_KEY; return Boolean(key && request.headers.get("authorization") === `Bearer ${key}`); }
 function localTime(date: Date, timezone: string) { return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: timezone }).format(date); }
 function normalizedText(value: string) { return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR"); }
+function editDistance(left: string, right: string) {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let row = 1; row <= left.length; row += 1) {
+    const current = [row];
+    for (let column = 1; column <= right.length; column += 1) {
+      current[column] = Math.min(
+        current[column - 1] + 1,
+        previous[column] + 1,
+        previous[column - 1] + (left[row - 1] === right[column - 1] ? 0 : 1)
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+  return previous[right.length];
+}
+function approximatelyMentions(text: string, name: string) {
+  const normalized = normalizedText(text);
+  const candidate = normalizedText(name);
+  if (normalized.includes(candidate)) return true;
+  const ignored = new Set(["dr", "dra", "de", "da", "do", "dos", "das"]);
+  const words = normalized.match(/[a-z0-9]+/g) ?? [];
+  const candidateWords = (candidate.match(/[a-z0-9]+/g) ?? []).filter((word) => !ignored.has(word));
+  return candidateWords.length > 0 && candidateWords.every((candidateWord) => words.some((word) => {
+    if (word === candidateWord) return true;
+    if (candidateWord.length < 5 || word.length < 5) return false;
+    return editDistance(word, candidateWord) <= Math.max(1, Math.floor(candidateWord.length * 0.2));
+  }));
+}
 function mentionedByName<T extends { name: string }>(rows: T[], texts: string[]) {
   return texts.flatMap((text) => {
-    const normalized = normalizedText(text);
-    return rows.filter((row) => normalized.includes(normalizedText(row.name)));
+    return rows.filter((row) => approximatelyMentions(text, row.name));
   })[0];
 }
 function parseBrazilianDate(value: string) {
@@ -95,8 +122,6 @@ async function send(input: Input, conversation: Conversation, data: { reply: str
   const now = new Date(); let inserted = false;
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.conversationId}))`);
-    const [recentDuplicate] = await tx.select({ id: chatMessages.id }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), eq(chatMessages.direction, "outbound"), eq(chatMessages.body, data.reply), gte(chatMessages.occurredAt, new Date(now.getTime() - 120_000)))).limit(1);
-    if (recentDuplicate) return;
     const [message] = await tx.insert(chatMessages).values({ organizationId: input.organizationId, conversationId: input.conversationId, externalMessageId: `aggenda-ai:${input.messageId}`, direction: "outbound", status: "queued", messageType: "text", body: data.reply, rawPayload: { source: "aggenda_ai", model: data.model, intent: data.intent, confidence: data.confidence, ...(data.pending ? { pendingAction: data.pending } : {}) }, occurredAt: now })
       .onConflictDoNothing({ target: chatMessages.externalMessageId }).returning({ id: chatMessages.id });
     if (!message) return; inserted = true;

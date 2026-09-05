@@ -64,7 +64,9 @@ function asksToCancel(value: string) {
   return /\b(cancel|desmarc)/.test(normalizedText(value));
 }
 function asksToBook(value: string) {
-  return /\b(agend|marcar|reserv)/.test(normalizedText(value));
+  const normalized = normalizedText(value);
+  return /\b(agend|marcar|reserv)/.test(normalized)
+    || /\b(quero|gostaria|preciso|desejo).*(consulta|atendimento|procedimento|exame|servico)/.test(normalized);
 }
 function parsePending(payload?: Record<string, unknown> | null): Pending | null {
   const result = z.discriminatedUnion("kind", [

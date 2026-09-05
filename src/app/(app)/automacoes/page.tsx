@@ -11,6 +11,7 @@ import {
   whatsappServices,
 } from "@/lib/service-plans";
 import { requireOrganization } from "@/lib/session";
+import { formatPhone } from "@/lib/phone";
 
 export const metadata = { title: "WhatsApp e automações" };
 
@@ -29,6 +30,7 @@ export default async function AutomationsPage() {
       eq(organizationUsageCounters.periodStart, firstDayOfMonth()),
     )),
   ]);
+  channels.forEach((channel) => { channel.displayPhoneNumber = formatPhone(channel.displayPhoneNumber) || null; });
   const current = whatsappServices[plan.whatsappServiceCode];
   const usageByMetric = new Map(usage.map((item) => [item.metric, item.quantity]));
   const received = usageByMetric.get("whatsapp.inbound") ?? 0;

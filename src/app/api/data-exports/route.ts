@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { clients, services } from "@/db/schema";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
+import { formatPhone } from "@/lib/phone";
 
 const csvCell = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
 
@@ -26,7 +27,7 @@ export async function GET(request: Request) {
       : [["Avaliação", "Avaliação inicial", 30, "50,00", "sim", "sim"]];
   } else if (type === "clients") {
     const data = await db.select().from(clients).where(eq(clients.organizationId, organization.id));
-    rows = data.map((item) => [item.name, item.phone, item.email, item.birthDate, item.gender, item.notes]);
+    rows = data.map((item) => [item.name, formatPhone(item.phone), item.email, item.birthDate, item.gender, item.notes]);
   } else {
     const data = await db.select().from(services).where(eq(services.organizationId, organization.id));
     rows = data.map((item) => [item.name, item.description, item.durationMinutes, item.priceInCents == null ? null : (item.priceInCents / 100).toFixed(2), item.isActive ? "sim" : "não", item.requiresProfessional ? "sim" : "não"]);

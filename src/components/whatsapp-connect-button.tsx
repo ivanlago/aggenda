@@ -3,6 +3,7 @@
 import Script from "next/script";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { formatPhone } from "@/lib/phone";
 
 declare global {
   interface Window {
@@ -51,7 +52,7 @@ export function WhatsAppConnectButton({
       const result = await response.json() as { error?: string; displayPhoneNumber?: string };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível concluir a conexão.");
       setState("success");
-      setMessage(`WhatsApp ${result.displayPhoneNumber ?? "empresarial"} conectado com sucesso.`);
+      setMessage(`WhatsApp ${formatPhone(result.displayPhoneNumber) || "empresarial"} conectado com sucesso.`);
       router.refresh();
     } catch (error) {
       connectingRef.current = false;

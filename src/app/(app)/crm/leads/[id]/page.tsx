@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { crmAiInsights, crmCustomFields, crmCustomFieldValues, crmLeadTags, crmLeads, crmOpportunities, crmProposalItems, crmProposals, crmStages, crmTags, crmTasks, organizationMembers, services, users } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
+import { formatPhone } from "@/lib/phone";
 
 export default async function CrmLeadPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -43,7 +44,7 @@ export default async function CrmLeadPage({ params }: { params: Promise<{ id: st
 
   return <div className="page-wrap">
     <Link className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-brand" href="/crm"><ArrowLeft className="size-4" /> Voltar ao funil</Link>
-    <PageHeader eyebrow={`Lead · ${lead.source}`} title={lead.name} description={[lead.company, lead.phone, lead.email].filter(Boolean).join(" · ") || "Sem contato informado"} />
+    <PageHeader eyebrow={`Lead · ${lead.source}`} title={lead.name} description={[lead.company, formatPhone(lead.phone), lead.email].filter(Boolean).join(" · ") || "Sem contato informado"} />
     <section className="grid gap-5 lg:grid-cols-[1fr_.8fr]">
       <article className="panel">
         <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-extrabold uppercase tracking-widest text-brand">Dados comerciais</p><h2 className="mt-2 text-xl font-extrabold">{primaryOpportunity?.title ?? "Sem oportunidade"}</h2></div><span className="status-pill">{lead.status}</span></div>

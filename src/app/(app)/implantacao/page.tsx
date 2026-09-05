@@ -29,6 +29,7 @@ import {
 } from "@/lib/implementation-services";
 import { getOrganizationServicePlan, whatsappServices } from "@/lib/service-plans";
 import { requireOrganization } from "@/lib/session";
+import { formatPhone } from "@/lib/phone";
 
 export const metadata = { title: "Implantação guiada" };
 
@@ -55,6 +56,7 @@ export default async function ImplantationPage() {
   ]);
   const product = whatsappServices[plan.whatsappServiceCode];
   const activeChannel = channels.find((channel) => channel.isActive && channel.connectionStatus === "active");
+  if (activeChannel) activeChannel.displayPhoneNumber = formatPhone(activeChannel.displayPhoneNumber) || null;
   const profileReady = Boolean(organization.businessType);
   const catalogReady = serviceTotal.value > 0;
   const knowledgeReady = !product.usesAi || (catalogReady && describedServiceTotal.value === serviceTotal.value);

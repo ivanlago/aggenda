@@ -11,6 +11,7 @@ import { appointments, auditLogs, clientClinicalMedia, clientHistoryEntries, cli
 import { requireOrganization, requireProfessionalScope } from "@/lib/session";
 import { formatOrganizationDateTime } from "@/lib/appointment-safety";
 import { hasOrganizationPermission } from "@/lib/permissions";
+import { formatPhone } from "@/lib/phone";
 
 const statusLabels = {
   scheduled: "Agendado",
@@ -139,14 +140,14 @@ export default async function ClientHistoryPage({
       <PageHeader
         eyebrow={`Histórico de ${organization.clientLabel.toLowerCase()}`}
         title={client.name}
-        description={[client.phone, client.email].filter(Boolean).join(" · ") || "Sem contato informado"}
+        description={[formatPhone(client.phone), client.email].filter(Boolean).join(" · ") || "Sem contato informado"}
       />
       <section className="panel mb-5">
         <h2 className="text-lg font-extrabold">Dados cadastrais</h2>
         <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
           <div><p className="text-muted">Data de nascimento</p><p className="font-bold">{client.birthDate ? new Date(`${client.birthDate}T12:00:00Z`).toLocaleDateString("pt-BR") : "Não informada"}</p></div>
           <div><p className="text-muted">Sexo</p><p className="font-bold">{client.gender ? genderLabels[client.gender] ?? client.gender : "Não informado"}</p></div>
-          <div><p className="text-muted">Contato</p><p className="font-bold">{client.phone || client.email || "Não informado"}</p></div>
+          <div><p className="text-muted">Contato</p><p className="font-bold">{formatPhone(client.phone) || client.email || "Não informado"}</p></div>
         </div>
       </section>
       {isHealth && <section className="panel mb-5">

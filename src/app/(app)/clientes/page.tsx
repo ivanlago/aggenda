@@ -10,6 +10,7 @@ import { db } from "@/db";
 import { appointments, clients } from "@/db/schema";
 import { requireOrganization, requireProfessionalScope } from "@/lib/session";
 import { hasOrganizationPermission } from "@/lib/permissions";
+import { formatPhone } from "@/lib/phone";
 
 export const metadata = { title: "Clientes" };
 
@@ -109,7 +110,7 @@ export default async function ClientsPage({
                   <Link className="font-bold hover:text-brand" href={`/clientes/${item.id}`}>
                     {item.name}
                   </Link>
-                  <p className="truncate text-sm text-muted">{item.phone || item.email || "Sem contato informado"}</p>
+                  <p className="truncate text-sm text-muted">{formatPhone(item.phone) || item.email || "Sem contato informado"}</p>
                   {canManage && <details className="mt-2">
                     <summary className="flex w-fit items-center gap-1 text-xs font-extrabold text-brand">
                       <Pencil className="size-3" /> Editar dados

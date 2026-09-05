@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { chatConversations, crmLeads, organizationMembers, users } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
+import { formatPhone } from "@/lib/phone";
 
 export default async function CrmInboxPage() {
   const { organization } = await requireOrganization();
@@ -17,6 +18,7 @@ export default async function CrmInboxPage() {
       .where(eq(chatConversations.organizationId, organization.id)).orderBy(desc(chatConversations.lastMessageAt)),
     db.select({ id: users.id, name: users.name }).from(organizationMembers).innerJoin(users, eq(users.id, organizationMembers.userId)).where(eq(organizationMembers.organizationId, organization.id)),
   ]);
+  conversations.forEach((conversation) => { conversation.phone = formatPhone(conversation.phone); });
   return <div className="page-wrap">
     <Link className="mb-4 inline-flex text-sm font-bold text-brand" href="/crm">← Voltar ao funil</Link>
     <PageHeader eyebrow={organization.name} title="Conversas comerciais" description="Conecte atendimentos do WhatsApp ao funil e controle a passagem entre IA e equipe." />

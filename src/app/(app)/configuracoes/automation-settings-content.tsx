@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { organizationUsageCounters, whatsappChannels } from "@/db/schema";
 import { getOrganizationServicePlan, whatsappServiceCodes, whatsappServices } from "@/lib/service-plans";
 import { requireOrganization } from "@/lib/session";
+import { formatPhone } from "@/lib/phone";
 
 const firstDayOfMonth = () => { const now = new Date(); return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`; };
 
@@ -30,6 +31,7 @@ async function loadAutomationSettings() {
 
 export async function WhatsAppSettingsContent() {
   const data = await loadAutomationSettings();
+  data.channels.forEach((channel) => { channel.displayPhoneNumber = formatPhone(channel.displayPhoneNumber) || null; });
   return <section className="grid gap-5 xl:grid-cols-[1.25fr_.75fr]">
     <article className="panel"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-sm font-extrabold uppercase tracking-widest text-brand">Serviço atual</p><h2 className="mt-2 text-2xl font-extrabold">{data.current.name}</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{data.current.description}</p></div><span className="status-pill">{data.serviceReady ? "Pronto" : data.plan.isLegacyFallback ? "Acesso legado" : "Configuração pendente"}</span></div>
       <div className={`mt-5 rounded-xl p-3 text-sm font-bold ${data.serviceReady ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{data.serviceReady ? "Serviço pronto para uso." : <>Configuração incompleta: {!data.channelReady && "conecte um canal Meta ativo; "}{data.current.usesCloudApi && !data.templatesReady && "configure os templates transacionais; "}{!data.workflowReady && "configure o processamento contratado."}</>}</div>

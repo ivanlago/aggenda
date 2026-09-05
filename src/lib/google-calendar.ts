@@ -9,6 +9,7 @@ import {
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
+import { formatPhone } from "@/lib/phone";
 import {
   appointments,
   clients,
@@ -395,7 +396,7 @@ export async function syncAppointmentToGoogleCalendar(appointmentId: string) {
           summary: `${appointment.serviceName} - ${appointment.clientName}`,
           description: [
             `Cliente: ${appointment.clientName}`,
-            appointment.clientPhone ? `Telefone: ${appointment.clientPhone}` : null,
+            appointment.clientPhone ? `Telefone: ${formatPhone(appointment.clientPhone)}` : null,
             appointment.clientEmail ? `E-mail: ${appointment.clientEmail}` : null,
             `Profissional: ${appointment.professionalName}`,
             `Serviço: ${appointment.serviceName}`,

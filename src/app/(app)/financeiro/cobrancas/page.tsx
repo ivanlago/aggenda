@@ -16,6 +16,7 @@ import { clients, financialEntries, organizationFinancialIntegrations, paymentCh
 import { organizationDate } from "@/lib/appointment-safety";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
+import { formatPhone } from "@/lib/phone";
 
 export const metadata = { title: "Pagamentos" };
 const money = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -36,6 +37,7 @@ export default async function ChargesPage({ searchParams }: { searchParams: Prom
   const normalizedSearch = query.busca?.trim().toLocaleLowerCase("pt-BR") ?? "";
   const filtered = allCharges.filter((item) => (!normalizedSearch || `${item.customerName} ${item.description} ${item.customerDocument ?? ""}`.toLocaleLowerCase("pt-BR").includes(normalizedSearch)) && (!query.status || query.status === "all" || item.status === query.status) && (!query.meio || query.meio === "all" || item.paymentMethod === query.meio) && (!query.inicio || item.dueDate >= query.inicio) && (!query.fim || item.dueDate <= query.fim));
   const pageSize = 20; const pages = Math.max(1, Math.ceil(filtered.length / pageSize)); const currentPage = Math.min(pages, Math.max(1, Number(query.pagina) || 1)); const charges = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  charges.forEach((item) => { item.customerPhone = formatPhone(item.customerPhone) || null; });
   const paid = allCharges.filter((item) => item.status === "paid"); const overdue = allCharges.filter((item) => item.status === "overdue" || (item.status === "pending" && item.dueDate < today)); const open = allCharges.filter((item) => ["pending", "overdue"].includes(item.status));
   const integration = integrationRows.find((item) => item.provider === "asaas"); const metadata = (integration?.metadata ?? {}) as Record<string, unknown>; const webhookStatus = String(metadata.webhookStatus ?? "não configurado");
   const mercadoPago = integrationRows.find((item) => item.provider === "mercado_pago"); const mercadoPagoMetadata = (mercadoPago?.metadata ?? {}) as Record<string, unknown>;

@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { formatPhone } from "@/lib/phone";
 
 export function sha256(value: string | Buffer) {
   return createHash("sha256").update(value).digest("hex");
@@ -100,7 +101,7 @@ export async function createSignedDocumentPdf(input: {
     page.drawText(input.organizationName, { x: headerX, y: 786, size: 14, font: bold, color: brand });
     const legal = [input.organizationLegalName, input.organizationTaxId ? `CNPJ/CPF ${input.organizationTaxId}` : null].filter(Boolean).join(" - ");
     if (legal) page.drawText(legal.slice(0, 90), { x: headerX, y: 770, size: 7.5, font: regular, color: rgb(0.35, 0.39, 0.36) });
-    const contact = [input.organizationPhone, input.organizationWhatsapp && input.organizationWhatsapp !== input.organizationPhone ? `WhatsApp ${input.organizationWhatsapp}` : null, input.organizationEmail, input.organizationWebsite].filter(Boolean).join(" - ");
+    const contact = [formatPhone(input.organizationPhone), input.organizationWhatsapp && input.organizationWhatsapp !== input.organizationPhone ? `WhatsApp ${formatPhone(input.organizationWhatsapp)}` : null, input.organizationEmail, input.organizationWebsite].filter(Boolean).join(" - ");
     if (contact) page.drawText(contact.slice(0, 115), { x: headerX, y: 757, size: 7.5, font: regular, color: rgb(0.35, 0.39, 0.36) });
     if (input.organizationAddress) page.drawText(input.organizationAddress.slice(0, 115), { x: headerX, y: 744, size: 7.5, font: regular, color: rgb(0.35, 0.39, 0.36) });
     page.drawLine({ start: { x: margin, y: 730 }, end: { x: pageSize[0] - margin, y: 730 }, thickness: 1.2, color: brand });

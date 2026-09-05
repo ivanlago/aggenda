@@ -162,6 +162,16 @@ export async function POST(request: NextRequest) {
   }
   const [organization] = await db.select({ name: organizations.name, description: organizations.publicDescription, timezone: organizations.timezone, slotIntervalMinutes: organizations.slotIntervalMinutes }).from(organizations).where(eq(organizations.id, input.organizationId)).limit(1);
   if (!organization) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+  const normalizedMessage = input.text.trim().toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[!.?,;:]+$/g, "").trim();
+  if (/^(oi|ola|bom dia|boa tarde|boa noite|hey|hello)$/.test(normalizedMessage)) {
+    await send(input, conversation, {
+      reply: `Olá! Você está falando com ${organization.name}. Posso ajudar a consultar horários, agendar, confirmar, reagendar ou cancelar um atendimento. O que deseja fazer?`,
+      model: "aggenda-transactional-v1",
+      intent: "greeting",
+      confidence: 1,
+    });
+    return NextResponse.json({ accepted: true, action: "reply" });
+  }
   const [latest] = await db.select({ rawPayload: chatMessages.rawPayload }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), eq(chatMessages.direction, "outbound"))).orderBy(desc(chatMessages.occurredAt)).limit(1);
   const pending = parsePending(latest?.rawPayload); const clientId = await getClient(input, conversation);
   if (pending && (isAffirmativeWhatsAppCommand(input.text) || isNegativeWhatsAppCommand(input.text))) {

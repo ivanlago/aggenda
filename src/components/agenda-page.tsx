@@ -31,7 +31,7 @@ export async function AgendaPage({ openNewAppointment = false, filters = {} }: {
   const canManageFinance = hasOrganizationPermission(organization.role, "finance.manage");
   const canSendWhatsApp = !["viewer", "member"].includes(organization.role);
   const today = organizationDayRange(new Date(), organization.timezone);
-  const period = ["day", "week", "month"].includes(filters.period ?? "") ? filters.period : "day";
+  const period = ["day", "week", "month"].includes(filters.period ?? "") ? filters.period : "month";
   const selectedStatus = statuses.some(([value]) => value === filters.status) ? filters.status as typeof statuses[number][0] : undefined;
   const periodEndDate = new Date();
   if (period === "day") periodEndDate.setDate(periodEndDate.getDate() + 1);

@@ -6,6 +6,7 @@ import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
 import { SettingsTabs } from "./settings-tabs";
+import { AutomationAndAiSettingsContent, WhatsAppSettingsContent } from "./automation-settings-content";
 
 export const metadata = { title: "Configurações" };
 
@@ -93,6 +94,8 @@ export default async function SettingsPage() {
       { id: "identity", label: "Identidade", content: identity },
       { id: "reminders", label: "Lembretes", content: reminders },
       { id: "policies", label: "Políticas", content: policies },
+      { id: "whatsapp", label: "WhatsApp", content: <WhatsAppSettingsContent /> },
+      { id: "automation", label: "Automações e IA", content: <AutomationAndAiSettingsContent /> },
     ]} />
   </div>;
 }

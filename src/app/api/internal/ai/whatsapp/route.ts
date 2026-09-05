@@ -23,7 +23,7 @@ const inputSchema = z.object({
 const coreActions = ["reply", "availability", "prepare_booking", "confirm_appointment", "prepare_reschedule", "prepare_cancel", "handoff"] as const;
 const coreAnswerSchema = z.object({
   action: z.preprocess((value) => typeof value === "string" && coreActions.includes(value as typeof coreActions[number]) ? value : "reply", z.enum(coreActions)),
-  reply: z.string().min(1).max(3000), intent: z.string().max(80).default("unknown"), confidence: z.number().min(0).max(1).default(0),
+  reply: z.preprocess((value) => typeof value === "string" && value.trim() ? value : "Como posso ajudar com seu agendamento?", z.string().min(1).max(3000)), intent: z.string().max(80).default("unknown"), confidence: z.number().min(0).max(1).default(0),
   serviceId: z.string().uuid().nullable().default(null), professionalId: z.string().uuid().nullable().default(null), appointmentId: z.string().uuid().nullable().default(null),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().default(null), time: z.string().regex(/^\d{2}:\d{2}$/).nullable().default(null), cancellationReason: z.string().max(500).nullable().default(null),
 });
@@ -95,6 +95,16 @@ function asksToBook(value: string) {
   const normalized = normalizedText(value);
   return /\b(agend|marcar|reserv)/.test(normalized)
     || /\b(quero|gostaria|preciso|desejo).*(consulta|atendimento|procedimento|exame|servico)/.test(normalized);
+}
+function asksForFirstAvailable(value: string) {
+  const normalized = normalizedText(value);
+  return /\b(primeir|proxim).*(horario|disponibilidade|vaga)/.test(normalized)
+    || /\b(qualquer profissional|quem tiver primeiro|mais cedo)\b/.test(normalized);
+}
+function addDays(date: string, amount: number) {
+  const [year, month, day] = date.split("-").map(Number);
+  const result = new Date(Date.UTC(year, month - 1, day + amount));
+  return result.toISOString().slice(0, 10);
 }
 function parsePending(payload?: Record<string, unknown> | null): Pending | null {
   const result = z.discriminatedUnion("kind", [
@@ -234,6 +244,33 @@ export async function POST(request: NextRequest) {
   const directDate = parseBrazilianDate(input.text);
   const contextualDate = contextTexts.map(parseBrazilianDate).find(Boolean) ?? null;
   const directTime = parseBrazilianTime(input.text);
+  if (asksForFirstAvailable(input.text)) {
+    if (!contextualService) {
+      await send(input, conversation, { reply: "Para qual atendimento você deseja o primeiro horário disponível?", model: "aggenda-transactional-v1", intent: "select_service", confidence: 1 });
+      return NextResponse.json({ accepted: true, action: "reply" });
+    }
+    const eligibleProfessionals = Array.from(new Map(
+      professionalRows.filter((row) => row.serviceId === contextualService.id).map((row) => [row.id, row])
+    ).values());
+    let firstSlot: { startsAt: string; professionalId: string; professionalName: string } | null = null;
+    const firstDate = organizationDate(new Date(), organization.timezone);
+    for (let offset = 0; offset < 30 && !firstSlot; offset += 1) {
+      const date = addDays(firstDate, offset);
+      const daily = await Promise.all(eligibleProfessionals.map(async (professional) => ({
+        professional,
+        slots: await getAvailableTimes({ organizationId: input.organizationId, timezone: organization.timezone, date, serviceId: contextualService.id, professionalId: professional.id, slotIntervalMinutes: organization.slotIntervalMinutes }),
+      })));
+      const candidates = daily.flatMap(({ professional, slots }) => (slots ?? []).map((startsAt) => ({ startsAt, professionalId: professional.id, professionalName: professional.name })));
+      firstSlot = candidates.sort((left, right) => left.startsAt.localeCompare(right.startsAt))[0] ?? null;
+    }
+    if (!firstSlot) {
+      await send(input, conversation, { reply: `Não encontrei horários disponíveis para ${contextualService.name} nos próximos 30 dias. Deseja escolher outro atendimento?`, model: "aggenda-transactional-v1", intent: "availability", confidence: 1 });
+      return NextResponse.json({ accepted: true, action: "availability" });
+    }
+    const nextPending: Pending = { kind: "book", serviceId: contextualService.id, professionalId: firstSlot.professionalId, startsAt: firstSlot.startsAt };
+    await send(input, conversation, { reply: `O primeiro horário disponível para ${contextualService.name} é com ${firstSlot.professionalName}, em ${formatOrganizationDateTime(new Date(firstSlot.startsAt), organization.timezone)}. Confirma? Responda CONFIRMAR.`, model: "aggenda-transactional-v1", intent: "prepare_booking", confidence: 1, pending: nextPending });
+    return NextResponse.json({ accepted: true, action: "prepare_booking" });
+  }
   if (asksToBook(input.text) && !contextualService) {
     const options = catalog.slice(0, 10).map((service) => `• ${service.name}`).join("\n");
     const suffix = catalog.length > 10 ? "\nSe preferir, escreva o nome do atendimento desejado." : "";

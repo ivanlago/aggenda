@@ -599,8 +599,14 @@ export async function createClientHistoryEntry(formData: FormData) {
 
 export async function createClientClinicalMedia(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "clients.manage");
   const clientId = textValue(formData, "clientId");
+  if (organization.role === "professional") {
+    const professionalId = await requireProfessionalScope(organization.id, session.user.id);
+    const [allowed] = await db.select({ id: appointments.id }).from(appointments).where(and(eq(appointments.organizationId, organization.id), eq(appointments.clientId, clientId), eq(appointments.professionalId, professionalId))).limit(1);
+    if (!allowed) throw new Error("Este cliente não pertence à sua agenda profissional.");
+  } else {
+    assertOrganizationPermission(organization.role, "clients.manage");
+  }
   const file = formData.get("file");
   if (!clientId || !(file instanceof File) || file.size === 0 || formData.get("consentConfirmed") !== "on") {
     throw new Error("Selecione uma imagem e confirme o consentimento do paciente.");
@@ -610,6 +616,19 @@ export async function createClientClinicalMedia(formData: FormData) {
   const [client] = await db.select({ id: clients.id }).from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1);
   if (!client) throw new Error("Cliente não encontrado.");
   const parentMediaId = optionalText(formData, "parentMediaId");
+  const mediaType = textValue(formData, "mediaType") || "photo";
+  if (!["photo", "simulation"].includes(mediaType)) throw new Error("Tipo de registro clínico inválido.");
+  let annotations: Array<Record<string, unknown>> = [];
+  const annotationsRaw = optionalText(formData, "annotations");
+  if (annotationsRaw) {
+    try {
+      const parsed = JSON.parse(annotationsRaw);
+      if (!Array.isArray(parsed) || parsed.length > 500) throw new Error();
+      annotations = parsed as Array<Record<string, unknown>>;
+    } catch {
+      throw new Error("Os dados editáveis da simulação são inválidos.");
+    }
+  }
   if (parentMediaId) {
     const [parent] = await db.select({ id: clientClinicalMedia.id }).from(clientClinicalMedia).where(and(
       eq(clientClinicalMedia.id, parentMediaId),
@@ -624,6 +643,7 @@ export async function createClientClinicalMedia(formData: FormData) {
       organizationId: organization.id,
       clientId,
       authorUserId: session.user.id,
+      mediaType,
       phase: textValue(formData, "phase") || "clinical",
       title: optionalText(formData, "title"),
       url: "cloudinary:authenticated",
@@ -636,6 +656,7 @@ export async function createClientClinicalMedia(formData: FormData) {
       width: uploaded.width,
       height: uploaded.height,
       bytes: uploaded.bytes,
+      annotations,
       parentMediaId,
     }).returning({ id: clientClinicalMedia.id });
     await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "client_clinical_media", entityId: media.id });
@@ -648,13 +669,19 @@ export async function createClientClinicalMedia(formData: FormData) {
 
 export async function deleteClientClinicalMedia(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "clients.manage");
   const mediaId = textValue(formData, "mediaId");
   const [media] = await db.select().from(clientClinicalMedia).where(and(
     eq(clientClinicalMedia.id, mediaId),
     eq(clientClinicalMedia.organizationId, organization.id),
   )).limit(1);
   if (!media) throw new Error("Fotografia não encontrada.");
+  if (organization.role === "professional") {
+    const professionalId = await requireProfessionalScope(organization.id, session.user.id);
+    const [allowed] = await db.select({ id: appointments.id }).from(appointments).where(and(eq(appointments.organizationId, organization.id), eq(appointments.clientId, media.clientId), eq(appointments.professionalId, professionalId))).limit(1);
+    if (!allowed) throw new Error("Este cliente não pertence à sua agenda profissional.");
+  } else {
+    assertOrganizationPermission(organization.role, "clients.manage");
+  }
   if (media.storageProvider === "cloudinary" && media.storagePublicId) await deleteClinicalImage(media.storagePublicId);
   await db.delete(clientClinicalMedia).where(and(
     eq(clientClinicalMedia.id, media.id),

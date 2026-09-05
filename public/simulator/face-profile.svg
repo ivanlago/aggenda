@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 860">
+  <rect width="720" height="860" fill="#f8faf9"/>
+  <path d="M179 151c102-103 287-69 351 58 33 66 29 135 3 190 21 28 42 54 62 79 12 15 7 39-12 47l-60 25c-15 103-62 185-151 202-105 20-198-55-226-170-31-126-39-327 33-431Z" fill="#f2d2bd" stroke="#896b60" stroke-width="5"/>
+  <path d="M174 164c92-124 318-105 370 63-91-75-225-78-330-10-45 30-64 80-72 134-18-77-9-143 32-187Z" fill="#4b372f"/>
+  <path d="M397 348c46-20 87-13 116 18" fill="none" stroke="#60483f" stroke-width="8" stroke-linecap="round"/>
+  <ellipse cx="463" cy="389" rx="40" ry="24" fill="#fff" stroke="#72564d" stroke-width="4"/><circle cx="472" cy="389" r="12" fill="#5f4a35"/>
+  <path d="M527 396c18 48 42 81 68 102-12 17-35 23-66 18" fill="#e4b99f" stroke="#987164" stroke-width="4"/>
+  <path d="M514 573c31 16 61 18 91 5-25 37-58 50-94 35" fill="#c96f74" stroke="#8e4d52" stroke-width="3"/>
+  <text x="360" y="815" text-anchor="middle" font-family="Arial" font-size="22" fill="#65736d">Perfil facial — modelo ilustrativo Aggenda</text>
+</svg>

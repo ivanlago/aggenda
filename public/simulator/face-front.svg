@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 860">
+  <rect width="720" height="860" fill="#f8faf9"/>
+  <path d="M360 92c-151 0-238 118-224 307 13 179 104 345 224 345s211-166 224-345C598 210 511 92 360 92Z" fill="#f2d2bd" stroke="#896b60" stroke-width="5"/>
+  <path d="M137 330c-28-135 38-266 223-266s251 131 223 266c-31-117-99-174-223-174s-192 57-223 174Z" fill="#4b372f"/>
+  <path d="M221 354c41-26 86-25 120 2M379 356c34-27 79-28 120-2" fill="none" stroke="#60483f" stroke-width="8" stroke-linecap="round"/>
+  <ellipse cx="279" cy="383" rx="43" ry="25" fill="#fff" stroke="#72564d" stroke-width="4"/><ellipse cx="441" cy="383" rx="43" ry="25" fill="#fff" stroke="#72564d" stroke-width="4"/>
+  <circle cx="279" cy="383" r="13" fill="#5f4a35"/><circle cx="441" cy="383" r="13" fill="#5f4a35"/>
+  <path d="M360 390c-6 64-20 106-42 122 23 18 61 18 84 0-22-16-36-58-42-122Z" fill="#e4b99f" stroke="#987164" stroke-width="3"/>
+  <path d="M276 586c52 40 116 40 168 0-49-19-119-19-168 0Z" fill="#c96f74" stroke="#8e4d52" stroke-width="3"/>
+  <path d="M206 476c24 18 49 23 75 17M514 476c-24 18-49 23-75 17" fill="none" stroke="#d6aa90" stroke-width="5"/>
+  <text x="360" y="815" text-anchor="middle" font-family="Arial" font-size="22" fill="#65736d">Face frontal — modelo ilustrativo Aggenda</text>
+</svg>

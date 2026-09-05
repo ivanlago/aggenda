@@ -32,6 +32,7 @@ export default async function ClientHistoryPage({
     ? await requireProfessionalScope(organization.id, session.user.id)
     : null;
   const canManage = hasOrganizationPermission(organization.role, "clients.manage");
+  const canManageClinicalMedia = canManage || organization.role === "professional";
   const canReadDocuments = hasOrganizationPermission(organization.role, "documents.read");
   const [client] = await db
     .select()
@@ -153,7 +154,7 @@ export default async function ClientHistoryPage({
       {isHealth && <section className="panel mb-5">
         <h2 className="text-lg font-extrabold">Fotografias clínicas</h2>
         <p className="mt-1 text-sm text-muted">Organize registros de antes, durante e depois. As imagens são compactadas, entregues por acesso autenticado e vinculadas ao consentimento.</p>
-        {canManage && <ActionForm action={createClientClinicalMedia} successMessage="Fotografia clínica enviada." className="mt-4 grid gap-3 sm:grid-cols-2">
+        {canManageClinicalMedia && <ActionForm action={createClientClinicalMedia} successMessage="Fotografia clínica enviada." className="mt-4 grid gap-3 sm:grid-cols-2">
           <input type="hidden" name="clientId" value={client.id} />
           <select className="field" name="phase"><option value="before">Antes</option><option value="during">Durante</option><option value="after">Depois</option><option value="clinical">Registro clínico</option></select>
           <input className="field" name="title" placeholder="Área ou procedimento" />
@@ -161,7 +162,15 @@ export default async function ClientHistoryPage({
           <label className="flex items-start gap-2 text-sm font-bold sm:col-span-2"><input className="mt-1" name="consentConfirmed" type="checkbox" required />Confirmo que há consentimento para este registro clínico.</label>
           <button className="primary-button sm:w-fit">Adicionar fotografia</button>
         </ActionForm>}
-        <ClinicalMediaGallery clientId={client.id} media={clinicalMedia.map((item) => ({ id: item.id, title: item.title, phase: item.phase, src: item.storageProvider === "cloudinary" ? `/api/clinical-media/${item.id}?width=1200` : item.url }))} />
+        <ClinicalMediaGallery clientId={client.id} canManage={canManageClinicalMedia} media={clinicalMedia.map((item) => ({
+          id: item.id,
+          title: item.title,
+          phase: item.phase,
+          mediaType: item.mediaType,
+          parentMediaId: item.parentMediaId,
+          annotations: Array.isArray(item.annotations) ? item.annotations : [],
+          src: item.storageProvider === "cloudinary" ? `/api/clinical-media/${item.id}?width=1600` : item.url,
+        }))} />
       </section>}
       <section className="panel mb-5">
         <div className="flex items-center justify-between gap-3">

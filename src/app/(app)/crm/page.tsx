@@ -11,6 +11,7 @@ import {
 } from "@/actions/crm";
 import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
+import { PhoneInput } from "@/components/phone-input";
 import { db } from "@/db";
 import { crmLeads, crmOpportunities, crmPipelines, crmStages, crmTasks, organizationMembers, users } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
@@ -94,7 +95,7 @@ export default async function CrmPage() {
               <input type="hidden" name="stageId" value={pipelineStages[0]?.id} />
               <input className="field" name="name" required placeholder="Nome do contato" />
               <input className="field" name="company" placeholder="Empresa (opcional)" />
-              <input className="field" name="phone" type="tel" placeholder="WhatsApp" />
+              <PhoneInput name="phone" placeholder="WhatsApp: (71) 99999-9999" />
               <input className="field" name="email" type="email" placeholder="E-mail" />
               <input className="field md:col-span-2" name="title" placeholder="Título da oportunidade" />
               <input className="field" name="value" inputMode="decimal" placeholder="Valor estimado (R$)" />

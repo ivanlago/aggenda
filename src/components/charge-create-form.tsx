@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { createProviderCharge } from "@/actions/mercado-pago";
 import { ActionForm } from "@/components/action-form";
+import { PhoneInput } from "@/components/phone-input";
 
 type Entry = { id: string; description: string; amount: string; dueDate: string; clientName: string; clientEmail: string; clientPhone: string };
 
@@ -19,7 +20,7 @@ export function ChargeCreateForm({ entries, providers }: { entries: Entry[]; pro
       <input key={`${entryId}:name`} aria-label="Nome do pagador" className="field" name="customerName" required defaultValue={selected?.clientName} placeholder="Nome do pagador" />
       <input aria-label="CPF ou CNPJ do pagador" className="field" name="customerDocument" required inputMode="numeric" placeholder="CPF ou CNPJ" />
       <input key={`${entryId}:email`} aria-label="E-mail do pagador" className="field" name="customerEmail" type="email" defaultValue={selected?.clientEmail} placeholder="E-mail" />
-      <input key={`${entryId}:phone`} aria-label="WhatsApp do pagador" className="field" name="customerPhone" inputMode="tel" defaultValue={selected?.clientPhone} placeholder="WhatsApp" />
+      <PhoneInput key={`${entryId}:phone`} aria-label="WhatsApp do pagador" name="customerPhone" defaultValue={selected?.clientPhone} placeholder="WhatsApp: (71) 99999-9999" />
       {(provider === "asaas" || provider === "pagbank") && <><label className="grid gap-1 text-xs font-bold">Meio<select className="field" name="paymentMethod" defaultValue={provider === "pagbank" ? "link" : "pix"}><option value="pix">Pix</option><option value="boleto">Boleto</option><option value="link">Link com escolha do cliente</option><option value="credit_card">Cartão de crédito</option></select></label><label className="grid gap-1 text-xs font-bold">Modalidade<select className="field" name="chargeMode"><option value="single">Cobrança única</option><option value="installment">Parcelada</option><option value="recurring">Recorrência mensal</option></select></label><label className="grid gap-1 text-xs font-bold">Parcelas (se parcelada)<input className="field" name="installmentCount" type="number" min="2" max={provider === "pagbank" ? 12 : 24} defaultValue="2" /></label></>}
     </div>
     <p className="text-xs text-muted">Nome, e-mail e telefone vêm do paciente vinculado. O CPF/CNPJ ainda precisa ser confirmado por segurança.</p>

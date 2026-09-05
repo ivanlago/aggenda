@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
+import { PhoneInput } from "@/components/phone-input";
 
 type Item = { id: string; name: string; durationMinutes?: number; priceInCents?: number | null; depositType?: string; depositValue?: number };
 
@@ -139,7 +140,7 @@ export function BookingForm({
       </select>
       <div className="my-2 border-t" />
       <input className="field" name="name" placeholder="Seu nome" required />
-      <input className="field" name="phone" type="tel" placeholder="WhatsApp com DDD" required />
+      <PhoneInput name="phone" placeholder="WhatsApp: (71) 99999-9999" autoComplete="tel" required />
       <input className="field" name="email" type="email" placeholder="E-mail (opcional)" />
       <input className="field" name="voucherCode" placeholder="Voucher ou cupom (opcional)" />
       {requiresDeposit && <><input className="field" name="document" inputMode="numeric" placeholder="CPF do responsável pelo pagamento" required /><div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm"><strong>Reserva com sinal.</strong> O horário fica reservado por 30 minutos e será confirmado após o pagamento seguro na conta Asaas da empresa.</div></>}

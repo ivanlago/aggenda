@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient, deleteClient, updateClient } from "@/actions/app";
 import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
+import { PhoneInput } from "@/components/phone-input";
 import { db } from "@/db";
 import { appointments, clients } from "@/db/schema";
 import { requireOrganization, requireProfessionalScope } from "@/lib/session";
@@ -47,7 +48,7 @@ export default async function ClientsPage({
             Novo {organization.clientLabel.toLowerCase()}
           </h2>
           <input className="field" name="name" required placeholder="Nome completo" />
-          <input className="field" name="phone" type="tel" placeholder="Telefone" />
+          <PhoneInput name="phone" placeholder="Telefone: (71) 99999-9999" />
           <input className="field" name="email" type="email" placeholder="E-mail" />
           <label className="grid gap-2 text-sm font-bold">Data de nascimento<input className="field" name="birthDate" type="date" /></label>
           <select className="field" name="gender" defaultValue="">
@@ -116,7 +117,7 @@ export default async function ClientsPage({
                     <ActionForm action={updateClient} successMessage="Cliente atualizado com sucesso." className="mt-3 grid gap-2 rounded-2xl border bg-white p-4">
                       <input type="hidden" name="id" value={item.id} />
                       <input className="field py-2" name="name" defaultValue={item.name} required />
-                      <input className="field py-2" name="phone" type="tel" defaultValue={item.phone ?? ""} placeholder="Telefone" />
+                      <PhoneInput className="field py-2" name="phone" defaultValue={item.phone} placeholder="Telefone: (71) 99999-9999" />
                       <input className="field py-2" name="email" type="email" defaultValue={item.email ?? ""} placeholder="E-mail" />
                       <input className="field py-2" name="birthDate" type="date" defaultValue={item.birthDate ?? ""} aria-label="Data de nascimento" />
                       <select className="field py-2" name="gender" defaultValue={item.gender ?? ""} aria-label="Sexo">

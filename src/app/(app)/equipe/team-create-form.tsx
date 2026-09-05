@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import { createUnifiedTeamMember } from "@/actions/team";
 import { ActionForm } from "@/components/action-form";
+import { PhoneInput } from "@/components/phone-input";
 
 type Profession = { id: string; name: string };
 type Specialty = { id: string; name: string; professionId: string };
@@ -58,7 +59,7 @@ export function TeamCreateForm({ professions, specialties }: { professions: Prof
           <label className="grid gap-2 text-sm font-bold">Conselho<select className="field" name="council" defaultValue=""><option value="">Selecione</option>{["CRM", "CRO", "CRP", "COREN", "CREFITO", "OAB", "CREA", "CREF", "OUTRO"].map((item) => <option key={item}>{item}</option>)}</select></label>
           <label className="grid gap-2 text-sm font-bold">Número do conselho<input className="field" name="registrationNumber" /></label>
           <label className="grid gap-2 text-sm font-bold">UF do conselho<input className="field" name="registrationState" maxLength={2} /></label>
-          <label className="grid gap-2 text-sm font-bold">Telefone<input className="field" name="phone" type="tel" /></label>
+          <label className="grid gap-2 text-sm font-bold">Telefone<PhoneInput name="phone" /></label>
           <label className="grid gap-2 text-sm font-bold md:col-span-2">Apresentação breve<textarea className="field min-h-24" name="bio" /></label>
         </div>
       )}

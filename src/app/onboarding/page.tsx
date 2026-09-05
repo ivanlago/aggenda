@@ -2,6 +2,7 @@ import { Building2, CalendarCheck } from "lucide-react";
 import { redirect } from "next/navigation";
 
 import { createOrganization } from "@/actions/app";
+import { PhoneInput } from "@/components/phone-input";
 import { getCurrentOrganization, requireSession } from "@/lib/session";
 
 export const metadata = { title: "Configure seu negócio" };
@@ -52,7 +53,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
           </label>
           <label className="grid gap-2 text-sm font-bold">
             Telefone
-            <input className="field" name="phone" type="tel" placeholder="(71) 99999-9999" />
+            <PhoneInput name="phone" />
           </label>
           <button className="mt-2 rounded-2xl bg-brand px-5 py-4 font-extrabold text-white hover:bg-brand-dark">
             Criar meu espaço

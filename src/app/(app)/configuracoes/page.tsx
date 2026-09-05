@@ -2,6 +2,7 @@ import { updateOrganizationTerminology } from "@/actions/app";
 import { updateBookingSettings } from "@/actions/schedule";
 import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
+import { PhoneInput } from "@/components/phone-input";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
@@ -49,8 +50,8 @@ export default async function SettingsPage() {
       <label className="grid gap-2 text-sm font-bold sm:col-span-3">Apresentação pública<textarea className="field min-h-20" name="publicDescription" defaultValue={organization.publicDescription ?? ""} disabled={!canManage} placeholder="Conte a especialidade e os diferenciais do negócio" /></label>
       <label className="grid gap-2 text-sm font-bold sm:col-span-2">Razão social<input className="field" name="legalName" defaultValue={organization.legalName ?? ""} disabled={!canManage} /></label>
       <label className="grid gap-2 text-sm font-bold">CNPJ ou CPF institucional<input className="field" name="taxId" defaultValue={organization.taxId ?? ""} disabled={!canManage} inputMode="numeric" /></label>
-      <label className="grid gap-2 text-sm font-bold">Telefone<input className="field" name="phone" defaultValue={organization.phone ?? ""} disabled={!canManage} /></label>
-      <label className="grid gap-2 text-sm font-bold">WhatsApp<input className="field" name="publicWhatsapp" defaultValue={organization.publicWhatsapp ?? ""} disabled={!canManage} /></label>
+      <label className="grid gap-2 text-sm font-bold">Telefone<PhoneInput name="phone" defaultValue={organization.phone} disabled={!canManage} /></label>
+      <label className="grid gap-2 text-sm font-bold">WhatsApp<PhoneInput name="publicWhatsapp" defaultValue={organization.publicWhatsapp} disabled={!canManage} /></label>
       <label className="grid gap-2 text-sm font-bold">E-mail institucional<input className="field" type="email" name="publicEmail" defaultValue={organization.publicEmail ?? ""} disabled={!canManage} /></label>
       <label className="grid gap-2 text-sm font-bold sm:col-span-2">Site<input className="field" type="url" name="publicWebsite" defaultValue={organization.publicWebsite ?? ""} disabled={!canManage} placeholder="https://..." /></label>
       <label className="grid gap-2 text-sm font-bold">Cor da marca<input className="field h-12" name="brandColor" type="color" defaultValue={organization.brandColor} disabled={!canManage} /></label>

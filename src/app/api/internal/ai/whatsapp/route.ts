@@ -63,6 +63,9 @@ function asksToReschedule(value: string) {
 function asksToCancel(value: string) {
   return /\b(cancel|desmarc)/.test(normalizedText(value));
 }
+function asksToBook(value: string) {
+  return /\b(agend|marcar|reserv)/.test(normalizedText(value));
+}
 function parsePending(payload?: Record<string, unknown> | null): Pending | null {
   const result = z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("book"), serviceId: z.string().uuid(), professionalId: z.string().uuid(), startsAt: z.string().datetime() }),
@@ -203,6 +206,19 @@ export async function POST(request: NextRequest) {
   const directDate = parseBrazilianDate(input.text);
   const contextualDate = contextTexts.map(parseBrazilianDate).find(Boolean) ?? null;
   const directTime = parseBrazilianTime(input.text);
+  if (asksToBook(input.text) && !contextualService) {
+    const options = catalog.slice(0, 10).map((service) => `• ${service.name}`).join("\n");
+    const suffix = catalog.length > 10 ? "\nSe preferir, escreva o nome do atendimento desejado." : "";
+    await send(input, conversation, {
+      reply: catalog.length
+        ? `Qual atendimento você deseja agendar?\n${options}${suffix}`
+        : "No momento não há atendimentos disponíveis para agendamento. Posso ajudar com outra informação?",
+      model: "aggenda-transactional-v1",
+      intent: "select_service",
+      confidence: 1,
+    });
+    return NextResponse.json({ accepted: true, action: "reply" });
+  }
   if (directlyMentionedProfessional && contextualService) {
     const professionalPerformsService = professionalRows.some((row) => row.id === directlyMentionedProfessional.id && row.serviceId === contextualService.id);
     const reply = professionalPerformsService

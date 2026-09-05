@@ -133,6 +133,7 @@ export default async function ClientHistoryPage({
     })),
   ].sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
   const isHealth = organization.businessType === "saude";
+  const supportsClinicalMedia = isHealth || organization.businessType === "estetica";
   const recordLabel = isHealth ? "Prontuário" : "Histórico do cliente";
   const visibleEntries = entries.filter((entry) => !entry.electronicDocumentId || canReadDocuments);
   const genderLabels: Record<string, string> = { female: "Feminino", male: "Masculino", other: "Outro", not_informed: "Prefere não informar" };
@@ -151,7 +152,7 @@ export default async function ClientHistoryPage({
           <div><p className="text-muted">Contato</p><p className="font-bold">{formatPhone(client.phone) || client.email || "Não informado"}</p></div>
         </div>
       </section>
-      {isHealth && <section className="panel mb-5">
+      {supportsClinicalMedia && <section className="panel mb-5">
         <h2 className="text-lg font-extrabold">Fotografias clínicas</h2>
         <p className="mt-1 text-sm text-muted">Organize registros de antes, durante e depois. As imagens são compactadas, entregues por acesso autenticado e vinculadas ao consentimento.</p>
         {canManageClinicalMedia && <ActionForm action={createClientClinicalMedia} successMessage="Fotografia clínica enviada." className="mt-4 grid gap-3 sm:grid-cols-2">

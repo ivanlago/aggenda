@@ -57,11 +57,13 @@ function approximatelyMentions(text: string, name: string) {
   const ignored = new Set(["dr", "dra", "de", "da", "do", "dos", "das"]);
   const words = normalized.match(/[a-z0-9]+/g) ?? [];
   const candidateWords = (candidate.match(/[a-z0-9]+/g) ?? []).filter((word) => !ignored.has(word));
-  return candidateWords.length > 0 && candidateWords.every((candidateWord) => words.some((word) => {
+  const matches = candidateWords.map((candidateWord) => words.some((word) => {
     if (word === candidateWord) return true;
     if (candidateWord.length < 5 || word.length < 5) return false;
     return editDistance(word, candidateWord) <= Math.max(1, Math.floor(candidateWord.length * 0.2));
   }));
+  if (candidateWords.length > 0 && matches.every(Boolean)) return true;
+  return candidateWords.length >= 3 && matches.filter(Boolean).length >= Math.ceil(candidateWords.length * 0.66);
 }
 function mentionedByName<T extends { name: string }>(rows: T[], texts: string[]) {
   return texts.flatMap((text) => {
@@ -270,6 +272,18 @@ export async function POST(request: NextRequest) {
     const nextPending: Pending = { kind: "book", serviceId: contextualService.id, professionalId: firstSlot.professionalId, startsAt: firstSlot.startsAt };
     await send(input, conversation, { reply: `O primeiro horário disponível para ${contextualService.name} é com ${firstSlot.professionalName}, em ${formatOrganizationDateTime(new Date(firstSlot.startsAt), organization.timezone)}. Confirma? Responda CONFIRMAR.`, model: "aggenda-transactional-v1", intent: "prepare_booking", confidence: 1, pending: nextPending });
     return NextResponse.json({ accepted: true, action: "prepare_booking" });
+  }
+  if (asksToBook(input.text) && contextualService && !directlyMentionedProfessional && !directDate && !directTime) {
+    const eligibleProfessionals = Array.from(new Map(
+      professionalRows.filter((row) => row.serviceId === contextualService.id).map((row) => [row.id, row])
+    ).values());
+    const reply = eligibleProfessionals.length === 0
+      ? `No momento não há profissionais habilitados para ${contextualService.name}. Deseja escolher outro atendimento?`
+      : eligibleProfessionals.length === 1
+        ? `${contextualService.name} é realizado por ${eligibleProfessionals[0].name}. Para qual data deseja agendar?`
+        : `${contextualService.name} é realizado por ${eligibleProfessionals.map((professional) => professional.name).join(" ou ")}. Você prefere algum deles ou deseja o primeiro horário disponível?`;
+    await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "select_professional", confidence: 1 });
+    return NextResponse.json({ accepted: true, action: "reply" });
   }
   if (asksToBook(input.text) && !contextualService) {
     const options = catalog.slice(0, 10).map((service) => `• ${service.name}`).join("\n");

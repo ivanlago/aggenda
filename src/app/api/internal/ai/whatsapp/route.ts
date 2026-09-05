@@ -20,8 +20,9 @@ const inputSchema = z.object({
   phoneNumberId: z.string().min(1), from: z.string().min(5), contactName: z.string().optional(),
   text: z.string().max(4000).default(""), whatsappServiceCode: z.enum(["menu", "chat", "chat_ai", "core_ai"]),
 });
+const coreActions = ["reply", "availability", "prepare_booking", "confirm_appointment", "prepare_reschedule", "prepare_cancel", "handoff"] as const;
 const coreAnswerSchema = z.object({
-  action: z.enum(["reply", "availability", "prepare_booking", "confirm_appointment", "prepare_reschedule", "prepare_cancel", "handoff"]),
+  action: z.preprocess((value) => typeof value === "string" && coreActions.includes(value as typeof coreActions[number]) ? value : "reply", z.enum(coreActions)),
   reply: z.string().min(1).max(3000), intent: z.string().max(80).default("unknown"), confidence: z.number().min(0).max(1).default(0),
   serviceId: z.string().uuid().nullable().default(null), professionalId: z.string().uuid().nullable().default(null), appointmentId: z.string().uuid().nullable().default(null),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().default(null), time: z.string().regex(/^\d{2}:\d{2}$/).nullable().default(null), cancellationReason: z.string().max(500).nullable().default(null),

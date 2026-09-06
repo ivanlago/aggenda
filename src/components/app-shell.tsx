@@ -38,6 +38,7 @@ import {
 } from "@/lib/session";
 
 import { SignOutButton } from "./sign-out-button";
+import { AppNavLink } from "./app-nav-link";
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
   const { session, organization } = await requireOrganization();
@@ -123,13 +124,13 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <nav className="app-menu-scrollbar mt-5 flex gap-2 overflow-x-auto overflow-y-hidden pb-1 lg:mt-7 lg:grid lg:min-h-0 lg:flex-1 lg:content-start lg:overflow-x-hidden lg:overflow-y-auto lg:pb-4">
           {navigation.map((group) => group.items.length === 1 && group.items[0].label === group.label ? (
-            <Link
+            <AppNavLink
               key={group.label}
               href={group.items[0].href}
-              className="flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-bold text-slate-600 transition hover:bg-surface-soft hover:text-brand"
+              className="flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-bold transition"
             >
               {(() => { const Icon = group.items[0].icon; return <Icon className="size-4" />; })()} {group.label}
-            </Link>
+            </AppNavLink>
           ) : (
             <details
               className="group/nav relative shrink-0 lg:block"
@@ -148,24 +149,24 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                       <ChevronDown className="size-3.5 transition group-open/submenu:rotate-180" />
                     </summary>
                     <div className="ml-5 grid gap-0.5 border-l border-slate-200 pl-2">
-                      {children.filter((child) => hasOrganizationPermission(organization.role, child.permission)).map(({ href: childHref, label: childLabel, icon: ChildIcon }) => <Link key={childHref} href={childHref} className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold text-slate-500 transition hover:bg-surface-soft hover:text-brand"><ChildIcon className="size-3.5" />{childLabel}</Link>)}
+                      {children.filter((child) => hasOrganizationPermission(organization.role, child.permission)).map(({ href: childHref, label: childLabel, icon: ChildIcon }) => <AppNavLink key={childHref} href={childHref} exact className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition" inactiveClassName="text-slate-500 hover:bg-surface-soft hover:text-brand"><ChildIcon className="size-3.5" />{childLabel}</AppNavLink>)}
                     </div>
                   </details>
                 ) : (
-                  <Link key={href} href={href} className={`flex shrink-0 items-center rounded-lg py-2 font-bold text-slate-600 transition hover:bg-surface-soft hover:text-brand ${secondary ? "gap-2 px-3 text-xs" : "gap-3 px-3 text-sm"}`}>
+                  <AppNavLink key={href} href={href} exact={group.items.some((other) => other.href !== href && other.href.startsWith(`${href}/`))} className={`flex shrink-0 items-center rounded-lg py-2 font-bold transition ${secondary ? "gap-2 px-3 text-xs" : "gap-3 px-3 text-sm"}`}>
                     <Icon className={secondary ? "size-3.5" : "size-4"} /> {label}
-                  </Link>
+                  </AppNavLink>
                 ))}
               </div>
             </details>
           ))}
           {platformMembership && (
-            <Link
+            <AppNavLink
               href="/admin"
-              className="flex shrink-0 items-center gap-3 rounded-lg bg-brand px-3 py-2.5 text-sm font-bold text-white shadow-sm"
+              className="flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-bold transition"
             >
               <UserRoundCog className="size-4" /> Administração SaaS
-            </Link>
+            </AppNavLink>
           )}
         </nav>
         <div className="mt-4 hidden shrink-0 border-t border-slate-200 pt-4 lg:block">

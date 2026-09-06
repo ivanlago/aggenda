@@ -29,6 +29,7 @@ export default async function InventoryPage() {
       quantity: inventoryProducts.currentQuantityMillis, consumptionQuantity: inventoryProducts.consumptionQuantityMillis,
       minimum: inventoryProducts.minimumQuantityMillis,
       cost: inventoryProducts.costInCents, salePrice: retailProductVariants.salePriceInCents,
+      isForSale: retailProductVariants.isForSale,
       categoryId: retailProducts.categoryId, category: inventoryCategories.name,
       subcategoryId: retailProducts.subcategoryId, subcategory: inventorySubcategories.name,
     }).from(retailProductVariants)
@@ -67,10 +68,10 @@ export default async function InventoryPage() {
     consumptionCostTotal: currency((item.cost ?? 0) * item.consumptionQuantity / 1000),
     consumptionSaleTotal: currency(item.salePrice * item.consumptionQuantity / 1000),
     categoryId: item.categoryId, category: item.category ?? "", subcategoryId: item.subcategoryId,
-    subcategory: item.subcategory ?? "", hasConsumption: item.consumptionQuantity > 0,
+    subcategory: item.subcategory ?? "", hasConsumption: item.consumptionQuantity > 0, isForSale: item.isForSale,
   }));
   const movementLabels: Record<string, string> = {
-    entry: "Entrada", initial: "Estoque inicial", exit: "Saída / ajuste", consumption: "Retirada para consumo",
+    entry: "Entrada", initial: "Estoque inicial", exit: "Saída / ajuste", consumption: "Transferido p/ consumo", usage: "Retirada p/ uso",
     sale: "Venda", sale_cancellation: "Cancelamento de venda", sale_refund: "Estorno de venda",
   };
   const movementRows: StockMovementRow[] = movements.map((item) => ({
@@ -91,7 +92,7 @@ export default async function InventoryPage() {
       <article className="panel"><WalletCards className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{currency(costValue)}</p><p className="text-sm text-muted">valor de custo</p></article>
       <article className="panel"><CircleDollarSign className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{currency(saleValue)}</p><p className="text-sm text-muted">valor de venda</p></article>
     </section>
-    {canManage && <div className="mt-5 flex flex-wrap gap-2"><StockProductForm categories={categories} subcategories={subcategories} /><StockMovementForm products={rows.map((item) => ({ id: item.id, name: `${item.name} ${item.presentation === "—" ? "" : item.presentation}`.trim(), balance: item.quantityLabel }))} /></div>}
+    {canManage && <div className="mt-5 flex flex-wrap gap-2"><StockProductForm categories={categories} subcategories={subcategories} /><StockMovementForm products={rows.map((item) => ({ id: item.id, name: `${item.name} ${item.presentation === "—" ? "" : item.presentation}`.trim(), balance: item.quantityLabel, consumptionBalance: item.consumptionQuantityLabel }))} /></div>}
     <InventoryTabs products={rows} movements={movementRows} categories={categories} subcategories={subcategories} canManage={canManage} />
   </div>;
 }

@@ -65,6 +65,7 @@ export async function createRetailProduct(data: FormData) {
   }
   const initialQuantity = quantity(data, "initialQuantity");
   const minimumQuantity = quantity(data, "minimumQuantity");
+  const isForConsumption = data.get("isForConsumption") === "on";
   const displayName = variantName === "Padrão" ? name : `${name} — ${variantName}`;
 
   const productId = await db.transaction(async (tx) => {
@@ -73,7 +74,8 @@ export async function createRetailProduct(data: FormData) {
       name: displayName,
       sku: text(data, "sku") || null,
       unit: text(data, "unit") || "unit",
-      currentQuantityMillis: initialQuantity,
+      currentQuantityMillis: isForConsumption ? 0 : initialQuantity,
+      consumptionQuantityMillis: isForConsumption ? initialQuantity : 0,
       minimumQuantityMillis: minimumQuantity,
       costInCents: money(data, "cost", false),
     }).returning({ id: inventoryProducts.id });
@@ -93,7 +95,7 @@ export async function createRetailProduct(data: FormData) {
       barcode: text(data, "barcode") || null,
       salePriceInCents,
       commissionRateBasisPoints: Math.min(10_000, Math.round(Number(text(data, "commissionRate").replace(",", ".") || 0) * 100)),
-      isForSale: true,
+      isForSale: !isForConsumption,
       isForProcedures: true,
     });
     if (initialQuantity > 0) await tx.insert(inventoryMovements).values({
@@ -102,7 +104,7 @@ export async function createRetailProduct(data: FormData) {
       type: "initial",
       quantityMillis: initialQuantity,
       balanceAfterMillis: initialQuantity,
-      notes: "Estoque inicial do produto de venda",
+      notes: isForConsumption ? "Estoque inicial do produto de consumo" : "Estoque inicial do produto de venda",
       createdByUserId: session.user.id,
     });
     return product.id;
@@ -143,7 +145,7 @@ export async function updateRetailVariant(data: FormData) {
       description: text(data, "description") || null, updatedAt: new Date(),
     }).where(and(eq(retailProducts.id, variant.productId), eq(retailProducts.organizationId, organization.id)));
     await tx.update(retailProductVariants).set({
-      name: variantName, salePriceInCents, barcode: text(data, "barcode") || null, isForSale: true, isForProcedures: true,
+      name: variantName, salePriceInCents, barcode: text(data, "barcode") || null, isForProcedures: true,
       commissionRateBasisPoints: Math.min(10_000, Math.round(Number(text(data, "commissionRate").replace(",", ".") || 0) * 100)),
       isActive: data.get("isActive") === "on", updatedAt: new Date(),
     }).where(eq(retailProductVariants.id, variantId));

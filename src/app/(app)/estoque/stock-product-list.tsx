@@ -37,6 +37,7 @@ export type StockProductRow = {
   subcategoryId: string | null;
   subcategory: string;
   hasConsumption: boolean;
+  isForSale: boolean;
 };
 const normalize = (value: string) =>
   value
@@ -215,11 +216,13 @@ function EditProductButton({
 }
 
 export function StockProductList({
+  mode,
   products,
   categories,
   subcategories,
   canManage,
 }: {
+  mode: "sale" | "consumption";
   products: StockProductRow[];
   categories: Array<{ id: string; name: string }>;
   subcategories: Array<{ id: string; categoryId: string; name: string }>;
@@ -230,33 +233,35 @@ export function StockProductList({
   const [status, setStatus] = useState("all");
   const [categoryId, setCategoryId] = useState("");
   const [subcategoryId, setSubcategoryId] = useState("");
+  const isConsumption = mode === "consumption";
   const filteredSubcategories = subcategories.filter(
     (item) => item.categoryId === categoryId,
   );
   const filtered = useMemo(
     () =>
       products.filter((item) => {
+        const belongsToStock = mode === "sale" ? item.quantity > 0 || item.isForSale : item.consumptionQuantity > 0 || !item.isForSale;
         const matchesQuery = normalize(item.name).includes(
           normalize(deferredQuery),
         );
         const matchesStatus =
           status === "all" ||
-          (status === "stock" && item.quantity > 0) ||
-          (status === "low" && item.quantity <= item.minimum);
+          (status === "stock" && (isConsumption ? item.consumptionQuantity : item.quantity) > 0) ||
+          (status === "low" && (isConsumption ? item.consumptionQuantity : item.quantity) <= item.minimum);
         return (
-          matchesQuery &&
+          belongsToStock && matchesQuery &&
           matchesStatus &&
           (!categoryId || item.categoryId === categoryId) &&
           (!subcategoryId || item.subcategoryId === subcategoryId)
         );
       }),
-    [products, deferredQuery, status, categoryId, subcategoryId],
+    [products, deferredQuery, status, categoryId, subcategoryId, mode, isConsumption],
   );
   return (
     <section className="panel mt-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-extrabold">Produtos em estoque</h2>
+          <h2 className="text-lg font-extrabold">{isConsumption ? "Estoque consumo" : "Estoque Venda"}</h2>
           <p className="text-sm text-muted">
             Consulte saldos, custos e valores de venda.
           </p>
@@ -344,15 +349,15 @@ export function StockProductList({
                 <td className="p-3">{item.presentation}</td>
                 <td className="p-3">{item.brand}</td>
                 <td
-                  className={`p-3 text-right font-bold ${item.quantity <= item.minimum ? "text-red-700" : ""}`}
+                  className={`p-3 text-right font-bold ${(isConsumption ? item.consumptionQuantity : item.quantity) <= item.minimum ? "text-red-700" : ""}`}
                 >
-                  {item.quantityLabel}
+                  {isConsumption ? item.consumptionQuantityLabel : item.quantityLabel}
                 </td>
                 <td className="p-3 text-right">{item.costUnit}</td>
-                <td className="p-3 text-right">{item.costTotal}</td>
+                <td className="p-3 text-right">{isConsumption ? item.consumptionCostTotal : item.costTotal}</td>
                 <td className="p-3 text-right">{item.saleUnit}</td>
                 <td className="p-3 text-right font-bold text-brand">
-                  {item.saleTotal}
+                  {isConsumption ? item.consumptionSaleTotal : item.saleTotal}
                 </td>
                 {canManage && (
                   <td className="p-3">

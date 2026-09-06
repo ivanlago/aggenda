@@ -43,7 +43,7 @@ export function StockMovementList({ movements }: { movements: StockMovementRow[]
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
         <h2 className="text-lg font-extrabold">Movimentações</h2>
-        <p className="text-sm text-muted">Histórico de entradas, saídas, consumo, vendas e estornos.</p>
+        <p className="text-sm text-muted">Histórico de entradas, saídas, transferências para consumo, retiradas para uso, vendas e estornos.</p>
       </div>
       <label className="relative w-full sm:max-w-sm">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
@@ -64,7 +64,8 @@ export function StockMovementList({ movements }: { movements: StockMovementRow[]
           <option value="entry">Entrada</option>
           <option value="initial">Estoque inicial</option>
           <option value="exit">Saída / ajuste</option>
-          <option value="consumption">Retirada para consumo</option>
+          <option value="consumption">Transferido p/ consumo</option>
+          <option value="usage">Retirada p/ uso</option>
           <option value="sale">Venda</option>
           <option value="sale_cancellation">Cancelamento de venda</option>
           <option value="sale_refund">Estorno de venda</option>

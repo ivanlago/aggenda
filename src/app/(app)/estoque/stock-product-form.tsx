@@ -35,6 +35,7 @@ export function StockProductForm({ categories, subcategories }: { categories: Ca
         <label className="grid gap-1 text-sm font-bold">Quantidade mínima<input className="field" name="minimumQuantity" inputMode="decimal" required defaultValue="0" /></label>
         <label className="grid gap-1 text-sm font-bold">SKU<input className="field" name="sku" /></label>
         <label className="grid gap-1 text-sm font-bold">Código de barras<input className="field" name="barcode" /></label>
+        <label className="flex items-center gap-3 rounded-lg border border-slate-200 p-4 text-sm font-bold sm:col-span-2"><input className="size-4 accent-brand" type="checkbox" name="isForConsumption" />Produto destinado ao consumo <span className="font-normal text-muted">(por padrão, será cadastrado para venda)</span></label>
         <label className="grid gap-1 text-sm font-bold sm:col-span-2">Descrição<textarea className="field min-h-20" name="description" /></label>
         <button className="primary-button sm:col-span-2">Cadastrar produto</button>
       </ActionForm>

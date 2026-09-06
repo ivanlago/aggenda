@@ -1,12 +1,16 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8f7f2;
-  --foreground: #17221d;
-  --brand: #18664a;
-  --brand-dark: #0e3f2e;
-  --accent: #ddff7a;
-  --muted: #65736c;
+  --background: #f7f7ff;
+  --foreground: #0f172a;
+  --brand: #0f766e;
+  --brand-dark: #115e59;
+  --secondary: #d97706;
+  --secondary-dark: #a85505;
+  --tertiary: #0d9488;
+  --accent: #ccfbf1;
+  --surface-soft: #f0f1ff;
+  --muted: #64748b;
 }
 
 @theme inline {
@@ -14,9 +18,13 @@
   --color-foreground: var(--foreground);
   --color-brand: var(--brand);
   --color-brand-dark: var(--brand-dark);
+  --color-secondary: var(--secondary);
+  --color-secondary-dark: var(--secondary-dark);
+  --color-tertiary: var(--tertiary);
   --color-accent: var(--accent);
+  --color-surface-soft: var(--surface-soft);
   --color-muted: var(--muted);
-  --font-sans: var(--font-manrope);
+  --font-sans: var(--font-jakarta);
 }
 
 * {
@@ -30,7 +38,7 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-manrope), sans-serif;
+  font-family: var(--font-jakarta), sans-serif;
 }
 
 button:not(:disabled),
@@ -104,11 +112,11 @@ a[href]:focus-visible {
 
 @layer components {
   .page-wrap {
-    @apply mx-auto w-full max-w-7xl p-5 sm:p-8 lg:p-10;
+    @apply mx-auto w-full max-w-[1440px] p-5 sm:p-7 lg:p-8;
   }
 
   .panel {
-    @apply rounded-3xl border bg-white p-6;
+    @apply rounded-2xl border border-slate-200/80 bg-white p-6 shadow-[0_8px_28px_rgba(15,23,42,0.045)];
   }
 
   .content-grid {
@@ -120,15 +128,15 @@ a[href]:focus-visible {
   }
 
   .field {
-    @apply w-full rounded-xl border bg-white px-4 py-3 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/10;
+    @apply w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-brand focus:ring-3 focus:ring-brand/10;
   }
 
   .primary-button {
-    @apply rounded-xl bg-brand px-5 py-3 text-sm font-extrabold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:-translate-y-px hover:bg-brand-dark hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .secondary-button {
-    @apply inline-flex items-center justify-center rounded-xl border border-brand px-4 py-2.5 text-sm font-extrabold text-brand transition hover:bg-brand hover:text-white;
+    @apply inline-flex items-center justify-center rounded-lg border border-brand px-4 py-2.5 text-sm font-bold text-brand transition hover:bg-brand hover:text-white;
   }
 
   .icon-button {
@@ -136,7 +144,7 @@ a[href]:focus-visible {
   }
 
   .status-pill {
-    @apply w-fit rounded-full bg-[#edf7f1] px-3 py-1 text-xs font-bold text-brand;
+    @apply w-fit rounded-full bg-teal-50 px-3 py-1 text-xs font-bold text-brand ring-1 ring-teal-100;
   }
 
   .empty-state {

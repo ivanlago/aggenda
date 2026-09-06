@@ -16,7 +16,7 @@ export function SignOutButton({ compact = false }: { compact?: boolean }) {
           fetchOptions: { onSuccess: () => router.push("/") },
         })
       }
-      className="flex items-center gap-2 text-sm font-bold text-white/70 hover:text-white"
+      className="flex items-center gap-2 text-sm font-bold text-slate-500 transition hover:text-brand"
       aria-label="Sair"
     >
       <LogOut className="size-4" /> {!compact && "Sair"}

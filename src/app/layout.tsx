@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { Manrope } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 
 import "./globals.css";
 import { PhoneMaskProvider } from "@/components/phone-mask-provider";
 
-const manrope = Manrope({
-  variable: "--font-manrope",
+const jakarta = Plus_Jakarta_Sans({
+  variable: "--font-jakarta",
   subsets: ["latin"],
 });
 
@@ -24,7 +24,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="pt-BR">
-      <body className={`${manrope.variable} min-h-screen antialiased`}>
+      <body className={`${jakarta.variable} min-h-screen antialiased`}>
         <PhoneMaskProvider />
         {children}
       </body>

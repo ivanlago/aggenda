@@ -53,10 +53,10 @@ export async function DashboardReferenceView() {
   const birthdays = birthdayClients.filter((client) => client.birthDate && Number(client.birthDate.slice(5, 7)) === month).sort((a, b) => (a.birthDate ?? "").localeCompare(b.birthDate ?? ""));
   const monthName = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: organization.timezone }).format(now);
   const quickLinks = [
-    { show: canManageAppointments, href: "/agenda?novo=1", label: "Novo Agendamento", icon: CalendarDays, color: "bg-cyan-600" },
-    { show: canManageClients, href: "/clientes", label: `Novo ${organization.clientLabel}`, icon: UserPlus, color: "bg-fuchsia-600" },
-    { show: canManageInventory, href: "/vendas", label: "Nova Venda", icon: ShoppingCart, color: "bg-violet-600" },
-    { show: canManageFinance, href: "/financeiro", label: "Nova Conta a Pagar", icon: BanknoteArrowDown, color: "bg-amber-600" },
+    { show: canManageAppointments, href: "/agenda?novo=1", label: "Novo Agendamento", icon: CalendarDays, color: "bg-brand" },
+    { show: canManageClients, href: "/clientes", label: `Novo ${organization.clientLabel}`, icon: UserPlus, color: "bg-tertiary" },
+    { show: canManageInventory, href: "/vendas", label: "Nova Venda", icon: ShoppingCart, color: "bg-secondary" },
+    { show: canManageFinance, href: "/financeiro", label: "Nova Conta a Pagar", icon: BanknoteArrowDown, color: "bg-secondary-dark" },
   ].filter((item) => item.show);
 
   return <div className="page-wrap">
@@ -72,7 +72,7 @@ export async function DashboardReferenceView() {
       </div>
       <aside className="grid content-start gap-5">
         <section><h2 className="mb-3 text-lg font-extrabold">Agenda</h2><div className="panel"><div className="mb-4 flex items-center justify-between"><strong className="capitalize">{monthName}</strong><Link className="text-sm font-extrabold text-brand" href="/agenda">Abrir</Link></div><div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-muted">{["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => <span key={day}>{day}</span>)}</div><div className="mt-2 grid grid-cols-7 gap-1">{Array.from({ length: firstWeekday }).map((_, index) => <span key={`empty-${index}`} />)}{Array.from({ length: daysInMonth }, (_, index) => index + 1).map((day) => <div key={day} className={`min-h-12 rounded-lg p-1 text-center text-xs ${day === Number(today.slice(8, 10)) ? "bg-brand text-white" : "bg-slate-50"}`}><span className="font-bold">{day}</span><div className="mt-1 flex flex-wrap justify-center gap-0.5">{(eventsByDay.get(day) ?? []).slice(0, 5).map((status, index) => <i key={`${status}-${index}`} className={`size-1.5 rounded-full ${statusColors[status] ?? "bg-slate-400"}`} />)}</div></div>)}</div></div></section>
-        <section><h2 className="mb-3 text-lg font-extrabold">Aniversariantes</h2><div className="overflow-hidden rounded-3xl bg-gradient-to-br from-cyan-600 to-teal-600 text-white shadow-sm">{birthdays.slice(0, 8).map((client) => <div className="flex items-center gap-3 border-b border-white/15 p-4 last:border-0" key={client.id}><Cake className="size-5 shrink-0" /><div className="min-w-0 flex-1"><p className="truncate font-bold">{client.name}</p><p className="text-xs text-white/70">{formatPhone(client.phone) || "Sem telefone"}</p></div><strong>{client.birthDate?.slice(8, 10)}/{client.birthDate?.slice(5, 7)}</strong></div>)}{!birthdays.length && <p className="p-6 text-center text-sm text-white/80">Nenhum aniversariante neste mês.</p>}</div></section>
+        <section><h2 className="mb-3 text-lg font-extrabold">Aniversariantes</h2><div className="overflow-hidden rounded-2xl bg-gradient-to-br from-brand to-tertiary text-white shadow-sm">{birthdays.slice(0, 8).map((client) => <div className="flex items-center gap-3 border-b border-white/15 p-4 last:border-0" key={client.id}><Cake className="size-5 shrink-0" /><div className="min-w-0 flex-1"><p className="truncate font-bold">{client.name}</p><p className="text-xs text-white/70">{formatPhone(client.phone) || "Sem telefone"}</p></div><strong>{client.birthDate?.slice(8, 10)}/{client.birthDate?.slice(5, 7)}</strong></div>)}{!birthdays.length && <p className="p-6 text-center text-sm text-white/80">Nenhum aniversariante neste mês.</p>}</div></section>
       </aside>
     </div>
   </div>;

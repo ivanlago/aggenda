@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Images, PencilRuler, ScanFace } from "lucide-react";
+import { Images, PencilRuler } from "lucide-react";
 import { createClientClinicalMedia, deleteClientClinicalMedia } from "@/actions/app";
 import { ActionForm } from "@/components/action-form";
 import type { SimulationShape } from "@/components/clinical-simulation-editor";
@@ -14,8 +14,12 @@ type MediaItem = { id: string; title: string | null; phase: string; mediaType: s
 type SimulationSource = { src: string; title: string; parentMediaId?: string; phase: string; annotations?: Array<Record<string, unknown>> };
 const phaseLabels: Record<string, string> = { before: "Antes", during: "Durante", after: "Depois", clinical: "Clínico" };
 const templates: SimulationSource[] = [
-  { src: "/simulator/face-front.svg", title: "Face frontal", phase: "clinical" },
-  { src: "/simulator/face-profile.svg", title: "Perfil facial", phase: "clinical" },
+  { src: "/simulator/models/female-front.png", title: "Feminino — frontal", phase: "clinical" },
+  { src: "/simulator/models/female-three-quarter-right.png", title: "Feminino — ¾ direita", phase: "clinical" },
+  { src: "/simulator/models/female-profile-right.png", title: "Feminino — perfil direito", phase: "clinical" },
+  { src: "/simulator/models/male-front.png", title: "Masculino — frontal", phase: "clinical" },
+  { src: "/simulator/models/male-three-quarter-right.png", title: "Masculino — ¾ direita", phase: "clinical" },
+  { src: "/simulator/models/male-profile-right.png", title: "Masculino — perfil direito", phase: "clinical" },
 ];
 
 export function ClinicalMediaGallery({ clientId, media, canManage }: { clientId: string; media: MediaItem[]; canManage: boolean }) {
@@ -30,7 +34,7 @@ export function ClinicalMediaGallery({ clientId, media, canManage }: { clientId:
     });
   }
   return <div className="mt-5">
-    {canManage && <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4"><h3 className="flex items-center gap-2 font-extrabold"><PencilRuler size={19} /> Simulador de procedimentos</h3><p className="mt-1 text-sm text-muted">Use uma fotografia clínica ou comece por um modelo anatômico ilustrativo.</p><div className="mt-3 grid gap-3 sm:grid-cols-2">{templates.map((template) => <button key={template.src} type="button" className="flex items-center gap-3 rounded-xl border bg-white p-3 text-left font-bold hover:border-emerald-500" onClick={() => setSimulating(template)}><ScanFace className="text-brand" /> {template.title}</button>)}</div></div>}
+    {canManage && <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4"><h3 className="flex items-center gap-2 font-extrabold"><PencilRuler size={19} /> Simulador de procedimentos</h3><p className="mt-1 text-sm text-muted">Use uma fotografia clínica ou comece por um modelo facial ilustrativo.</p><div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">{templates.map((template) => <button key={template.src} type="button" className="group overflow-hidden rounded-xl border bg-white text-left hover:border-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" onClick={() => setSimulating(template)}><span className="relative block aspect-square overflow-hidden bg-slate-50"><Image src={template.src} alt={template.title} fill className="object-cover transition-transform group-hover:scale-[1.03]" /></span><span className="block p-2 text-xs font-bold leading-snug">{template.title}</span></button>)}</div></div>}
     {selected.length === 2 && <div className="mb-5 rounded-2xl border bg-black p-3"><div className="relative mx-auto aspect-[4/3] max-w-3xl overflow-hidden rounded-xl"><Image src={selected[0].src} alt={selected[0].title || "Comparação anterior"} fill unoptimized className="object-contain" /><div className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: `${split}%` }}><div className="relative h-full" style={{ width: `${10000 / split}%` }}><Image src={selected[1].src} alt={selected[1].title || "Comparação posterior"} fill unoptimized className="object-contain" /></div></div><div className="absolute inset-y-0 w-0.5 bg-white" style={{ left: `${split}%` }} /></div><input className="mt-3 w-full accent-brand" type="range" min="5" max="95" value={split} onChange={(event) => setSplit(Number(event.target.value))} aria-label="Divisor da comparação" /></div>}
     {message && <p className="mb-3 text-sm font-bold text-brand" role="status">{message}</p>}
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{media.map((item) => <article key={item.id} className="rounded-2xl border p-3"><div className="relative aspect-square"><Image className="rounded-xl object-cover" src={item.src} alt={item.title || "Fotografia clínica"} fill unoptimized /></div><p className="mt-2 font-bold">{item.title || "Registro clínico"}</p><div className="mt-2 flex flex-wrap items-center gap-2"><span className="status-pill">{item.mediaType === "simulation" ? "Simulação" : phaseLabels[item.phase] ?? item.phase}</span><button type="button" className={`text-xs font-bold ${comparison.includes(item.id) ? "text-brand" : "text-muted"}`} onClick={() => toggleComparison(item.id)}><Images size={14} className="inline" /> Comparar</button>{canManage && <button type="button" className="text-xs font-bold text-brand" onClick={() => openMedia(item)}><PencilRuler size={14} className="inline" /> {item.mediaType === "simulation" ? "Continuar" : "Simular"}</button>}{canManage && <ActionForm action={deleteClientClinicalMedia} successMessage="Registro excluído."><input type="hidden" name="mediaId" value={item.id} /><button className="text-xs font-bold text-red-600">Excluir</button></ActionForm>}</div></article>)}</div>

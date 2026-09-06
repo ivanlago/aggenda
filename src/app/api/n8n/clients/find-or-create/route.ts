@@ -5,6 +5,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { clients } from "@/db/schema";
 import { apiError, requireN8nOrganization } from "@/lib/n8n-api";
+import { normalizeBrazilianPhone } from "@/lib/phone";
 
 const inputSchema = z.object({
   name: z.string().min(2),
@@ -18,16 +19,18 @@ export async function POST(request: NextRequest) {
     const auth = await requireN8nOrganization(request);
     if ("error" in auth) return auth.error;
     const input = inputSchema.parse(await request.json());
+    const phone = normalizeBrazilianPhone(input.phone);
 
     const [existing] = await db.select().from(clients).where(and(
       eq(clients.organizationId, auth.organization.id),
-      eq(clients.phone, input.phone)
+      eq(clients.phone, phone)
     )).limit(1);
     if (existing) return NextResponse.json({ client: existing, created: false });
 
     const [client] = await db.insert(clients).values({
       organizationId: auth.organization.id,
       ...input,
+      phone,
     }).returning();
     return NextResponse.json({ client, created: true }, { status: 201 });
   } catch (error) {

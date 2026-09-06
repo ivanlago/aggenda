@@ -1,6 +1,9 @@
 export function normalizeBrazilianPhone(value: string) {
-  const digits = value.replace(/\D/g, "").slice(0, 13);
-  if ((digits.length === 12 || digits.length === 13) && digits.startsWith("55")) return digits.slice(2);
+  let digits = value.replace(/\D/g, "").slice(0, 13);
+  if ((digits.length === 12 || digits.length === 13) && digits.startsWith("55")) digits = digits.slice(2);
+  // Brazilian mobile numbers entered without the ninth digit (10 digits)
+  // are canonicalized to the same 11-digit form used by WhatsApp.
+  if (digits.length === 10 && /^[6-9]/.test(digits.slice(2, 3))) digits = `${digits.slice(0, 2)}9${digits.slice(2)}`;
   return digits.slice(0, 11);
 }
 

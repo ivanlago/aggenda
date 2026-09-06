@@ -12,6 +12,7 @@ import { deleteAppointmentFromGoogleCalendar, syncAppointmentToGoogleCalendar } 
 import { reconcilePackageUsage } from "@/lib/package-balance";
 import { triggerOutboxWorker } from "@/lib/outbox-trigger";
 import { isAffirmativeWhatsAppCommand, isNegativeWhatsAppCommand } from "@/lib/whatsapp-command";
+import { normalizeBrazilianPhone } from "@/lib/phone";
 
 export const runtime = "nodejs";
 
@@ -119,7 +120,7 @@ function parsePending(payload?: Record<string, unknown> | null): Pending | null 
 
 async function getClient(input: Input, conversation: Conversation) {
   if (conversation.clientId) return conversation.clientId;
-  const all = input.from.replace(/\D/g, ""); const phone = all.startsWith("55") && all.length > 11 ? all.slice(2) : all;
+  const all = input.from.replace(/\D/g, ""); const phone = normalizeBrazilianPhone(all.startsWith("55") && all.length > 11 ? all.slice(2) : all);
   const [found] = await db.select({ id: clients.id }).from(clients).where(and(eq(clients.organizationId, input.organizationId), sql`right(regexp_replace(coalesce(${clients.phone}, ''), '\D', '', 'g'), 10) = right(${phone}, 10)`)).limit(1);
   let id = found?.id;
   if (!id) {

@@ -54,6 +54,7 @@ import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
 import { updateAppointmentAndInventory } from "@/lib/inventory";
 import { documentPresets } from "@/lib/document-presets";
 import { anamnesisPresets } from "@/lib/anamnesis";
+import { normalizeBrazilianPhone } from "@/lib/phone";
 
 function textValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -521,12 +522,18 @@ export async function createClient(formData: FormData) {
   assertOrganizationPermission(organization.role, "clients.manage");
   const name = textValue(formData, "name");
   if (name.length < 2) throw new Error("Informe o nome do cliente.");
+  const phoneValue = optionalText(formData, "phone");
+  const normalizedPhone = phoneValue ? normalizeBrazilianPhone(phoneValue) : null;
+  if (normalizedPhone) {
+    const [existing] = await db.select({ id: clients.id, name: clients.name }).from(clients).where(and(eq(clients.organizationId, organization.id), eq(clients.phone, normalizedPhone))).limit(1);
+    if (existing) throw new Error(`Este celular já está cadastrado para ${existing.name}. Abra o cadastro existente para evitar duplicidade.`);
+  }
 
   await db.insert(clients).values({
     organizationId: organization.id,
     name,
     email: optionalText(formData, "email"),
-    phone: optionalText(formData, "phone"),
+    phone: normalizedPhone,
     birthDate: optionalText(formData, "birthDate"),
     gender: optionalText(formData, "gender"),
     notes: optionalText(formData, "notes"),
@@ -556,10 +563,11 @@ export async function updateClient(formData: FormData) {
   const id = textValue(formData, "id");
   const name = textValue(formData, "name");
   if (!id || name.length < 2) throw new Error("Informe o nome do cliente.");
+  const phoneValue = optionalText(formData, "phone");
   const [updated] = await db.update(clients).set({
     name,
     email: optionalText(formData, "email"),
-    phone: optionalText(formData, "phone"),
+    phone: phoneValue ? normalizeBrazilianPhone(phoneValue) : null,
     birthDate: optionalText(formData, "birthDate"),
     gender: optionalText(formData, "gender"),
     notes: optionalText(formData, "notes"),

@@ -24,6 +24,7 @@ import { getOrganizationAsaasCredential } from "@/lib/organization-asaas";
 import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
 import { sendAppointmentManagementEmail } from "@/lib/email";
 import { CLIENT_PORTAL_COOKIE, portalHash } from "@/lib/client-portal";
+import { normalizeBrazilianPhone } from "@/lib/phone";
 
 export async function POST(
   request: Request,
@@ -32,7 +33,7 @@ export async function POST(
   const { slug } = await params;
   const body = (await request.json()) as Record<string, unknown>;
   let name = String(body.name ?? "").trim();
-  let phone = String(body.phone ?? "").replace(/\D/g, "");
+  let phone = normalizeBrazilianPhone(String(body.phone ?? ""));
   let email = String(body.email ?? "").trim() || null;
   const document = String(body.document ?? "").replace(/\D/g, "");
   const voucherCode = String(body.voucherCode ?? "").trim().toUpperCase();
@@ -55,7 +56,7 @@ export async function POST(
     .from(clientPortalSessions).innerJoin(clients, eq(clients.id, clientPortalSessions.clientId))
     .where(and(eq(clientPortalSessions.organizationId, organization.id), eq(clientPortalSessions.tokenHash, portalHash(decodeURIComponent(sessionToken))), gt(clientPortalSessions.expiresAt, new Date()))).limit(1) : [];
   if (portalClient) {
-    name = portalClient.name; phone = portalClient.phone || ""; email = portalClient.email;
+    name = portalClient.name; phone = portalClient.phone ? normalizeBrazilianPhone(portalClient.phone) : ""; email = portalClient.email;
   } else if (name.length < 2 || phone.length < 10) {
     return Response.json({ error: "Preencha nome, telefone e horário." }, { status: 400 });
   }

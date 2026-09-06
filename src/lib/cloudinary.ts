@@ -31,6 +31,14 @@ export async function uploadClinicalImage(file: File, organizationId: string, cl
     const stream = api.uploader.upload_stream({
       resource_type: "image",
       type: "authenticated",
+      format: "webp",
+      transformation: [{
+        width: 2000,
+        height: 2000,
+        crop: "limit",
+        quality: 85,
+        angle: "exif",
+      }],
       folder: `aggenda/organizations/${organizationId}/clients/${clientId}/clinical-media`,
       use_filename: false,
       unique_filename: true,

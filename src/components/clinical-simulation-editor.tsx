@@ -17,6 +17,7 @@ export function ClinicalSimulationEditor({ source, initialAnnotations, onClose, 
   const stageRef = useRef<Konva.Stage>(null); const wrapRef = useRef<HTMLDivElement>(null); const drawingId = useRef<string | null>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null); const [stageWidth, setStageWidth] = useState(900);
   const [tool, setTool] = useState<Tool>("pencil"); const [color, setColor] = useState("#ef4444"); const [strokeWidth, setStrokeWidth] = useState(4);
+  const [exporting, setExporting] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null); const [shapes, setShapes] = useState<SimulationShape[]>(() => (initialAnnotations ?? []) as SimulationShape[]);
   const [history, setHistory] = useState<SimulationShape[][]>([]); const [future, setFuture] = useState<SimulationShape[][]>([]);
   useEffect(() => { const loaded = new window.Image(); loaded.crossOrigin = "anonymous"; loaded.onload = () => setImage(loaded); loaded.src = source; }, [source]);
@@ -36,10 +37,25 @@ export function ClinicalSimulationEditor({ source, initialAnnotations, onClose, 
   function undo() { const previous = history.at(-1); if (!previous) return; setFuture((items) => [structuredClone(shapes), ...items]); setShapes(previous); setHistory((items) => items.slice(0, -1)); }
   function redo() { const next = future[0]; if (!next) return; setHistory((items) => [...items, structuredClone(shapes)]); setShapes(next); setFuture((items) => items.slice(1)); }
   function removeSelected() { if (!selectedId) return; checkpoint(); setShapes((items) => items.filter((shape) => shape.id !== selectedId)); setSelectedId(null); }
-  async function save() { const stage = stageRef.current; if (!stage) return; const dataUrl = stage.toDataURL({ mimeType: "image/webp", quality: 0.9, pixelRatio: 2 }); const blob = await (await fetch(dataUrl)).blob(); onSave(blob, shapes); }
+  async function save() {
+    const stage = stageRef.current;
+    if (!stage || exporting || saving) return;
+    setExporting(true);
+    try {
+      // Let React paint the busy state before Konva rasterizes the canvas. This
+      // keeps the click interaction responsive and avoids the large base64
+      // allocation previously caused by toDataURL() + fetch().
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+      const blob = await stage.toBlob({ mimeType: "image/webp", quality: 0.9, pixelRatio: 1.5 }) as Blob | null;
+      if (!blob) throw new Error("Não foi possível gerar a imagem da simulação.");
+      onSave(blob, shapes);
+    } finally {
+      setExporting(false);
+    }
+  }
   function common(shape: SimulationShape) { return { draggable: tool === "select", onClick: () => tool === "select" && setSelectedId(shape.id), onTap: () => tool === "select" && setSelectedId(shape.id), onDragEnd: (event: Konva.KonvaEventObject<DragEvent>) => moveShape(shape.id, event.target.x(), event.target.y()), shadowColor: selectedId === shape.id ? "#ffffff" : undefined, shadowBlur: selectedId === shape.id ? 8 : 0 }; }
   return <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/95" role="dialog" aria-modal="true" aria-label="Simulador de procedimentos">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/15 bg-slate-950 px-4 py-3 text-white"><div><h3 className="font-extrabold">Simulador de procedimentos</h3><p className="text-xs text-slate-300">Simulação visual ilustrativa, sem garantia de resultado clínico.</p></div><div className="flex gap-2"><button className="secondary-button border-slate-600 bg-transparent text-white" type="button" onClick={onClose}><X size={17} /> Fechar</button><button className="primary-button" type="button" disabled={saving || !image} onClick={save}><Save size={17} /> {saving ? "Salvando…" : "Salvar simulação"}</button></div></div>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/15 bg-slate-950 px-4 py-3 text-white"><div><h3 className="font-extrabold">Simulador de procedimentos</h3><p className="text-xs text-slate-300">Simulação visual ilustrativa, sem garantia de resultado clínico.</p></div><div className="flex gap-2"><button className="secondary-button border-slate-600 bg-transparent text-white" type="button" disabled={exporting || saving} onClick={onClose}><X size={17} /> Fechar</button><button className="primary-button" type="button" disabled={exporting || saving || !image} onClick={save}><Save size={17} /> {exporting ? "Preparando…" : saving ? "Salvando…" : "Salvar simulação"}</button></div></div>
     <div className="flex flex-1 flex-col overflow-hidden lg:flex-row"><aside className="flex shrink-0 flex-wrap content-start gap-2 overflow-auto border-b border-white/15 bg-slate-900 p-3 text-white lg:w-52 lg:flex-col lg:border-b-0 lg:border-r">
       {tools.map((item) => <button key={item.id} type="button" title={item.label} className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold ${tool === item.id ? "bg-emerald-600" : "bg-white/5 hover:bg-white/10"}`} onClick={() => { setTool(item.id); setSelectedId(null); }}><item.icon size={18} /><span>{item.label}</span></button>)}
       <label className="flex items-center gap-2 rounded-xl bg-white/5 px-3 py-2 text-sm font-bold">Cor <input type="color" value={color} onChange={(event) => setColor(event.target.value)} /></label>

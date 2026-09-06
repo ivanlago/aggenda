@@ -652,7 +652,7 @@ export async function createClientClinicalMedia(formData: FormData) {
       storageAssetId: uploaded.assetId,
       storagePublicId: uploaded.publicId,
       originalFilename: file.name,
-      mimeType: file.type,
+      mimeType: `image/${uploaded.format}`,
       width: uploaded.width,
       height: uploaded.height,
       bytes: uploaded.bytes,

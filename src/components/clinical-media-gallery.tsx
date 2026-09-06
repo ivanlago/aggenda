@@ -17,9 +17,11 @@ const templates: SimulationSource[] = [
   { src: "/simulator/models/female-front.png", title: "Feminino — frontal", phase: "clinical" },
   { src: "/simulator/models/female-three-quarter-right.png", title: "Feminino — ¾ direita", phase: "clinical" },
   { src: "/simulator/models/female-profile-right.png", title: "Feminino — perfil direito", phase: "clinical" },
+  { src: "/simulator/models/female-inferior.png", title: "Feminino — vista inferior", phase: "clinical" },
   { src: "/simulator/models/male-front.png", title: "Masculino — frontal", phase: "clinical" },
   { src: "/simulator/models/male-three-quarter-right.png", title: "Masculino — ¾ direita", phase: "clinical" },
   { src: "/simulator/models/male-profile-right.png", title: "Masculino — perfil direito", phase: "clinical" },
+  { src: "/simulator/models/male-inferior.png", title: "Masculino — vista inferior", phase: "clinical" },
 ];
 
 export function ClinicalMediaGallery({ clientId, media, canManage }: { clientId: string; media: MediaItem[]; canManage: boolean }) {

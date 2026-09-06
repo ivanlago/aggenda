@@ -615,9 +615,47 @@ export async function createClientClinicalMedia(formData: FormData) {
   if (file.size > 12 * 1024 * 1024) throw new Error("A imagem deve ter no máximo 12 MB.");
   const [client] = await db.select({ id: clients.id }).from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1);
   if (!client) throw new Error("Cliente não encontrado.");
+  const appointmentId = optionalText(formData, "appointmentId");
+  if (appointmentId) {
+    const [relatedAppointment] = await db.select({ id: appointments.id }).from(appointments).where(and(
+      eq(appointments.id, appointmentId),
+      eq(appointments.organizationId, organization.id),
+      eq(appointments.clientId, clientId),
+    )).limit(1);
+    if (!relatedAppointment) throw new Error("Atendimento relacionado inválido.");
+  }
   const parentMediaId = optionalText(formData, "parentMediaId");
   const mediaType = textValue(formData, "mediaType") || "photo";
-  if (!["photo", "simulation"].includes(mediaType)) throw new Error("Tipo de registro clínico inválido.");
+  if (!["photo", "simulation", "comparison"].includes(mediaType)) throw new Error("Tipo de registro clínico inválido.");
+  const captureSession = optionalText(formData, "captureSession")?.slice(0, 120) || null;
+  const bodyRegionValue = optionalText(formData, "bodyRegion");
+  const viewCodeValue = optionalText(formData, "viewCode");
+  const bodyRegion = (bodyRegionValue === "custom" ? optionalText(formData, "customBodyRegion") : bodyRegionValue)?.slice(0, 80) || null;
+  const viewCode = (viewCodeValue === "custom" ? optionalText(formData, "customViewCode") : viewCodeValue)?.slice(0, 80) || null;
+  if (bodyRegionValue === "custom" && !bodyRegion) throw new Error("Informe a região corporal personalizada.");
+  if (viewCodeValue === "custom" && !viewCode) throw new Error("Informe a vista personalizada.");
+  const patientPosition = optionalText(formData, "patientPosition")?.slice(0, 80) || null;
+  const consentPurpose = textValue(formData, "consentPurpose") || "clinical";
+  if (!["clinical", "client_share", "marketing"].includes(consentPurpose)) throw new Error("Finalidade do registro inválida.");
+  let sourceMediaIds: string[] = [];
+  const sourceMediaIdsRaw = optionalText(formData, "sourceMediaIds");
+  if (sourceMediaIdsRaw) {
+    try {
+      const parsed = JSON.parse(sourceMediaIdsRaw);
+      if (!Array.isArray(parsed) || parsed.length > 12 || parsed.some((id) => typeof id !== "string")) throw new Error();
+      sourceMediaIds = parsed;
+    } catch {
+      throw new Error("As imagens de origem da composição são inválidas.");
+    }
+  }
+  if (sourceMediaIds.length) {
+    const sources = await db.select({ id: clientClinicalMedia.id }).from(clientClinicalMedia).where(and(
+      eq(clientClinicalMedia.organizationId, organization.id),
+      eq(clientClinicalMedia.clientId, clientId),
+      inArray(clientClinicalMedia.id, sourceMediaIds),
+    ));
+    if (sources.length !== new Set(sourceMediaIds).size) throw new Error("Uma das imagens de origem não pertence a este cliente.");
+  }
   let annotations: Array<Record<string, unknown>> = [];
   const annotationsRaw = optionalText(formData, "annotations");
   if (annotationsRaw) {
@@ -642,9 +680,16 @@ export async function createClientClinicalMedia(formData: FormData) {
     const [media] = await db.insert(clientClinicalMedia).values({
       organizationId: organization.id,
       clientId,
+      appointmentId,
       authorUserId: session.user.id,
       mediaType,
       phase: textValue(formData, "phase") || "clinical",
+      captureSession,
+      bodyRegion,
+      viewCode,
+      patientPosition,
+      consentPurpose,
+      sourceMediaIds,
       title: optionalText(formData, "title"),
       url: "cloudinary:authenticated",
       consentConfirmed: true,

@@ -676,6 +676,12 @@ export const clientClinicalMedia = pgTable("client_clinical_media", {
   authorUserId: text("author_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
   mediaType: text("media_type").default("photo").notNull(),
   phase: text("phase").default("clinical").notNull(),
+  captureSession: text("capture_session"),
+  bodyRegion: text("body_region"),
+  viewCode: text("view_code"),
+  patientPosition: text("patient_position"),
+  consentPurpose: text("consent_purpose").default("clinical").notNull(),
+  sourceMediaIds: jsonb("source_media_ids").default([]).notNull(),
   title: text("title"),
   url: text("url").notNull(),
   storageProvider: text("storage_provider").default("external").notNull(),
@@ -691,7 +697,11 @@ export const clientClinicalMedia = pgTable("client_clinical_media", {
   consentConfirmed: boolean("consent_confirmed").default(false).notNull(),
   capturedAt: timestamp("captured_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => [index("client_clinical_media_client_idx").on(table.clientId, table.capturedAt), index("client_clinical_media_org_idx").on(table.organizationId)]);
+}, (table) => [
+  index("client_clinical_media_client_idx").on(table.clientId, table.capturedAt),
+  index("client_clinical_media_org_idx").on(table.organizationId),
+  index("client_clinical_media_pair_idx").on(table.clientId, table.captureSession, table.bodyRegion, table.viewCode, table.phase),
+]);
 
 export const documentTemplates = pgTable("document_templates", {
   id: uuid("id").defaultRandom().primaryKey(),

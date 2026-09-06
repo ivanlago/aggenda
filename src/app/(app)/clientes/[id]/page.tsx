@@ -5,6 +5,8 @@ import { notFound } from "next/navigation";
 import { createClientClinicalMedia, createClientHistoryEntry } from "@/actions/app";
 import { ActionForm } from "@/components/action-form";
 import { ClinicalMediaGallery } from "@/components/clinical-media-gallery";
+import { ClinicalPhotoClassificationFields } from "@/components/clinical-photo-classification-fields";
+import { GuidedClinicalPhotoInput } from "@/components/guided-clinical-photo-input";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { appointments, auditLogs, clientClinicalMedia, clientHistoryEntries, clientPackageBalances, clientPackages, clients, professionals, servicePackages, services, users } from "@/db/schema";
@@ -153,13 +155,18 @@ export default async function ClientHistoryPage({
       </section>
       <section className="panel mb-5">
         <h2 className="text-lg font-extrabold">Fotografias clínicas</h2>
-        <p className="mt-1 text-sm text-muted">Organize registros de antes, durante e depois. As imagens são compactadas, entregues por acesso autenticado e vinculadas ao consentimento.</p>
-        {canManageClinicalMedia && <ActionForm action={createClientClinicalMedia} successMessage="Fotografia clínica enviada." className="mt-4 grid gap-3 sm:grid-cols-2">
+        <p className="mt-1 text-sm text-muted">Crie sessões de antes, evolução e depois para qualquer região corporal. Registros com a mesma sessão, região e vista são pareados automaticamente.</p>
+        {canManageClinicalMedia && <ActionForm action={createClientClinicalMedia} successMessage="Fotografia clínica enviada." className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <input type="hidden" name="clientId" value={client.id} />
-          <select className="field" name="phase"><option value="before">Antes</option><option value="during">Durante</option><option value="after">Depois</option><option value="clinical">Registro clínico</option></select>
-          <input className="field" name="title" placeholder="Área ou procedimento" />
-          <input className="field sm:col-span-2" name="file" type="file" accept="image/jpeg,image/png,image/webp" required />
-          <label className="flex items-start gap-2 text-sm font-bold sm:col-span-2"><input className="mt-1" name="consentConfirmed" type="checkbox" required />Confirmo que há consentimento para este registro clínico.</label>
+          <input className="field" name="captureSession" placeholder="Sessão (ex.: Tratamento setembro/2026)" required />
+          <select className="field" name="appointmentId" defaultValue=""><option value="">Atendimento relacionado (opcional)</option>{history.map((item) => <option key={item.id} value={item.id}>{item.service} · {formatOrganizationDateTime(item.startsAt, organization.timezone)}</option>)}</select>
+          <select className="field" name="phase"><option value="before">Antes</option><option value="during">Evolução</option><option value="after">Depois</option><option value="clinical">Registro clínico</option></select>
+          <ClinicalPhotoClassificationFields />
+          <input className="field lg:col-span-2" name="title" placeholder="Procedimento, área específica ou observação" />
+          <select className="field" name="consentPurpose" defaultValue="clinical"><option value="clinical">Uso interno / prontuário</option><option value="client_share">Compartilhar com o cliente</option><option value="marketing">Divulgação / publicidade</option></select>
+          <GuidedClinicalPhotoInput references={clinicalMedia.filter((item) => item.mediaType === "photo" && item.phase === "before").map((item) => ({ id: item.id, src: item.storageProvider === "cloudinary" ? `/api/clinical-media/${item.id}?width=1200` : item.url, label: [item.captureSession, item.bodyRegion, item.viewCode].filter(Boolean).join(" · ") || item.title || "Fotografia Antes" }))} />
+          <p className="text-xs text-muted sm:col-span-2 lg:col-span-3">No celular, use a câmera na mesma distância, iluminação e posição. Ao registrar o Depois, consulte abaixo a foto Antes pareada como referência.</p>
+          <label className="flex items-start gap-2 text-sm font-bold sm:col-span-2 lg:col-span-3"><input className="mt-1" name="consentConfirmed" type="checkbox" required />Confirmo o consentimento para a finalidade selecionada.</label>
           <button className="primary-button sm:w-fit">Adicionar fotografia</button>
         </ActionForm>}
         <ClinicalMediaGallery clientId={client.id} canManage={canManageClinicalMedia} media={clinicalMedia.map((item) => ({
@@ -167,6 +174,11 @@ export default async function ClientHistoryPage({
           title: item.title,
           phase: item.phase,
           mediaType: item.mediaType,
+          captureSession: item.captureSession,
+          bodyRegion: item.bodyRegion,
+          viewCode: item.viewCode,
+          patientPosition: item.patientPosition,
+          consentPurpose: item.consentPurpose,
           parentMediaId: item.parentMediaId,
           annotations: Array.isArray(item.annotations) ? item.annotations : [],
           src: item.storageProvider === "cloudinary" ? `/api/clinical-media/${item.id}?width=1600` : item.url,

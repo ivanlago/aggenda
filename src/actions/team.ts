@@ -22,6 +22,8 @@ import {
   requireSession,
 } from "@/lib/session";
 import { assertOrganizationPermission } from "@/lib/permissions";
+import { persistWithCatalogImage } from "@/lib/catalog-image";
+import { deleteCatalogImage } from "@/lib/cloudinary";
 
 const teamRoles = ["admin", "manager", "receptionist", "professional", "financial"] as const;
 type TeamRole = (typeof teamRoles)[number];
@@ -82,7 +84,7 @@ export async function createUnifiedTeamMember(formData: FormData) {
     body: { name: fullName, email, password: `${crypto.randomUUID()}-${crypto.randomUUID()}` },
   })).user;
 
-  await db.transaction(async (tx) => {
+  await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "professionals", persist: (image) => db.transaction(async (tx) => {
     await tx.update(users).set({
       name: fullName,
       shortName,
@@ -99,6 +101,7 @@ export async function createUnifiedTeamMember(formData: FormData) {
       phone: field(formData, "phone") || null,
       professionId: professionId || null,
       bio: field(formData, "bio") || null,
+      ...image,
       isBookable: true,
     }).returning({ id: professionals.id });
     if (specialtyIds.length) await tx.insert(professionalSpecialties).values(specialtyIds.map((specialtyId) => ({
@@ -111,7 +114,7 @@ export async function createUnifiedTeamMember(formData: FormData) {
       registrationNumber,
       state: field(formData, "registrationState").toUpperCase() || null,
     });
-  });
+  }) });
 
   await auth.api.requestPasswordReset({
     body: { email, redirectTo: `/redefinir-senha?primeiroAcesso=1&email=${encodeURIComponent(email)}` },
@@ -136,7 +139,8 @@ export async function updateUnifiedTeamMember(formData: FormData) {
   if (!currentMember) throw new Error("Membro não encontrado nesta empresa.");
   const role = currentMember.role === "owner" ? "owner" : requestedRole;
   if (role === "professional" && !professionalId) throw new Error("O perfil Profissional precisa ser atendente.");
-  await db.transaction(async (tx) => {
+  const [currentProfessional] = professionalId ? await db.select({ imagePublicId: professionals.imagePublicId }).from(professionals).where(and(eq(professionals.id, professionalId), eq(professionals.organizationId, organization.id))).limit(1) : [];
+  await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "professionals", currentPublicId: currentProfessional?.imagePublicId, persist: (image) => db.transaction(async (tx) => {
     await tx.update(users).set({ name: fullName, shortName, updatedAt: new Date() }).where(eq(users.id, userId));
     await tx.update(organizationMembers).set({ role }).where(and(eq(organizationMembers.organizationId, organization.id), eq(organizationMembers.userId, userId)));
     if (!professionalId) return;
@@ -145,6 +149,7 @@ export async function updateUnifiedTeamMember(formData: FormData) {
       phone: field(formData, "phone") || null,
       professionId: professionId || null,
       bio: field(formData, "bio") || null,
+      ...image,
       updatedAt: new Date(),
     }).where(and(eq(professionals.id, professionalId), eq(professionals.organizationId, organization.id)));
     await tx.delete(professionalSpecialties).where(and(eq(professionalSpecialties.professionalId, professionalId), eq(professionalSpecialties.organizationId, organization.id)));
@@ -156,7 +161,7 @@ export async function updateUnifiedTeamMember(formData: FormData) {
       organizationId: organization.id, professionalId, council, registrationNumber,
       state: field(formData, "registrationState").toUpperCase() || null,
     });
-  });
+  }) });
   revalidatePath("/equipe");
 }
 
@@ -193,10 +198,12 @@ export async function deleteUnifiedTeamMember(formData: FormData) {
   assertOrganizationPermission(organization.role, "team.manage");
   const userId = field(formData, "userId");
   if (userId === session.user.id) throw new Error("Você não pode excluir a própria conta.");
+  const [currentProfessional] = await db.select({ imagePublicId: professionals.imagePublicId }).from(professionals).where(and(eq(professionals.organizationId, organization.id), eq(professionals.userId, userId))).limit(1);
   await db.transaction(async (tx) => {
     await tx.delete(professionals).where(and(eq(professionals.organizationId, organization.id), eq(professionals.userId, userId)));
     await tx.delete(organizationMembers).where(and(eq(organizationMembers.organizationId, organization.id), eq(organizationMembers.userId, userId)));
   });
+  if (currentProfessional?.imagePublicId) await deleteCatalogImage(currentProfessional.imagePublicId).catch((error) => console.error("Falha ao excluir foto do profissional", error));
   revalidatePath("/equipe");
 }
 

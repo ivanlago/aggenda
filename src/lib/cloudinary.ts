@@ -66,3 +66,42 @@ export async function deleteClinicalImage(publicId: string) {
   const api = configureCloudinary();
   await api.uploader.destroy(publicId, { resource_type: "image", type: "authenticated", invalidate: true });
 }
+
+export type CatalogImageUpload = {
+  publicId: string;
+  url: string;
+  width: number;
+  height: number;
+  bytes: number;
+};
+
+export type CatalogEntityType = "clients" | "professionals" | "services" | "products";
+
+export async function uploadCatalogImage(file: File, organizationId: string, entityType: CatalogEntityType): Promise<CatalogImageUpload> {
+  if (!file.type.startsWith("image/")) throw new Error("Selecione um arquivo de imagem válido.");
+  if (file.size > 10 * 1024 * 1024) throw new Error("A imagem deve ter no máximo 10 MB.");
+  const api = configureCloudinary();
+  const bytes = Buffer.from(await file.arrayBuffer());
+  return await new Promise((resolve, reject) => {
+    const stream = api.uploader.upload_stream({
+      resource_type: "image",
+      type: "upload",
+      format: "webp",
+      transformation: [{ width: 1200, height: 1200, crop: "limit", quality: 82, angle: "exif" }],
+      folder: `aggenda/organizations/${organizationId}/catalog/${entityType}`,
+      use_filename: false,
+      unique_filename: true,
+      overwrite: false,
+      invalidate: true,
+    }, (error, result) => {
+      if (error || !result) return reject(error ?? new Error("Falha ao armazenar imagem."));
+      resolve({ publicId: result.public_id, url: result.secure_url, width: result.width, height: result.height, bytes: result.bytes });
+    });
+    stream.end(bytes);
+  });
+}
+
+export async function deleteCatalogImage(publicId: string) {
+  const api = configureCloudinary();
+  await api.uploader.destroy(publicId, { resource_type: "image", type: "upload", invalidate: true });
+}

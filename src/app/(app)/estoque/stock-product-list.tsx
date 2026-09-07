@@ -5,11 +5,13 @@ import { useDeferredValue, useMemo, useState } from "react";
 
 import { updateRetailVariant } from "@/actions/retail";
 import { ActionForm } from "@/components/action-form";
+import { EntityImageField, EntityThumbnail } from "@/components/entity-image-field";
 
 export type StockProductRow = {
   id: string;
   variantId: string;
   name: string;
+  imageUrl: string | null;
   presentation: string;
   rawPresentation: string;
   brand: string;
@@ -204,6 +206,7 @@ function EditProductButton({
                   defaultValue={product.description}
                 />
               </label>
+              <EntityImageField currentUrl={product.imageUrl} label="Imagem do produto" />
               <button className="primary-button sm:col-span-2">
                 Salvar alterações
               </button>
@@ -339,12 +342,7 @@ export function StockProductList({
             {filtered.map((item) => (
               <tr key={item.id}>
                 <td className="p-3">
-                  <strong>{item.name}</strong>
-                  <p className="text-xs text-muted">
-                    {[item.category, item.subcategory]
-                      .filter(Boolean)
-                      .join(" · ") || "Sem categoria"}
-                  </p>
+                  <div className="flex items-center gap-3"><EntityThumbnail src={item.imageUrl} alt={item.name} fallback={item.name[0]} /><div><strong>{item.name}</strong><p className="text-xs text-muted">{[item.category, item.subcategory].filter(Boolean).join(" · ") || "Sem categoria"}</p></div></div>
                 </td>
                 <td className="p-3">{item.presentation}</td>
                 <td className="p-3">{item.brand}</td>

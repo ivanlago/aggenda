@@ -11,6 +11,7 @@ import { appointments, clients } from "@/db/schema";
 import { requireOrganization, requireProfessionalScope } from "@/lib/session";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { formatPhone } from "@/lib/phone";
+import { EntityImageField, EntityThumbnail } from "@/components/entity-image-field";
 
 export const metadata = { title: "Clientes" };
 
@@ -60,6 +61,7 @@ export default async function ClientsPage({
             <option value="not_informed">Prefere não informar</option>
           </select>
           <textarea className="field min-h-24" name="notes" placeholder="Observações" />
+          <EntityImageField label={`Foto do ${organization.clientLabel.toLowerCase()}`} />
           <button className="primary-button">
             Adicionar {organization.clientLabel.toLowerCase()}
           </button>
@@ -105,7 +107,7 @@ export default async function ClientsPage({
           <div className="mt-5 divide-y">
             {items.map((item) => (
               <div key={item.id} className="flex items-center gap-4 py-4">
-                <span className="grid size-10 place-items-center rounded-full bg-[#edf7f1] font-extrabold text-brand">{item.name[0]}</span>
+                <EntityThumbnail src={item.imageUrl} alt={item.name} fallback={item.name[0]} />
                 <div className="min-w-0 flex-1">
                   <Link className="font-bold hover:text-brand" href={`/clientes/${item.id}`}>
                     {item.name}
@@ -126,6 +128,7 @@ export default async function ClientsPage({
                         <option value="female">Feminino</option><option value="male">Masculino</option><option value="other">Outro</option><option value="not_informed">Prefere não informar</option>
                       </select>
                       <textarea className="field min-h-20 py-2" name="notes" defaultValue={item.notes ?? ""} placeholder="Observações" />
+                      <EntityImageField currentUrl={item.imageUrl} label={`Foto do ${organization.clientLabel.toLowerCase()}`} />
                       <button className="primary-button py-2">Salvar alterações</button>
                     </ActionForm>
                   </details>}

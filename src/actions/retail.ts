@@ -25,6 +25,8 @@ import { organizationDate } from "@/lib/appointment-safety";
 import { writeAuditLog } from "@/lib/audit";
 import { sendRetailReceiptEmail } from "@/lib/email";
 import { triggerOutboxWorker } from "@/lib/outbox-trigger";
+import { persistWithCatalogImage } from "@/lib/catalog-image";
+import { deleteCatalogImage } from "@/lib/cloudinary";
 import { assertOrganizationPermission, hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
@@ -68,7 +70,7 @@ export async function createRetailProduct(data: FormData) {
   const isForConsumption = data.get("isForConsumption") === "on";
   const displayName = variantName === "Padrão" ? name : `${name} — ${variantName}`;
 
-  const productId = await db.transaction(async (tx) => {
+  const productId = await persistWithCatalogImage({ formData: data, organizationId: organization.id, entityType: "products", persist: (image) => db.transaction(async (tx) => {
     const [stockItem] = await tx.insert(inventoryProducts).values({
       organizationId: organization.id,
       name: displayName,
@@ -86,6 +88,7 @@ export async function createRetailProduct(data: FormData) {
       categoryId,
       subcategoryId,
       description: text(data, "description") || null,
+      ...image,
     }).returning({ id: retailProducts.id });
     await tx.insert(retailProductVariants).values({
       organizationId: organization.id,
@@ -108,7 +111,7 @@ export async function createRetailProduct(data: FormData) {
       createdByUserId: session.user.id,
     });
     return product.id;
-  });
+  }) });
 
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "retail_product", entityId: productId });
   revalidatePath("/produtos");
@@ -135,14 +138,15 @@ export async function updateRetailVariant(data: FormData) {
   const name = text(data, "name");
   const variantName = text(data, "variantName") || "Padrão";
   if (name.length < 2) throw new Error("Informe o nome do produto.");
-  const [variant] = await db.select({ inventoryProductId: retailProductVariants.inventoryProductId, productId: retailProductVariants.productId }).from(retailProductVariants).where(and(
+  const [variant] = await db.select({ inventoryProductId: retailProductVariants.inventoryProductId, productId: retailProductVariants.productId, imagePublicId: retailProducts.imagePublicId }).from(retailProductVariants).innerJoin(retailProducts, eq(retailProducts.id, retailProductVariants.productId)).where(and(
     eq(retailProductVariants.id, variantId), eq(retailProductVariants.organizationId, organization.id),
   )).limit(1);
   if (!variant) throw new Error("Variação não encontrada.");
-  await db.transaction(async (tx) => {
+  await persistWithCatalogImage({ formData: data, organizationId: organization.id, entityType: "products", currentPublicId: variant.imagePublicId, persist: (image) => db.transaction(async (tx) => {
     await tx.update(retailProducts).set({
       name, brand: text(data, "brand") || null, categoryId, subcategoryId,
       description: text(data, "description") || null, updatedAt: new Date(),
+      ...image,
     }).where(and(eq(retailProducts.id, variant.productId), eq(retailProducts.organizationId, organization.id)));
     await tx.update(retailProductVariants).set({
       name: variantName, salePriceInCents, barcode: text(data, "barcode") || null, isForProcedures: true,
@@ -155,7 +159,7 @@ export async function updateRetailVariant(data: FormData) {
       minimumQuantityMillis: quantity(data, "minimumQuantity"),
       isActive: data.get("isActive") === "on", updatedAt: new Date(),
     }).where(and(eq(inventoryProducts.id, variant.inventoryProductId), eq(inventoryProducts.organizationId, organization.id)));
-  });
+  }) });
   revalidatePath("/produtos"); revalidatePath("/vendas"); revalidatePath("/estoque");
 }
 
@@ -167,11 +171,13 @@ export async function deleteRetailProduct(data: FormData) {
     productId: retailProductVariants.productId,
     inventoryProductId: retailProductVariants.inventoryProductId,
     balance: inventoryProducts.currentQuantityMillis,
-  }).from(retailProductVariants).innerJoin(inventoryProducts, eq(inventoryProducts.id, retailProductVariants.inventoryProductId)).where(and(
+    consumptionBalance: inventoryProducts.consumptionQuantityMillis,
+    imagePublicId: retailProducts.imagePublicId,
+  }).from(retailProductVariants).innerJoin(inventoryProducts, eq(inventoryProducts.id, retailProductVariants.inventoryProductId)).innerJoin(retailProducts, eq(retailProducts.id, retailProductVariants.productId)).where(and(
     eq(retailProductVariants.id, variantId), eq(retailProductVariants.organizationId, organization.id),
   )).limit(1);
   if (!variant) return { error: "Produto não encontrado." };
-  if (variant.balance !== 0) return { error: "Zere o saldo no Controle de estoque antes de excluir o produto." };
+  if (variant.balance !== 0 || variant.consumptionBalance !== 0) return { error: "Zere os saldos de venda e consumo antes de excluir o produto." };
 
   const [saleReference, consumptionReference] = await Promise.all([
     db.select({ id: retailSaleItems.id }).from(retailSaleItems).where(and(
@@ -204,6 +210,7 @@ export async function deleteRetailProduct(data: FormData) {
       eq(retailProducts.id, variant.productId), eq(retailProducts.organizationId, organization.id),
     ));
   });
+  if (variant.imagePublicId) await deleteCatalogImage(variant.imagePublicId).catch((error) => console.error("Falha ao excluir imagem do produto", error));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "delete", entityType: "retail_product", entityId: variant.productId });
   revalidatePath("/produtos"); revalidatePath("/vendas"); revalidatePath("/estoque");
 }

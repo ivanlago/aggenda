@@ -25,6 +25,7 @@ export default async function InventoryPage() {
     db.select({
       id: inventoryProducts.id, variantId: retailProductVariants.id, name: retailProducts.name, presentation: retailProductVariants.name,
       brand: retailProducts.brand, description: retailProducts.description, barcode: retailProductVariants.barcode,
+      imageUrl: retailProducts.imageUrl,
       sku: inventoryProducts.sku, unit: inventoryProducts.unit,
       quantity: inventoryProducts.currentQuantityMillis, consumptionQuantity: inventoryProducts.consumptionQuantityMillis,
       minimum: inventoryProducts.minimumQuantityMillis,
@@ -56,6 +57,7 @@ export default async function InventoryPage() {
   const saleValue = items.reduce((sum, item) => sum + item.salePrice * item.quantity / 1000, 0);
   const rows: StockProductRow[] = items.map((item) => ({
     id: item.id, variantId: item.variantId, name: item.name,
+    imageUrl: item.imageUrl,
     presentation: item.presentation === "Padrão" ? "—" : item.presentation, rawPresentation: item.presentation === "Padrão" ? "" : item.presentation,
     brand: item.brand || "—", rawBrand: item.brand ?? "", sku: item.sku ?? "", barcode: item.barcode ?? "",
     unit: item.unit, description: item.description ?? "", quantity: item.quantity,

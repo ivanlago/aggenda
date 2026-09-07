@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { deleteUnifiedTeamMember, replaceTeamMemberAvailability, updateUnifiedTeamMember } from "@/actions/team";
 import { ActionForm } from "@/components/action-form";
 import { PhoneInput } from "@/components/phone-input";
+import { EntityImageField, EntityThumbnail } from "@/components/entity-image-field";
 
 type Profession = { id: string; name: string };
 type Specialty = { id: string; name: string; professionId: string };
@@ -19,6 +20,7 @@ export type TeamMemberCardData = {
   professionalId: string | null; professionId: string | null; professionName: string | null;
   phone: string | null; bio: string | null; council: string | null; registrationNumber: string | null;
   registrationState: string | null; specialtyIds: string[]; availability: Availability[];
+  imageUrl: string | null;
 };
 
 export function TeamMemberCard({ member, professions, specialties, canEdit, canDelete }: {
@@ -33,6 +35,7 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-4">
       <div className="flex flex-wrap items-start gap-4">
+        <EntityThumbnail src={member.imageUrl} alt={member.shortName} fallback={member.shortName[0]} />
         <div className="min-w-0 flex-1">
           <p className="text-lg font-extrabold">{member.shortName}</p>
           <p className="truncate text-sm text-muted">{member.email}</p>
@@ -64,6 +67,7 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
             <label className="grid gap-1 text-sm font-bold">UF do conselho<input className="field" name="registrationState" maxLength={2} defaultValue={member.registrationState ?? ""} /></label>
             <label className="grid gap-1 text-sm font-bold">Telefone<PhoneInput name="phone" defaultValue={member.phone} /></label>
             <label className="grid gap-1 text-sm font-bold md:col-span-2">Apresentação breve<textarea className="field min-h-20" name="bio" defaultValue={member.bio ?? ""} /></label>
+            <EntityImageField currentUrl={member.imageUrl} label="Foto do profissional" />
           </>}
           <button className="primary-button md:col-span-2"><Save className="mr-2 inline size-4" />Salvar</button>
         </ActionForm>

@@ -44,7 +44,7 @@ import {
   deleteAppointmentFromGoogleCalendar,
   syncAppointmentToGoogleCalendar,
 } from "@/lib/google-calendar";
-import { deleteClinicalImage, uploadClinicalImage } from "@/lib/cloudinary";
+import { deleteCatalogImage, deleteClinicalImage, uploadClinicalImage } from "@/lib/cloudinary";
 import { reconcilePackageUsage, reservePackageSession } from "@/lib/package-balance";
 import {
   createClientPackageFinancialEntry,
@@ -55,6 +55,7 @@ import { updateAppointmentAndInventory } from "@/lib/inventory";
 import { documentPresets } from "@/lib/document-presets";
 import { anamnesisPresets } from "@/lib/anamnesis";
 import { normalizeBrazilianPhone } from "@/lib/phone";
+import { persistWithCatalogImage } from "@/lib/catalog-image";
 
 function textValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -529,7 +530,7 @@ export async function createClient(formData: FormData) {
     if (existing) throw new Error(`Este celular já está cadastrado para ${existing.name}. Abra o cadastro existente para evitar duplicidade.`);
   }
 
-  await db.insert(clients).values({
+  await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "clients", persist: (image) => db.insert(clients).values({
     organizationId: organization.id,
     name,
     email: optionalText(formData, "email"),
@@ -537,7 +538,8 @@ export async function createClient(formData: FormData) {
     birthDate: optionalText(formData, "birthDate"),
     gender: optionalText(formData, "gender"),
     notes: optionalText(formData, "notes"),
-  });
+    ...image,
+  }) });
   revalidatePath("/clientes");
   revalidatePath("/dashboard");
 }
@@ -545,14 +547,17 @@ export async function createClient(formData: FormData) {
 export async function deleteClient(formData: FormData) {
   const { organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "clients.manage");
+  const id = textValue(formData, "id");
+  const [current] = await db.select({ imagePublicId: clients.imagePublicId }).from(clients).where(and(eq(clients.id, id), eq(clients.organizationId, organization.id))).limit(1);
   await db
     .delete(clients)
     .where(
       and(
-        eq(clients.id, textValue(formData, "id")),
+        eq(clients.id, id),
         eq(clients.organizationId, organization.id)
       )
     );
+  if (current?.imagePublicId) await deleteCatalogImage(current.imagePublicId).catch((error) => console.error("Falha ao excluir foto do cliente", error));
   revalidatePath("/clientes");
   revalidatePath("/dashboard");
 }
@@ -564,16 +569,19 @@ export async function updateClient(formData: FormData) {
   const name = textValue(formData, "name");
   if (!id || name.length < 2) throw new Error("Informe o nome do cliente.");
   const phoneValue = optionalText(formData, "phone");
-  const [updated] = await db.update(clients).set({
+  const [current] = await db.select({ imagePublicId: clients.imagePublicId }).from(clients).where(and(eq(clients.id, id), eq(clients.organizationId, organization.id))).limit(1);
+  if (!current) throw new Error("Cliente não encontrado.");
+  const updated = await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "clients", currentPublicId: current.imagePublicId, persist: (image) => db.update(clients).set({
     name,
     email: optionalText(formData, "email"),
     phone: phoneValue ? normalizeBrazilianPhone(phoneValue) : null,
     birthDate: optionalText(formData, "birthDate"),
     gender: optionalText(formData, "gender"),
     notes: optionalText(formData, "notes"),
+    ...image,
     updatedAt: new Date(),
-  }).where(and(eq(clients.id, id), eq(clients.organizationId, organization.id))).returning({ id: clients.id });
-  if (!updated) throw new Error("Cliente não encontrado.");
+  }).where(and(eq(clients.id, id), eq(clients.organizationId, organization.id))).returning({ id: clients.id }) });
+  if (!updated.length) throw new Error("Cliente não encontrado.");
   revalidatePath("/clientes");
   revalidatePath(`/clientes/${id}`);
   revalidatePath("/dashboard");
@@ -753,7 +761,7 @@ export async function createService(formData: FormData) {
     throw new Error("Informe nome e duração válidos.");
   }
 
-  await db.insert(services).values({
+  await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "services", persist: (image) => db.insert(services).values({
     organizationId: organization.id,
     name,
     description: optionalText(formData, "description"),
@@ -767,7 +775,8 @@ export async function createService(formData: FormData) {
     estimatedCostInCents: optionalMoneyInCents(formData, "estimatedCost") ?? 0,
     depositType: ["none", "fixed", "percentage", "full"].includes(textValue(formData, "depositType")) ? textValue(formData, "depositType") : "none",
     depositValue: Number.parseInt(textValue(formData, "depositValue") || "0", 10) || 0,
-  });
+    ...image,
+  }) });
   revalidatePath("/servicos");
   revalidatePath("/dashboard");
 }
@@ -775,14 +784,17 @@ export async function createService(formData: FormData) {
 export async function deleteService(formData: FormData) {
   const { organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "services.manage");
+  const id = textValue(formData, "id");
+  const [current] = await db.select({ imagePublicId: services.imagePublicId }).from(services).where(and(eq(services.id, id), eq(services.organizationId, organization.id))).limit(1);
   await db
     .delete(services)
     .where(
       and(
-        eq(services.id, textValue(formData, "id")),
+        eq(services.id, id),
         eq(services.organizationId, organization.id)
       )
     );
+  if (current?.imagePublicId) await deleteCatalogImage(current.imagePublicId).catch((error) => console.error("Falha ao excluir imagem do atendimento", error));
   revalidatePath("/servicos");
   revalidatePath("/dashboard");
 }
@@ -796,7 +808,9 @@ export async function updateService(formData: FormData) {
   if (!id || name.length < 2 || !Number.isFinite(durationMinutes) || durationMinutes <= 0) {
     throw new Error("Informe nome e duração válidos.");
   }
-  await db.update(services).set({
+  const [current] = await db.select({ imagePublicId: services.imagePublicId }).from(services).where(and(eq(services.id, id), eq(services.organizationId, organization.id))).limit(1);
+  if (!current) throw new Error("Atendimento não encontrado.");
+  await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "services", currentPublicId: current.imagePublicId, persist: (image) => db.update(services).set({
     name, description: optionalText(formData, "description"), durationMinutes,
     tussCode: optionalText(formData, "tussCode") || optionalText(formData, "manualTussCode"),
     tussName: optionalText(formData, "tussName"),
@@ -807,8 +821,8 @@ export async function updateService(formData: FormData) {
     estimatedCostInCents: optionalMoneyInCents(formData, "estimatedCost") ?? 0,
     depositType: ["none", "fixed", "percentage", "full"].includes(textValue(formData, "depositType")) ? textValue(formData, "depositType") : "none",
     depositValue: Number.parseInt(textValue(formData, "depositValue") || "0", 10) || 0,
-    isActive: formData.get("isActive") === "on", updatedAt: new Date(),
-  }).where(and(eq(services.id, id), eq(services.organizationId, organization.id)));
+    isActive: formData.get("isActive") === "on", ...image, updatedAt: new Date(),
+  }).where(and(eq(services.id, id), eq(services.organizationId, organization.id))) });
   revalidatePath("/servicos");
   revalidatePath("/dashboard");
 }

@@ -18,7 +18,7 @@ export default async function TeamPage() {
   if (!canRead) return <div className="page-wrap"><p className="panel">Acesso restrito à gestão da equipe.</p></div>;
 
   const [members, professionOptions, specialtyOptions, specialtyRows, registrationRows, availabilityRows] = await Promise.all([
-    db.select({ userId: users.id, fullName: users.name, shortName: users.shortName, email: users.email, role: organizationMembers.role, professionalId: professionals.id, professionalName: professionals.name, professionId: professionals.professionId, professionName: professions.name, phone: professionals.phone, bio: professionals.bio })
+    db.select({ userId: users.id, fullName: users.name, shortName: users.shortName, email: users.email, role: organizationMembers.role, professionalId: professionals.id, professionalName: professionals.name, professionId: professionals.professionId, professionName: professions.name, phone: professionals.phone, bio: professionals.bio, imageUrl: professionals.imageUrl })
       .from(organizationMembers).innerJoin(users, eq(users.id, organizationMembers.userId))
       .leftJoin(professionals, and(eq(professionals.organizationId, organization.id), eq(professionals.userId, users.id)))
       .leftJoin(professions, eq(professions.id, professionals.professionId))
@@ -40,6 +40,7 @@ export default async function TeamPage() {
       phone: member.phone, bio: member.bio, council: registration?.council ?? null,
       registrationNumber: registration?.registrationNumber ?? null,
       registrationState: registration?.state ?? null,
+      imageUrl: member.imageUrl,
       specialtyIds: specialtyRows.filter((row) => row.professionalId === member.professionalId).map((row) => row.specialtyId),
       availability: availabilityRows.filter((row) => row.professionalId === member.professionalId).map((row) => ({ dayOfWeek: row.dayOfWeek, startsAt: row.startsAt, endsAt: row.endsAt })),
     };

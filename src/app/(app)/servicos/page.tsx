@@ -8,6 +8,7 @@ import { db } from "@/db";
 import { services } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
 import { hasOrganizationPermission } from "@/lib/permissions";
+import { EntityImageField, EntityThumbnail } from "@/components/entity-image-field";
 
 export const metadata = { title: "Serviços" };
 
@@ -43,6 +44,7 @@ export default async function ServicesPage() {
           <input className="field" name="durationMinutes" type="number" min="5" step="5" required placeholder="Duração em minutos" />
           <input className="field" name="price" inputMode="decimal" placeholder="Preço em reais (ex.: 150,00)" />
           <input className="field" name="estimatedCost" inputMode="decimal" placeholder="Custo estimado (produtos, taxas etc.)" />
+          <EntityImageField label={`Imagem do ${organization.serviceLabel.toLowerCase()}`} />
           <div className="grid gap-2 sm:grid-cols-2">
             <select className="field" name="depositType" defaultValue="none"><option value="none">Sem sinal</option><option value="fixed">Sinal em reais</option><option value="percentage">Sinal percentual</option><option value="full">Pagamento integral</option></select>
             <input className="field" name="depositValue" type="number" min="0" placeholder="Valor em centavos ou %" />
@@ -62,6 +64,7 @@ export default async function ServicesPage() {
           <div className="mt-5 divide-y">
             {items.map((item) => (
               <div key={item.id} className="flex items-center gap-4 py-4">
+                <EntityThumbnail src={item.imageUrl} alt={item.name} fallback={item.name[0]} />
                 <div className="min-w-0 flex-1">
                   <p className="font-bold">{item.shortName || item.name}</p>
                   <p className="text-sm text-muted">
@@ -81,6 +84,7 @@ export default async function ServicesPage() {
                     <input className="field" name="durationMinutes" type="number" min="5" step="5" defaultValue={item.durationMinutes} required />
                     <input className="field" name="price" inputMode="decimal" defaultValue={item.priceInCents == null ? "" : (item.priceInCents / 100).toFixed(2).replace(".", ",")} placeholder="Preço em reais" />
                     <input className="field" name="estimatedCost" inputMode="decimal" defaultValue={(item.estimatedCostInCents / 100).toFixed(2).replace(".", ",")} placeholder="Custo estimado" />
+                    <EntityImageField currentUrl={item.imageUrl} label={`Imagem do ${organization.serviceLabel.toLowerCase()}`} />
                     <select className="field" name="depositType" defaultValue={item.depositType}><option value="none">Sem sinal</option><option value="fixed">Sinal em reais</option><option value="percentage">Sinal percentual</option><option value="full">Pagamento integral</option></select>
                     <input className="field" name="depositValue" type="number" min="0" defaultValue={item.depositValue} aria-label="Valor do sinal em centavos ou percentual" />
                     <label className="flex gap-2 text-sm"><input type="checkbox" name="isActive" defaultChecked={item.isActive} /> Ativo</label>

@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { createUnifiedTeamMember } from "@/actions/team";
 import { ActionForm } from "@/components/action-form";
 import { PhoneInput } from "@/components/phone-input";
+import { EntityImageField } from "@/components/entity-image-field";
 
 type Profession = { id: string; name: string };
 type Specialty = { id: string; name: string; professionId: string };
@@ -61,6 +62,7 @@ export function TeamCreateForm({ professions, specialties }: { professions: Prof
           <label className="grid gap-2 text-sm font-bold">UF do conselho<input className="field" name="registrationState" maxLength={2} /></label>
           <label className="grid gap-2 text-sm font-bold">Telefone<PhoneInput name="phone" /></label>
           <label className="grid gap-2 text-sm font-bold md:col-span-2">Apresentação breve<textarea className="field min-h-24" name="bio" /></label>
+          <EntityImageField label="Foto do profissional" />
         </div>
       )}
       <p className="text-xs text-muted">Após o cadastro, o Aggenda enviará um link de criação de senha válido por 24 horas.</p>

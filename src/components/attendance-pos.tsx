@@ -16,7 +16,7 @@ export async function AttendancePos({ appointmentId }: { appointmentId: string }
   const canPay = hasOrganizationPermission(organization.role, "finance.manage");
   const canSell = organization.role === "professional" || canPay || hasOrganizationPermission(organization.role, "sales.sell") || hasOrganizationPermission(organization.role, "inventory.manage");
   const canReadFinance = canSell || hasOrganizationPermission(organization.role, "finance.read");
-  if (!canSell && !canReadFinance) return <section id="pdv" className="panel mt-5"><h2 className="text-xl font-extrabold">Pagto/Venda</h2><p className="mt-2 text-sm text-muted">Seu perfil não possui acesso a vendas ou pagamentos.</p></section>;
+  if (!canSell && !canReadFinance) return <section id="pdv" className="panel mt-5"><h2 className="text-xl font-extrabold">Pagamento/Venda</h2><p className="mt-2 text-sm text-muted">Seu perfil não possui acesso a vendas ou pagamentos.</p></section>;
   const [[client], [service], paymentRows, usages, variantRows, sales, extras] = await Promise.all([
     db.select({ id: clients.id, name: clients.name, email: clients.email, phone: clients.phone }).from(clients).where(and(eq(clients.id, appointment.clientId), eq(clients.organizationId, organization.id))).limit(1),
     db.select({ name: services.name, price: services.priceInCents }).from(services).where(and(eq(services.id, appointment.serviceId), eq(services.organizationId, organization.id))).limit(1),
@@ -31,15 +31,20 @@ export async function AttendancePos({ appointmentId }: { appointmentId: string }
   const paymentState = attendancePaymentState({ paymentStatus: payment?.status, packageStatus: usages[0]?.status, appointmentStatus: appointment.status });
   const paid = paymentState === "paid";
   const covered = paymentState === "package";
+  const paymentStatusLabel = paid ? "PAGO" : covered ? "PAGO COM PACOTE" : "PENDENTE";
+  const paymentStatusClass = paid || covered ? "text-emerald-700" : "text-red-600";
   const amount = payment?.amountInCents ?? appointment.priceInCents ?? service.price ?? 0;
   const initialCart = paymentState === "pending" ? [{ variantId: `appointment:${appointment.id}`, quantity: 1, discountInCents: 0 }] : [];
   const offerings = [...catalog, ...(paymentState === "pending" ? [{ id: `appointment:${appointment.id}`, label: `${service.name} · Procedimento realizado`, barcode: null, priceInCents: amount, stock: 1, kind: "service" as const }] : [])];
   const variants = variantRows.map((variant) => ({ id: variant.id, label: `${variant.product} · ${variant.variant}`, barcode: variant.barcode, priceInCents: variant.priceInCents, stock: Math.floor(variant.stock / 1000) })).filter((variant) => variant.stock > 0);
-  return <section id="pdv" className="mt-5 scroll-mt-6"><h2 className="mb-3 text-xl font-extrabold">Pagto/Venda</h2>
+  return <section id="pdv" className="mt-5 scroll-mt-6"><h2 className="mb-3 text-xl font-extrabold">Pagamento/Venda</h2>
     {paymentState === "blocked" && <p className="mb-4 text-sm text-muted">Revise a situação do atendimento antes de cobrar o procedimento.</p>}
     {canSell && <details open={paymentState === "pending"} className="mb-4 rounded-2xl border bg-white p-4">
-      <summary className="cursor-pointer text-lg font-extrabold">{paid ? `${service.name} - PAGO` : covered ? `${service.name} - PAGO VIA PACOTE` : "Pagto/Venda"}</summary>
-      <div className="mt-4"><RetailSaleForm key={paymentState} offerings={offerings} attendanceId={appointment.id} initialClientId={client.id} initialCart={initialCart} clients={[client]} variants={variants} canDiscount={hasOrganizationPermission(organization.role, "sales.discount")} /></div>
+      <summary className="cursor-pointer text-lg font-extrabold">Pagamento/Venda</summary>
+      <div className="mt-4">
+        <p className={`mb-4 text-sm font-extrabold ${paymentStatusClass}`}>Obs: {service.name} - {paymentStatusLabel}</p>
+        <RetailSaleForm key={paymentState} offerings={offerings} attendanceId={appointment.id} initialClientId={client.id} initialCart={initialCart} clients={[client]} variants={variants} canDiscount={hasOrganizationPermission(organization.role, "sales.discount")} />
+      </div>
     </details>}
     <section className="panel mt-4"><h3 className="font-extrabold">Vendas e adicionais deste atendimento</h3>
       {sales.map((sale) => <div key={sale.id} className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t pt-3"><div><p className="font-bold">Venda · {currency(sale.total)}</p><p className="text-xs text-muted">{formatOrganizationDateTime(sale.soldAt, organization.timezone)} · {sale.status !== "completed" ? "Cancelada / estornada" : sale.paymentStatus === "received" ? "Pagamento recebido" : "Pagamento pendente"}</p></div><Link className="secondary-button" href={`/recibo/${sale.receiptToken}`} target="_blank">Abrir recibo</Link></div>)}

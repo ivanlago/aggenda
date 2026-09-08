@@ -1,13 +1,15 @@
 "use server";
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireAttendance } from "@/lib/attendance";
 import { splitPosPackagePrice } from "@/lib/pos-pricing";
+import { splitCheckoutTotal } from "@/lib/checkout-totals";
 
 import { db } from "@/db";
 import {
   appointmentInventoryConsumptions,
+  appointments, packageUsages,
   clients,
   services, servicePackages, servicePackageItems, clientPackages, clientPackageBalances,
   financialEntries,
@@ -223,7 +225,10 @@ type SalePaymentInput = { method?: unknown; amountInCents?: unknown };
 
 export async function registerRetailSale(data: FormData) {
   const { session, organization } = await requireOrganization();
-  if (!hasOrganizationPermission(organization.role, "sales.sell") && !hasOrganizationPermission(organization.role, "inventory.manage")) assertOrganizationPermission(organization.role, "sales.sell");
+  const attendanceId = text(data, "attendanceId") || null;
+  const attendance = attendanceId ? await requireAttendance(attendanceId) : null;
+  const scopedCheckout = attendance && (organization.role === "professional" || hasOrganizationPermission(organization.role, "finance.manage"));
+  if (!scopedCheckout && !hasOrganizationPermission(organization.role, "sales.sell") && !hasOrganizationPermission(organization.role, "inventory.manage")) assertOrganizationPermission(organization.role, "sales.sell");
   let parsed: SaleInputItem[];
   try { parsed = JSON.parse(text(data, "items")); } catch { throw new Error("Itens da venda inválidos."); }
   if (!Array.isArray(parsed) || !parsed.length || parsed.length > 50) throw new Error("Adicione ao menos um produto à venda.");
@@ -242,10 +247,10 @@ export async function registerRetailSale(data: FormData) {
   const serviceIds = [...grouped.keys()].filter((id) => id.startsWith("service:")).map((id) => id.slice(8));
   const packageIds = [...grouped.keys()].filter((id) => id.startsWith("package:")).map((id) => id.slice(8));
   const variantIds = [...grouped.keys()].filter((id) => !id.includes(":"));
-  if (variantIds.length + serviceIds.length + packageIds.length !== grouped.size) throw new Error("Tipo de item inválido.");
-  const attendanceId = text(data, "attendanceId") || null;
-  const attendance = attendanceId ? await requireAttendance(attendanceId) : null;
-  if (attendance && serviceIds.includes(attendance.appointment.serviceId)) throw new Error("Receba o procedimento deste atendimento pelo painel Consulta / procedimento para preservar o controle de pagamento.");
+  const appointmentKeys = [...grouped.keys()].filter((id) => id.startsWith("appointment:"));
+  if (variantIds.length + serviceIds.length + packageIds.length + appointmentKeys.length !== grouped.size) throw new Error("Tipo de item inválido.");
+  if (appointmentKeys.length && (!attendance || appointmentKeys.length !== 1 || appointmentKeys[0] !== `appointment:${attendanceId}` || grouped.get(appointmentKeys[0])!.quantity !== 1)) throw new Error("Procedimento do atendimento inválido.");
+  if (attendance && serviceIds.includes(attendance.appointment.serviceId)) throw new Error("Use o item do procedimento realizado, já incluído no carrinho, para receber este atendimento.");
   const clientId = attendance?.appointment.clientId ?? (text(data, "clientId") || null);
   const [client] = clientId ? await db.select({ id: clients.id, email: clients.email, phone: clients.phone }).from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1) : [];
   if (clientId && !client) throw new Error("Cliente não encontrado.");
@@ -266,10 +271,22 @@ export async function registerRetailSale(data: FormData) {
   });
   const paymentMethod = normalizedPayments.length > 1 ? "mixed" : normalizedPayments[0].method;
   const received = data.get("received") === "on";
+  if (appointmentKeys.length && !received) throw new Error("Confirme o pagamento recebido para quitar o procedimento.");
   if (packageIds.length && !received) throw new Error("Confirme o pagamento recebido para liberar os pacotes ao cliente.");
   const today = organizationDate(new Date(), organization.timezone);
 
   const createdSale = await db.transaction(async (tx) => {
+    let appointmentLine: { id: string; serviceId: string; packageId: string | null; productName: string; variantName: string; price: number | null } | null = null;
+    if (appointmentKeys.length && attendance) {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`attendance-payment:${attendanceId}`}, 0))`);
+      const [current] = await tx.select().from(appointments).where(and(eq(appointments.id, attendance.appointment.id), eq(appointments.organizationId, organization.id))).for("update");
+      const [existing] = await tx.select().from(financialEntries).where(and(eq(financialEntries.appointmentId, current.id), eq(financialEntries.organizationId, organization.id)));
+      const [usage] = await tx.select().from(packageUsages).where(and(eq(packageUsages.appointmentId, current.id), eq(packageUsages.organizationId, organization.id), inArray(packageUsages.status, ["reserved", "consumed"])));
+      if (existing?.status === "received" || usage) throw new Error("Este procedimento já foi pago ou está coberto por pacote. Atualize o carrinho.");
+      if (["cancelled", "no_show"].includes(current.status)) throw new Error("Revise a situação do atendimento antes de receber.");
+      const [service] = await tx.select().from(services).where(and(eq(services.id, current.serviceId), eq(services.organizationId, organization.id)));
+      appointmentLine = { id: appointmentKeys[0], serviceId: service.id, packageId: null, productName: service.name, variantName: "Procedimento realizado", price: existing?.amountInCents ?? current.priceInCents ?? service.priceInCents };
+    }
     const variants = await tx.select({
       id: retailProductVariants.id, inventoryProductId: retailProductVariants.inventoryProductId,
       variantName: retailProductVariants.name, price: retailProductVariants.salePriceInCents,
@@ -301,6 +318,7 @@ export async function registerRetailSale(data: FormData) {
     const packageRows = packageIds.length ? await tx.select().from(servicePackages).where(and(eq(servicePackages.organizationId, organization.id), eq(servicePackages.isActive, true), inArray(servicePackages.id, packageIds))) : [];
     if (procedureRows.length !== serviceIds.length || packageRows.length !== packageIds.length) throw new Error("Procedimento ou pacote indisponível.");
     const additionalLines = [
+      ...(appointmentLine ? [appointmentLine] : []),
       ...procedureRows.map((item) => ({ id: `service:${item.id}`, serviceId: item.id, packageId: null as string | null, productName: item.name, variantName: "Procedimento", price: item.priceInCents })),
       ...packageRows.map((item) => ({ id: `package:${item.id}`, serviceId: null as string | null, packageId: item.id, productName: item.name, variantName: "Pacote", price: item.priceInCents })),
     ].map((item) => {
@@ -314,14 +332,25 @@ export async function registerRetailSale(data: FormData) {
     const discountInCents = lines.reduce((sum, item) => sum + item.discount, 0);
     const totalInCents = subtotalInCents - discountInCents;
     if (normalizedPayments.reduce((sum, payment) => sum + payment.amountInCents, 0) !== totalInCents) throw new Error("A soma dos pagamentos deve ser igual ao total da venda.");
-    const [financialEntry] = await tx.insert(financialEntries).values({
+    const procedureTotal = additionalLines.find((item) => item.id.startsWith("appointment:"))?.total ?? 0;
+    const { additionalInCents } = splitCheckoutTotal(totalInCents, procedureTotal);
+    let appointmentFinancialEntryId: string | null = null;
+    if (appointmentLine && attendance) {
+      const [entry] = await tx.insert(financialEntries).values({ organizationId: organization.id, appointmentId: attendance.appointment.id, clientId,
+        type: "receivable", source: "appointment", status: "received", description: `Atendimento - ${appointmentLine.productName}`, category: "Atendimentos",
+        amountInCents: procedureTotal, dueDate: today, realizedDate: today, paymentMethod, createdByUserId: session.user.id,
+      }).onConflictDoUpdate({ target: financialEntries.appointmentId, set: { status: "received", amountInCents: procedureTotal, realizedDate: today, paymentMethod, updatedAt: new Date() }, setWhere: ne(financialEntries.status, "received") }).returning({ id: financialEntries.id });
+      if (!entry) throw new Error("O pagamento deste procedimento já foi registrado.");
+      appointmentFinancialEntryId = entry.id;
+    }
+    const [financialEntry] = additionalInCents > 0 || !appointmentFinancialEntryId ? await tx.insert(financialEntries).values({
       organizationId: organization.id, type: "receivable", status: received ? "received" : "pending",
       source: "retail_sale", description: "Venda no PDV", category: "Vendas no PDV",
-      amountInCents: totalInCents, dueDate: today, realizedDate: received ? today : null,
+      amountInCents: additionalInCents, dueDate: today, realizedDate: received ? today : null,
       paymentMethod, clientId, notes: text(data, "notes") || null, createdByUserId: session.user.id,
-    }).returning({ id: financialEntries.id });
+    }).returning({ id: financialEntries.id }) : [{ id: appointmentFinancialEntryId }];
     const [sale] = await tx.insert(retailSales).values({
-      organizationId: organization.id, clientId, attendanceId, financialEntryId: financialEntry.id, paymentMethod,
+      organizationId: organization.id, clientId, attendanceId, financialEntryId: financialEntry.id, appointmentFinancialEntryId, paymentMethod,
       receiptEmail, receiptPhone: receiptPhoneDigits,
       subtotalInCents, discountInCents, totalInCents, notes: text(data, "notes") || null,
       createdByUserId: session.user.id,
@@ -375,6 +404,7 @@ export async function registerRetailSale(data: FormData) {
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "retail_sale", entityId: createdSale.id });
   revalidatePath("/vendas"); revalidatePath("/produtos"); revalidatePath("/estoque"); revalidatePath("/financeiro");
   if (attendanceId) revalidatePath(`/atendimento/${attendanceId}`);
+  revalidatePath("/agenda"); revalidatePath("/dashboard");
   revalidatePath("/pacotes");
   if (clientId) revalidatePath(`/clientes/${clientId}`);
   return { openUrl: receiptPath, warning: notificationResults.some((result) => result.status === "rejected") ? "Venda concluída, mas um dos envios do recibo falhou." : undefined };
@@ -390,7 +420,7 @@ export async function reverseRetailSale(data: FormData) {
 
   await db.transaction(async (tx) => {
     await tx.execute(sql`select id from retail_sales where id = ${saleId} for update`);
-    const [sale] = await tx.select({ id: retailSales.id, status: retailSales.status, financialEntryId: retailSales.financialEntryId }).from(retailSales).where(and(eq(retailSales.id, saleId), eq(retailSales.organizationId, organization.id))).limit(1);
+    const [sale] = await tx.select({ id: retailSales.id, status: retailSales.status, financialEntryId: retailSales.financialEntryId, appointmentFinancialEntryId: retailSales.appointmentFinancialEntryId }).from(retailSales).where(and(eq(retailSales.id, saleId), eq(retailSales.organizationId, organization.id))).limit(1);
     if (!sale) throw new Error("Venda não encontrada.");
     if (sale.status !== "completed") throw new Error("Esta venda já foi cancelada ou estornada.");
     const items = await tx.select({ productId: retailSaleItems.inventoryProductId, quantity: retailSaleItems.quantity }).from(retailSaleItems).where(and(eq(retailSaleItems.saleId, saleId), eq(retailSaleItems.organizationId, organization.id)));
@@ -414,6 +444,7 @@ export async function reverseRetailSale(data: FormData) {
     await tx.update(retailSales).set({ status: operation, cancelledAt: new Date(), cancelledByUserId: session.user.id, cancellationReason: reason }).where(eq(retailSales.id, saleId));
     await tx.update(retailSalePayments).set({ status: operation }).where(and(eq(retailSalePayments.saleId, saleId), eq(retailSalePayments.organizationId, organization.id)));
     if (sale.financialEntryId) await tx.update(financialEntries).set({ status: operation, updatedAt: new Date() }).where(and(eq(financialEntries.id, sale.financialEntryId), eq(financialEntries.organizationId, organization.id)));
+    if (sale.appointmentFinancialEntryId && sale.appointmentFinancialEntryId !== sale.financialEntryId) await tx.update(financialEntries).set({ status: operation, updatedAt: new Date() }).where(and(eq(financialEntries.id, sale.appointmentFinancialEntryId), eq(financialEntries.organizationId, organization.id)));
   });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: operation, entityType: "retail_sale", entityId: saleId, details: { reason } });
   revalidatePath("/vendas"); revalidatePath("/vendas/historico"); revalidatePath("/vendas/relatorios"); revalidatePath("/estoque"); revalidatePath("/financeiro");

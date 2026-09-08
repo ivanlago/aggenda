@@ -61,7 +61,7 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
       <Link className="secondary-button" href="/agenda">Voltar à Agenda</Link>
       <Link className="secondary-button" href={historyUrl}>Cadastro e histórico completo</Link>
       <Link className="secondary-button" href={`${historyUrl}?section=photos#fotografias-clinicas`}>Fotos clínicas e simulações</Link>
-      <a className="secondary-button" href="#pdv">PDV e pagamentos</a>
+      <a className="secondary-button" href="#pdv">Pagto/Venda</a>
       <a className="secondary-button" href="#anamnese">Anamnese</a><a className="secondary-button" href="#anotacoes">Anotações</a><a className="secondary-button" href="#documentos">Documentos e orçamento</a>
     </nav>
     <div className="grid gap-5 lg:grid-cols-3">

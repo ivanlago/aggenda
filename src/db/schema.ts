@@ -1141,6 +1141,7 @@ export const retailSales = pgTable("retail_sales", {
   clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
   attendanceId: uuid("attendance_id"),
   financialEntryId: uuid("financial_entry_id").references(() => financialEntries.id, { onDelete: "set null" }),
+  appointmentFinancialEntryId: uuid("appointment_financial_entry_id").references((): import("drizzle-orm/pg-core").AnyPgColumn => financialEntries.id, { onDelete: "set null" }),
   status: text("status").default("completed").notNull(),
   paymentMethod: text("payment_method"),
   receiptToken: uuid("receipt_token").defaultRandom().notNull(),

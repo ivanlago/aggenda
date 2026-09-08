@@ -414,6 +414,13 @@
       "when": 1788907894067,
       "tag": "0058_pos_services_packages",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1788909853030,
+      "tag": "0059_unified_attendance_checkout",
+      "breakpoints": true
     }
   ]
 }

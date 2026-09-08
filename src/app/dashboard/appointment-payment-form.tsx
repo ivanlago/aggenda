@@ -5,9 +5,9 @@ import { useState } from "react";
 import { registerAppointmentPayment } from "@/actions/app";
 import { ActionForm } from "@/components/action-form";
 
-export function AppointmentPaymentForm({ appointmentId, client, description, defaultAmount, packages }: { appointmentId: string; client: string; description: string; defaultAmount: string; packages: Array<{ id: string; name: string; remaining: number; current: boolean }> }) {
+export function AppointmentPaymentForm({ appointmentId, client, description, defaultAmount, packages, action = registerAppointmentPayment }: { appointmentId: string; client: string; description: string; defaultAmount: string; packages: Array<{ id: string; name: string; remaining: number; current: boolean }>; action?: (data: FormData) => Promise<void | { error?: string }> }) {
   const [method, setMethod] = useState("");
-  return <ActionForm action={registerAppointmentPayment} successMessage="Pagamento registrado com sucesso." className="grid gap-4 sm:grid-cols-2">
+  return <ActionForm action={action} successMessage="Pagamento registrado com sucesso." className="grid gap-4 sm:grid-cols-2">
     <input type="hidden" name="appointmentId" value={appointmentId} />
     <label className="grid gap-2 text-sm font-bold">Cliente<input className="field" value={client} readOnly /></label>
     <label className="grid gap-2 text-sm font-bold">Descrição do atendimento<input className="field" value={description} readOnly /></label>

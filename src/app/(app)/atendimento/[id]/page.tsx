@@ -1,3 +1,4 @@
+import { AttendancePos } from "@/components/attendance-pos";
 import { and, desc, eq } from "drizzle-orm";
 import Link from "next/link";
 import Image from "next/image";
@@ -60,6 +61,7 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
       <Link className="secondary-button" href="/agenda">Voltar à Agenda</Link>
       <Link className="secondary-button" href={historyUrl}>Cadastro e histórico completo</Link>
       <Link className="secondary-button" href={`${historyUrl}?section=photos#fotografias-clinicas`}>Fotos clínicas e simulações</Link>
+      <a className="secondary-button" href="#pdv">PDV e pagamentos</a>
       <a className="secondary-button" href="#anamnese">Anamnese</a><a className="secondary-button" href="#anotacoes">Anotações</a><a className="secondary-button" href="#documentos">Documentos e orçamento</a>
     </nav>
     <div className="grid gap-5 lg:grid-cols-3">
@@ -89,6 +91,7 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
       </div> : <p className="panel text-sm text-muted">{!professional ? "Vincule um profissional na Agenda para emitir documentos." : "Seu perfil não possui permissão para emitir documentos."}</p>}
       {canReadDocuments && <section className="panel mt-4"><h3 className="font-extrabold">Documentos do cliente</h3>{documents.filter((document) => ["issued", "signed"].includes(document.status)).map((document) => <div key={document.id} className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3"><div><p className="font-bold">{document.title}</p><p className="text-xs text-muted">{formatOrganizationDateTime(document.createdAt, organization.timezone)}{document.structuredData?.appointmentId === id ? " · Neste atendimento" : ""}</p></div><Link className="secondary-button" href={`/api/documents/${document.id}/pdf`}>Abrir PDF</Link></div>)}</section>}
     </section>
+    <AttendancePos appointmentId={id} />
     {canWrite && <section className="panel mt-5"><h2 className="mb-3 text-lg font-extrabold">Situação do atendimento</h2><AppointmentStatusForm action={updateAttendanceStatus} appointmentId={id} initialStatus={appointment.status} initialCancellationReason={appointment.cancellationReason} statuses={statuses} /></section>}
   </div>;
 }

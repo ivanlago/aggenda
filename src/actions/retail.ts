@@ -2,6 +2,7 @@
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { requireAttendance } from "@/lib/attendance";
 
 import { db } from "@/db";
 import {
@@ -237,7 +238,9 @@ export async function registerRetailSale(data: FormData) {
   const hasItemDiscount = [...grouped.values()].some((item) => item.discountInCents > 0);
   if (hasItemDiscount) assertOrganizationPermission(organization.role, "sales.discount");
   const variantIds = [...grouped.keys()];
-  const clientId = text(data, "clientId") || null;
+  const attendanceId = text(data, "attendanceId") || null;
+  const attendance = attendanceId ? await requireAttendance(attendanceId) : null;
+  const clientId = attendance?.appointment.clientId ?? (text(data, "clientId") || null);
   const [client] = clientId ? await db.select({ id: clients.id, email: clients.email, phone: clients.phone }).from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1) : [];
   if (clientId && !client) throw new Error("Cliente não encontrado.");
   const receiptEmail = text(data, "receiptEmail") || client?.email || null;
@@ -297,7 +300,7 @@ export async function registerRetailSale(data: FormData) {
       paymentMethod, clientId, notes: text(data, "notes") || null, createdByUserId: session.user.id,
     }).returning({ id: financialEntries.id });
     const [sale] = await tx.insert(retailSales).values({
-      organizationId: organization.id, clientId, financialEntryId: financialEntry.id, paymentMethod,
+      organizationId: organization.id, clientId, attendanceId, financialEntryId: financialEntry.id, paymentMethod,
       receiptEmail, receiptPhone: receiptPhoneDigits,
       subtotalInCents, discountInCents, totalInCents, notes: text(data, "notes") || null,
       createdByUserId: session.user.id,
@@ -334,6 +337,7 @@ export async function registerRetailSale(data: FormData) {
   const notificationResults = await Promise.allSettled(notifications);
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "retail_sale", entityId: createdSale.id });
   revalidatePath("/vendas"); revalidatePath("/produtos"); revalidatePath("/estoque"); revalidatePath("/financeiro");
+  if (attendanceId) revalidatePath(`/atendimento/${attendanceId}`);
   return { openUrl: receiptPath, warning: notificationResults.some((result) => result.status === "rejected") ? "Venda concluída, mas um dos envios do recibo falhou." : undefined };
 }
 

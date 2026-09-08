@@ -1139,6 +1139,7 @@ export const retailSales = pgTable("retail_sales", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
   clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
+  attendanceId: uuid("attendance_id"),
   financialEntryId: uuid("financial_entry_id").references(() => financialEntries.id, { onDelete: "set null" }),
   status: text("status").default("completed").notNull(),
   paymentMethod: text("payment_method"),
@@ -1623,6 +1624,7 @@ export const financialEntries = pgTable(
     paymentMethod: text("payment_method"),
     notes: text("notes"),
     recurrenceGroupId: uuid("recurrence_group_id"),
+    attendanceId: uuid("attendance_id").references(() => appointments.id, { onDelete: "set null" }),
     installmentNumber: integer("installment_number").default(1).notNull(),
     installmentCount: integer("installment_count").default(1).notNull(),
     clientId: uuid("client_id").references(() => clients.id, {

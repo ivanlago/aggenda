@@ -17,6 +17,11 @@ import { AppointmentPaymentForm } from "@/app/dashboard/appointment-payment-form
 
 const statuses = [["scheduled", "Agendado"], ["confirmed", "Confirmado"], ["completed", "Concluído"], ["cancelled", "Cancelado"], ["no_show", "Não compareceu"]] as const;
 const statusLabels = Object.fromEntries(statuses);
+const statusClasses: Record<string, string> = {
+  scheduled: "bg-emerald-100 text-emerald-800",
+  confirmed: "bg-blue-100 text-blue-800",
+  cancelled: "bg-red-100 text-red-800",
+};
 
 function whatsappLink(phone: string, message: string) {
   const digits = phone.replace(/\D/g, "");
@@ -72,7 +77,7 @@ export async function AgendaPage({ openNewAppointment = false, filters = {} }: {
           return <tr key={item.id}>
             <td className="whitespace-nowrap p-3"><strong>{time ?? dateTime}</strong><p className="text-xs text-muted">{time ? date : ""}</p></td>
             <td className="max-w-56 p-3"><p className="truncate font-bold" title={item.service}>{item.service}</p></td>
-            <td className="p-3"><span className="status-pill">{statusLabels[item.status] ?? item.status}</span></td>
+            <td className="p-3"><span className={`status-pill ${statusClasses[item.status] ?? ""}`}>{statusLabels[item.status] ?? item.status}</span></td>
             <td className="p-3">{item.professional ?? "—"}</td><td className="p-3 font-bold">{item.client}</td>
             {canManageFinance && <td className="p-3"><ModalShell title="Registrar pagamento" variant="payment" completed={item.paymentStatus === "received" || Boolean(item.clientPackageId)}><AppointmentPaymentForm appointmentId={item.id} client={item.client} description={item.service} defaultAmount={price} packages={availablePackages} /></ModalShell></td>}
             {canManage && <td className="p-3"><ModalShell title="Editar agendamento" variant="edit"><div className="grid gap-5"><div className="rounded-2xl bg-slate-50 p-4"><p className="font-extrabold">{item.client}</p><p className="text-sm text-muted">{item.service} · {item.professional ?? "Sem profissional"}</p><p className="mt-1 text-sm font-bold text-brand">{dateTime}</p>{item.packageName && <p className="mt-1 text-xs text-brand">Pacote: {item.packageName} · {item.packageStatus}</p>}</div><AppointmentStatusForm action={updateAppointmentStatus} appointmentId={item.id} initialStatus={item.status} initialCancellationReason={item.cancellationReason} statuses={statuses} />{item.professionalId && <div><h3 className="font-extrabold">Reagendar</h3><AppointmentRescheduleForm action={rescheduleAppointment} appointmentId={item.id} serviceId={item.serviceId} professionalId={item.professionalId} timezone={organization.timezone} /></div>}{canSendWhatsApp && whatsapp && <a className="secondary-button sm:w-fit" href={whatsapp} target="_blank" rel="noreferrer">Enviar pelo WhatsApp</a>}</div></ModalShell></td>}

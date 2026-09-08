@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 
 import { createClientClinicalMedia, createClientHistoryEntry } from "@/actions/app";
 import { ActionForm } from "@/components/action-form";
@@ -22,6 +23,19 @@ const statusLabels = {
   completed: "Concluído",
   no_show: "Não compareceu",
 };
+
+function CollapsiblePanel({ title, children, className = "mb-5" }: { title: ReactNode; children: ReactNode; className?: string }) {
+  return (
+    <details className={`panel group ${className}`}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-lg font-extrabold marker:hidden">
+        <span>{title}</span>
+        <span className="text-sm font-bold text-brand group-open:hidden">Exibir</span>
+        <span className="hidden text-sm font-bold text-brand group-open:inline">Minimizar</span>
+      </summary>
+      <div className="mt-4 border-t pt-4">{children}</div>
+    </details>
+  );
+}
 
 export default async function ClientHistoryPage({
   params,
@@ -153,9 +167,8 @@ export default async function ClientHistoryPage({
           <div><p className="text-muted">Contato</p><p className="font-bold">{formatPhone(client.phone) || client.email || "Não informado"}</p></div>
         </div>
       </section>
-      <section className="panel mb-5">
-        <h2 className="text-lg font-extrabold">Fotografias clínicas</h2>
-        <p className="mt-1 text-sm text-muted">Crie sessões de antes, evolução e depois para qualquer região corporal. Registros com a mesma sessão, região e vista são pareados automaticamente.</p>
+      <CollapsiblePanel title="Fotografias clínicas">
+        <p className="text-sm text-muted">Crie sessões de antes, evolução e depois para qualquer região corporal. Registros com a mesma sessão, região e vista são pareados automaticamente.</p>
         {canManageClinicalMedia && <ActionForm action={createClientClinicalMedia} successMessage="Fotografia clínica enviada." className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <input type="hidden" name="clientId" value={client.id} />
           <input className="field" name="captureSession" placeholder="Sessão (ex.: Tratamento setembro/2026)" required />
@@ -183,10 +196,9 @@ export default async function ClientHistoryPage({
           annotations: Array.isArray(item.annotations) ? item.annotations : [],
           src: item.storageProvider === "cloudinary" ? `/api/clinical-media/${item.id}?width=1600` : item.url,
         }))} />
-      </section>
-      <section className="panel mb-5">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-extrabold">Pacotes e saldos</h2>
+      </CollapsiblePanel>
+      <CollapsiblePanel title="Pacotes e saldos">
+        <div className="flex justify-end">
           {canManage && <Link href="/pacotes" className="text-sm font-bold text-brand">Gerenciar pacotes</Link>}
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -201,10 +213,9 @@ export default async function ClientHistoryPage({
           ))}
           {!packages.size && <p className="empty-state md:col-span-2">Este {organization.clientLabel.toLowerCase()} ainda não possui pacotes.</p>}
         </div>
-      </section>
-      <section className="panel mb-5">
-        <h2 className="text-lg font-extrabold">{recordLabel}</h2>
-        <p className="mt-1 text-sm text-muted">Registre evoluções e informações relevantes com autoria e data.</p>
+      </CollapsiblePanel>
+      <CollapsiblePanel title={recordLabel}>
+        <p className="text-sm text-muted">Registre evoluções e informações relevantes com autoria e data.</p>
         {canManage && <ActionForm action={createClientHistoryEntry} successMessage={`${recordLabel} atualizado com sucesso.`} className="mt-5 grid gap-3">
           <input type="hidden" name="clientId" value={client.id} />
           <div className="grid gap-3 sm:grid-cols-2">
@@ -236,12 +247,9 @@ export default async function ClientHistoryPage({
           </article>)}
           {!visibleEntries.length && <p className="empty-state">Nenhum registro adicionado.</p>}
         </div>
-      </section>
-      <section className="panel">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-extrabold">
-            {history.length} {organization.appointmentLabelPlural.toLowerCase()}
-          </h2>
+      </CollapsiblePanel>
+      <CollapsiblePanel title={`${history.length} ${organization.appointmentLabelPlural.toLowerCase()}`}>
+        <div className="flex justify-end">
           <Link href="/clientes" className="text-sm font-bold text-brand">Voltar</Link>
         </div>
         {client.notes && (
@@ -269,10 +277,9 @@ export default async function ClientHistoryPage({
           ))}
           {!history.length && <p className="empty-state">Nenhum histórico registrado.</p>}
         </div>
-      </section>
-      <section className="panel mt-5">
-        <h2 className="text-lg font-extrabold">Linha do tempo de agendamentos</h2>
-        <p className="mt-1 text-sm text-muted">Acompanhe criação, reagendamentos e mudanças de status em ordem cronológica.</p>
+      </CollapsiblePanel>
+      <CollapsiblePanel title="Linha do tempo de agendamentos" className="mb-0">
+        <p className="text-sm text-muted">Acompanhe criação, reagendamentos e mudanças de status em ordem cronológica.</p>
         <div className="mt-5 divide-y">
           {timeline.map((event) => {
             const appointment = event.appointmentId ? appointmentById.get(event.appointmentId) : undefined;
@@ -313,7 +320,7 @@ export default async function ClientHistoryPage({
           })}
           {!timeline.length && <p className="empty-state">Nenhum evento automático registrado.</p>}
         </div>
-      </section>
+      </CollapsiblePanel>
     </div>
   );
 }

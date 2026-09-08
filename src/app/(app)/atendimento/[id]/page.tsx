@@ -21,6 +21,16 @@ import { AppointmentStatusForm } from "@/components/appointment-status-form";
 export const metadata = { title: "Atendimento" };
 const statuses = [["scheduled", "Agendado"], ["confirmed", "Confirmado"], ["completed", "Concluído"], ["cancelled", "Cancelado"], ["no_show", "Não compareceu"]] as const;
 
+function calculateAge(birthDate: string | null) {
+  if (!birthDate) return null;
+  const birth = new Date(`${birthDate}T12:00:00Z`);
+  const today = new Date();
+  let age = today.getUTCFullYear() - birth.getUTCFullYear();
+  const birthdayPassed = today.getUTCMonth() > birth.getUTCMonth() || (today.getUTCMonth() === birth.getUTCMonth() && today.getUTCDate() >= birth.getUTCDate());
+  if (!birthdayPassed) age -= 1;
+  return age >= 0 ? age : null;
+}
+
 function Panel({ title, children, id }: { title: string; children: ReactNode; id: string }) {
   return <details id={id} className="panel scroll-mt-6"><summary className="cursor-pointer text-lg font-extrabold">{title}</summary><div className="mt-4">{children}</div></details>;
 }
@@ -66,8 +76,8 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
     </nav>
     <div className="grid gap-5 lg:grid-cols-3">
       <section className="panel lg:col-span-2">
-        <div className="flex items-start gap-4">{client.imageUrl && <Image src={client.imageUrl} alt={`Foto de ${client.name}`} width={88} height={88} className="size-22 rounded-xl object-cover" />}<div><h2 className="text-xl font-extrabold">{client.name}</h2><p className="text-sm text-muted">{formatPhone(client.phone) || "Sem telefone"} · {client.email || "Sem e-mail"}</p></div></div>
-        <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">{[["Nascimento", client.birthDate ? client.birthDate.split("-").reverse().join("/") : null], ["CPF", client.cpf], ["Profissão", client.profession]].map(([label, value]) => <div key={label}><dt className="text-muted">{label}</dt><dd className="font-bold">{value || "Não informado"}</dd></div>)}</dl>
+        <div className="flex items-start gap-4">{client.imageUrl ? <Image src={client.imageUrl} alt={`Foto de ${client.name}`} width={96} height={96} className="size-24 rounded-xl object-cover" /> : <div className="grid size-24 shrink-0 place-items-center rounded-xl bg-teal-50 text-3xl font-extrabold text-brand">{client.name[0]}</div>}<div><h2 className="text-xl font-extrabold">{client.name}</h2><p className="text-sm text-muted">{formatPhone(client.phone) || "Sem telefone"} · {client.email || "Sem e-mail"}</p></div></div>
+        <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">{[["Idade", calculateAge(client.birthDate) != null ? `${calculateAge(client.birthDate)} anos` : null], ["CPF", client.cpf], ["Profissão", client.profession], ["Estado civil", client.maritalStatus], ["Endereço", client.address]].map(([label, value]) => <div key={label} className={label === "Endereço" ? "sm:col-span-3" : ""}><dt className="text-muted">{label}</dt><dd className="break-words font-bold">{value || "Não informado"}</dd></div>)}</dl>
         <p className="mt-4 whitespace-pre-wrap rounded-xl bg-amber-50 p-3 text-sm"><strong>Observações do cadastro:</strong> {client.notes || "Nenhuma observação registrada."}</p>
       </section>
       <section className="panel"><h2 className="text-lg font-extrabold">Profissional e procedimento</h2><p className="mt-3 font-bold">{professional?.name || "Sem profissional vinculado"}</p><p className="text-sm text-muted">{professional?.title || professional?.customProfession}</p>{registrations.map((registration) => <p key={registration.id} className="text-sm">{registration.council} {registration.registrationNumber} / {registration.state}</p>)}<p className="mt-3 font-bold">{service.name}</p><p className="text-sm">{service.durationMinutes} minutos · {(price / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>{service.description && <p className="mt-2 whitespace-pre-wrap text-sm text-muted">{service.description}</p>}{service.preparation && <p className="mt-2 text-sm"><strong>Preparo:</strong> {service.preparation}</p>}{appointment.notes && <p className="mt-2 whitespace-pre-wrap text-sm"><strong>Agendamento:</strong> {appointment.notes}</p>}</section>

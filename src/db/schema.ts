@@ -666,6 +666,7 @@ export const clientHistoryEntries = pgTable(
     title: text("title"),
     content: text("content").notNull(),
     electronicDocumentId: uuid("electronic_document_id"),
+    appointmentId: uuid("appointment_id"),
     occurredAt: timestamp("occurred_at").defaultNow().notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

@@ -1,0 +1,1 @@
+ALTER TABLE "client_history_entries" ADD COLUMN "appointment_id" uuid;

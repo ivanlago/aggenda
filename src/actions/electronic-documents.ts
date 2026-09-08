@@ -13,10 +13,11 @@ import { anamnesisAnswersToText, isAnamnesisSchema, visibleAnamnesisFields, type
 import { sendElectronicDocumentEmail, sendProfessionalDocumentEmail } from "@/lib/email";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
+import { requireAttendance } from "@/lib/attendance";
 
 const text = (data: FormData, key: string) => String(data.get(key) ?? "").trim();
 const patientTypes = new Set(["consent", "contract", "anamnesis", "term"]);
-const professionalTypes = new Set(["prescription", "report", "certificate", "declaration", "referral", "exam_request", "guidance"]);
+const professionalTypes = new Set(["prescription", "report", "certificate", "declaration", "referral", "exam_request", "guidance", "companion_declaration", "quote"]);
 const allowedTypes = new Set([...patientTypes, ...professionalTypes]);
 
 function appUrl() {
@@ -127,6 +128,11 @@ export async function issueProfessionalDocument(data: FormData) {
   const clientId = text(data, "clientId");
   const templateId = text(data, "templateId");
   const professionalId = text(data, "professionalId");
+  const appointmentId = text(data, "appointmentId");
+  if (appointmentId) {
+    const { appointment } = await requireAttendance(appointmentId);
+    if (appointment.clientId !== clientId || appointment.professionalId !== professionalId) return { error: "Cliente ou profissional não corresponde ao atendimento." };
+  }
   const deliveryMethod = ["print", "email", "whatsapp"].includes(text(data, "deliveryMethod")) ? text(data, "deliveryMethod") : "print";
   const [client] = await db.select().from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1);
   const [professional] = await db.select().from(professionals).where(and(eq(professionals.id, professionalId), eq(professionals.organizationId, organization.id), eq(professionals.isActive, true))).limit(1);
@@ -149,10 +155,11 @@ export async function issueProfessionalDocument(data: FormData) {
     try { structuredData = JSON.parse(prescriptionData) as Record<string, unknown>; } catch { return { error: "Os dados estruturados da receita são inválidos." }; }
   }
   const genericStructuredData = text(data, "structuredDocumentData").slice(0, 30_000);
-  if (template.documentType === "exam_request" && genericStructuredData) {
+  if (["exam_request", "quote"].includes(template.documentType) && genericStructuredData) {
     try { structuredData = JSON.parse(genericStructuredData) as Record<string, unknown>; } catch { return { error: "Os dados estruturados da solicitação são inválidos." }; }
   }
   const title = renderDocumentTemplate(text(data, "title") || template.title, values);
+  if (appointmentId) structuredData = { ...structuredData, appointmentId };
   const credentials = createDocumentCredentials();
   const contentHash = sha256(contentSnapshot);
   const evidenceHash = sha256(JSON.stringify({ organizationId: organization.id, professionalId: professional.id, clientId: client.id, templateId: template.id, contentHash, issuedAt: now.toISOString() }));
@@ -165,8 +172,8 @@ export async function issueProfessionalDocument(data: FormData) {
     issuedAt: now, evidenceHash,
   }).returning({ id: electronicDocuments.id });
   await db.insert(electronicDocumentEvents).values({ organizationId: organization.id, documentId: created.id, eventType: "issued", details: { professionalId: professional.id } });
-  if (["prescription", "exam_request"].includes(template.documentType) && text(data, "saveToRecord") === "true") {
-    await db.insert(clientHistoryEntries).values({ organizationId: organization.id, clientId: client.id, authorUserId: session.user.id, electronicDocumentId: created.id, entryType: template.documentType, title, content: contentSnapshot, occurredAt: now });
+  if ((appointmentId || ["prescription", "exam_request"].includes(template.documentType)) && text(data, "saveToRecord") === "true") {
+    await db.insert(clientHistoryEntries).values({ organizationId: organization.id, clientId: client.id, appointmentId: appointmentId || null, authorUserId: session.user.id, electronicDocumentId: created.id, entryType: template.documentType, title, content: contentSnapshot, occurredAt: now });
   }
   let deliveryWarning: string | undefined;
   if (deliveryMethod === "email") {
@@ -180,6 +187,8 @@ export async function issueProfessionalDocument(data: FormData) {
   }
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "issue", entityType: "professional_document", entityId: created.id, details: { professionalId: professional.id, clientId: client.id, deliveryMethod } });
   revalidatePath("/documentos");
+  revalidatePath(`/clientes/${clientId}`);
+  if (appointmentId) revalidatePath(`/atendimento/${appointmentId}`);
   if (deliveryWarning) return { warning: deliveryWarning };
   if (deliveryMethod === "print") return { openUrl: `/api/documents/${created.id}/pdf?v=${created.id}` };
   if (deliveryMethod === "whatsapp") {

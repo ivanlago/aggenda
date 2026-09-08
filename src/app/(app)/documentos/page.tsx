@@ -15,7 +15,7 @@ import { isAnamnesisSchema, type AnamnesisAnswers } from "@/lib/anamnesis";
 
 export const metadata = { title: "Emissão de documentos" };
 
-const typeLabels: Record<string, string> = { consent: "Consentimento", contract: "Contrato", anamnesis: "Anamnese", term: "Termo", prescription: "Receituário", report: "Laudo", certificate: "Atestado", declaration: "Declaração", referral: "Encaminhamento", exam_request: "Solicitação de exame", guidance: "Orientações" };
+const typeLabels: Record<string, string> = { consent: "Consentimento", contract: "Contrato", anamnesis: "Anamnese", term: "Termo", prescription: "Receituário", report: "Laudo", certificate: "Atestado", declaration: "Declaração", referral: "Encaminhamento", exam_request: "Solicitação de exame", guidance: "Orientações", companion_declaration: "Declaração de acompanhamento", quote: "Orçamento" };
 const statusLabels: Record<string, string> = { pending: "Aguardando", viewed: "Visualizado", signed: "Assinado", issued: "Emitido", refused: "Recusado", expired: "Expirado", cancelled: "Cancelado" };
 
 export default async function DocumentsPage() {

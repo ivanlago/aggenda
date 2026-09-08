@@ -20,15 +20,16 @@ function longDate(value: string) {
   return `${date.getDate()} de ${monthNames[date.getMonth()]} de ${date.getFullYear()}`;
 }
 
-export function CertificateComposer({ templateId, clients, professionals }: {
+export function CertificateComposer({ templateId, clients, professionals, initial }: {
   templateId: string;
   clients: Option[];
   professionals: Option[];
+  initial?: { clientId: string; professionalId: string; cpf?: string | null };
 }) {
   const today = new Date().toISOString().slice(0, 10);
-  const [clientId, setClientId] = useState("");
-  const [professionalId, setProfessionalId] = useState("");
-  const [cpf, setCpf] = useState("");
+  const [clientId, setClientId] = useState(initial?.clientId ?? "");
+  const [professionalId, setProfessionalId] = useState(initial?.professionalId ?? "");
+  const [cpf, setCpf] = useState(initial?.cpf ?? "");
   const [days, setDays] = useState("1");
   const [daysInWords, setDaysInWords] = useState("um");
   const [startDate, setStartDate] = useState(today);

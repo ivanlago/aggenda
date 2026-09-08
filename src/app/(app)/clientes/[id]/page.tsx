@@ -29,9 +29,9 @@ const statusLabels = {
   no_show: "Não compareceu",
 };
 
-function CollapsiblePanel({ title, children, className = "mb-5" }: { title: ReactNode; children: ReactNode; className?: string }) {
+function CollapsiblePanel({ title, children, className = "mb-5", id, open }: { title: ReactNode; children: ReactNode; className?: string; id?: string; open?: boolean }) {
   return (
-    <details className={`panel group ${className}`}>
+    <details id={id} open={open} className={`panel group ${className}`}>
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-lg font-extrabold marker:hidden">
         <span>{title}</span>
         <span className="text-sm font-bold text-brand group-open:hidden">Exibir</span>
@@ -44,10 +44,13 @@ function CollapsiblePanel({ title, children, className = "mb-5" }: { title: Reac
 
 export default async function ClientHistoryPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ section?: string }>;
 }) {
   const { id } = await params;
+  const { section } = await searchParams;
   const { session, organization } = await requireOrganization();
   const professionalScopeId = organization.role === "professional"
     ? await requireProfessionalScope(organization.id, session.user.id)
@@ -209,7 +212,7 @@ export default async function ClientHistoryPage({
                     </ActionForm>
                   </details>}
       </section>
-      <CollapsiblePanel title="Fotografias clínicas">
+      <CollapsiblePanel title="Fotografias clínicas" id="fotografias-clinicas" open={section === "photos"}>
         <p className="text-sm text-muted">Crie sessões de antes, evolução e depois para qualquer região corporal. Registros com a mesma sessão, região e vista são pareados automaticamente.</p>
         {canManageClinicalMedia && <ActionForm action={createClientClinicalMedia} successMessage="Fotografia clínica enviada." className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <input type="hidden" name="clientId" value={client.id} />

@@ -407,6 +407,13 @@
       "when": 1788907397862,
       "tag": "0057_attendance_pos",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1788907894067,
+      "tag": "0058_pos_services_packages",
+      "breakpoints": true
     }
   ]
 }

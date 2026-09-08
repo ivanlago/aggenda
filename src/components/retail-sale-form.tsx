@@ -7,7 +7,7 @@ import { registerRetailSale } from "@/actions/retail";
 import { ActionForm } from "@/components/action-form";
 import { PhoneInput } from "@/components/phone-input";
 
-type Variant = { id: string; label: string; barcode: string | null; priceInCents: number; stock: number };
+type Variant = { id: string; label: string; barcode: string | null; priceInCents: number; stock: number; kind?: "product" | "service" | "package"; unavailableReason?: string };
 type Client = { id: string; name: string; email: string | null; phone: string | null };
 type CartItem = { variantId: string; quantity: number; discountInCents: number };
 type Payment = { id: number; method: "cash" | "card" | "pix"; amount: string };
@@ -15,7 +15,9 @@ type Payment = { id: number; method: "cash" | "card" | "pix"; amount: string };
 const currency = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
 
-export function RetailSaleForm({ variants, clients, canDiscount, attendanceId, initialClientId }: { variants: Variant[]; clients: Client[]; canDiscount: boolean; attendanceId?: string; initialClientId?: string }) {
+export function RetailSaleForm({ variants: productVariants, offerings = [], clients, canDiscount, attendanceId, initialClientId }: { variants: Variant[]; offerings?: Variant[]; clients: Client[]; canDiscount: boolean; attendanceId?: string; initialClientId?: string }) {
+  const variants = useMemo(() => [...productVariants, ...offerings], [productVariants, offerings]);
+  const [category, setCategory] = useState("all");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [query, setQuery] = useState("");
   const [payments, setPayments] = useState<Payment[]>([{ id: 1, method: "cash", amount: "" }]);
@@ -28,8 +30,8 @@ export function RetailSaleForm({ variants, clients, canDiscount, attendanceId, i
   const variantsById = useMemo(() => new Map(variants.map((item) => [item.id, item])), [variants]);
   const visibleVariants = useMemo(() => {
     const normalizedQuery = normalize(deferredQuery.trim());
-    return normalizedQuery ? variants.filter((item) => normalize(item.label).includes(normalizedQuery)) : variants;
-  }, [deferredQuery, variants]);
+    return variants.filter((item) => (category === "all" || (item.kind ?? "product") === category) && (!normalizedQuery || normalize(item.label).includes(normalizedQuery)));
+  }, [deferredQuery, variants, category]);
   const subtotal = cart.reduce((sum, item) => sum + (variantsById.get(item.variantId)?.priceInCents ?? 0) * item.quantity, 0);
   const discountInCents = cart.reduce((sum, item) => sum + item.discountInCents, 0);
   const total = Math.max(0, subtotal - discountInCents);
@@ -38,7 +40,7 @@ export function RetailSaleForm({ variants, clients, canDiscount, attendanceId, i
 
   const addToCart = (variantId: string) => setCart((current) => {
     const variant = variantsById.get(variantId);
-    if (!variant) return current;
+    if (!variant || variant.unavailableReason) return current;
     const existing = current.find((item) => item.variantId === variantId);
     if (existing) return current.map((item) => item.variantId === variantId ? { ...item, quantity: Math.min(variant.stock, item.quantity + 1) } : item);
     return [...current, { variantId, quantity: 1, discountInCents: 0 }];
@@ -58,24 +60,25 @@ export function RetailSaleForm({ variants, clients, canDiscount, attendanceId, i
   };
 
   return (
-    <ActionForm action={registerRetailSale} successMessage="Venda registrada e estoque atualizado." onSuccess={() => { setCart([]); setPayments([{ id: Date.now(), method: "cash", amount: "" }]); }} className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr] xl:items-start">
+    <ActionForm action={registerRetailSale} successMessage="Venda registrada com sucesso." onSuccess={() => { setCart([]); setPayments([{ id: Date.now(), method: "cash", amount: "" }]); }} className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr] xl:items-start">
       {attendanceId && <input type="hidden" name="attendanceId" value={attendanceId} />}
       <input type="hidden" name="items" value={JSON.stringify(cart)} />
       <input type="hidden" name="payments" value={JSON.stringify(paymentsPayload)} />
       <section className="panel form-stack">
-        <div><h2 className="text-lg font-extrabold">Adicionar produtos</h2><p className="text-sm text-muted">Escolha os produtos para montar a venda.</p></div>
-        <div className="grid gap-2 sm:grid-cols-2"><label className="relative block"><span className="sr-only">Buscar produto</span><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" /><input className="field w-full pl-9" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar produto" /></label><label className="relative block"><span className="sr-only">Ler código de barras</span><ScanBarcode className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" /><input className="field w-full pl-9" value={barcode} onChange={(event) => setBarcode(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); readBarcode(); } }} placeholder="Leia o código e pressione Enter" /></label></div>{barcodeMessage && <p className="text-xs font-bold text-brand" role="status">{barcodeMessage}</p>}
+        <div><h2 className="text-lg font-extrabold">Produtos, procedimentos e pacotes</h2><p className="text-sm text-muted">Monte o carrinho com os itens desejados. Pacotes exigem cliente identificado e pagamento recebido.</p></div>
+        <label className="grid gap-1 text-sm font-bold">Categoria<select className="field" value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">Todos os itens</option><option value="product">Produtos</option><option value="service">Procedimentos</option><option value="package">Pacotes</option></select></label>
+        <div className="grid gap-2 sm:grid-cols-2"><label className="relative block"><span className="sr-only">Buscar item</span><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" /><input className="field w-full pl-9" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar item" /></label><label className="relative block"><span className="sr-only">Ler código de barras</span><ScanBarcode className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" /><input className="field w-full pl-9" value={barcode} onChange={(event) => setBarcode(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); readBarcode(); } }} placeholder="Leia o código e pressione Enter" /></label></div>{barcodeMessage && <p className="text-xs font-bold text-brand" role="status">{barcodeMessage}</p>}
         <div className="grid max-h-[560px] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
           {visibleVariants.map((variant) => {
             const inCart = cart.find((item) => item.variantId === variant.id)?.quantity ?? 0;
-            return <article className="flex flex-col justify-between gap-3 rounded-2xl border bg-slate-50/60 p-4" key={variant.id}><div><p className="font-extrabold">{variant.label}</p><p className="mt-1 text-sm font-bold text-brand">{currency(variant.priceInCents)}</p><p className="text-xs text-muted">{variant.barcode ? `Código ${variant.barcode} · ` : "Sem código · "}{variant.stock} em estoque{inCart ? ` · ${inCart} no carrinho` : ""}</p></div><button className="secondary-button justify-center" type="button" disabled={inCart >= variant.stock} onClick={() => addToCart(variant.id)}><Plus className="size-4" /> {inCart ? "Adicionar mais" : "Adicionar ao carrinho"}</button></article>;
+            return <article className="flex flex-col justify-between gap-3 rounded-2xl border bg-slate-50/60 p-4" key={variant.id}><div><p className="font-extrabold">{variant.label}</p><p className="mt-1 text-sm font-bold text-brand">{currency(variant.priceInCents)}</p><p className="text-xs text-muted">{variant.barcode ? `Código ${variant.barcode} · ` : "Sem código · "}{variant.kind === "service" ? "Procedimento" : variant.kind === "package" ? "Pacote" : `${variant.stock} em estoque`}{inCart ? ` · ${inCart} no carrinho` : ""}</p>{variant.unavailableReason && <p className="mt-2 text-xs font-bold text-amber-700">{variant.unavailableReason}</p>}</div><button className="secondary-button justify-center" type="button" disabled={inCart >= variant.stock || Boolean(variant.unavailableReason)} title={variant.unavailableReason} onClick={() => addToCart(variant.id)}><Plus className="size-4" /> {inCart ? "Adicionar mais" : "Adicionar ao carrinho"}</button></article>;
           })}
-          {visibleVariants.length === 0 && <p className="py-8 text-center text-sm text-muted sm:col-span-2">Nenhum produto disponível.</p>}
+          {visibleVariants.length === 0 && <p className="py-8 text-center text-sm text-muted sm:col-span-2">Nenhum item disponível.</p>}
         </div>
       </section>
 
       <aside className="panel form-stack xl:sticky xl:top-5">
-        <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-xl bg-brand/10 text-brand"><ShoppingCart className="size-5" /></span><div><h2 className="text-lg font-extrabold">Carrinho</h2><p className="text-sm text-muted">{cart.length} {cart.length === 1 ? "produto" : "produtos"}</p></div></div>
+        <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-xl bg-brand/10 text-brand"><ShoppingCart className="size-5" /></span><div><h2 className="text-lg font-extrabold">Carrinho</h2><p className="text-sm text-muted">{cart.length} {cart.length === 1 ? "item" : "itens"}</p></div></div>
         <div className="divide-y rounded-2xl border px-3">
           {cart.map((item) => {
             const variant = variantsById.get(item.variantId)!;
@@ -83,9 +86,9 @@ export function RetailSaleForm({ variants, clients, canDiscount, attendanceId, i
           })}
           {cart.length === 0 && <p className="py-8 text-center text-sm text-muted">O carrinho está vazio.</p>}
         </div>
-        <label className="grid gap-1 text-sm font-bold">{attendanceId ? "Cliente do atendimento" : "Cliente (opcional)"}<select className="field" name="clientId" disabled={Boolean(attendanceId)} value={clientId} onChange={(event) => { const id = event.target.value; const client = clients.find((item) => item.id === id); setClientId(id); setReceiptEmail(client?.email ?? ""); setReceiptPhone(client?.phone ?? ""); }}><option value="">Venda sem cliente identificado</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
+        <label className="grid gap-1 text-sm font-bold">{attendanceId ? "Cliente do atendimento" : "Cliente (opcional)"}<select className="field" name="clientId" disabled={Boolean(attendanceId)} required={cart.some((item) => variantsById.get(item.variantId)?.kind !== undefined && variantsById.get(item.variantId)?.kind !== "product")} value={clientId} onChange={(event) => { const id = event.target.value; const client = clients.find((item) => item.id === id); setClientId(id); setReceiptEmail(client?.email ?? ""); setReceiptPhone(client?.phone ?? ""); }}><option value="">Venda sem cliente identificado</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
         <fieldset className="grid gap-2"><legend className="mb-1 text-sm font-bold">Pagamentos</legend>{payments.map((payment, index) => <div className="grid grid-cols-[1fr_1fr_auto] gap-2" key={payment.id}><select className="field" value={payment.method} onChange={(event) => setPayments((current) => current.map((item) => item.id === payment.id ? { ...item, method: event.target.value as Payment['method'] } : item))}><option value="cash">Espécie</option><option value="card">Cartões</option><option value="pix">PIX</option></select><input className="field" inputMode="decimal" value={payment.amount} onChange={(event) => setPayments((current) => current.map((item) => item.id === payment.id ? { ...item, amount: event.target.value } : item))} placeholder="Valor (R$)" aria-label={`Valor do pagamento ${index + 1}`} /><button className="icon-button text-red-700" type="button" disabled={payments.length === 1} onClick={() => setPayments((current) => current.filter((item) => item.id !== payment.id))} aria-label={`Remover pagamento ${index + 1}`}><Trash2 className="size-4" /></button></div>)}<div className="flex flex-wrap gap-2"><button className="secondary-button" type="button" onClick={() => setPayments((current) => [...current, { id: Date.now(), method: "pix", amount: "" }])}>Adicionar pagamento</button><button className="secondary-button" type="button" onClick={() => { const remaining = Math.max(0, total - paidTotal + (paymentsPayload.at(-1)?.amountInCents ?? 0)); setPayments((current) => current.map((item, index) => index === current.length - 1 ? { ...item, amount: (remaining / 100).toFixed(2).replace(".", ",") } : item)); }}>Preencher restante</button></div><p className={`text-xs font-bold ${paidTotal === total ? "text-emerald-700" : "text-amber-700"}`}>Informado {currency(paidTotal)} de {currency(total)}</p></fieldset>
-        <label className="flex items-center gap-2 rounded-xl border px-3 py-3 text-sm font-bold"><input name="received" type="checkbox" defaultChecked /> Pagamento recebido</label>
+        <label className="flex items-center gap-2 rounded-xl border px-3 py-3 text-sm font-bold"><input name="received" type="checkbox" defaultChecked required={cart.some((item) => variantsById.get(item.variantId)?.kind === "package")} /> Pagamento recebido</label>
         <div className="grid gap-2 rounded-2xl border p-3"><p className="text-sm font-extrabold">Enviar recibo</p><PhoneInput name="receiptPhone" value={receiptPhone} onValueChange={setReceiptPhone} placeholder="WhatsApp: (71) 99999-9999" /><input className="field" name="receiptEmail" type="email" value={receiptEmail} onChange={(event) => setReceiptEmail(event.target.value)} placeholder="E-mail do comprador" /><div className="flex flex-wrap gap-4"><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" name="sendReceiptWhatsapp" /> WhatsApp</label><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" name="sendReceiptEmail" /> E-mail</label></div><p className="text-xs text-muted">O recibo para impressora térmica será aberto ao concluir.</p></div>
         <label className="grid gap-1 text-sm font-bold">Observações<textarea className="field min-h-16" name="notes" placeholder="Informações opcionais" /></label>
         <div className="grid gap-1 rounded-2xl bg-brand/5 p-4 text-sm"><div className="flex justify-between text-muted"><span>Subtotal</span><span>{currency(subtotal)}</span></div><div className="flex justify-between text-muted"><span>Desconto</span><span>- {currency(Math.min(discountInCents, subtotal))}</span></div><div className="mt-2 flex items-end justify-between border-t pt-3"><strong>Total</strong><strong className="text-2xl text-brand">{currency(total)}</strong></div></div>

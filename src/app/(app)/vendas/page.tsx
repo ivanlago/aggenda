@@ -1,3 +1,4 @@
+import { getPosOfferings } from "@/lib/pos-catalog";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { BadgeDollarSign, PackageCheck, ShoppingBag } from "lucide-react";
 import Link from "next/link";
@@ -32,6 +33,7 @@ export default async function SalesPage() {
       .from(retailSaleItems).where(eq(retailSaleItems.organizationId, organization.id)),
     db.select({ saleId: retailSalePayments.saleId, method: retailSalePayments.method, amount: retailSalePayments.amountInCents }).from(retailSalePayments).where(eq(retailSalePayments.organizationId, organization.id)),
   ]);
+  const offerings = canSell ? await getPosOfferings(organization.id) : [];
   const variants = variantRows.map((item) => ({ id: item.id, label: `${item.productName} · ${item.variantName}`, barcode: item.barcode, priceInCents: item.priceInCents, stock: Math.floor(item.stockMillis / 1000) })).filter((item) => item.stock > 0);
   const totalSold = sales.reduce((sum, sale) => sum + (sale.status === "completed" ? sale.total : 0), 0);
   const visibleSaleIds = new Set(sales.map((sale) => sale.id));
@@ -44,19 +46,19 @@ export default async function SalesPage() {
   }
 
   return <div className="page-wrap">
-    <PageHeader eyebrow="Varejo" title="Venda" description="Registre vendas, gere a receita financeira e baixe automaticamente o estoque dos produtos." />
+    <PageHeader eyebrow="Varejo" title="Venda" description="Venda produtos, procedimentos e pacotes com pagamento, recibo e atualização dos saldos." />
     <nav className="mb-5 flex flex-wrap gap-2"><Link className="secondary-button" href="/vendas/historico">Histórico completo</Link><Link className="secondary-button" href="/vendas/relatorios">Relatórios do PDV</Link></nav>
     <section className="grid gap-4 sm:grid-cols-3">
       <article className="panel"><ShoppingBag className="size-5 text-brand" /><p className="mt-4 text-3xl font-extrabold">{sales.length}</p><p className="text-sm text-muted">vendas recentes</p></article>
       <article className="panel"><PackageCheck className="size-5 text-brand" /><p className="mt-4 text-3xl font-extrabold">{unitsSold}</p><p className="text-sm text-muted">unidades vendidas</p></article>
       <article className="panel"><BadgeDollarSign className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{currency(totalSold)}</p><p className="text-sm text-muted">nas vendas exibidas</p></article>
     </section>
-    {canSell && <section className="mt-5"><RetailSaleForm variants={variants} clients={clientRows} canDiscount={canDiscount} /></section>}
+    {canSell && <section className="mt-5"><RetailSaleForm offerings={offerings} variants={variants} clients={clientRows} canDiscount={canDiscount} /></section>}
     <section className="panel mt-5"><h2 className="text-lg font-extrabold">Histórico de vendas</h2><div className="mt-4 divide-y">
       {sales.length === 0 && <p className="py-6 text-center text-sm text-muted">Nenhuma venda registrada.</p>}
       {sales.map((sale) => <article className="grid gap-3 py-4 lg:grid-cols-[1fr_auto]" key={sale.id}>
         <div><div className="flex flex-wrap items-center gap-2"><p className="font-extrabold">Venda #{sale.id.slice(0, 8)}</p><span className="status-pill">{sale.status === "completed" ? "Concluída" : sale.status === "refunded" ? "Estornada" : "Cancelada"}</span></div><p className="text-xs text-muted">{sale.clientName || "Cliente não identificado"} · {sale.soldAt.toLocaleString("pt-BR")} · operador {sale.operatorName || "—"}</p><p className="mt-2 text-sm">{(itemsBySale.get(sale.id) ?? []).map((item) => `${item.quantity}× ${item.productName} · ${item.variantName}`).join("; ")}</p><p className="mt-1 text-xs text-muted">{payments.filter((item) => item.saleId === sale.id).map((item) => `${paymentLabels[item.method] ?? item.method}: ${currency(item.amount)}`).join(" + ") || paymentLabels[sale.paymentMethod ?? ""] || "Pagamento não informado"}</p>{sale.cancellationReason && <p className="mt-1 text-xs text-red-700">Motivo: {sale.cancellationReason}</p>}</div>
-        <div className="flex flex-wrap items-start gap-2 lg:justify-end"><div className="mr-2 lg:text-right"><p className="text-xl font-extrabold text-brand">{currency(sale.total)}</p>{sale.discount > 0 && <p className="text-xs text-muted">subtotal {currency(sale.subtotal)} · desconto {currency(sale.discount)}</p>}</div><Link className="secondary-button" href={`/recibo/${sale.receiptToken}`} target="_blank">Reimprimir</Link>{canCancel && sale.status === "completed" && <ActionForm action={reverseRetailSale} successMessage="Venda revertida e estoque devolvido." className="flex flex-wrap gap-2"><input type="hidden" name="saleId" value={sale.id} /><select className="field" name="operation"><option value="refund">Estorno/devolução</option><option value="cancel">Cancelamento</option></select><input className="field" name="reason" required minLength={5} placeholder="Motivo obrigatório" /><ConfirmSubmitButton className="secondary-button text-red-700" message="Confirmar a reversão? Os itens retornarão ao estoque.">Reverter</ConfirmSubmitButton></ActionForm>}</div>
+        <div className="flex flex-wrap items-start gap-2 lg:justify-end"><div className="mr-2 lg:text-right"><p className="text-xl font-extrabold text-brand">{currency(sale.total)}</p>{sale.discount > 0 && <p className="text-xs text-muted">subtotal {currency(sale.subtotal)} · desconto {currency(sale.discount)}</p>}</div><Link className="secondary-button" href={`/recibo/${sale.receiptToken}`} target="_blank">Reimprimir</Link>{canCancel && sale.status === "completed" && <ActionForm action={reverseRetailSale} successMessage="Venda revertida e estoque devolvido." className="flex flex-wrap gap-2"><input type="hidden" name="saleId" value={sale.id} /><select className="field" name="operation"><option value="refund">Estorno/devolução</option><option value="cancel">Cancelamento</option></select><input className="field" name="reason" required minLength={5} placeholder="Motivo obrigatório" /><ConfirmSubmitButton className="secondary-button text-red-700" message="Confirmar a reversão? Produtos retornarão ao estoque e pacotes sem uso serão cancelados.">Reverter</ConfirmSubmitButton></ActionForm>}</div>
       </article>)}
     </div></section>
   </div>;

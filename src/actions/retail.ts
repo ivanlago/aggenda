@@ -3,11 +3,13 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireAttendance } from "@/lib/attendance";
+import { splitPosPackagePrice } from "@/lib/pos-pricing";
 
 import { db } from "@/db";
 import {
   appointmentInventoryConsumptions,
   clients,
+  services, servicePackages, servicePackageItems, clientPackages, clientPackageBalances,
   financialEntries,
   inventoryCategories,
   inventoryMovements,
@@ -237,12 +239,17 @@ export async function registerRetailSale(data: FormData) {
   }
   const hasItemDiscount = [...grouped.values()].some((item) => item.discountInCents > 0);
   if (hasItemDiscount) assertOrganizationPermission(organization.role, "sales.discount");
-  const variantIds = [...grouped.keys()];
+  const serviceIds = [...grouped.keys()].filter((id) => id.startsWith("service:")).map((id) => id.slice(8));
+  const packageIds = [...grouped.keys()].filter((id) => id.startsWith("package:")).map((id) => id.slice(8));
+  const variantIds = [...grouped.keys()].filter((id) => !id.includes(":"));
+  if (variantIds.length + serviceIds.length + packageIds.length !== grouped.size) throw new Error("Tipo de item inválido.");
   const attendanceId = text(data, "attendanceId") || null;
   const attendance = attendanceId ? await requireAttendance(attendanceId) : null;
+  if (attendance && serviceIds.includes(attendance.appointment.serviceId)) throw new Error("Receba o procedimento deste atendimento pelo painel Consulta / procedimento para preservar o controle de pagamento.");
   const clientId = attendance?.appointment.clientId ?? (text(data, "clientId") || null);
   const [client] = clientId ? await db.select({ id: clients.id, email: clients.email, phone: clients.phone }).from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1) : [];
   if (clientId && !client) throw new Error("Cliente não encontrado.");
+  if ((serviceIds.length || packageIds.length) && !clientId) throw new Error("Selecione o cliente para vender procedimentos ou pacotes.");
   const receiptEmail = text(data, "receiptEmail") || client?.email || null;
   const receiptPhone = text(data, "receiptPhone") || client?.phone || null;
   if (receiptEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(receiptEmail)) throw new Error("Informe um e-mail válido para o recibo.");
@@ -259,6 +266,7 @@ export async function registerRetailSale(data: FormData) {
   });
   const paymentMethod = normalizedPayments.length > 1 ? "mixed" : normalizedPayments[0].method;
   const received = data.get("received") === "on";
+  if (packageIds.length && !received) throw new Error("Confirme o pagamento recebido para liberar os pacotes ao cliente.");
   const today = organizationDate(new Date(), organization.timezone);
 
   const createdSale = await db.transaction(async (tx) => {
@@ -274,11 +282,11 @@ export async function registerRetailSale(data: FormData) {
     ));
     if (variants.length !== variantIds.length) throw new Error("Um ou mais produtos não estão disponíveis.");
     const stockIds = variants.map((item) => item.inventoryProductId).sort();
-    await tx.execute(sql`select id from inventory_products where id in (${sql.join(stockIds.map((id) => sql`${id}`), sql`, `)}) for update`);
+    if (stockIds.length) await tx.execute(sql`select id from inventory_products where id in (${sql.join(stockIds.map((id) => sql`${id}`), sql`, `)}) for update`);
     const stock = await tx.select({ id: inventoryProducts.id, balance: inventoryProducts.currentQuantityMillis, cost: inventoryProducts.costInCents }).from(inventoryProducts).where(and(
       eq(inventoryProducts.organizationId, organization.id), inArray(inventoryProducts.id, stockIds), eq(inventoryProducts.isActive, true),
     ));
-    const lines = variants.map((variant) => {
+    const productLines = variants.map((variant) => {
       const requestedLine = grouped.get(variant.id)!;
       const requested = requestedLine.quantity;
       const balance = stock.find((item) => item.id === variant.inventoryProductId)?.balance;
@@ -289,13 +297,26 @@ export async function registerRetailSale(data: FormData) {
       const cost = stock.find((item) => item.id === variant.inventoryProductId)?.cost ?? 0;
       return { ...variant, quantity: requested, balance, discount: requestedLine.discountInCents, cost, total, commission: Math.round(total * variant.commissionRateBasisPoints / 10_000) };
     });
+    const procedureRows = serviceIds.length ? await tx.select().from(services).where(and(eq(services.organizationId, organization.id), eq(services.isActive, true), inArray(services.id, serviceIds))) : [];
+    const packageRows = packageIds.length ? await tx.select().from(servicePackages).where(and(eq(servicePackages.organizationId, organization.id), eq(servicePackages.isActive, true), inArray(servicePackages.id, packageIds))) : [];
+    if (procedureRows.length !== serviceIds.length || packageRows.length !== packageIds.length) throw new Error("Procedimento ou pacote indisponível.");
+    const additionalLines = [
+      ...procedureRows.map((item) => ({ id: `service:${item.id}`, serviceId: item.id, packageId: null as string | null, productName: item.name, variantName: "Procedimento", price: item.priceInCents })),
+      ...packageRows.map((item) => ({ id: `package:${item.id}`, serviceId: null as string | null, packageId: item.id, productName: item.name, variantName: "Pacote", price: item.priceInCents })),
+    ].map((item) => {
+      const requested = grouped.get(item.id)!;
+      if (item.price == null || item.price < 0 || requested.discountInCents > item.price * requested.quantity) throw new Error("Revise o preço e desconto do procedimento ou pacote.");
+      if (item.packageId && requested.quantity > 100) throw new Error("Limite de 100 pacotes por item.");
+      return { ...item, price: item.price, quantity: requested.quantity, discount: requested.discountInCents, total: item.price * requested.quantity - requested.discountInCents, inventoryProductId: null, cost: 0, commission: 0 };
+    });
+    const lines = [...productLines, ...additionalLines];
     const subtotalInCents = lines.reduce((sum, item) => sum + item.quantity * item.price, 0);
     const discountInCents = lines.reduce((sum, item) => sum + item.discount, 0);
     const totalInCents = subtotalInCents - discountInCents;
     if (normalizedPayments.reduce((sum, payment) => sum + payment.amountInCents, 0) !== totalInCents) throw new Error("A soma dos pagamentos deve ser igual ao total da venda.");
     const [financialEntry] = await tx.insert(financialEntries).values({
       organizationId: organization.id, type: "receivable", status: received ? "received" : "pending",
-      source: "retail_sale", description: "Venda de produtos", category: "Venda de produtos",
+      source: "retail_sale", description: "Venda no PDV", category: "Vendas no PDV",
       amountInCents: totalInCents, dueDate: today, realizedDate: received ? today : null,
       paymentMethod, clientId, notes: text(data, "notes") || null, createdByUserId: session.user.id,
     }).returning({ id: financialEntries.id });
@@ -306,13 +327,14 @@ export async function registerRetailSale(data: FormData) {
       createdByUserId: session.user.id,
     }).returning({ id: retailSales.id, receiptToken: retailSales.receiptToken });
     await tx.insert(retailSaleItems).values(lines.map((item) => ({
-      organizationId: organization.id, saleId: sale.id, variantId: item.id, inventoryProductId: item.inventoryProductId,
+      organizationId: organization.id, saleId: sale.id, variantId: item.inventoryProductId ? item.id : null, inventoryProductId: item.inventoryProductId,
+      serviceId: "serviceId" in item ? item.serviceId : null, packageId: "packageId" in item ? item.packageId : null,
       productName: item.productName, variantName: item.variantName, quantity: item.quantity,
       unitPriceInCents: item.price, totalInCents: item.total,
       discountInCents: item.discount, unitCostInCents: item.cost, commissionInCents: item.commission,
     })));
     await tx.insert(retailSalePayments).values(normalizedPayments.map((payment) => ({ organizationId: organization.id, saleId: sale.id, ...payment, status: received ? "received" : "pending" })));
-    for (const item of lines) {
+    for (const item of productLines) {
       const newBalance = item.balance - item.quantity * 1000;
       await tx.update(inventoryProducts).set({ currentQuantityMillis: newBalance, updatedAt: new Date() }).where(eq(inventoryProducts.id, item.inventoryProductId));
       await tx.insert(inventoryMovements).values({
@@ -320,6 +342,21 @@ export async function registerRetailSale(data: FormData) {
         type: "sale", quantityMillis: -item.quantity * 1000, balanceAfterMillis: newBalance,
         notes: `Venda ${sale.id.slice(0, 8)}`, createdByUserId: session.user.id,
       });
+    }
+    for (const item of additionalLines) {
+      if (!item.packageId) continue;
+      const template = packageRows.find((row) => row.id === item.packageId)!;
+      const contents = await tx.select().from(servicePackageItems).where(and(eq(servicePackageItems.organizationId, organization.id), eq(servicePackageItems.packageId, template.id)));
+      if (!contents.length) throw new Error(`O pacote ${template.name} não possui procedimentos.`);
+      const purchasedAt = new Date();
+      const unitPrices = splitPosPackagePrice(item.total, item.quantity);
+      for (let unit = 0; unit < item.quantity; unit++) {
+        const [assigned] = await tx.insert(clientPackages).values({ organizationId: organization.id, clientId: clientId!, packageId: template.id, retailSaleId: sale.id,
+          priceInCents: unitPrices[unit], purchasedAt,
+          expiresAt: template.validityDays ? new Date(purchasedAt.getTime() + template.validityDays * 86400000) : null,
+        }).returning({ id: clientPackages.id });
+        await tx.insert(clientPackageBalances).values(contents.map((content) => ({ organizationId: organization.id, clientPackageId: assigned.id, serviceId: content.serviceId, totalQuantity: content.quantity })));
+      }
     }
     return sale;
   });
@@ -338,6 +375,8 @@ export async function registerRetailSale(data: FormData) {
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "retail_sale", entityId: createdSale.id });
   revalidatePath("/vendas"); revalidatePath("/produtos"); revalidatePath("/estoque"); revalidatePath("/financeiro");
   if (attendanceId) revalidatePath(`/atendimento/${attendanceId}`);
+  revalidatePath("/pacotes");
+  if (clientId) revalidatePath(`/clientes/${clientId}`);
   return { openUrl: receiptPath, warning: notificationResults.some((result) => result.status === "rejected") ? "Venda concluída, mas um dos envios do recibo falhou." : undefined };
 }
 
@@ -355,9 +394,16 @@ export async function reverseRetailSale(data: FormData) {
     if (!sale) throw new Error("Venda não encontrada.");
     if (sale.status !== "completed") throw new Error("Esta venda já foi cancelada ou estornada.");
     const items = await tx.select({ productId: retailSaleItems.inventoryProductId, quantity: retailSaleItems.quantity }).from(retailSaleItems).where(and(eq(retailSaleItems.saleId, saleId), eq(retailSaleItems.organizationId, organization.id)));
-    const productIds = [...new Set(items.map((item) => item.productId))].sort();
-    await tx.execute(sql`select id from inventory_products where id in (${sql.join(productIds.map((id) => sql`${id}`), sql`, `)}) for update`);
+    const productIds = [...new Set(items.map((item) => item.productId).filter((id): id is string => Boolean(id)))].sort();
+    if (productIds.length) await tx.execute(sql`select id from inventory_products where id in (${sql.join(productIds.map((id) => sql`${id}`), sql`, `)}) for update`);
+    const assignedPackages = await tx.select({ id: clientPackages.id }).from(clientPackages).where(and(eq(clientPackages.organizationId, organization.id), eq(clientPackages.retailSaleId, saleId))).for("update");
+    for (const assigned of assignedPackages) {
+      const balances = await tx.select().from(clientPackageBalances).where(eq(clientPackageBalances.clientPackageId, assigned.id)).for("update");
+      if (balances.some((balance) => balance.usedQuantity > 0)) throw new Error("Esta venda possui pacote com sessões utilizadas ou reservadas. Reverta os usos antes de estornar.");
+      await tx.update(clientPackages).set({ status: "cancelled", updatedAt: new Date() }).where(eq(clientPackages.id, assigned.id));
+    }
     for (const item of items) {
+      if (!item.productId) continue;
       const [product] = await tx.select({ balance: inventoryProducts.currentQuantityMillis }).from(inventoryProducts).where(and(eq(inventoryProducts.id, item.productId), eq(inventoryProducts.organizationId, organization.id))).limit(1);
       if (!product) throw new Error("Produto da venda não encontrado no estoque.");
       const quantityMillis = item.quantity * 1000;
@@ -371,4 +417,7 @@ export async function reverseRetailSale(data: FormData) {
   });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: operation, entityType: "retail_sale", entityId: saleId, details: { reason } });
   revalidatePath("/vendas"); revalidatePath("/vendas/historico"); revalidatePath("/vendas/relatorios"); revalidatePath("/estoque"); revalidatePath("/financeiro");
+  revalidatePath("/pacotes");
+  revalidatePath("/atendimento/[id]", "page");
+  revalidatePath("/clientes/[id]", "page");
 }

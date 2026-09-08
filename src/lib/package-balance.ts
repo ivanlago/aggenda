@@ -41,7 +41,7 @@ export async function reservePackageSession({
           )
         )
       )
-      .limit(1);
+      .limit(1).for("update", { of: clientPackages });
     if (!balance) throw new Error("O pacote selecionado não é válido para este cliente e serviço.");
 
     const [updated] = await tx

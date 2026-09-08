@@ -639,6 +639,7 @@ export const clients = pgTable(
     postalCode: text("postal_code"),
     maritalStatus: text("marital_status"),
     cpf: text("cpf"),
+    profession: text("profession"),
     notes: text("notes"),
     imageUrl: text("image_url"),
     imagePublicId: text("image_public_id"),

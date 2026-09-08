@@ -541,6 +541,7 @@ export async function createClient(formData: FormData) {
     postalCode: optionalText(formData, "postalCode"),
     maritalStatus: optionalText(formData, "maritalStatus"),
     cpf: optionalText(formData, "cpf"),
+    profession: optionalText(formData, "profession"),
     notes: optionalText(formData, "notes"),
     ...image,
   }) });
@@ -585,6 +586,7 @@ export async function updateClient(formData: FormData) {
     postalCode: optionalText(formData, "postalCode"),
     maritalStatus: optionalText(formData, "maritalStatus"),
     cpf: optionalText(formData, "cpf"),
+    profession: optionalText(formData, "profession"),
     notes: optionalText(formData, "notes"),
     ...image,
     updatedAt: new Date(),

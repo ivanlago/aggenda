@@ -3,6 +3,7 @@ type ClientDetails = {
   postalCode?: string | null;
   maritalStatus?: string | null;
   cpf?: string | null;
+  profession?: string | null;
 };
 
 export function ClientOptionalFields({ client = {} }: { client?: ClientDetails }) {
@@ -27,6 +28,9 @@ export function ClientOptionalFields({ client = {} }: { client?: ClientDetails }
       </label>
       <label className="grid min-w-0 gap-2 text-sm font-bold">CPF (opcional)
         <input className="field" name="cpf" defaultValue={client.cpf ?? ""} inputMode="numeric" maxLength={14} placeholder="000.000.000-00" />
+      </label>
+      <label className="grid min-w-0 gap-2 text-sm font-bold">Profissão (opcional)
+        <input className="field" name="profession" defaultValue={client.profession ?? ""} placeholder="Profissão" />
       </label>
     </div>
   );

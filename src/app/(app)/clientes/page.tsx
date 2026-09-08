@@ -1,11 +1,10 @@
 import { and, eq, ilike, inArray } from "drizzle-orm";
-import { Pencil, Search, Trash2, X } from "lucide-react";
+import { Search, Trash2, X } from "lucide-react";
 import Link from "next/link";
 
-import { deleteClient, updateClient } from "@/actions/app";
+import { deleteClient } from "@/actions/app";
 import { ClientOptionalFields } from "@/components/client-optional-fields";
 import { NewClientForm } from "@/components/new-client-form";
-import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { PhoneInput } from "@/components/phone-input";
 import { db } from "@/db";
@@ -116,26 +115,7 @@ export default async function ClientsPage({
                     {item.name}
                   </Link>
                   <p className="truncate text-sm text-muted">{formatPhone(item.phone) || item.email || "Sem contato informado"}</p>
-                  {canManage && <details className="mt-2">
-                    <summary className="flex w-fit items-center gap-1 text-xs font-extrabold text-brand">
-                      <Pencil className="size-3" /> Editar dados
-                    </summary>
-                    <ActionForm action={updateClient} successMessage="Cliente atualizado com sucesso." className="mt-3 grid gap-2 rounded-2xl border bg-white p-4">
-                      <input type="hidden" name="id" value={item.id} />
-                      <input className="field py-2" name="name" defaultValue={item.name} required />
-                      <PhoneInput className="field py-2" name="phone" defaultValue={item.phone} placeholder="Telefone: (71) 99999-9999" />
-                      <input className="field py-2" name="email" type="email" defaultValue={item.email ?? ""} placeholder="E-mail" />
-                      <input className="field py-2" name="birthDate" type="date" defaultValue={item.birthDate ?? ""} aria-label="Data de nascimento" />
-                      <select className="field py-2" name="gender" defaultValue={item.gender ?? ""} aria-label="Sexo">
-                        <option value="">Sexo não informado</option>
-                        <option value="female">Feminino</option><option value="male">Masculino</option><option value="other">Outro</option><option value="not_informed">Prefere não informar</option>
-                      </select>
-                      <ClientOptionalFields client={item} />
-                      <textarea className="field min-h-20 py-2" name="notes" defaultValue={item.notes ?? ""} placeholder="Observações" />
-                      <EntityImageField currentUrl={item.imageUrl} label={`Foto do ${organization.clientLabel.toLowerCase()}`} />
-                      <button className="primary-button py-2">Salvar alterações</button>
-                    </ActionForm>
-                  </details>}
+
                 </div>
                 {canManage && <form action={deleteClient}>
                   <input type="hidden" name="id" value={item.id} />

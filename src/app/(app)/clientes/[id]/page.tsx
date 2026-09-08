@@ -1,9 +1,14 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
+import Image from "next/image";
+import { Pencil } from "lucide-react";
+import { ClientOptionalFields } from "@/components/client-optional-fields";
+import { EntityImageField } from "@/components/entity-image-field";
+import { PhoneInput } from "@/components/phone-input";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
-import { createClientClinicalMedia, createClientHistoryEntry } from "@/actions/app";
+import { createClientClinicalMedia, createClientHistoryEntry, updateClient } from "@/actions/app";
 import { ActionForm } from "@/components/action-form";
 import { ClinicalMediaGallery } from "@/components/clinical-media-gallery";
 import { ClinicalPhotoClassificationFields } from "@/components/clinical-photo-classification-fields";
@@ -161,11 +166,48 @@ export default async function ClientHistoryPage({
       />
       <section className="panel mb-5">
         <h2 className="text-lg font-extrabold">Dados cadastrais</h2>
-        <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
-          <div><p className="text-muted">Data de nascimento</p><p className="font-bold">{client.birthDate ? new Date(`${client.birthDate}T12:00:00Z`).toLocaleDateString("pt-BR") : "Não informada"}</p></div>
-          <div><p className="text-muted">Sexo</p><p className="font-bold">{client.gender ? genderLabels[client.gender] ?? client.gender : "Não informado"}</p></div>
-          <div><p className="text-muted">Contato</p><p className="font-bold">{formatPhone(client.phone) || client.email || "Não informado"}</p></div>
+        <div className="mt-4 flex flex-col gap-6 sm:flex-row">
+          <div className="shrink-0">
+            {client.imageUrl
+              ? <Image className="size-32 rounded-2xl object-cover" src={client.imageUrl} alt={`Foto de ${client.name}`} width={128} height={128} sizes="128px" />
+              : <div className="flex size-32 flex-col items-center justify-center gap-2 rounded-2xl bg-teal-50 text-brand"><span className="text-3xl font-extrabold">{client.name[0]}</span><span className="text-xs">Sem foto</span></div>}
+          </div>
+          <dl className="grid min-w-0 flex-1 gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              ["Nome completo", client.name],
+              ["Telefone", formatPhone(client.phone)],
+              ["E-mail", client.email],
+              ["Data de nascimento", client.birthDate ? new Date(`${client.birthDate}T12:00:00Z`).toLocaleDateString("pt-BR") : null],
+              ["Sexo", client.gender ? genderLabels[client.gender] ?? client.gender : null],
+              ["CPF", client.cpf],
+              ["Estado civil", client.maritalStatus],
+              ["Profissão", client.profession],
+              ["CEP", client.postalCode],
+            ].map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-muted">{label}</dt><dd className="break-words font-bold">{value || "Não informado"}</dd></div>)}
+            <div className="min-w-0 sm:col-span-2 lg:col-span-3"><dt className="text-muted">Endereço</dt><dd className="whitespace-pre-wrap break-words font-bold">{client.address || "Não informado"}</dd></div>
+            <div className="min-w-0 sm:col-span-2 lg:col-span-3"><dt className="text-muted">Observações</dt><dd className="whitespace-pre-wrap break-words font-bold">{client.notes || "Não informadas"}</dd></div>
+          </dl>
         </div>
+                  {canManage && <details className="mt-5 border-t pt-4">
+                    <summary className="secondary-button w-fit cursor-pointer list-none gap-2">
+                      <Pencil className="size-3" /> Editar dados
+                    </summary>
+                    <ActionForm action={updateClient} successMessage="Cliente atualizado com sucesso." className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2">
+                      <input type="hidden" name="id" value={client.id} />
+                      <input className="field py-2" aria-label="Nome completo" name="name" defaultValue={client.name} required />
+                      <PhoneInput className="field py-2" aria-label="Telefone" name="phone" defaultValue={client.phone} placeholder="Telefone: (71) 99999-9999" />
+                      <input className="field py-2" aria-label="E-mail" name="email" type="email" defaultValue={client.email ?? ""} placeholder="E-mail" />
+                      <input className="field py-2" name="birthDate" type="date" defaultValue={client.birthDate ?? ""} aria-label="Data de nascimento" />
+                      <select className="field py-2" name="gender" defaultValue={client.gender ?? ""} aria-label="Sexo">
+                        <option value="">Sexo não informado</option>
+                        <option value="female">Feminino</option><option value="male">Masculino</option><option value="other">Outro</option><option value="not_informed">Prefere não informar</option>
+                      </select>
+                      <div className="min-w-0 sm:col-span-2"><ClientOptionalFields client={client} /></div>
+                      <textarea className="field min-h-20 py-2" aria-label="Observações" name="notes" defaultValue={client.notes ?? ""} placeholder="Observações" />
+                      <EntityImageField currentUrl={client.imageUrl} label={`Foto do ${organization.clientLabel.toLowerCase()}`} />
+                      <button className="primary-button py-2">Salvar alterações</button>
+                    </ActionForm>
+                  </details>}
       </section>
       <CollapsiblePanel title="Fotografias clínicas">
         <p className="text-sm text-muted">Crie sessões de antes, evolução e depois para qualquer região corporal. Registros com a mesma sessão, região e vista são pareados automaticamente.</p>

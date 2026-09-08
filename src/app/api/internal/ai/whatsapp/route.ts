@@ -32,6 +32,10 @@ const chatAnswerSchema = z.object({ action: z.enum(["reply", "handoff"]), reply:
 type Input = z.infer<typeof inputSchema>;
 type Conversation = typeof chatConversations.$inferSelect;
 type Pending = { kind: "book"; serviceId: string; professionalId: string; startsAt: string } | { kind: "reschedule"; appointmentId: string; startsAt: string } | { kind: "cancel"; appointmentId: string; reason: string };
+type FlowState =
+  | { kind: "select_cancel"; appointmentIds: string[] }
+  | { kind: "select_reschedule"; appointmentIds: string[]; desiredDate?: string; desiredTime?: string }
+  | { kind: "reschedule_destination"; appointmentId: string; desiredDate?: string; desiredTime?: string };
 
 function authorized(request: NextRequest) { const key = process.env.AGGENDA_INTERNAL_API_KEY; return Boolean(key && request.headers.get("authorization") === `Bearer ${key}`); }
 function localTime(date: Date, timezone: string) { return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: timezone }).format(date); }
@@ -89,7 +93,7 @@ function asksForUpcomingAppointments(value: string) {
     || /(agendamentos?|horarios?|consultas?).*(marcados?|proximos?|futuros?)/.test(normalized);
 }
 function asksToReschedule(value: string) {
-  return /\b(reagend|remarc|alterar? (?:a )?(?:data|hora|horario))/.test(normalizedText(value));
+  return /\b(reagend|remarc|alter|mudar|trocar)/.test(normalizedText(value));
 }
 function asksToCancel(value: string) {
   return /\b(cancel|desmarc)/.test(normalizedText(value));
@@ -118,6 +122,15 @@ function parsePending(payload?: Record<string, unknown> | null): Pending | null 
   return result.success ? result.data : null;
 }
 
+function parseFlowState(payload?: Record<string, unknown> | null): FlowState | null {
+  const result = z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("select_cancel"), appointmentIds: z.array(z.string().uuid()).min(1) }),
+    z.object({ kind: z.literal("select_reschedule"), appointmentIds: z.array(z.string().uuid()).min(1), desiredDate: z.string().optional(), desiredTime: z.string().optional() }),
+    z.object({ kind: z.literal("reschedule_destination"), appointmentId: z.string().uuid(), desiredDate: z.string().optional(), desiredTime: z.string().optional() }),
+  ]).safeParse(payload?.flowState);
+  return result.success ? result.data : null;
+}
+
 async function getClient(input: Input, conversation: Conversation) {
   if (conversation.clientId) return conversation.clientId;
   const all = input.from.replace(/\D/g, ""); const phone = normalizeBrazilianPhone(all.startsWith("55") && all.length > 11 ? all.slice(2) : all);
@@ -132,11 +145,11 @@ async function getClient(input: Input, conversation: Conversation) {
   return id;
 }
 
-async function send(input: Input, conversation: Conversation, data: { reply: string; model: string; intent: string; confidence: number; pending?: Pending; handoff?: boolean; ai?: boolean }) {
+async function send(input: Input, conversation: Conversation, data: { reply: string; model: string; intent: string; confidence: number; pending?: Pending; flowState?: FlowState; handoff?: boolean; ai?: boolean }) {
   const now = new Date(); let inserted = false;
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.conversationId}))`);
-    const [message] = await tx.insert(chatMessages).values({ organizationId: input.organizationId, conversationId: input.conversationId, externalMessageId: `aggenda-ai:${input.messageId}`, direction: "outbound", status: "queued", messageType: "text", body: data.reply, rawPayload: { source: "aggenda_ai", model: data.model, intent: data.intent, confidence: data.confidence, ...(data.pending ? { pendingAction: data.pending } : {}) }, occurredAt: now })
+    const [message] = await tx.insert(chatMessages).values({ organizationId: input.organizationId, conversationId: input.conversationId, externalMessageId: `aggenda-ai:${input.messageId}`, direction: "outbound", status: "queued", messageType: "text", body: data.reply, rawPayload: { source: "aggenda_ai", model: data.model, intent: data.intent, confidence: data.confidence, ...(data.pending ? { pendingAction: data.pending } : {}), ...(data.flowState ? { flowState: data.flowState } : {}) }, occurredAt: now })
       .onConflictDoNothing({ target: chatMessages.externalMessageId }).returning({ id: chatMessages.id });
     if (!message) return; inserted = true;
     await tx.insert(outboxEvents).values({ organizationId: input.organizationId, eventKey: `whatsapp:ai-reply:${input.messageId}`, eventType: "whatsapp.message.send", aggregateType: "chat_message", aggregateId: message.id, payload: { organizationId: input.organizationId, channelId: conversation.channelId, conversationId: input.conversationId, messageId: message.id, phoneNumberId: input.phoneNumberId, to: input.from, text: data.reply } }).onConflictDoNothing({ target: outboxEvents.eventKey });
@@ -150,6 +163,22 @@ async function upcoming(organizationId: string, clientId: string) {
   return db.select({ id: appointments.id, startsAt: appointments.startsAt, status: appointments.status, serviceId: appointments.serviceId, serviceName: services.name, professionalId: appointments.professionalId, professionalName: professionals.name })
     .from(appointments).innerJoin(services, eq(services.id, appointments.serviceId)).leftJoin(professionals, eq(professionals.id, appointments.professionalId))
     .where(and(eq(appointments.organizationId, organizationId), eq(appointments.clientId, clientId), inArray(appointments.status, ["scheduled", "confirmed"]), gte(appointments.startsAt, new Date()))).orderBy(asc(appointments.startsAt)).limit(10);
+}
+
+type UpcomingAppointment = Awaited<ReturnType<typeof upcoming>>[number];
+
+function filterMentionedAppointments(rows: UpcomingAppointment[], value: string, timezone: string) {
+  const date = parseBrazilianDate(value);
+  const time = parseBrazilianTime(value);
+  const serviceMatches = rows.filter((row) => approximatelyMentions(value, row.serviceName));
+  let matches = serviceMatches.length ? serviceMatches : rows;
+  if (date) matches = matches.filter((row) => organizationDate(row.startsAt, timezone) === date);
+  if (time) matches = matches.filter((row) => localTime(row.startsAt, timezone) === time);
+  return matches;
+}
+
+function appointmentChoices(rows: UpcomingAppointment[], timezone: string) {
+  return rows.map((row) => `• ${row.serviceName}, ${formatOrganizationDateTime(row.startsAt, timezone)}, com ${row.professionalName ?? "profissional a definir"}`).join("\n");
 }
 
 async function execute(input: Input, pending: Pending, clientId: string, timezone: string) {
@@ -217,7 +246,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ accepted: true, action: "reply" });
   }
   const [latest] = await db.select({ rawPayload: chatMessages.rawPayload }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), eq(chatMessages.direction, "outbound"))).orderBy(desc(chatMessages.occurredAt)).limit(1);
-  const pending = parsePending(latest?.rawPayload); const clientId = await getClient(input, conversation);
+  const pending = parsePending(latest?.rawPayload); const flowState = parseFlowState(latest?.rawPayload); const clientId = await getClient(input, conversation);
   if (pending && (isAffirmativeWhatsAppCommand(input.text) || isNegativeWhatsAppCommand(input.text))) {
     if (isNegativeWhatsAppCommand(input.text)) { await send(input, conversation, { reply: "Tudo bem. A operação não foi realizada. Como mais posso ajudar?", model: "aggenda-transactional-v1", intent: "operation_declined", confidence: 1 }); return NextResponse.json({ accepted: true, action: "declined" }); }
     try { const reply = await execute(input, pending, clientId, organization.timezone); await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: pending.kind, confidence: 1 }); return NextResponse.json({ accepted: true, action: pending.kind }); }
@@ -228,6 +257,60 @@ export async function POST(request: NextRequest) {
     db.select({ id: professionals.id, name: professionals.name, serviceId: servicesToProfessionals.serviceId }).from(professionals).leftJoin(servicesToProfessionals, and(eq(servicesToProfessionals.professionalId, professionals.id), eq(servicesToProfessionals.organizationId, input.organizationId))).where(and(eq(professionals.organizationId, input.organizationId), eq(professionals.isActive, true), eq(professionals.isBookable, true))),
     upcoming(input.organizationId, clientId), db.select({ direction: chatMessages.direction, body: chatMessages.body }).from(chatMessages).where(eq(chatMessages.conversationId, input.conversationId)).orderBy(desc(chatMessages.occurredAt)).limit(12),
   ]);
+  if (flowState) {
+    const candidates = future.filter((appointment) => "appointmentIds" in flowState ? flowState.appointmentIds.includes(appointment.id) : appointment.id === flowState.appointmentId);
+    if (flowState.kind === "select_cancel") {
+      const matches = filterMentionedAppointments(candidates, input.text, organization.timezone);
+      if (matches.length === 1) {
+        const appointment = matches[0];
+        const nextPending: Pending = { kind: "cancel", appointmentId: appointment.id, reason: "Cancelado pelo cliente via WhatsApp" };
+        await send(input, conversation, { reply: `Confirma cancelar ${appointment.serviceName}, marcado para ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)}? Responda CONFIRMAR.`, model: "aggenda-transactional-v1", intent: "prepare_cancel", confidence: 1, pending: nextPending });
+        return NextResponse.json({ accepted: true, action: "prepare_cancel" });
+      }
+      const remaining = matches.length ? matches : candidates;
+      const reply = remaining.length
+        ? `Encontrei mais de um agendamento. Informe qual deseja cancelar pela data e pelo horário:\n${appointmentChoices(remaining, organization.timezone)}`
+        : "Não encontrei mais esse agendamento entre seus horários futuros ativos.";
+      await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "select_cancel", confidence: 1, ...(remaining.length ? { flowState: { kind: "select_cancel", appointmentIds: remaining.map((item) => item.id) } as FlowState } : {}) });
+      return NextResponse.json({ accepted: true, action: "reply" });
+    }
+    if (flowState.kind === "select_reschedule") {
+      const matches = filterMentionedAppointments(candidates, input.text, organization.timezone);
+      if (matches.length !== 1) {
+        const remaining = matches.length ? matches : candidates;
+        const reply = remaining.length
+          ? `Encontrei mais de um agendamento. Informe qual deseja alterar pela data e pelo horário atuais:\n${appointmentChoices(remaining, organization.timezone)}`
+          : "Não encontrei mais esse agendamento entre seus horários futuros ativos.";
+        await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "select_reschedule", confidence: 1, ...(remaining.length ? { flowState: { ...flowState, appointmentIds: remaining.map((item) => item.id) } } : {}) });
+        return NextResponse.json({ accepted: true, action: "reply" });
+      }
+      const appointment = matches[0];
+      await send(input, conversation, { reply: `Para qual data e horário deseja alterar ${appointment.serviceName}, atualmente marcado para ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)}?`, model: "aggenda-transactional-v1", intent: "reschedule_destination", confidence: 1, flowState: { kind: "reschedule_destination", appointmentId: appointment.id } });
+      return NextResponse.json({ accepted: true, action: "reply" });
+    }
+    const appointment = candidates[0];
+    if (!appointment || !appointment.professionalId) {
+      await send(input, conversation, { reply: "Não encontrei mais esse agendamento entre seus horários futuros ativos.", model: "aggenda-transactional-v1", intent: "reschedule_not_found", confidence: 1 });
+      return NextResponse.json({ accepted: true, action: "reply" });
+    }
+    const desiredDate = parseBrazilianDate(input.text) ?? flowState.desiredDate ?? (parseBrazilianTime(input.text) ? organizationDate(appointment.startsAt, organization.timezone) : undefined);
+    const desiredTime = parseBrazilianTime(input.text) ?? flowState.desiredTime;
+    if (!desiredDate || !desiredTime) {
+      const missing = !desiredDate ? "a data e o horário" : "o horário";
+      await send(input, conversation, { reply: `Informe ${missing} desejado${!desiredDate ? "s" : ""}.`, model: "aggenda-transactional-v1", intent: "reschedule_destination", confidence: 1, flowState: { kind: "reschedule_destination", appointmentId: appointment.id, desiredDate, desiredTime } });
+      return NextResponse.json({ accepted: true, action: "reply" });
+    }
+    const slots = await getAvailableTimes({ organizationId: input.organizationId, timezone: organization.timezone, date: desiredDate, serviceId: appointment.serviceId, professionalId: appointment.professionalId, slotIntervalMinutes: organization.slotIntervalMinutes, excludeAppointmentId: appointment.id });
+    const selected = slots?.find((slot) => localTime(new Date(slot), organization.timezone) === desiredTime);
+    if (!selected) {
+      const alternatives = slots?.length ? ` Horários livres nessa data: ${slots.slice(0, 10).map((slot) => localTime(new Date(slot), organization.timezone)).join(", ")}.` : " Não há horários livres nessa data.";
+      await send(input, conversation, { reply: `Esse horário não está disponível.${alternatives} Qual prefere?`, model: "aggenda-transactional-v1", intent: "reschedule_destination", confidence: 1, flowState: { kind: "reschedule_destination", appointmentId: appointment.id, desiredDate } });
+      return NextResponse.json({ accepted: true, action: "availability" });
+    }
+    const nextPending: Pending = { kind: "reschedule", appointmentId: appointment.id, startsAt: selected };
+    await send(input, conversation, { reply: `Confirma reagendar ${appointment.serviceName} de ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)} para ${formatOrganizationDateTime(new Date(selected), organization.timezone)}? Responda CONFIRMAR.`, model: "aggenda-transactional-v1", intent: "prepare_reschedule", confidence: 1, pending: nextPending });
+    return NextResponse.json({ accepted: true, action: "prepare_reschedule" });
+  }
   const ai = input.whatsappServiceCode === "chat_ai" || input.whatsappServiceCode === "core_ai";
   if (input.whatsappServiceCode !== "core_ai") {
     const result = ai ? await generateAiJson({ schema: chatAnswerSchema, messages: [{ role: "system", content: "Atenda em português usando somente o contexto. Não execute operações; transfira ações operacionais ou casos ambíguos para humano. Responda JSON com action, reply, intent e confidence." }, { role: "user", content: JSON.stringify({ organization, catalog, recentMessages: history.reverse(), currentMessage: input.text }) }] }) : { data: { action: "reply" as const, reply: `Olá! Você está falando com ${organization.name}. Como podemos ajudar?`, intent: "greeting", confidence: 1 }, model: "aggenda-deterministic-v1" };
@@ -242,6 +325,7 @@ export async function POST(request: NextRequest) {
   }
   const contextTexts = [input.text, ...history.map((message) => message.body ?? "")];
   const directlyMentionedProfessional = mentionedByName(professionalRows, [input.text]);
+  const directlyMentionedService = mentionedByName(catalog, [input.text]);
   const contextualService = mentionedByName(catalog, contextTexts);
   const contextualProfessional = mentionedByName(professionalRows, contextTexts);
   const directDate = parseBrazilianDate(input.text);
@@ -308,15 +392,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ accepted: true, action: "reply" });
   }
   if (asksToReschedule(input.text)) {
-    const matchingAppointments = contextualService ? future.filter((item) => item.serviceId === contextualService.id) : [];
+    const matchingAppointments = filterMentionedAppointments(future, input.text, organization.timezone);
     const appointment = future.length === 1 ? future[0] : matchingAppointments.length === 1 ? matchingAppointments[0] : undefined;
     if (!appointment) {
-      const reply = future.length ? "Qual dos seus agendamentos você deseja reagendar?" : "Você não possui agendamentos futuros ativos.";
-      await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "prepare_reschedule", confidence: 1 });
+      const candidates = matchingAppointments.length ? matchingAppointments : directlyMentionedService ? future.filter((item) => item.serviceId === directlyMentionedService.id) : future;
+      const reply = candidates.length ? `Qual destes agendamentos você deseja alterar? Informe a data e o horário atuais:\n${appointmentChoices(candidates, organization.timezone)}` : "Você não possui agendamentos futuros ativos.";
+      await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "select_reschedule", confidence: 1, ...(candidates.length ? { flowState: { kind: "select_reschedule", appointmentIds: candidates.map((item) => item.id) } as FlowState } : {}) });
       return NextResponse.json({ accepted: true, action: "reply" });
     }
     if (!directDate || !directTime || !appointment.professionalId) {
-      await send(input, conversation, { reply: "Para qual data e horário deseja reagendar?", model: "aggenda-transactional-v1", intent: "prepare_reschedule", confidence: 1 });
+      await send(input, conversation, { reply: `Para qual data e horário deseja reagendar ${appointment.serviceName}, atualmente marcado para ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)}?`, model: "aggenda-transactional-v1", intent: "reschedule_destination", confidence: 1, flowState: { kind: "reschedule_destination", appointmentId: appointment.id } });
       return NextResponse.json({ accepted: true, action: "reply" });
     }
     const slots = await getAvailableTimes({ organizationId: input.organizationId, timezone: organization.timezone, date: directDate, serviceId: appointment.serviceId, professionalId: appointment.professionalId, slotIntervalMinutes: organization.slotIntervalMinutes, excludeAppointmentId: appointment.id });
@@ -330,11 +415,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ accepted: true, action: "prepare_reschedule" });
   }
   if (asksToCancel(input.text)) {
-    const matchingAppointments = contextualService ? future.filter((item) => item.serviceId === contextualService.id) : [];
+    const matchingAppointments = filterMentionedAppointments(future, input.text, organization.timezone);
     const appointment = future.length === 1 ? future[0] : matchingAppointments.length === 1 ? matchingAppointments[0] : undefined;
     if (!appointment) {
-      const reply = future.length ? "Qual dos seus agendamentos você deseja cancelar?" : "Você não possui agendamentos futuros ativos.";
-      await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "prepare_cancel", confidence: 1 });
+      const candidates = matchingAppointments.length ? matchingAppointments : directlyMentionedService ? future.filter((item) => item.serviceId === directlyMentionedService.id) : future;
+      const reply = candidates.length ? `Qual destes agendamentos você deseja cancelar? Informe a data e o horário:\n${appointmentChoices(candidates, organization.timezone)}` : "Você não possui agendamentos futuros ativos.";
+      await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "select_cancel", confidence: 1, ...(candidates.length ? { flowState: { kind: "select_cancel", appointmentIds: candidates.map((item) => item.id) } as FlowState } : {}) });
       return NextResponse.json({ accepted: true, action: "reply" });
     }
     const nextPending: Pending = { kind: "cancel", appointmentId: appointment.id, reason: "Cancelado pelo cliente via WhatsApp" };

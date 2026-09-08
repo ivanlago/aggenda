@@ -20,7 +20,9 @@ const statusLabels = Object.fromEntries(statuses);
 const statusClasses: Record<string, string> = {
   scheduled: "bg-emerald-100 text-emerald-800",
   confirmed: "bg-blue-100 text-blue-800",
+  completed: "bg-neutral-900 text-white",
   cancelled: "bg-red-100 text-red-800",
+  no_show: "bg-orange-100 text-orange-800",
 };
 
 function whatsappLink(phone: string, message: string) {

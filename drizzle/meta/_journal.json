@@ -379,6 +379,13 @@
       "when": 1788748867689,
       "tag": "0053_sticky_spitfire",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1788885028371,
+      "tag": "0054_client_optional_details",
+      "breakpoints": true
     }
   ]
 }

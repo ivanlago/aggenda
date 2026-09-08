@@ -82,7 +82,7 @@ export async function POST(request: Request) {
               await tx.insert(dataImportRows).values({ importId: input.importId, rowNumber, entityId: found.id, action: "updated", previousData: found });
             } else {
               const [created] = await tx.insert(clients).values({ organizationId: organization.id, name, phone: normalizedPhone || null, email, birthDate, gender, notes: text(row.notes) || null }).returning({ id: clients.id });
-              existingClients.push({ id: created.id, organizationId: organization.id, name, phone: normalizedPhone || null, email, birthDate, gender, notes: text(row.notes) || null, imageUrl: null, imagePublicId: null, createdAt: new Date(), updatedAt: new Date() });
+              existingClients.push({ id: created.id, organizationId: organization.id, name, phone: normalizedPhone || null, email, birthDate, gender, address: null, postalCode: null, maritalStatus: null, cpf: null, notes: text(row.notes) || null, imageUrl: null, imagePublicId: null, createdAt: new Date(), updatedAt: new Date() });
               createdRows += 1; results.push({ row: rowNumber, action: "created" });
               await tx.insert(dataImportRows).values({ importId: input.importId, rowNumber, entityId: created.id, action: "created" });
             }

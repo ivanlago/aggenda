@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { clientPackageBalances, clientPackages, servicePackages, services } from "@/db/schema";
 
@@ -11,6 +11,7 @@ export type PosPackageBalance = {
   serviceName: string;
   remaining: number;
   expiresAt: string | null;
+  expired: boolean;
 };
 
 export async function getPosPackageBalances(organizationId: string, clientId?: string): Promise<PosPackageBalance[]> {
@@ -35,7 +36,7 @@ export async function getPosPackageBalances(organizationId: string, clientId?: s
       clientId ? eq(clientPackages.clientId, clientId) : undefined,
       eq(clientPackages.status, "active"),
       gt(clientPackageBalances.totalQuantity, clientPackageBalances.usedQuantity),
-      or(isNull(clientPackages.expiresAt), gt(clientPackages.expiresAt, new Date())),
     )).orderBy(asc(clientPackages.expiresAt), asc(servicePackages.name), asc(services.name));
-  return rows.map((row) => ({ ...row, expiresAt: row.expiresAt?.toISOString() ?? null }));
+  const now = Date.now();
+  return rows.map((row) => ({ ...row, expiresAt: row.expiresAt?.toISOString() ?? null, expired: row.expiresAt !== null && row.expiresAt.getTime() <= now }));
 }

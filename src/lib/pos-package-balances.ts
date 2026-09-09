@@ -1,0 +1,41 @@
+import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { db } from "@/db";
+import { clientPackageBalances, clientPackages, servicePackages, services } from "@/db/schema";
+
+export type PosPackageBalance = {
+  id: string;
+  clientId: string;
+  clientPackageId: string;
+  serviceId: string;
+  packageName: string;
+  serviceName: string;
+  remaining: number;
+  expiresAt: string | null;
+};
+
+export async function getPosPackageBalances(organizationId: string, clientId?: string): Promise<PosPackageBalance[]> {
+  const rows = await db.select({
+    id: clientPackageBalances.id,
+    clientId: clientPackages.clientId,
+    clientPackageId: clientPackages.id,
+    serviceId: clientPackageBalances.serviceId,
+    packageName: servicePackages.name,
+    serviceName: services.name,
+    remaining: sql<number>`${clientPackageBalances.totalQuantity} - ${clientPackageBalances.usedQuantity}`,
+    expiresAt: clientPackages.expiresAt,
+  }).from(clientPackageBalances)
+    .innerJoin(clientPackages, eq(clientPackages.id, clientPackageBalances.clientPackageId))
+    .innerJoin(servicePackages, eq(servicePackages.id, clientPackages.packageId))
+    .innerJoin(services, eq(services.id, clientPackageBalances.serviceId))
+    .where(and(
+      eq(clientPackageBalances.organizationId, organizationId),
+      eq(clientPackages.organizationId, organizationId),
+      eq(servicePackages.organizationId, organizationId),
+      eq(services.organizationId, organizationId),
+      clientId ? eq(clientPackages.clientId, clientId) : undefined,
+      eq(clientPackages.status, "active"),
+      gt(clientPackageBalances.totalQuantity, clientPackageBalances.usedQuantity),
+      or(isNull(clientPackages.expiresAt), gt(clientPackages.expiresAt, new Date())),
+    )).orderBy(asc(clientPackages.expiresAt), asc(servicePackages.name), asc(services.name));
+  return rows.map((row) => ({ ...row, expiresAt: row.expiresAt?.toISOString() ?? null }));
+}

@@ -6,6 +6,8 @@ import { useDeferredValue, useMemo, useState } from "react";
 import { registerRetailSale } from "@/actions/retail";
 import { ActionForm } from "@/components/action-form";
 import { PhoneInput } from "@/components/phone-input";
+import { PosPackageNotice } from "@/components/pos-package-notice";
+import type { PosPackageBalance } from "@/lib/pos-package-balances";
 
 type Variant = { id: string; label: string; barcode: string | null; priceInCents: number; stock: number; kind?: "product" | "service" | "package"; unavailableReason?: string };
 type Client = { id: string; name: string; email: string | null; phone: string | null };
@@ -15,7 +17,7 @@ type Payment = { id: number; method: "cash" | "credit_card" | "debit_card" | "pi
 const currency = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
 
-export function RetailSaleForm({ variants: productVariants, offerings = [], clients, canDiscount, attendanceId, initialClientId, initialCart = [] }: { variants: Variant[]; offerings?: Variant[]; clients: Client[]; canDiscount: boolean; attendanceId?: string; initialClientId?: string; initialCart?: CartItem[] }) {
+export function RetailSaleForm({ variants: productVariants, offerings = [], clients, canDiscount, attendanceId, initialClientId, initialCart = [], packageBalances = [], timezone }: { variants: Variant[]; offerings?: Variant[]; clients: Client[]; canDiscount: boolean; attendanceId?: string; initialClientId?: string; initialCart?: CartItem[]; packageBalances?: PosPackageBalance[]; timezone?: string }) {
   const variants = useMemo(() => [...productVariants, ...offerings], [productVariants, offerings]);
   const [category, setCategory] = useState("all");
   const [cart, setCart] = useState<CartItem[]>(initialCart);
@@ -78,6 +80,7 @@ export function RetailSaleForm({ variants: productVariants, offerings = [], clie
       </section>
 
       <aside className="panel form-stack xl:sticky xl:top-5">
+        <PosPackageNotice balances={packageBalances.filter((balance) => balance.clientId === clientId)} timezone={timezone} />
         <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-xl bg-brand/10 text-brand"><ShoppingCart className="size-5" /></span><div><h2 className="text-lg font-extrabold">Carrinho</h2><p className="text-sm text-muted">{cart.length} {cart.length === 1 ? "item" : "itens"}</p></div></div>
         <div className="divide-y rounded-2xl border px-3">
           {cart.map((item) => {

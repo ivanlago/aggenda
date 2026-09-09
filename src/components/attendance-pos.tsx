@@ -1,4 +1,6 @@
 import { getPosOfferings } from "@/lib/pos-catalog";
+import { getPosPackageBalances } from "@/lib/pos-package-balances";
+import { PosPackageNotice } from "@/components/pos-package-notice";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db";
@@ -26,7 +28,11 @@ export async function AttendancePos({ appointmentId }: { appointmentId: string }
     db.select({ id: retailSales.id, total: retailSales.totalInCents, status: retailSales.status, receiptToken: retailSales.receiptToken, soldAt: retailSales.soldAt, paymentStatus: financialEntries.status }).from(retailSales).leftJoin(financialEntries, eq(financialEntries.id, retailSales.financialEntryId)).where(and(eq(retailSales.organizationId, organization.id), eq(retailSales.attendanceId, appointment.id))).orderBy(desc(retailSales.soldAt)),
     canReadFinance ? db.select().from(financialEntries).where(and(eq(financialEntries.organizationId, organization.id), eq(financialEntries.attendanceId, appointment.id), eq(financialEntries.source, "attendance_extra"))).orderBy(desc(financialEntries.createdAt)) : Promise.resolve([]),
   ]);
-  const catalog = canSell ? (await getPosOfferings(organization.id)).filter((item) => item.id !== `service:${appointment.serviceId}`) : [];
+  const [allOfferings, packageBalances] = await Promise.all([
+    canSell ? getPosOfferings(organization.id) : Promise.resolve([]),
+    getPosPackageBalances(organization.id, appointment.clientId),
+  ]);
+  const catalog = allOfferings.filter((item) => item.id !== `service:${appointment.serviceId}`);
   const payment = paymentRows[0];
   const paymentState = attendancePaymentState({ paymentStatus: payment?.status, packageStatus: usages[0]?.status, appointmentStatus: appointment.status });
   const paid = paymentState === "paid";
@@ -38,6 +44,7 @@ export async function AttendancePos({ appointmentId }: { appointmentId: string }
   const offerings = [...catalog, ...(paymentState === "pending" ? [{ id: `appointment:${appointment.id}`, label: `${service.name} · Procedimento realizado`, barcode: null, priceInCents: amount, stock: 1, kind: "service" as const }] : [])];
   const variants = variantRows.map((variant) => ({ id: variant.id, label: `${variant.product} · ${variant.variant}`, barcode: variant.barcode, priceInCents: variant.priceInCents, stock: Math.floor(variant.stock / 1000) })).filter((variant) => variant.stock > 0);
   return <section id="pdv" className="mt-5 scroll-mt-6"><h2 className="mb-3 text-xl font-extrabold">Pagamento/Venda</h2>
+    {packageBalances.length > 0 && <div className="mb-4"><PosPackageNotice balances={packageBalances} timezone={organization.timezone} /></div>}
     {paymentState === "blocked" && <p className="mb-4 text-sm text-muted">Revise a situação do atendimento antes de cobrar o procedimento.</p>}
     {canSell && <details open={paymentState === "pending"} className="mb-4 rounded-2xl border bg-white p-4">
       <summary className="cursor-pointer text-lg font-extrabold">Pagamento/Venda</summary>

@@ -1,4 +1,5 @@
 import { getPosOfferings } from "@/lib/pos-catalog";
+import { getPosPackageBalances } from "@/lib/pos-package-balances";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { BadgeDollarSign, PackageCheck, ShoppingBag } from "lucide-react";
 import Link from "next/link";
@@ -33,7 +34,10 @@ export default async function SalesPage() {
       .from(retailSaleItems).where(eq(retailSaleItems.organizationId, organization.id)),
     db.select({ saleId: retailSalePayments.saleId, method: retailSalePayments.method, amount: retailSalePayments.amountInCents }).from(retailSalePayments).where(eq(retailSalePayments.organizationId, organization.id)),
   ]);
-  const offerings = canSell ? await getPosOfferings(organization.id) : [];
+  const [offerings, packageBalances] = canSell ? await Promise.all([
+    getPosOfferings(organization.id),
+    getPosPackageBalances(organization.id),
+  ]) : [[], []];
   const variants = variantRows.map((item) => ({ id: item.id, label: `${item.productName} · ${item.variantName}`, barcode: item.barcode, priceInCents: item.priceInCents, stock: Math.floor(item.stockMillis / 1000) })).filter((item) => item.stock > 0);
   const totalSold = sales.reduce((sum, sale) => sum + (sale.status === "completed" ? sale.total : 0), 0);
   const visibleSaleIds = new Set(sales.map((sale) => sale.id));
@@ -53,7 +57,7 @@ export default async function SalesPage() {
       <article className="panel"><PackageCheck className="size-5 text-brand" /><p className="mt-4 text-3xl font-extrabold">{unitsSold}</p><p className="text-sm text-muted">unidades vendidas</p></article>
       <article className="panel"><BadgeDollarSign className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{currency(totalSold)}</p><p className="text-sm text-muted">nas vendas exibidas</p></article>
     </section>
-    {canSell && <section className="mt-5"><RetailSaleForm offerings={offerings} variants={variants} clients={clientRows} canDiscount={canDiscount} /></section>}
+    {canSell && <section className="mt-5"><RetailSaleForm offerings={offerings} variants={variants} clients={clientRows} canDiscount={canDiscount} packageBalances={packageBalances} timezone={organization.timezone} /></section>}
     <section className="panel mt-5"><h2 className="text-lg font-extrabold">Histórico de vendas</h2><div className="mt-4 divide-y">
       {sales.length === 0 && <p className="py-6 text-center text-sm text-muted">Nenhuma venda registrada.</p>}
       {sales.map((sale) => <article className="grid gap-3 py-4 lg:grid-cols-[1fr_auto]" key={sale.id}>

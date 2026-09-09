@@ -221,7 +221,7 @@ export async function deleteRetailProduct(data: FormData) {
 }
 
 type SaleInputItem = { variantId?: unknown; quantity?: unknown; discountInCents?: unknown };
-type SalePaymentInput = { method?: unknown; amountInCents?: unknown };
+type SalePaymentInput = { method?: unknown; amountInCents?: unknown; otherPaymentMethod?: unknown };
 
 export async function registerRetailSale(data: FormData) {
   const { session, organization } = await requireOrganization();
@@ -266,8 +266,9 @@ export async function registerRetailSale(data: FormData) {
   const normalizedPayments = payments.map((payment) => {
     const method = typeof payment.method === "string" ? payment.method : "";
     const amountInCents = Number(payment.amountInCents);
-    if (!['cash', 'card', 'pix'].includes(method) || !Number.isInteger(amountInCents) || amountInCents <= 0) throw new Error("Revise as formas e os valores de pagamento.");
-    return { method, amountInCents };
+    const otherPaymentMethod = typeof payment.otherPaymentMethod === "string" ? payment.otherPaymentMethod.trim().slice(0, 200) : "";
+    if (!['cash', 'credit_card', 'debit_card', 'pix', 'bank_transfer', 'boleto', 'other'].includes(method) || !Number.isInteger(amountInCents) || amountInCents <= 0 || (method === "other" && otherPaymentMethod.length < 2)) throw new Error("Revise as formas, os valores e a justificativa do pagamento.");
+    return { method, amountInCents, otherPaymentMethod };
   });
   const paymentMethod = normalizedPayments.length > 1 ? "mixed" : normalizedPayments[0].method;
   const received = data.get("received") === "on";
@@ -347,7 +348,7 @@ export async function registerRetailSale(data: FormData) {
       organizationId: organization.id, type: "receivable", status: received ? "received" : "pending",
       source: "retail_sale", description: "Venda no PDV", category: "Vendas no PDV",
       amountInCents: additionalInCents, dueDate: today, realizedDate: received ? today : null,
-      paymentMethod, clientId, notes: text(data, "notes") || null, createdByUserId: session.user.id,
+        paymentMethod, clientId, notes: [text(data, "notes"), ...normalizedPayments.filter((payment) => payment.method === "other").map((payment) => `Outros: ${payment.otherPaymentMethod}`)].filter(Boolean).join("\n") || null, createdByUserId: session.user.id,
     }).returning({ id: financialEntries.id }) : [{ id: appointmentFinancialEntryId }];
     const [sale] = await tx.insert(retailSales).values({
       organizationId: organization.id, clientId, attendanceId, financialEntryId: financialEntry.id, appointmentFinancialEntryId, paymentMethod,

@@ -1,6 +1,4 @@
 import { getPosOfferings } from "@/lib/pos-catalog";
-import { getPosPackageBalances } from "@/lib/pos-package-balances";
-import { PosPackageNotice } from "@/components/pos-package-notice";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db";
@@ -10,6 +8,8 @@ import { hasOrganizationPermission } from "@/lib/permissions";
 import { formatOrganizationDateTime } from "@/lib/appointment-safety";
 import { RetailSaleForm } from "@/components/retail-sale-form";
 import { attendancePaymentState } from "@/lib/attendance-payment";
+import { SalesWorkspace } from "@/components/sales-workspace";
+import { AttendanceQuote } from "@/components/attendance-quote";
 
 const currency = (amount: number) => (amount / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -28,31 +28,17 @@ export async function AttendancePos({ appointmentId }: { appointmentId: string }
     db.select({ id: retailSales.id, total: retailSales.totalInCents, status: retailSales.status, receiptToken: retailSales.receiptToken, soldAt: retailSales.soldAt, paymentStatus: financialEntries.status }).from(retailSales).leftJoin(financialEntries, eq(financialEntries.id, retailSales.financialEntryId)).where(and(eq(retailSales.organizationId, organization.id), eq(retailSales.attendanceId, appointment.id))).orderBy(desc(retailSales.soldAt)),
     canReadFinance ? db.select().from(financialEntries).where(and(eq(financialEntries.organizationId, organization.id), eq(financialEntries.attendanceId, appointment.id), eq(financialEntries.source, "attendance_extra"))).orderBy(desc(financialEntries.createdAt)) : Promise.resolve([]),
   ]);
-  const [allOfferings, packageBalances] = await Promise.all([
-    canSell ? getPosOfferings(organization.id) : Promise.resolve([]),
-    getPosPackageBalances(organization.id, appointment.clientId),
-  ]);
+  const allOfferings = canSell ? await getPosOfferings(organization.id) : [];
   const catalog = allOfferings.filter((item) => item.id !== `service:${appointment.serviceId}`);
   const payment = paymentRows[0];
   const paymentState = attendancePaymentState({ paymentStatus: payment?.status, packageStatus: usages[0]?.status, appointmentStatus: appointment.status });
-  const paid = paymentState === "paid";
-  const covered = paymentState === "package";
-  const paymentStatusLabel = paid ? "PAGO" : covered ? "PAGO COM PACOTE" : "PENDENTE";
-  const paymentStatusClass = paid || covered ? "text-emerald-700" : "text-red-600";
   const amount = payment?.amountInCents ?? appointment.priceInCents ?? service.price ?? 0;
   const initialCart = paymentState === "pending" ? [{ variantId: `appointment:${appointment.id}`, quantity: 1, discountInCents: 0 }] : [];
   const offerings = [...catalog, ...(paymentState === "pending" ? [{ id: `appointment:${appointment.id}`, label: `${service.name} · Procedimento realizado`, barcode: null, priceInCents: amount, stock: 1, kind: "service" as const }] : [])];
   const variants = variantRows.map((variant) => ({ id: variant.id, label: `${variant.product} · ${variant.variant}`, barcode: variant.barcode, priceInCents: variant.priceInCents, stock: Math.floor(variant.stock / 1000) })).filter((variant) => variant.stock > 0);
   return <section id="pdv" className="mt-5 scroll-mt-6">
-    {packageBalances.length > 0 && <div className="mb-4"><PosPackageNotice balances={packageBalances} timezone={organization.timezone} /></div>}
     {paymentState === "blocked" && <p className="mb-4 text-sm text-muted">Revise a situação do atendimento antes de cobrar o procedimento.</p>}
-    {canSell && <details open={paymentState === "pending"} className="mb-4 rounded-2xl border bg-white p-4">
-      <summary className="cursor-pointer text-lg font-extrabold">Pagamento/Venda</summary>
-      <div className="mt-4">
-        <p className={`mb-4 text-sm font-extrabold ${paymentStatusClass}`}>Obs: {service.name} - {paymentStatusLabel}</p>
-        <RetailSaleForm key={paymentState} offerings={offerings} attendanceId={appointment.id} initialClientId={client.id} initialCart={initialCart} clients={[client]} variants={variants} canDiscount={hasOrganizationPermission(organization.role, "sales.discount")} />
-      </div>
-    </details>}
+    {canSell && <SalesWorkspace sale={<RetailSaleForm key={paymentState} offerings={offerings} attendanceId={appointment.id} initialClientId={client.id} initialCart={initialCart} clients={[client]} variants={variants} canDiscount={hasOrganizationPermission(organization.role, "sales.discount")} />} quote={<AttendanceQuote appointmentId={appointmentId} />} />}
     <section className="panel mt-4"><h3 className="font-extrabold">Vendas e adicionais deste atendimento</h3>
       {sales.map((sale) => <div key={sale.id} className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t pt-3"><div><p className="font-bold">Venda · {currency(sale.total)}</p><p className="text-xs text-muted">{formatOrganizationDateTime(sale.soldAt, organization.timezone)} · {sale.status !== "completed" ? "Cancelada / estornada" : sale.paymentStatus === "received" ? "Pagamento recebido" : "Pagamento pendente"}</p></div><Link className="secondary-button" href={`/recibo/${sale.receiptToken}`} target="_blank">Abrir recibo</Link></div>)}
       {extras.map((extra) => <div key={extra.id} className="mt-3 border-t pt-3"><p className="font-bold">{extra.description} · {currency(extra.amountInCents)}</p><p className="text-xs text-muted">{formatOrganizationDateTime(extra.createdAt, organization.timezone)} · {extra.status === "received" ? "Pagamento recebido" : extra.status}</p></div>)}

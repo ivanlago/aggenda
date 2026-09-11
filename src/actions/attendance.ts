@@ -62,5 +62,7 @@ export async function updateAttendanceStatus(data: FormData) {
   const result = await updateAppointmentStatus(data);
   revalidatePath(`/atendimento/${appointment.id}`);
   revalidatePath("/agenda");
+  revalidatePath(`/clientes/${appointment.clientId}`);
+  revalidatePath("/pacotes");
   return result;
 }

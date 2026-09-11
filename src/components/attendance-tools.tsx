@@ -8,7 +8,7 @@ const tools = [
   { id: "atestado", label: "Atestado Médico", icon: FileHeart },
   { id: "acompanhamento", label: "Declaração de Acompanhamento", icon: Users },
   { id: "exames", label: "Guia de Exames", icon: ClipboardPlus },
-  { id: "orcamento", label: "Orçamento", icon: Receipt },
+  { id: "orcamento", label: "Venda/Orçamento", icon: Receipt },
 ] as const;
 
 type ToolId = (typeof tools)[number]["id"];

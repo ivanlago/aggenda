@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { consumedPackageQuantity } from "@/lib/package-remaining";
 import { PackageCheck, Power, PowerOff } from "lucide-react";
 
 import {
@@ -65,7 +66,7 @@ export default async function PackagesPage() {
         clientPackageId: clientPackageBalances.clientPackageId,
         serviceName: services.name,
         total: clientPackageBalances.totalQuantity,
-        used: clientPackageBalances.usedQuantity,
+        used: consumedPackageQuantity,
       }).from(clientPackageBalances)
         .innerJoin(services, eq(services.id, clientPackageBalances.serviceId))
         .where(eq(clientPackageBalances.organizationId, organization.id)),

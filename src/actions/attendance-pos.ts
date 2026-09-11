@@ -4,13 +4,39 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
-import { financialEntries, packageUsages } from "@/db/schema";
+import { appointments, financialEntries, packageUsages } from "@/db/schema";
+import { reservePackageSession } from "@/lib/package-balance";
 import { requireAttendance } from "@/lib/attendance";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { organizationDate } from "@/lib/appointment-safety";
 import { writeAuditLog } from "@/lib/audit";
 import { registerAppointmentPayment } from "@/actions/app";
 import { attendancePaymentState } from "@/lib/attendance-payment";
+
+export async function selectAttendancePackage(data: FormData) {
+  const { appointment, organization, session } = await requireAttendance(String(data.get("appointmentId") ?? ""));
+  assertOrganizationPermission(organization.role, "appointments.manage");
+  const clientPackageId = z.uuid().safeParse(data.get("clientPackageId"));
+  if (!clientPackageId.success) return { error: "Selecione um pacote válido." };
+  try {
+    await db.transaction(async (tx) => {
+      const [current] = await tx.select().from(appointments).where(and(eq(appointments.id, appointment.id), eq(appointments.organizationId, organization.id))).limit(1).for("update");
+      if (!current || !["scheduled", "confirmed"].includes(current.status)) throw new Error("Vincule o pacote antes de concluir o atendimento.");
+      const [payment] = await tx.select().from(financialEntries).where(and(eq(financialEntries.appointmentId, appointment.id), eq(financialEntries.organizationId, organization.id))).limit(1).for("update");
+      if (payment?.status === "received") throw new Error("O procedimento já foi pago e não pode ser abatido de um pacote.");
+      const [usage] = await tx.select().from(packageUsages).where(eq(packageUsages.appointmentId, appointment.id));
+      if (usage) throw new Error("Este atendimento já possui um vínculo com pacote. Atualize a página.");
+      await reservePackageSession({ appointmentId: appointment.id, organizationId: organization.id, clientId: current.clientId, serviceId: current.serviceId, clientPackageId: clientPackageId.data }, tx as unknown as typeof db);
+      await tx.update(appointments).set({ priceInCents: 0, updatedAt: new Date() }).where(eq(appointments.id, appointment.id));
+      await tx.delete(financialEntries).where(and(eq(financialEntries.appointmentId, appointment.id), eq(financialEntries.organizationId, organization.id)));
+    });
+  } catch (error) { return { error: error instanceof Error ? error.message : "Não foi possível vincular o pacote." }; }
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "package:reserve", entityType: "appointment", entityId: appointment.id, details: { clientPackageId: clientPackageId.data } });
+  revalidatePath(`/atendimento/${appointment.id}`);
+  revalidatePath(`/clientes/${appointment.clientId}`);
+  revalidatePath("/pacotes");
+  revalidatePath("/agenda");
+}
 
 export async function payAttendance(data: FormData) {
   const { appointment, organization } = await requireAttendance(String(data.get("appointmentId") ?? ""));

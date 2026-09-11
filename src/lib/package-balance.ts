@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -19,10 +19,10 @@ export async function reservePackageSession({
   clientId: string;
   serviceId: string;
   clientPackageId: string;
-}) {
-  await db.transaction(async (tx) => {
+}, executor: typeof db = db) {
+  await executor.transaction(async (tx) => {
     const [balance] = await tx
-      .select({ id: clientPackageBalances.id })
+      .select({ id: clientPackageBalances.id, total: clientPackageBalances.totalQuantity, used: clientPackageBalances.usedQuantity })
       .from(clientPackageBalances)
       .innerJoin(
         clientPackages,
@@ -44,19 +44,8 @@ export async function reservePackageSession({
       .limit(1).for("update", { of: clientPackages });
     if (!balance) throw new Error("O pacote selecionado não é válido para este cliente e serviço.");
 
-    const [updated] = await tx
-      .update(clientPackageBalances)
-      .set({
-        usedQuantity: sql`${clientPackageBalances.usedQuantity} + 1`,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(clientPackageBalances.id, balance.id),
-          lt(clientPackageBalances.usedQuantity, clientPackageBalances.totalQuantity)
-        )
-      )
-      .returning({ id: clientPackageBalances.id });
+    // Legacy usedQuantity tracks commitments (reserved + consumed), not consumption alone.
+    const [updated] = await tx.update(clientPackageBalances).set({ usedQuantity: sql`${clientPackageBalances.usedQuantity} + 1`, updatedAt: new Date() }).where(and(eq(clientPackageBalances.id, balance.id), sql`${clientPackageBalances.usedQuantity} < ${clientPackageBalances.totalQuantity}`)).returning({ id: clientPackageBalances.id });
     if (!updated) throw new Error("Este pacote não possui saldo disponível para o serviço.");
 
     await tx.insert(packageUsages).values({
@@ -71,17 +60,20 @@ export async function reservePackageSession({
 
 export async function reconcilePackageUsage(
   appointmentId: string,
-  status: "scheduled" | "confirmed" | "cancelled" | "completed" | "no_show"
+  status: "scheduled" | "confirmed" | "cancelled" | "completed" | "no_show",
+  executor: typeof db = db,
 ) {
-  await db.transaction(async (tx) => {
+  await executor.transaction(async (tx) => {
     const [usage] = await tx
       .select()
       .from(packageUsages)
       .where(eq(packageUsages.appointmentId, appointmentId))
-      .limit(1);
+      .limit(1).for("update");
     if (!usage) return;
-
-    if (status === "cancelled" && usage.status !== "reversed") {
+    await tx.execute(sql`select id from client_packages where id = ${usage.clientPackageId} for update`);
+    const target = status === "completed" ? "consumed" : status === "cancelled" || status === "no_show" ? "reversed" : "reserved";
+    if (usage.status === target) return;
+    if (target === "reversed" && usage.status !== "reversed") {
       await tx
         .update(clientPackageBalances)
         .set({
@@ -89,18 +81,11 @@ export async function reconcilePackageUsage(
           updatedAt: new Date(),
         })
         .where(eq(clientPackageBalances.id, usage.balanceId));
-      await tx
-        .update(packageUsages)
-        .set({ status: "reversed", reversedAt: new Date(), consumedAt: null })
-        .where(eq(packageUsages.id, usage.id));
-      return;
     }
-
-    if ((status === "completed" || status === "no_show") && usage.status === "reserved") {
-      await tx
-        .update(packageUsages)
-        .set({ status: "consumed", consumedAt: new Date(), reversedAt: null })
-        .where(eq(packageUsages.id, usage.id));
+    if (target !== "reversed" && usage.status === "reversed") {
+      const [updated] = await tx.update(clientPackageBalances).set({ usedQuantity: sql`${clientPackageBalances.usedQuantity} + ${usage.quantity}`, updatedAt: new Date() }).where(and(eq(clientPackageBalances.id, usage.balanceId), sql`${clientPackageBalances.usedQuantity} + ${usage.quantity} <= ${clientPackageBalances.totalQuantity}`)).returning({ id: clientPackageBalances.id });
+      if (!updated) throw new Error("Saldo insuficiente no pacote para concluir ou reabrir este atendimento.");
     }
+    await tx.update(packageUsages).set({ status: target, consumedAt: target === "consumed" ? new Date() : null, reversedAt: target === "reversed" ? new Date() : null }).where(eq(packageUsages.id, usage.id));
   });
 }

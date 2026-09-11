@@ -10,6 +10,7 @@ export function PosPackageNotice({ balances, timezone = "America/Bahia" }: { bal
       {balances.map((balance) => <li key={balance.id} className="rounded-xl bg-white/70 px-3 py-2">
         <p><strong>{balance.serviceName}: {balance.remaining} {balance.expired ? (balance.remaining === 1 ? "sessão restante" : "sessões restantes") : (balance.remaining === 1 ? "sessão disponível" : "sessões disponíveis")}</strong></p>
         <p className="text-xs">{balance.packageName} · {balance.expiresAt ? `${balance.expired ? "Venceu em" : "Válido até"} ${new Intl.DateTimeFormat("pt-BR", { timeZone: timezone }).format(new Date(balance.expiresAt))}` : "Sem vencimento"}</p>
+        {!!balance.reserved && <p className="text-xs">Saldo restante: {balance.remaining + balance.reserved} · Reservadas: {balance.reserved} (ainda não consumidas).</p>}
         {balance.expired && <p className="mt-1 text-xs font-bold text-red-700">VENCIDO — regularize a validade do pacote antes de utilizar o saldo.</p>}
       </li>)}
     </ul>

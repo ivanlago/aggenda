@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { consumedPackageQuantity } from "@/lib/package-remaining";
 import Link from "next/link";
 import Image from "next/image";
 import { Pencil } from "lucide-react";
@@ -111,7 +112,7 @@ export default async function ClientHistoryPage({
       packageName: servicePackages.name,
       serviceName: services.name,
       total: clientPackageBalances.totalQuantity,
-      used: clientPackageBalances.usedQuantity,
+      used: consumedPackageQuantity,
       purchasedAt: clientPackages.purchasedAt,
       expiresAt: clientPackages.expiresAt,
       status: clientPackages.status,

@@ -24,7 +24,7 @@ test("salva, recupera e converte orçamentos sem efeitos financeiros antes da ve
   try {
     await mkdir(path.dirname(bundlePath), { recursive: true });
     await build({
-      stdin: { contents: 'export { saveRetailQuote } from "./src/actions/retail-quotes"; export { registerRetailSale } from "./src/actions/retail";', resolveDir: process.cwd(), loader: "ts" },
+      stdin: { contents: 'export { saveRetailQuote } from "./src/actions/retail-quotes"; export { registerRetailSale } from "./src/actions/retail"; export { reservePackageSession } from "./src/lib/package-balance"; export { updateAppointmentAndInventory } from "./src/lib/inventory"; export { getPosPackageBalances } from "./src/lib/pos-package-balances";', resolveDir: process.cwd(), loader: "ts" },
       bundle: true, platform: "node", format: "cjs", packages: "external", outfile: bundlePath,
       plugins: [{ name: "test-boundaries", setup(builder) {
         const mocks: Record<string, string> = {
@@ -59,6 +59,9 @@ test("salva, recupera e converte orçamentos sem efeitos financeiros antes da ve
       const actions = createRequire(import.meta.url)(bundlePath) as {
         saveRetailQuote: (data: FormData) => Promise<{ error?: string; openUrl?: string }>;
         registerRetailSale: (data: FormData) => Promise<{ error?: string; openUrl?: string }>;
+        reservePackageSession: typeof import("../src/lib/package-balance").reservePackageSession;
+        updateAppointmentAndInventory: typeof import("../src/lib/inventory").updateAppointmentAndInventory;
+        getPosPackageBalances: typeof import("../src/lib/pos-package-balances").getPosPackageBalances;
       };
       const items = [{ variantId: variant.id, quantity: 2, discountInCents: 100 }, { variantId: `service:${service.id}`, quantity: 1, discountInCents: 0 }, { variantId: `package:${pack.id}`, quantity: 1, discountInCents: 0 }];
       const form = (values: Record<string, string>) => { const data = new FormData(); for (const [key, value] of Object.entries(values)) data.set(key, value); return data; };
@@ -108,6 +111,26 @@ test("salva, recupera e converte orçamentos sem efeitos financeiros antes da ve
       assert.ok(freeSales.some((entry) => entry.totalInCents === 0 && entry.discountInCents === 99000));
       await tx.update(schema.retailQuotes).set({ validUntil: "2000-01-01" }).where(eq(schema.retailQuotes.id, anonymousId));
       assert.match((await actions.registerRetailSale(form({ ...payment, quoteId: anonymousId }))).error ?? "", /vencido/);
+      const [ownedPackage] = await tx.select().from(schema.clientPackages).where(eq(schema.clientPackages.organizationId, org.id));
+      const [appointment] = await tx.insert(schema.appointments).values({ organizationId: org.id, clientId: client.id, serviceId: service.id, startsAt: new Date(), endsAt: new Date(Date.now() + 1800000) }).returning();
+      await actions.reservePackageSession({ organizationId: org.id, appointmentId: appointment.id, clientId: client.id, serviceId: service.id, clientPackageId: ownedPackage.id });
+      const packageState = async () => (await actions.getPosPackageBalances(org.id, client.id))[0];
+      const before = await packageState();
+      assert.equal(before.reserved, 1);
+      const statusInput = { organizationId: org.id, appointmentId: appointment.id, cancellationReason: null, userId };
+      await actions.updateAppointmentAndInventory({ ...statusInput, status: "completed" });
+      await actions.updateAppointmentAndInventory({ ...statusInput, status: "completed" });
+      const completed = await packageState();
+      assert.equal(completed.reserved, 0);
+      assert.equal(completed.remaining, before.remaining, "conclusão não compromete uma segunda sessão");
+      assert.equal(completed.remaining + completed.reserved!, before.remaining + before.reserved! - 1, "saldo restante só diminui ao concluir");
+      await actions.updateAppointmentAndInventory({ ...statusInput, status: "confirmed" });
+      assert.equal((await packageState()).reserved, 1);
+      await actions.updateAppointmentAndInventory({ ...statusInput, status: "no_show" });
+      assert.equal((await packageState()).remaining, before.remaining + 1, "falta libera a reserva");
+      await actions.updateAppointmentAndInventory({ ...statusInput, status: "confirmed" });
+      await actions.updateAppointmentAndInventory({ ...statusInput, status: "cancelled", cancellationReason: "Teste" });
+      assert.equal((await packageState()).remaining, before.remaining + 1);
       scope.quoteTestContext = { ...context, organization: { ...context.organization, id: randomUUID() } };
       assert.match((await actions.registerRetailSale(form(payment))).error ?? "", /não encontrado/);
       throw rollback;

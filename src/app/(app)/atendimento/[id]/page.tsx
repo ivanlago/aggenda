@@ -16,7 +16,7 @@ import { PageHeader } from "@/components/page-header";
 import { PrescriptionComposer } from "@/components/prescription-composer";
 import { CertificateComposer } from "@/components/certificate-composer";
 import { ExamRequestComposer } from "@/components/exam-request-composer";
-import { AttendanceQuote } from "@/components/attendance-quote";
+import { AttendancePackages } from "@/components/attendance-packages";
 import { CompanionDeclaration } from "@/components/attendance-extras";
 import { AppointmentStatusForm } from "@/components/appointment-status-form";
 
@@ -69,8 +69,7 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
       <Link className="secondary-button" href="/agenda">Voltar à Agenda</Link>
       <Link className="secondary-button" href={historyUrl}>Cadastro e histórico completo</Link>
       <Link className="secondary-button" href={`${historyUrl}?section=photos#fotografias-clinicas`}>Fotos clínicas e simulações</Link>
-      <a className="secondary-button" href="#pdv">Pagto/Venda</a>
-      <a className="secondary-button" href="#anamnese">Anamnese</a><a className="secondary-button" href="#anotacoes">Anotações</a><a className="secondary-button" href="#documentos">Documentos e orçamento</a>
+      <a className="secondary-button" href="#anamnese">Anamnese</a><a className="secondary-button" href="#anotacoes">Anotações</a><a className="secondary-button" href="#documentos">Ferramentas de trabalho</a>
     </nav>
     <div className="grid gap-5 lg:grid-cols-3">
       <section className="panel lg:col-span-2">
@@ -86,22 +85,24 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
         {canWrite && <details className="mt-4"><summary className="cursor-pointer font-bold text-brand">+ Registrar / atualizar anamnese</summary><ActionForm action={saveAttendanceNote} successMessage="Anamnese salva." className="mt-3 grid gap-3"><input type="hidden" name="appointmentId" value={id} /><input type="hidden" name="entryType" value="anamnesis" /><label className="grid gap-2 text-sm font-bold">Anamnese atualizada<textarea className="field min-h-40" name="content" required minLength={2} maxLength={30000} placeholder="Queixa e objetivo; alergias; medicamentos; condições de saúde; procedimentos anteriores; demais informações relatadas." /></label><button className="primary-button w-fit">Salvar nova anamnese</button></ActionForm></details>}
       </section>
       <section id="anotacoes" className="panel scroll-mt-6 lg:col-span-3"><h2 className="text-lg font-extrabold">Anotações e evolução</h2>{canWrite && <ActionForm action={saveAttendanceNote} successMessage="Anotação salva no atendimento e no histórico." className="mt-4 grid gap-3"><input type="hidden" name="appointmentId" value={id} /><label className="grid gap-2 text-sm font-bold">Registro do atendimento<textarea className="field min-h-40" name="content" required minLength={2} maxLength={30000} placeholder="Avaliação, procedimento realizado, produtos e lotes utilizados, intercorrências, orientações e plano de retorno." /></label><button className="primary-button w-fit">Salvar anotação</button></ActionForm>}
-        {visibleEntries.filter((entry) => entry.appointmentId === id && entry.entryType !== "anamnesis").map((entry) => <article key={entry.id} className="mt-4 border-t pt-3"><p className="text-xs text-muted">{formatOrganizationDateTime(entry.occurredAt, organization.timezone)}</p><p className="mt-2 whitespace-pre-wrap text-sm">{entry.content}</p></article>)}
+        {visibleEntries.filter((entry) => entry.appointmentId === id && entry.entryType !== "anamnesis").map((entry) => <article key={entry.id} className="mt-4 border-t pt-3">
+          {entry.electronicDocumentId ? <p className="text-sm"><span className="text-muted">{formatOrganizationDateTime(entry.occurredAt, organization.timezone)}</span> · <span className="font-bold">{entry.title || "Documento emitido"}</span></p> : <><p className="text-xs text-muted">{formatOrganizationDateTime(entry.occurredAt, organization.timezone)}</p><p className="mt-2 whitespace-pre-wrap text-sm">{entry.content}</p></>}
+        </article>)}
       </section>
     </div>
+    <AttendancePackages appointmentId={id} />
     <section id="documentos" className="mt-5 scroll-mt-6">
-      {canIssue && professional ? <div className="grid gap-4">
+      <div className="grid gap-4">
         <AttendanceTools forms={{
-          receituario: templateFor("prescription") ? documentForm(<PrescriptionComposer templateId={templateFor("prescription")!.id} organizationName={organization.name} clients={clientOptions} professionals={professionalOptions} initial={initial} fixedParticipants />) : missingTemplate,
-          atestado: templateFor("certificate") ? documentForm(<CertificateComposer templateId={templateFor("certificate")!.id} clients={clientOptions} professionals={professionalOptions} initial={initial} fixedParticipants />) : missingTemplate,
-          acompanhamento: documentForm(<CompanionDeclaration clientName={client.name} date={appointment.startsAt.toLocaleDateString("pt-BR", { timeZone: organization.timezone })} />),
-          exames: templateFor("exam_request") ? documentForm(<ExamRequestComposer templateId={templateFor("exam_request")!.id} organizationName={organization.name} clients={clientOptions} professionals={professionalOptions} procedures={procedures} initial={initial} fixedParticipants />) : missingTemplate,
-          orcamento: <AttendanceQuote appointmentId={id} />,
+          receituario: canIssue && professional && templateFor("prescription") ? documentForm(<PrescriptionComposer templateId={templateFor("prescription")!.id} organizationName={organization.name} clients={clientOptions} professionals={professionalOptions} initial={initial} fixedParticipants />) : missingTemplate,
+          atestado: canIssue && professional && templateFor("certificate") ? documentForm(<CertificateComposer templateId={templateFor("certificate")!.id} clients={clientOptions} professionals={professionalOptions} initial={initial} fixedParticipants />) : missingTemplate,
+          acompanhamento: canIssue && professional ? documentForm(<CompanionDeclaration clientName={client.name} date={appointment.startsAt.toLocaleDateString("pt-BR", { timeZone: organization.timezone })} />) : missingTemplate,
+          exames: canIssue && professional && templateFor("exam_request") ? documentForm(<ExamRequestComposer templateId={templateFor("exam_request")!.id} organizationName={organization.name} clients={clientOptions} professionals={professionalOptions} procedures={procedures} initial={initial} fixedParticipants />) : missingTemplate,
+          orcamento: <AttendancePos appointmentId={id} />,
         }} />
-      </div> : <p className="panel text-sm text-muted">{!professional ? "Vincule um profissional na Agenda para emitir documentos." : "Seu perfil não possui permissão para emitir documentos."}</p>}
+      </div>
       {canReadDocuments && <section className="panel mt-4"><h3 className="font-extrabold">Documentos do cliente</h3>{documents.filter((document) => ["issued", "signed"].includes(document.status)).map((document) => <div key={document.id} className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3"><div><p className="font-bold">{document.title}</p><p className="text-xs text-muted">{formatOrganizationDateTime(document.createdAt, organization.timezone)}{document.structuredData?.appointmentId === id ? " · Neste atendimento" : ""}</p></div><Link className="secondary-button" href={`/api/documents/${document.id}/pdf`}>Abrir PDF</Link></div>)}</section>}
     </section>
-    <AttendancePos appointmentId={id} />
     {canWrite && <section className="panel mt-5"><h2 className="mb-3 text-lg font-extrabold">Situação do atendimento</h2><AppointmentStatusForm action={updateAttendanceStatus} appointmentId={id} initialStatus={appointment.status} initialCancellationReason={appointment.cancellationReason} statuses={statuses} /></section>}
   </div>;
 }

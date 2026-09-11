@@ -1,11 +1,13 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
+import { reconcilePackageUsage } from "@/lib/package-balance";
 import { appointmentInventoryConsumptions, appointments, inventoryMovements, inventoryProducts, serviceInventoryItems } from "@/db/schema";
 
 export async function updateAppointmentAndInventory(input: { organizationId: string; appointmentId: string; status: "scheduled" | "confirmed" | "cancelled" | "completed" | "no_show"; cancellationReason: string | null; userId: string }) {
   return db.transaction(async (tx) => {
-    const [appointment] = await tx.select({ id: appointments.id, serviceId: appointments.serviceId, status: appointments.status }).from(appointments).where(and(eq(appointments.id, input.appointmentId), eq(appointments.organizationId, input.organizationId))).limit(1);
+    const [appointment] = await tx.select({ id: appointments.id, serviceId: appointments.serviceId, status: appointments.status }).from(appointments).where(and(eq(appointments.id, input.appointmentId), eq(appointments.organizationId, input.organizationId))).limit(1).for("update");
     if (!appointment) return false;
+    await reconcilePackageUsage(input.appointmentId, input.status, tx as unknown as typeof db);
     if (input.status === "completed" && appointment.status !== "completed") {
       const recipe = await tx.select({ productId: serviceInventoryItems.productId, quantity: serviceInventoryItems.quantityMillis }).from(serviceInventoryItems).where(and(eq(serviceInventoryItems.organizationId, input.organizationId), eq(serviceInventoryItems.serviceId, appointment.serviceId)));
       if (recipe.length) {

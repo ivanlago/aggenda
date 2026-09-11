@@ -1270,7 +1270,7 @@ export async function updateAppointmentStatus(formData: FormData) {
     status === "cancelled"
       ? deleteAppointmentFromGoogleCalendar(appointmentId)
       : syncAppointmentToGoogleCalendar(appointmentId),
-    reconcilePackageUsage(appointmentId, status),
+    Promise.resolve(), // Package consumption is atomic with appointment status and inventory.
     syncAppointmentFinancialEntry(appointmentId),
     ...(status === "cancelled" || status === "confirmed"
       ? [enqueueAppointmentNotification(

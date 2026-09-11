@@ -11,7 +11,7 @@ type InitialPrescription = { clientId?: string; professionalId?: string; kind?: 
 
 const emptyMedication = (id: number): Medication => ({ id, name: "", presentation: "", route: "Uso oral", dosage: "", quantity: "", notes: "", tussCode: "" });
 
-export function PrescriptionComposer({ templateId, organizationName, clients, professionals, initial }: { templateId: string; organizationName: string; clients: Option[]; professionals: Option[]; initial?: InitialPrescription | null }) {
+export function PrescriptionComposer({ templateId, organizationName, clients, professionals, initial, fixedParticipants = false }: { templateId: string; organizationName: string; clients: Option[]; professionals: Option[]; fixedParticipants?: boolean; initial?: InitialPrescription | null }) {
   const [kind, setKind] = useState(initial?.kind ?? "Receituário simples");
   const [medications, setMedications] = useState<Medication[]>(initial?.medications?.length ? initial.medications.map((item, index) => ({ ...item, id: index + 1 })) : []);
   const [observations, setObservations] = useState(initial?.observations ?? "");
@@ -57,8 +57,8 @@ export function PrescriptionComposer({ templateId, organizationName, clients, pr
     <input type="hidden" name="content" value={content} />
     <input type="hidden" name="prescriptionData" value={JSON.stringify({ kind, medications: medications.map((item) => ({ name: item.name, presentation: item.presentation, route: item.route, dosage: item.dosage, quantity: item.quantity, notes: item.notes, tussCode: item.tussCode })), observations, includeDate })} />
     <div className="grid gap-3 md:grid-cols-2">
-      <label className="grid gap-1 text-sm font-bold">Paciente<select className="field" name="clientId" required value={clientId} onChange={(event) => setClientId(event.target.value)}><option value="" disabled>Selecione o paciente</option>{clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-      <label className="grid gap-1 text-sm font-bold">Profissional emissor<select className="field" name="professionalId" required value={professionalId} onChange={(event) => setProfessionalId(event.target.value)}><option value="" disabled>Selecione o profissional</option>{professionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      {fixedParticipants ? <><input type="hidden" name="clientId" value={clientId} /><input type="hidden" name="professionalId" value={professionalId} /></> : <><label className="grid gap-1 text-sm font-bold">Paciente<select className="field" name="clientId" required value={clientId} onChange={(event) => setClientId(event.target.value)}><option value="" disabled>Selecione o paciente</option>{clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      <label className="grid gap-1 text-sm font-bold">Profissional emissor<select className="field" name="professionalId" required value={professionalId} onChange={(event) => setProfessionalId(event.target.value)}><option value="" disabled>Selecione o profissional</option>{professionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></>}
       <label className="grid gap-1 text-sm font-bold">Tipo de receituário<select className="field" value={kind} onChange={(event) => setKind(event.target.value)}><option>Receituário simples</option><option>Receituário antimicrobiano</option><option>Receituário de controle especial</option></select></label>
       <label className="grid gap-1 text-sm font-bold">E-mail do paciente (opcional)<input className="field" name="patientEmail" type="email" placeholder="Usa o e-mail do cadastro se vazio" /></label>
     </div>

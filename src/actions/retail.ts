@@ -3,6 +3,7 @@
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireAttendance } from "@/lib/attendance";
+import { matchesQuoteItems } from "@/lib/retail-quote-items";
 import { splitPosPackagePrice } from "@/lib/pos-pricing";
 import { splitCheckoutTotal } from "@/lib/checkout-totals";
 
@@ -22,7 +23,7 @@ import {
   retailProducts,
   retailSaleItems,
   retailSalePayments,
-  retailSales,
+  retailSales, retailQuotes, clientHistoryEntries,
   serviceInventoryItems,
   whatsappChannels,
 } from "@/db/schema";
@@ -229,6 +230,11 @@ export async function registerRetailSale(data: FormData) {
   const attendance = attendanceId ? await requireAttendance(attendanceId) : null;
   const scopedCheckout = attendance && (organization.role === "professional" || hasOrganizationPermission(organization.role, "finance.manage"));
   if (!scopedCheckout && !hasOrganizationPermission(organization.role, "sales.sell") && !hasOrganizationPermission(organization.role, "inventory.manage")) assertOrganizationPermission(organization.role, "sales.sell");
+  const quoteId = text(data, "quoteId");
+  const [sourceQuote] = quoteId ? await db.select().from(retailQuotes).where(and(eq(retailQuotes.id, quoteId), eq(retailQuotes.organizationId, organization.id))).limit(1) : [];
+  if (quoteId && !sourceQuote) return { error: "Orçamento não encontrado." };
+  if (sourceQuote?.saleId) return { error: "Este orçamento já foi convertido em venda." };
+  if (sourceQuote && sourceQuote.validUntil < organizationDate(new Date(), organization.timezone)) return { error: "Orçamento vencido. Crie um novo orçamento antes de converter." };
   let parsed: SaleInputItem[];
   try { parsed = JSON.parse(text(data, "items")); } catch { throw new Error("Itens da venda inválidos."); }
   if (!Array.isArray(parsed) || !parsed.length || parsed.length > 50) throw new Error("Adicione ao menos um produto à venda.");
@@ -243,7 +249,7 @@ export async function registerRetailSale(data: FormData) {
     grouped.set(variantId, { quantity: current.quantity + quantity, discountInCents: current.discountInCents + discountInCents });
   }
   const hasItemDiscount = [...grouped.values()].some((item) => item.discountInCents > 0);
-  if (hasItemDiscount) assertOrganizationPermission(organization.role, "sales.discount");
+  if (hasItemDiscount && !sourceQuote) assertOrganizationPermission(organization.role, "sales.discount");
   const serviceIds = [...grouped.keys()].filter((id) => id.startsWith("service:")).map((id) => id.slice(8));
   const packageIds = [...grouped.keys()].filter((id) => id.startsWith("package:")).map((id) => id.slice(8));
   const variantIds = [...grouped.keys()].filter((id) => !id.includes(":"));
@@ -271,12 +277,19 @@ export async function registerRetailSale(data: FormData) {
     return { method, amountInCents, otherPaymentMethod };
   });
   const paymentMethod = normalizedPayments.length > 1 ? "mixed" : normalizedPayments[0].method;
-  const received = data.get("received") === "on";
-  if (appointmentKeys.length && !received) throw new Error("Confirme o pagamento recebido para quitar o procedimento.");
-  if (packageIds.length && !received) throw new Error("Confirme o pagamento recebido para liberar os pacotes ao cliente.");
+  // Concluir a venda representa a confirmação de recebimento do valor total.
+  const received = true;
   const today = organizationDate(new Date(), organization.timezone);
 
   const createdSale = await db.transaction(async (tx) => {
+    if (sourceQuote) {
+      const [lockedQuote] = await tx.select().from(retailQuotes).where(and(eq(retailQuotes.id, sourceQuote.id), eq(retailQuotes.organizationId, organization.id))).for("update");
+      if (!lockedQuote || lockedQuote.saleId) throw new Error("Este orçamento já foi convertido em venda.");
+      if (!matchesQuoteItems([...grouped].map(([variantId, item]) => ({ variantId, ...item })), lockedQuote.items)) throw new Error("Os itens devem corresponder ao orçamento salvo.");
+      if (lockedQuote.clientId && lockedQuote.clientId !== clientId) throw new Error("Use o cliente identificado no orçamento.");
+      if (attendanceId) throw new Error("Converta o orçamento pela página Venda e orçamento.");
+    }
+    const quotedPrices = new Map(sourceQuote?.items.map((item) => [item.variantId, item.unitPriceInCents]) ?? []);
     let appointmentLine: { id: string; serviceId: string; packageId: string | null; productName: string; variantName: string; price: number | null } | null = null;
     if (appointmentKeys.length && attendance) {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`attendance-payment:${attendanceId}`}, 0))`);
@@ -304,7 +317,8 @@ export async function registerRetailSale(data: FormData) {
     const stock = await tx.select({ id: inventoryProducts.id, balance: inventoryProducts.currentQuantityMillis, cost: inventoryProducts.costInCents }).from(inventoryProducts).where(and(
       eq(inventoryProducts.organizationId, organization.id), inArray(inventoryProducts.id, stockIds), eq(inventoryProducts.isActive, true),
     ));
-    const productLines = variants.map((variant) => {
+    const productLines = variants.map((catalogVariant) => {
+      const variant = { ...catalogVariant, price: quotedPrices.get(catalogVariant.id) ?? catalogVariant.price };
       const requestedLine = grouped.get(variant.id)!;
       const requested = requestedLine.quantity;
       const balance = stock.find((item) => item.id === variant.inventoryProductId)?.balance;
@@ -322,7 +336,8 @@ export async function registerRetailSale(data: FormData) {
       ...(appointmentLine ? [appointmentLine] : []),
       ...procedureRows.map((item) => ({ id: `service:${item.id}`, serviceId: item.id, packageId: null as string | null, productName: item.name, variantName: "Procedimento", price: item.priceInCents })),
       ...packageRows.map((item) => ({ id: `package:${item.id}`, serviceId: null as string | null, packageId: item.id, productName: item.name, variantName: "Pacote", price: item.priceInCents })),
-    ].map((item) => {
+    ].map((catalogItem) => {
+      const item = { ...catalogItem, price: quotedPrices.get(catalogItem.id) ?? catalogItem.price };
       const requested = grouped.get(item.id)!;
       if (item.price == null || item.price < 0 || requested.discountInCents > item.price * requested.quantity) throw new Error("Revise o preço e desconto do procedimento ou pacote.");
       if (item.packageId && requested.quantity > 100) throw new Error("Limite de 100 pacotes por item.");
@@ -351,7 +366,7 @@ export async function registerRetailSale(data: FormData) {
         paymentMethod, clientId, notes: [text(data, "notes"), ...normalizedPayments.filter((payment) => payment.method === "other").map((payment) => `Outros: ${payment.otherPaymentMethod}`)].filter(Boolean).join("\n") || null, createdByUserId: session.user.id,
     }).returning({ id: financialEntries.id }) : [{ id: appointmentFinancialEntryId }];
     const [sale] = await tx.insert(retailSales).values({
-      organizationId: organization.id, clientId, attendanceId, financialEntryId: financialEntry.id, appointmentFinancialEntryId, paymentMethod,
+      organizationId: organization.id, clientId, attendanceId: sourceQuote?.attendanceId ?? attendanceId, financialEntryId: financialEntry.id, appointmentFinancialEntryId, paymentMethod,
       receiptEmail, receiptPhone: receiptPhoneDigits,
       subtotalInCents, discountInCents, totalInCents, notes: text(data, "notes") || null,
       createdByUserId: session.user.id,
@@ -388,6 +403,10 @@ export async function registerRetailSale(data: FormData) {
         await tx.insert(clientPackageBalances).values(contents.map((content) => ({ organizationId: organization.id, clientPackageId: assigned.id, serviceId: content.serviceId, totalQuantity: content.quantity })));
       }
     }
+    if (sourceQuote) {
+      await tx.update(retailQuotes).set({ saleId: sale.id, convertedAt: new Date() }).where(eq(retailQuotes.id, sourceQuote.id));
+      if (clientId) await tx.insert(clientHistoryEntries).values({ organizationId: organization.id, clientId, authorUserId: session.user.id, appointmentId: sourceQuote.attendanceId, retailQuoteId: sourceQuote.id, entryType: "quote_conversion", title: "Orçamento convertido em venda", content: `Orçamento #${sourceQuote.id.slice(0, 8)} convertido na venda #${sale.id.slice(0, 8)}.` });
+    }
     return sale;
   });
   const receiptPath = `/recibo/${createdSale.receiptToken}`;
@@ -405,6 +424,7 @@ export async function registerRetailSale(data: FormData) {
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "retail_sale", entityId: createdSale.id });
   revalidatePath("/vendas"); revalidatePath("/produtos"); revalidatePath("/estoque"); revalidatePath("/financeiro");
   if (attendanceId) revalidatePath(`/atendimento/${attendanceId}`);
+  if (sourceQuote?.attendanceId) revalidatePath(`/atendimento/${sourceQuote.attendanceId}`);
   revalidatePath("/agenda"); revalidatePath("/dashboard");
   revalidatePath("/pacotes");
   if (clientId) revalidatePath(`/clientes/${clientId}`);

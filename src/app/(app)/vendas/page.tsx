@@ -1,6 +1,12 @@
+import { SalesWorkspace } from "@/components/sales-workspace";
+import { RetailQuoteForm } from "@/components/retail-quote-form";
+import { RetailQuoteLibrary } from "@/components/retail-quote-library";
+import { SalesHistoryTabs } from "@/components/sales-history-tabs";
+import { requireRetailQuote } from "@/lib/retail-quotes";
+import { organizationDate, organizationDayRange } from "@/lib/appointment-safety";
 import { getPosOfferings } from "@/lib/pos-catalog";
 import { getPosPackageBalances } from "@/lib/pos-package-balances";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lt } from "drizzle-orm";
 import { BadgeDollarSign, PackageCheck, ShoppingBag } from "lucide-react";
 import Link from "next/link";
 
@@ -16,20 +22,23 @@ import { requireOrganization } from "@/lib/session";
 
 const currency = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const paymentLabels: Record<string, string> = { pix: "PIX", card: "Cartões", cash: "Espécie", credit_card: "Crédito", debit_card: "Débito" };
-export const metadata = { title: "Vendas" };
+export const metadata = { title: "Venda e orçamento" };
 
-export default async function SalesPage() {
+export default async function SalesPage({ searchParams }: { searchParams: Promise<{ convert?: string; quote?: string; search?: string; page?: string; history?: string }> }) {
+  const params = await searchParams;
   const { organization } = await requireOrganization();
   const canSell = hasOrganizationPermission(organization.role, "sales.sell") || hasOrganizationPermission(organization.role, "inventory.manage");
   const canDiscount = hasOrganizationPermission(organization.role, "sales.discount");
   const canCancel = hasOrganizationPermission(organization.role, "sales.cancel");
+  const showAllHistory = params.history === "all";
+  const historyRange = organizationDayRange(new Date(), organization.timezone);
   const [variantRows, clientRows, sales, items, payments] = await Promise.all([
     db.select({ id: retailProductVariants.id, productName: retailProducts.name, variantName: retailProductVariants.name, barcode: retailProductVariants.barcode, priceInCents: retailProductVariants.salePriceInCents, stockMillis: inventoryProducts.currentQuantityMillis })
       .from(retailProductVariants).innerJoin(retailProducts, eq(retailProducts.id, retailProductVariants.productId)).innerJoin(inventoryProducts, eq(inventoryProducts.id, retailProductVariants.inventoryProductId))
       .where(and(eq(retailProductVariants.organizationId, organization.id), eq(retailProductVariants.isForSale, true), eq(retailProductVariants.isActive, true), eq(retailProducts.isActive, true), eq(inventoryProducts.isActive, true))).orderBy(asc(retailProducts.name), asc(retailProductVariants.name)),
     db.select({ id: clients.id, name: clients.name, email: clients.email, phone: clients.phone }).from(clients).where(eq(clients.organizationId, organization.id)).orderBy(asc(clients.name)),
     db.select({ id: retailSales.id, clientName: clients.name, operatorName: users.name, paymentMethod: retailSales.paymentMethod, receiptToken: retailSales.receiptToken, status: retailSales.status, subtotal: retailSales.subtotalInCents, discount: retailSales.discountInCents, total: retailSales.totalInCents, soldAt: retailSales.soldAt, cancellationReason: retailSales.cancellationReason })
-      .from(retailSales).leftJoin(clients, eq(clients.id, retailSales.clientId)).leftJoin(users, eq(users.id, retailSales.createdByUserId)).where(eq(retailSales.organizationId, organization.id)).orderBy(desc(retailSales.soldAt)).limit(30),
+      .from(retailSales).leftJoin(clients, eq(clients.id, retailSales.clientId)).leftJoin(users, eq(users.id, retailSales.createdByUserId)).where(and(eq(retailSales.organizationId, organization.id), !showAllHistory ? and(gte(retailSales.soldAt, historyRange.start), lt(retailSales.soldAt, historyRange.end)) : undefined)).orderBy(desc(retailSales.soldAt)).limit(showAllHistory ? 30 : 20),
     db.select({ saleId: retailSaleItems.saleId, productName: retailSaleItems.productName, variantName: retailSaleItems.variantName, quantity: retailSaleItems.quantity, total: retailSaleItems.totalInCents })
       .from(retailSaleItems).where(eq(retailSaleItems.organizationId, organization.id)),
     db.select({ saleId: retailSalePayments.saleId, method: retailSalePayments.method, amount: retailSalePayments.amountInCents }).from(retailSalePayments).where(eq(retailSalePayments.organizationId, organization.id)),
@@ -39,6 +48,15 @@ export default async function SalesPage() {
     getPosPackageBalances(organization.id),
   ]) : [[], []];
   const variants = variantRows.map((item) => ({ id: item.id, label: `${item.productName} · ${item.variantName}`, barcode: item.barcode, priceInCents: item.priceInCents, stock: Math.floor(item.stockMillis / 1000) })).filter((item) => item.stock > 0);
+  const quoteProducts = variantRows.map((item) => ({ id: item.id, label: `${item.productName} · ${item.variantName}`, barcode: item.barcode, priceInCents: item.priceInCents, stock: Math.floor(item.stockMillis / 1000), kind: "product" as const }));
+  const sourceQuote = params.convert && canSell ? (await requireRetailQuote(params.convert)).quote : null;
+  const today = organizationDate(new Date(), organization.timezone);
+  const conversionBlocked = sourceQuote?.saleId ? "Este orçamento já foi convertido em venda." : sourceQuote && sourceQuote.validUntil < today ? "Este orçamento está vencido." : null;
+  const saleCatalog = sourceQuote ? sourceQuote.items.map((line) => {
+    const current = [...quoteProducts, ...offerings].find((item) => item.id === line.variantId);
+    return { id: line.variantId, label: line.label, barcode: current?.barcode ?? null, priceInCents: line.unitPriceInCents, stock: current?.stock ?? 0, kind: line.kind, unavailableReason: !current ? "Item indisponível no catálogo." : "unavailableReason" in current ? current.unavailableReason : undefined };
+  }) : variants;
+  const missingStock = sourceQuote?.items.some((line) => { const item = saleCatalog.find((entry) => entry.id === line.variantId); return !item || item.stock < line.quantity || ("unavailableReason" in item && Boolean(item.unavailableReason)); });
   const totalSold = sales.reduce((sum, sale) => sum + (sale.status === "completed" ? sale.total : 0), 0);
   const visibleSaleIds = new Set(sales.map((sale) => sale.id));
   const itemsBySale = new Map<string, typeof items>();
@@ -50,20 +68,20 @@ export default async function SalesPage() {
   }
 
   return <div className="page-wrap">
-    <PageHeader eyebrow="Varejo" title="Venda" description="Venda produtos, procedimentos e pacotes com pagamento, recibo e atualização dos saldos." />
+    <PageHeader eyebrow="Varejo" title="Venda e orçamento" description="Venda produtos, procedimentos e pacotes ou prepare um orçamento para converter em venda depois." />
     <nav className="mb-5 flex flex-wrap gap-2"><Link className="secondary-button" href="/vendas/historico">Histórico completo</Link><Link className="secondary-button" href="/vendas/relatorios">Relatórios do PDV</Link></nav>
     <section className="grid gap-4 sm:grid-cols-3">
       <article className="panel"><ShoppingBag className="size-5 text-brand" /><p className="mt-4 text-3xl font-extrabold">{sales.length}</p><p className="text-sm text-muted">vendas recentes</p></article>
       <article className="panel"><PackageCheck className="size-5 text-brand" /><p className="mt-4 text-3xl font-extrabold">{unitsSold}</p><p className="text-sm text-muted">unidades vendidas</p></article>
       <article className="panel"><BadgeDollarSign className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{currency(totalSold)}</p><p className="text-sm text-muted">nas vendas exibidas</p></article>
     </section>
-    {canSell && <section className="mt-5"><RetailSaleForm offerings={offerings} variants={variants} clients={clientRows} canDiscount={canDiscount} packageBalances={packageBalances} timezone={organization.timezone} /></section>}
-    <section className="panel mt-5"><h2 className="text-lg font-extrabold">Histórico de vendas</h2><div className="mt-4 divide-y">
+    {canSell && <SalesWorkspace key={sourceQuote?.id ?? "new"} sale={conversionBlocked || missingStock ? <p className="panel text-sm text-amber-800">{conversionBlocked || "Há itens indisponíveis ou sem estoque suficiente. Atualize o catálogo/estoque antes de converter este orçamento."}</p> : <RetailSaleForm quoteId={sourceQuote?.id} initialClientId={sourceQuote?.clientId ?? undefined} initialCart={sourceQuote?.items} offerings={sourceQuote ? [] : offerings} variants={saleCatalog} clients={clientRows} canDiscount={canDiscount} packageBalances={packageBalances} timezone={organization.timezone} />} quote={<RetailQuoteForm catalog={[...quoteProducts, ...offerings]} clients={clientRows} canDiscount={canDiscount} defaultValidity={organizationDate(new Date(new Date().getTime() + 30 * 86400000), organization.timezone)} />} />}
+    <SalesHistoryTabs initialTab={params.quote ? "quotes" : "sales"} quotes={<RetailQuoteLibrary selectedId={params.quote} search={params.search} page={Number(params.page ?? 1)} showAll={showAllHistory} />} sales={<section className="panel mt-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-extrabold">Vendas {showAllHistory ? "salvas" : "de hoje"}</h2><Link className="secondary-button" href={`/vendas?history=${showAllHistory ? "today" : "all"}#historico-vendas`}>{showAllHistory ? "Mostrar somente hoje" : "Ver anteriores"}</Link></div><div className="mt-4 divide-y">
       {sales.length === 0 && <p className="py-6 text-center text-sm text-muted">Nenhuma venda registrada.</p>}
       {sales.map((sale) => <article className="grid gap-3 py-4 lg:grid-cols-[1fr_auto]" key={sale.id}>
         <div><div className="flex flex-wrap items-center gap-2"><p className="font-extrabold">Venda #{sale.id.slice(0, 8)}</p><span className="status-pill">{sale.status === "completed" ? "Concluída" : sale.status === "refunded" ? "Estornada" : "Cancelada"}</span></div><p className="text-xs text-muted">{sale.clientName || "Cliente não identificado"} · {sale.soldAt.toLocaleString("pt-BR")} · operador {sale.operatorName || "—"}</p><p className="mt-2 text-sm">{(itemsBySale.get(sale.id) ?? []).map((item) => `${item.quantity}× ${item.productName} · ${item.variantName}`).join("; ")}</p><p className="mt-1 text-xs text-muted">{payments.filter((item) => item.saleId === sale.id).map((item) => `${paymentLabels[item.method] ?? item.method}: ${currency(item.amount)}`).join(" + ") || paymentLabels[sale.paymentMethod ?? ""] || "Pagamento não informado"}</p>{sale.cancellationReason && <p className="mt-1 text-xs text-red-700">Motivo: {sale.cancellationReason}</p>}</div>
         <div className="flex flex-wrap items-start gap-2 lg:justify-end"><div className="mr-2 lg:text-right"><p className="text-xl font-extrabold text-brand">{currency(sale.total)}</p>{sale.discount > 0 && <p className="text-xs text-muted">subtotal {currency(sale.subtotal)} · desconto {currency(sale.discount)}</p>}</div><Link className="secondary-button" href={`/recibo/${sale.receiptToken}`} target="_blank">Reimprimir</Link>{canCancel && sale.status === "completed" && <ActionForm action={reverseRetailSale} successMessage="Venda revertida e estoque devolvido." className="flex flex-wrap gap-2"><input type="hidden" name="saleId" value={sale.id} /><select className="field" name="operation"><option value="refund">Estorno/devolução</option><option value="cancel">Cancelamento</option></select><input className="field" name="reason" required minLength={5} placeholder="Motivo obrigatório" /><ConfirmSubmitButton className="secondary-button text-red-700" message="Confirmar a reversão? Produtos retornarão ao estoque e pacotes sem uso serão cancelados.">Reverter</ConfirmSubmitButton></ActionForm>}</div>
       </article>)}
-    </div></section>
+    </div></section>} />
   </div>;
 }

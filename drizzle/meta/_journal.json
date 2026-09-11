@@ -421,6 +421,13 @@
       "when": 1788909853030,
       "tag": "0059_unified_attendance_checkout",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1789153350019,
+      "tag": "0060_retail_quotes",
+      "breakpoints": true
     }
   ]
 }

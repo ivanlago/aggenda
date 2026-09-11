@@ -98,6 +98,7 @@ export default async function ClientHistoryPage({
       title: clientHistoryEntries.title,
       content: clientHistoryEntries.content,
       electronicDocumentId: clientHistoryEntries.electronicDocumentId,
+      retailQuoteId: clientHistoryEntries.retailQuoteId,
       occurredAt: clientHistoryEntries.occurredAt,
       createdAt: clientHistoryEntries.createdAt,
       author: users.name,
@@ -288,6 +289,7 @@ export default async function ClientHistoryPage({
               <span className="text-xs font-bold text-muted">{formatOrganizationDateTime(entry.occurredAt, organization.timezone)}</span>
             </div>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{entry.content}</p>
+            {entry.retailQuoteId && <div className="mt-3 flex flex-wrap gap-2"><Link className="secondary-button" href={`/api/quotes/${entry.retailQuoteId}/pdf`} target="_blank">Abrir orçamento em PDF</Link><Link className="secondary-button" href={`/vendas?quote=${entry.retailQuoteId}#orcamentos`}>Recuperar orçamento</Link></div>}
             <p className="mt-2 text-xs text-muted">Registrado por {entry.author} em {formatOrganizationDateTime(entry.createdAt, organization.timezone)}</p>
           </article>)}
           {!visibleEntries.length && <p className="empty-state">Nenhum registro adicionado.</p>}

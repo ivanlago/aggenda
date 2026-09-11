@@ -64,8 +64,8 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     { label: organization.clientLabelPlural, items: [
       { href: "/clientes", label: organization.clientLabelPlural, icon: UsersRound, permission: "clients.read" },
     ] },
-    { label: "Venda", items: [
-      { href: "/vendas", label: "Venda", icon: ShoppingCart, permission: "inventory.read" },
+    { label: "Venda e orçamento", items: [
+      { href: "/vendas", label: "Venda e orçamento", icon: ShoppingCart, permission: "inventory.read" },
     ] },
     { label: "Atendimento", items: [
       { href: "/servicos", label: organization.serviceLabelPlural, icon: Wrench, permission: "services.read" },

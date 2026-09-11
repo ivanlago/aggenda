@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { QuoteLine } from "@/lib/retail-quote-items";
 
 export const organizationRoleEnum = pgEnum("organization_role", [
   "owner",
@@ -666,6 +667,7 @@ export const clientHistoryEntries = pgTable(
     title: text("title"),
     content: text("content").notNull(),
     electronicDocumentId: uuid("electronic_document_id"),
+    retailQuoteId: uuid("retail_quote_id"),
     appointmentId: uuid("appointment_id"),
     occurredAt: timestamp("occurred_at").defaultNow().notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -1158,6 +1160,24 @@ export const retailSales = pgTable("retail_sales", {
   createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [uniqueIndex("retail_sales_receipt_token_unique").on(table.receiptToken), index("retail_sales_org_sold_idx").on(table.organizationId, table.soldAt)]);
+
+export const retailQuotes = pgTable("retail_quotes", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
+  clientName: text("client_name"),
+  attendanceId: uuid("attendance_id").references(() => appointments.id, { onDelete: "set null" }),
+  createdByUserId: text("created_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  items: jsonb("items").$type<QuoteLine[]>().notNull(),
+  validUntil: date("valid_until", { mode: "string" }).notNull(),
+  notes: text("notes"),
+  subtotalInCents: integer("subtotal_in_cents").notNull(),
+  discountInCents: integer("discount_in_cents").notNull(),
+  totalInCents: integer("total_in_cents").notNull(),
+  saleId: uuid("sale_id").references(() => retailSales.id, { onDelete: "restrict" }),
+  convertedAt: timestamp("converted_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [index("retail_quotes_org_created_idx").on(table.organizationId, table.createdAt), uniqueIndex("retail_quotes_sale_unique").on(table.saleId)]);
 
 export const retailSaleItems = pgTable("retail_sale_items", {
   id: uuid("id").defaultRandom().primaryKey(),

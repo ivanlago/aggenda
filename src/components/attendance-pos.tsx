@@ -18,7 +18,7 @@ export async function AttendancePos({ appointmentId }: { appointmentId: string }
   const canPay = hasOrganizationPermission(organization.role, "finance.manage");
   const canSell = organization.role === "professional" || canPay || hasOrganizationPermission(organization.role, "sales.sell") || hasOrganizationPermission(organization.role, "inventory.manage");
   const canReadFinance = canSell || hasOrganizationPermission(organization.role, "finance.read");
-  if (!canSell && !canReadFinance) return <section id="pdv" className="panel mt-5"><h2 className="text-xl font-extrabold">Pagamento/Venda</h2><p className="mt-2 text-sm text-muted">Seu perfil não possui acesso a vendas ou pagamentos.</p></section>;
+  if (!canSell && !canReadFinance) return <section id="pdv" className="panel mt-5"><p className="text-sm text-muted">Seu perfil não possui acesso a vendas ou pagamentos.</p></section>;
   const [[client], [service], paymentRows, usages, variantRows, sales, extras] = await Promise.all([
     db.select({ id: clients.id, name: clients.name, email: clients.email, phone: clients.phone }).from(clients).where(and(eq(clients.id, appointment.clientId), eq(clients.organizationId, organization.id))).limit(1),
     db.select({ name: services.name, price: services.priceInCents }).from(services).where(and(eq(services.id, appointment.serviceId), eq(services.organizationId, organization.id))).limit(1),
@@ -43,7 +43,7 @@ export async function AttendancePos({ appointmentId }: { appointmentId: string }
   const initialCart = paymentState === "pending" ? [{ variantId: `appointment:${appointment.id}`, quantity: 1, discountInCents: 0 }] : [];
   const offerings = [...catalog, ...(paymentState === "pending" ? [{ id: `appointment:${appointment.id}`, label: `${service.name} · Procedimento realizado`, barcode: null, priceInCents: amount, stock: 1, kind: "service" as const }] : [])];
   const variants = variantRows.map((variant) => ({ id: variant.id, label: `${variant.product} · ${variant.variant}`, barcode: variant.barcode, priceInCents: variant.priceInCents, stock: Math.floor(variant.stock / 1000) })).filter((variant) => variant.stock > 0);
-  return <section id="pdv" className="mt-5 scroll-mt-6"><h2 className="mb-3 text-xl font-extrabold">Pagamento/Venda</h2>
+  return <section id="pdv" className="mt-5 scroll-mt-6">
     {packageBalances.length > 0 && <div className="mb-4"><PosPackageNotice balances={packageBalances} timezone={organization.timezone} /></div>}
     {paymentState === "blocked" && <p className="mb-4 text-sm text-muted">Revise a situação do atendimento antes de cobrar o procedimento.</p>}
     {canSell && <details open={paymentState === "pending"} className="mb-4 rounded-2xl border bg-white p-4">

@@ -16,7 +16,8 @@ import { PageHeader } from "@/components/page-header";
 import { PrescriptionComposer } from "@/components/prescription-composer";
 import { CertificateComposer } from "@/components/certificate-composer";
 import { ExamRequestComposer } from "@/components/exam-request-composer";
-import { AttendanceQuote, CompanionDeclaration } from "@/components/attendance-extras";
+import { AttendanceQuote } from "@/components/attendance-quote";
+import { CompanionDeclaration } from "@/components/attendance-extras";
 import { AppointmentStatusForm } from "@/components/appointment-status-form";
 
 export const metadata = { title: "Atendimento" };
@@ -88,14 +89,14 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
         {visibleEntries.filter((entry) => entry.appointmentId === id && entry.entryType !== "anamnesis").map((entry) => <article key={entry.id} className="mt-4 border-t pt-3"><p className="text-xs text-muted">{formatOrganizationDateTime(entry.occurredAt, organization.timezone)}</p><p className="mt-2 whitespace-pre-wrap text-sm">{entry.content}</p></article>)}
       </section>
     </div>
-    <section id="documentos" className="mt-5 scroll-mt-6"><h2 className="mb-3 text-xl font-extrabold">Documentos e orçamento</h2>
+    <section id="documentos" className="mt-5 scroll-mt-6">
       {canIssue && professional ? <div className="grid gap-4">
         <AttendanceTools forms={{
-          receituario: templateFor("prescription") ? documentForm(<PrescriptionComposer templateId={templateFor("prescription")!.id} organizationName={organization.name} clients={clientOptions} professionals={professionalOptions} initial={initial} />) : missingTemplate,
-          atestado: templateFor("certificate") ? documentForm(<CertificateComposer templateId={templateFor("certificate")!.id} clients={clientOptions} professionals={professionalOptions} initial={initial} />) : missingTemplate,
+          receituario: templateFor("prescription") ? documentForm(<PrescriptionComposer templateId={templateFor("prescription")!.id} organizationName={organization.name} clients={clientOptions} professionals={professionalOptions} initial={initial} fixedParticipants />) : missingTemplate,
+          atestado: templateFor("certificate") ? documentForm(<CertificateComposer templateId={templateFor("certificate")!.id} clients={clientOptions} professionals={professionalOptions} initial={initial} fixedParticipants />) : missingTemplate,
           acompanhamento: documentForm(<CompanionDeclaration clientName={client.name} date={appointment.startsAt.toLocaleDateString("pt-BR", { timeZone: organization.timezone })} />),
-          exames: templateFor("exam_request") ? documentForm(<ExamRequestComposer templateId={templateFor("exam_request")!.id} organizationName={organization.name} clients={clientOptions} professionals={professionalOptions} procedures={procedures} initial={initial} />) : missingTemplate,
-          orcamento: documentForm(<AttendanceQuote service={service.name} price={price} />),
+          exames: templateFor("exam_request") ? documentForm(<ExamRequestComposer templateId={templateFor("exam_request")!.id} organizationName={organization.name} clients={clientOptions} professionals={professionalOptions} procedures={procedures} initial={initial} fixedParticipants />) : missingTemplate,
+          orcamento: <AttendanceQuote appointmentId={id} />,
         }} />
       </div> : <p className="panel text-sm text-muted">{!professional ? "Vincule um profissional na Agenda para emitir documentos." : "Seu perfil não possui permissão para emitir documentos."}</p>}
       {canReadDocuments && <section className="panel mt-4"><h3 className="font-extrabold">Documentos do cliente</h3>{documents.filter((document) => ["issued", "signed"].includes(document.status)).map((document) => <div key={document.id} className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3"><div><p className="font-bold">{document.title}</p><p className="text-xs text-muted">{formatOrganizationDateTime(document.createdAt, organization.timezone)}{document.structuredData?.appointmentId === id ? " · Neste atendimento" : ""}</p></div><Link className="secondary-button" href={`/api/documents/${document.id}/pdf`}>Abrir PDF</Link></div>)}</section>}

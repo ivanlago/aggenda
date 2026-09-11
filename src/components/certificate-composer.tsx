@@ -20,11 +20,11 @@ function longDate(value: string) {
   return `${date.getDate()} de ${monthNames[date.getMonth()]} de ${date.getFullYear()}`;
 }
 
-export function CertificateComposer({ templateId, clients, professionals, initial }: {
+export function CertificateComposer({ templateId, clients, professionals, initial, fixedParticipants = false }: {
   templateId: string;
   clients: Option[];
   professionals: Option[];
-  initial?: { clientId: string; professionalId: string; cpf?: string | null };
+  fixedParticipants?: boolean; initial?: { clientId: string; professionalId: string; cpf?: string | null };
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [clientId, setClientId] = useState(initial?.clientId ?? "");
@@ -57,8 +57,8 @@ export function CertificateComposer({ templateId, clients, professionals, initia
     <input type="hidden" name="templateId" value={templateId} />
     <input type="hidden" name="title" value="ATESTADO MÉDICO" />
     <input type="hidden" name="content" value={content} />
-    <select className="field" name="clientId" required value={clientId} onChange={(event) => { setClientId(event.target.value); setValidationMessage(""); }}><option value="" disabled>Paciente</option>{clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
-    <select className="field" name="professionalId" required value={professionalId} onChange={(event) => { setProfessionalId(event.target.value); setValidationMessage(""); }}><option value="" disabled>Médico emissor</option>{professionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+    {fixedParticipants ? <><input type="hidden" name="clientId" value={clientId} /><input type="hidden" name="professionalId" value={professionalId} /></> : <><select className="field" name="clientId" required value={clientId} onChange={(event) => { setClientId(event.target.value); setValidationMessage(""); }}><option value="" disabled>Paciente</option>{clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+    <select className="field" name="professionalId" required value={professionalId} onChange={(event) => { setProfessionalId(event.target.value); setValidationMessage(""); }}><option value="" disabled>Médico emissor</option>{professionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></>}
     <label className="grid gap-1 text-sm font-bold">CPF do paciente<input className="field" inputMode="numeric" value={cpf} onChange={(event) => setCpf(formatCpf(event.target.value))} placeholder="000.000.000-00" required /></label>
     <div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1 text-sm font-bold">Dias de afastamento<input className="field" type="number" min="1" max="365" value={days} onChange={(event) => setDays(event.target.value)} required /></label><label className="grid gap-1 text-sm font-bold">Número por extenso<input className="field" value={daysInWords} onChange={(event) => setDaysInWords(event.target.value)} placeholder="Ex.: três" required /></label></div>
     <div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1 text-sm font-bold">Início do afastamento<input className="field" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} required /></label><label className="grid gap-1 text-sm font-bold">Cidade de emissão<input className="field" value={city} onChange={(event) => setCity(event.target.value)} placeholder="Ex.: Salvador" required /></label></div>

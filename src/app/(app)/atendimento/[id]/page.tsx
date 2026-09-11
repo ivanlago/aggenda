@@ -1,3 +1,4 @@
+import { AttendanceTools } from "@/components/attendance-tools";
 import { AttendancePos } from "@/components/attendance-pos";
 import { and, desc, eq } from "drizzle-orm";
 import Link from "next/link";
@@ -93,10 +94,12 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
     </div>
     <section id="documentos" className="mt-5 scroll-mt-6"><h2 className="mb-3 text-xl font-extrabold">Documentos e orçamento</h2>
       {canIssue && professional ? <div className="grid gap-4">
-        <Panel title="Receituário" id="receituario">{templateFor("prescription") ? documentForm(<PrescriptionComposer templateId={templateFor("prescription")!.id} organizationName={organization.name} clients={clientOptions} professionals={professionalOptions} initial={initial} />) : missingTemplate}</Panel>
-        <Panel title="Atestado médico" id="atestado">{templateFor("certificate") ? documentForm(<CertificateComposer templateId={templateFor("certificate")!.id} clients={clientOptions} professionals={professionalOptions} initial={initial} />) : missingTemplate}</Panel>
-        <Panel title="Declaração de acompanhamento" id="acompanhamento">{documentForm(<CompanionDeclaration clientName={client.name} date={appointment.startsAt.toLocaleDateString("pt-BR", { timeZone: organization.timezone })} />)}</Panel>
-        <Panel title="Guia de exames" id="exames">{templateFor("exam_request") ? documentForm(<ExamRequestComposer templateId={templateFor("exam_request")!.id} organizationName={organization.name} clients={clientOptions} professionals={professionalOptions} procedures={procedures} initial={initial} />) : missingTemplate}</Panel>
+        <AttendanceTools forms={{
+          receituario: templateFor("prescription") ? documentForm(<PrescriptionComposer templateId={templateFor("prescription")!.id} organizationName={organization.name} clients={clientOptions} professionals={professionalOptions} initial={initial} />) : missingTemplate,
+          atestado: templateFor("certificate") ? documentForm(<CertificateComposer templateId={templateFor("certificate")!.id} clients={clientOptions} professionals={professionalOptions} initial={initial} />) : missingTemplate,
+          acompanhamento: documentForm(<CompanionDeclaration clientName={client.name} date={appointment.startsAt.toLocaleDateString("pt-BR", { timeZone: organization.timezone })} />),
+          exames: templateFor("exam_request") ? documentForm(<ExamRequestComposer templateId={templateFor("exam_request")!.id} organizationName={organization.name} clients={clientOptions} professionals={professionalOptions} procedures={procedures} initial={initial} />) : missingTemplate,
+        }} />
         <Panel title="Orçamento" id="orcamento">{documentForm(<AttendanceQuote service={service.name} price={price} />)}</Panel>
       </div> : <p className="panel text-sm text-muted">{!professional ? "Vincule um profissional na Agenda para emitir documentos." : "Seu perfil não possui permissão para emitir documentos."}</p>}
       {canReadDocuments && <section className="panel mt-4"><h3 className="font-extrabold">Documentos do cliente</h3>{documents.filter((document) => ["issued", "signed"].includes(document.status)).map((document) => <div key={document.id} className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3"><div><p className="font-bold">{document.title}</p><p className="text-xs text-muted">{formatOrganizationDateTime(document.createdAt, organization.timezone)}{document.structuredData?.appointmentId === id ? " · Neste atendimento" : ""}</p></div><Link className="secondary-button" href={`/api/documents/${document.id}/pdf`}>Abrir PDF</Link></div>)}</section>}

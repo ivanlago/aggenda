@@ -32,10 +32,6 @@ function calculateAge(birthDate: string | null) {
   return age >= 0 ? age : null;
 }
 
-function Panel({ title, children, id }: { title: string; children: ReactNode; id: string }) {
-  return <details id={id} className="panel scroll-mt-6"><summary className="cursor-pointer text-lg font-extrabold">{title}</summary><div className="mt-4">{children}</div></details>;
-}
-
 export default async function AttendancePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { appointment, organization } = await requireAttendance(id);
@@ -99,8 +95,8 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
           atestado: templateFor("certificate") ? documentForm(<CertificateComposer templateId={templateFor("certificate")!.id} clients={clientOptions} professionals={professionalOptions} initial={initial} />) : missingTemplate,
           acompanhamento: documentForm(<CompanionDeclaration clientName={client.name} date={appointment.startsAt.toLocaleDateString("pt-BR", { timeZone: organization.timezone })} />),
           exames: templateFor("exam_request") ? documentForm(<ExamRequestComposer templateId={templateFor("exam_request")!.id} organizationName={organization.name} clients={clientOptions} professionals={professionalOptions} procedures={procedures} initial={initial} />) : missingTemplate,
+          orcamento: documentForm(<AttendanceQuote service={service.name} price={price} />),
         }} />
-        <Panel title="Orçamento" id="orcamento">{documentForm(<AttendanceQuote service={service.name} price={price} />)}</Panel>
       </div> : <p className="panel text-sm text-muted">{!professional ? "Vincule um profissional na Agenda para emitir documentos." : "Seu perfil não possui permissão para emitir documentos."}</p>}
       {canReadDocuments && <section className="panel mt-4"><h3 className="font-extrabold">Documentos do cliente</h3>{documents.filter((document) => ["issued", "signed"].includes(document.status)).map((document) => <div key={document.id} className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3"><div><p className="font-bold">{document.title}</p><p className="text-xs text-muted">{formatOrganizationDateTime(document.createdAt, organization.timezone)}{document.structuredData?.appointmentId === id ? " · Neste atendimento" : ""}</p></div><Link className="secondary-button" href={`/api/documents/${document.id}/pdf`}>Abrir PDF</Link></div>)}</section>}
     </section>

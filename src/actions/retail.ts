@@ -273,7 +273,7 @@ export async function registerRetailSale(data: FormData) {
     const method = typeof payment.method === "string" ? payment.method : "";
     const amountInCents = Number(payment.amountInCents);
     const otherPaymentMethod = typeof payment.otherPaymentMethod === "string" ? payment.otherPaymentMethod.trim().slice(0, 200) : "";
-    if (!['cash', 'credit_card', 'debit_card', 'pix', 'bank_transfer', 'boleto', 'other'].includes(method) || !Number.isInteger(amountInCents) || amountInCents <= 0 || (method === "other" && otherPaymentMethod.length < 2)) throw new Error("Revise as formas, os valores e a justificativa do pagamento.");
+    if (!['cash', 'credit_card', 'debit_card', 'pix', 'bank_transfer', 'boleto', 'other'].includes(method) || !Number.isInteger(amountInCents) || amountInCents < 0 || (method === "other" && otherPaymentMethod.length < 2)) throw new Error("Revise as formas, os valores e a justificativa do pagamento.");
     return { method, amountInCents, otherPaymentMethod };
   });
   const paymentMethod = normalizedPayments.length > 1 ? "mixed" : normalizedPayments[0].method;
@@ -347,6 +347,7 @@ export async function registerRetailSale(data: FormData) {
     const subtotalInCents = lines.reduce((sum, item) => sum + item.quantity * item.price, 0);
     const discountInCents = lines.reduce((sum, item) => sum + item.discount, 0);
     const totalInCents = subtotalInCents - discountInCents;
+    if (normalizedPayments.some((payment) => payment.amountInCents === 0) && (totalInCents !== 0 || normalizedPayments.length !== 1)) throw new Error("Pagamento zero só é permitido quando o total da venda é zero.");
     if (normalizedPayments.reduce((sum, payment) => sum + payment.amountInCents, 0) !== totalInCents) throw new Error("A soma dos pagamentos deve ser igual ao total da venda.");
     const procedureTotal = additionalLines.find((item) => item.id.startsWith("appointment:"))?.total ?? 0;
     const { additionalInCents } = splitCheckoutTotal(totalInCents, procedureTotal);

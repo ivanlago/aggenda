@@ -99,6 +99,13 @@ test("salva, recupera e converte orçamentos sem efeitos financeiros antes da ve
       assert.match((await actions.registerRetailSale(form({ ...payment, quoteId: anonymousProductId, clientId: "", items: productItems, payments: JSON.stringify([{ method: "cash", amountInCents: 99000 }]) }))).openUrl ?? "", /^\/recibo\//);
       const [anonymousQuote] = await tx.select().from(schema.retailQuotes).where(eq(schema.retailQuotes.id, anonymousProductId));
       assert.equal((await tx.select().from(schema.retailSales).where(eq(schema.retailSales.id, anonymousQuote.saleId!)))[0].clientId, null);
+      // A full discount may finish with one zero payment, never with a stray zero installment.
+      const freeItems = JSON.stringify([{ variantId: variant.id, quantity: 1, discountInCents: 99000 }]);
+      await assert.rejects(actions.registerRetailSale(form({ items: productItems, payments: JSON.stringify([{ method: "cash", amountInCents: 99000 }, { method: "pix", amountInCents: 0 }]) })), /Pagamento zero/);
+      const freeSale = await actions.registerRetailSale(form({ items: freeItems, payments: JSON.stringify([{ method: "cash", amountInCents: 0 }]) }));
+      assert.match(freeSale.openUrl ?? "", /^\/recibo\//);
+      const freeSales = await tx.select().from(schema.retailSales).where(eq(schema.retailSales.organizationId, org.id));
+      assert.ok(freeSales.some((entry) => entry.totalInCents === 0 && entry.discountInCents === 99000));
       await tx.update(schema.retailQuotes).set({ validUntil: "2000-01-01" }).where(eq(schema.retailQuotes.id, anonymousId));
       assert.match((await actions.registerRetailSale(form({ ...payment, quoteId: anonymousId }))).error ?? "", /vencido/);
       scope.quoteTestContext = { ...context, organization: { ...context.organization, id: randomUUID() } };

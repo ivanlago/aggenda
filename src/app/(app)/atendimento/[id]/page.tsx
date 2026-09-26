@@ -55,7 +55,7 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
   const anamneses = visibleEntries.filter((entry) => entry.entryType === "anamnesis");
   const anamnesisDocuments = documents.filter((document) => document.documentType === "anamnesis");
   const initial = { clientId: client.id, professionalId: professional?.id ?? "", cpf: client.cpf };
-  const clientOptions = [{ id: client.id, name: client.name, email: client.email, phone: client.phone }];
+  const clientOptions = [{ id: client.id, name: client.name, cpf: client.cpf, email: client.email, phone: client.phone }];
   const professionalOptions = professional ? [{ id: professional.id, name: professional.name }] : [];
   const price = appointment.priceInCents ?? service.priceInCents ?? 0;
   const dateTime = formatOrganizationDateTime(appointment.startsAt, organization.timezone);

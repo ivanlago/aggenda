@@ -4,3 +4,7 @@ export function attendancePaymentState({ paymentStatus, packageStatus, appointme
   if (appointmentStatus === "cancelled" || appointmentStatus === "no_show") return "blocked";
   return "pending";
 }
+
+export function shouldPrefillAttendanceCart(paymentState: ReturnType<typeof attendancePaymentState>, serviceId: string, balances: { serviceId: string; remaining: number; expired: boolean }[]) {
+  return paymentState === "pending" && !balances.some((balance) => balance.serviceId === serviceId && balance.remaining > 0 && !balance.expired);
+}

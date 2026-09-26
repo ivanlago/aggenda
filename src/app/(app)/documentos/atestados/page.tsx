@@ -16,7 +16,7 @@ export default async function CertificatesPage() {
   const canManage = hasOrganizationPermission(organization.role, "documents.manage");
   const [templates, clientRows, professionalRows] = await Promise.all([
     db.select().from(documentTemplates).where(eq(documentTemplates.organizationId, organization.id)),
-    db.select({ id: clients.id, name: clients.name, email: clients.email, phone: clients.phone }).from(clients).where(eq(clients.organizationId, organization.id)).orderBy(clients.name),
+    db.select({ id: clients.id, name: clients.name, cpf: clients.cpf, email: clients.email, phone: clients.phone }).from(clients).where(eq(clients.organizationId, organization.id)).orderBy(clients.name),
     db.select({ id: professionals.id, name: professionals.name }).from(professionals).where(and(eq(professionals.organizationId, organization.id), eq(professionals.isActive, true))).orderBy(professionals.name),
   ]);
   const template = templates.find((item) => item.isActive && item.documentType === "certificate");

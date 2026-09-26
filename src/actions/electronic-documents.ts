@@ -140,8 +140,8 @@ export async function issueProfessionalDocument(data: FormData) {
   if (!client || !professional || !template || template.workflowType !== "professional_issue") return { error: "Paciente, profissional ou modelo não encontrado." };
   const patientEmail = text(data, "patientEmail") || client.email || "";
   if (deliveryMethod === "email" && !/^\S+@\S+\.\S+$/.test(patientEmail)) return { error: "Cadastre ou informe um e-mail válido para o paciente." };
-  const patientPhone = client.phone?.replace(/\D/g, "") ?? "";
-  if (deliveryMethod === "whatsapp" && !patientPhone) return { error: "Cadastre o telefone do paciente antes de compartilhar pelo WhatsApp." };
+  const patientPhone = (client.phone || text(data, "patientPhone")).replace(/\D/g, "");
+  if (deliveryMethod === "whatsapp" && !/^\d{10,15}$/.test(patientPhone)) return { error: "Cadastre ou informe um telefone válido com DDD para compartilhar pelo WhatsApp." };
   const now = new Date();
   const rawContent = text(data, "content");
   if (rawContent.length < 20 || rawContent.includes("[PREENCHER]")) {

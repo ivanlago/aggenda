@@ -16,7 +16,7 @@ import { ClinicalPhotoClassificationFields } from "@/components/clinical-photo-c
 import { GuidedClinicalPhotoInput } from "@/components/guided-clinical-photo-input";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
-import { appointments, auditLogs, clientClinicalMedia, clientHistoryEntries, clientPackageBalances, clientPackages, clients, professionals, servicePackages, services, users } from "@/db/schema";
+import { appointments, auditLogs, clientClinicalMedia, clientHistoryEntries, clientPackageBalances, clientPackages, clients, electronicDocuments, professionals, servicePackages, services, users } from "@/db/schema";
 import { requireOrganization, requireProfessionalScope } from "@/lib/session";
 import { formatOrganizationDateTime } from "@/lib/appointment-safety";
 import { hasOrganizationPermission } from "@/lib/permissions";
@@ -58,6 +58,7 @@ export default async function ClientHistoryPage({
     : null;
   const canManage = hasOrganizationPermission(organization.role, "clients.manage");
   const canManageClinicalMedia = canManage || organization.role === "professional";
+  const canIssueDocuments = hasOrganizationPermission(organization.role, "documents.manage");
   const canReadDocuments = hasOrganizationPermission(organization.role, "documents.read");
   const [client] = await db
     .select()
@@ -71,7 +72,7 @@ export default async function ClientHistoryPage({
     )
     .limit(1);
   if (!client) notFound();
-  const [history, entries, packageRows, clinicalMedia] = await Promise.all([db
+  const [history, entries, packageRows, clinicalMedia, documents] = await Promise.all([db
     .select({
       id: appointments.id,
       startsAt: appointments.startsAt,
@@ -123,6 +124,22 @@ export default async function ClientHistoryPage({
       .where(and(eq(clientPackages.clientId, client.id), eq(clientPackages.organizationId, organization.id)))
       .orderBy(desc(clientPackages.purchasedAt)),
     db.select().from(clientClinicalMedia).where(and(eq(clientClinicalMedia.clientId, client.id), eq(clientClinicalMedia.organizationId, organization.id))).orderBy(desc(clientClinicalMedia.capturedAt)),
+    canReadDocuments ? db.select({
+      id: electronicDocuments.id,
+      title: electronicDocuments.title,
+      documentType: electronicDocuments.documentType,
+      issuedAt: electronicDocuments.issuedAt,
+      signedAt: electronicDocuments.signedAt,
+      createdAt: electronicDocuments.createdAt,
+      professionalName: professionals.name,
+    }).from(electronicDocuments)
+      .leftJoin(professionals, eq(professionals.id, electronicDocuments.issuerProfessionalId))
+      .where(and(
+        eq(electronicDocuments.clientId, client.id),
+        eq(electronicDocuments.organizationId, organization.id),
+        inArray(electronicDocuments.status, ["issued", "signed"]),
+      ))
+      .orderBy(desc(electronicDocuments.createdAt)) : Promise.resolve([]),
   ]);
   const packages = new Map<string, { name: string; purchasedAt: Date; expiresAt: Date | null; status: string; balances: typeof packageRows }>();
   for (const row of packageRows) {
@@ -244,6 +261,23 @@ export default async function ClientHistoryPage({
           src: item.storageProvider === "cloudinary" ? `/api/clinical-media/${item.id}?width=1600` : item.url,
         }))} />
       </CollapsiblePanel>
+      {canReadDocuments && <CollapsiblePanel title={`Documentos emitidos (${documents.length})`} id="documentos-emitidos">
+        <p className="text-sm text-muted">Consulte os documentos do cliente ou use uma receita anterior como base para uma nova emissão.</p>
+        <div className="mt-4 divide-y">
+          {documents.map((document) => <article key={document.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+            <div className="min-w-0">
+              <p className="break-words font-extrabold">{document.title}</p>
+              <p className="text-xs text-muted">{formatOrganizationDateTime(document.issuedAt ?? document.signedAt ?? document.createdAt, organization.timezone)}{document.professionalName ? ` · ${document.professionalName}` : ""}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link className="secondary-button" href={`/api/documents/${document.id}/pdf`} target="_blank" rel="noopener noreferrer">Abrir PDF original</Link>
+              {canIssueDocuments && document.documentType === "prescription" && <Link className="secondary-button" href={`/documentos/receitas?reuse=${document.id}`}>Criar nova receita a partir desta</Link>}
+              {canIssueDocuments && document.documentType === "exam_request" && <Link className="secondary-button" href={`/documentos/exames?reuse=${document.id}`}>Criar nova solicitação a partir desta</Link>}
+            </div>
+          </article>)}
+          {!documents.length && <p className="empty-state">Nenhum documento emitido para este cliente.</p>}
+        </div>
+      </CollapsiblePanel>}
       <CollapsiblePanel title="Pacotes e saldos">
         <div className="flex justify-end">
           {canManage && <Link href="/pacotes" className="text-sm font-bold text-brand">Gerenciar pacotes</Link>}
@@ -283,7 +317,7 @@ export default async function ClientHistoryPage({
             <p className="truncate font-extrabold">{entry.title || (entry.entryType === "prescription" ? "Receituário" : "Documento")}</p>
             <span className="text-xs font-bold text-muted md:whitespace-nowrap">{formatOrganizationDateTime(entry.occurredAt, organization.timezone)}</span>
             <Link className="secondary-button justify-center py-2 md:whitespace-nowrap" href={`/api/documents/${entry.electronicDocumentId}/pdf`}>Abrir PDF original</Link>
-            {["prescription", "exam_request"].includes(entry.entryType) ? <Link className="secondary-button justify-center py-2 md:whitespace-nowrap" href={`${entry.entryType === "prescription" ? "/documentos/receitas" : "/documentos/exames"}?reuse=${entry.electronicDocumentId}`}>Criar nova a partir desta</Link> : <span />}
+            {canIssueDocuments && ["prescription", "exam_request"].includes(entry.entryType) ? <Link className="secondary-button justify-center py-2 md:whitespace-nowrap" href={`${entry.entryType === "prescription" ? "/documentos/receitas" : "/documentos/exames"}?reuse=${entry.electronicDocumentId}`}>Criar nova a partir desta</Link> : <span />}
           </article> : <article key={entry.id} className="py-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="font-extrabold">{entry.title || (entry.entryType === "evolution" ? "Evolução" : entry.entryType === "anamnesis" ? "Anamnese" : entry.entryType === "prescription" ? "Receita" : entry.entryType === "exam_request" ? "Solicitação de exames" : "Anotação")}</p>

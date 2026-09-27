@@ -138,9 +138,9 @@ export async function issueProfessionalDocument(data: FormData) {
   const [professional] = await db.select().from(professionals).where(and(eq(professionals.id, professionalId), eq(professionals.organizationId, organization.id), eq(professionals.isActive, true))).limit(1);
   const [template] = await db.select().from(documentTemplates).where(and(eq(documentTemplates.id, templateId), eq(documentTemplates.organizationId, organization.id), eq(documentTemplates.isActive, true))).limit(1);
   if (!client || !professional || !template || template.workflowType !== "professional_issue") return { error: "Paciente, profissional ou modelo não encontrado." };
-  const patientEmail = text(data, "patientEmail") || client.email || "";
+  const patientEmail = text(data, "useAlternateEmail") === "true" ? text(data, "patientEmail") : text(data, "patientEmail") || client.email || "";
   if (deliveryMethod === "email" && !/^\S+@\S+\.\S+$/.test(patientEmail)) return { error: "Cadastre ou informe um e-mail válido para o paciente." };
-  const patientPhone = (client.phone || text(data, "patientPhone")).replace(/\D/g, "");
+  const patientPhone = (text(data, "useAlternatePhone") === "true" ? text(data, "patientPhone") : client.phone || text(data, "patientPhone")).replace(/\D/g, "");
   if (deliveryMethod === "whatsapp" && !/^\d{10,15}$/.test(patientPhone)) return { error: "Cadastre ou informe um telefone válido com DDD para compartilhar pelo WhatsApp." };
   const now = new Date();
   const rawContent = text(data, "content");
@@ -172,7 +172,7 @@ export async function issueProfessionalDocument(data: FormData) {
     issuedAt: now, evidenceHash,
   }).returning({ id: electronicDocuments.id });
   await db.insert(electronicDocumentEvents).values({ organizationId: organization.id, documentId: created.id, eventType: "issued", details: { professionalId: professional.id } });
-  if ((appointmentId || ["prescription", "exam_request"].includes(template.documentType)) && text(data, "saveToRecord") === "true") {
+  if (template.documentType === "prescription" || ((appointmentId || template.documentType === "exam_request") && text(data, "saveToRecord") === "true")) {
     await db.insert(clientHistoryEntries).values({ organizationId: organization.id, clientId: client.id, appointmentId: appointmentId || null, authorUserId: session.user.id, electronicDocumentId: created.id, entryType: template.documentType, title, content: contentSnapshot, occurredAt: now });
   }
   let deliveryWarning: string | undefined;

@@ -199,7 +199,7 @@ export default async function ClientHistoryPage({
               ["Nome completo", client.name],
               ["Telefone", formatPhone(client.phone)],
               ["E-mail", client.email],
-              ["Data de nascimento", client.birthDate ? new Date(`${client.birthDate}T12:00:00Z`).toLocaleDateString("pt-BR") : null],
+              ["Peso", client.weightKg ? `${Number(client.weightKg).toLocaleString("pt-BR")} kg` : null], ["Altura", client.heightCm ? `${Number(client.heightCm).toLocaleString("pt-BR")} cm` : null], ["Data de nascimento", client.birthDate ? new Date(`${client.birthDate}T12:00:00Z`).toLocaleDateString("pt-BR") : null],
               ["Sexo", client.gender ? genderLabels[client.gender] ?? client.gender : null],
               ["CPF", client.cpf],
               ["Estado civil", client.maritalStatus],

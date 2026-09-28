@@ -1,4 +1,6 @@
 type ClientDetails = {
+  weightKg?: string | null;
+  heightCm?: string | null;
   address?: string | null;
   postalCode?: string | null;
   maritalStatus?: string | null;
@@ -9,6 +11,8 @@ type ClientDetails = {
 export function ClientOptionalFields({ client = {} }: { client?: ClientDetails }) {
   return (
     <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+      <label className="grid min-w-0 gap-2 text-sm font-bold">Peso (kg, opcional)<input className="field" name="weightKg" type="number" inputMode="decimal" min="0.01" max="9999.99" step="0.01" defaultValue={client.weightKg ?? ""} placeholder="Ex.: 70,5" /></label>
+      <label className="grid min-w-0 gap-2 text-sm font-bold">Altura (cm, opcional)<input className="field" name="heightCm" type="number" inputMode="decimal" min="0.01" max="999.99" step="0.01" defaultValue={client.heightCm ?? ""} placeholder="Ex.: 175" /></label>
       <label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Endereço (opcional)
         <input className="field" name="address" defaultValue={client.address ?? ""} autoComplete="street-address" placeholder="Rua, número, complemento, bairro e cidade" />
       </label>

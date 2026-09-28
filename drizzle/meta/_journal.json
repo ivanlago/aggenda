@@ -428,6 +428,13 @@
       "when": 1789153350019,
       "tag": "0060_retail_quotes",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1790563429763,
+      "tag": "0061_client_measurements",
+      "breakpoints": true
     }
   ]
 }

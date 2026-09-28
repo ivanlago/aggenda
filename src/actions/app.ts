@@ -54,6 +54,7 @@ import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
 import { updateAppointmentAndInventory } from "@/lib/inventory";
 import { documentPresets } from "@/lib/document-presets";
 import { anamnesisPresets } from "@/lib/anamnesis";
+import { parseClientMeasurement } from "@/lib/client-measurements";
 import { normalizeBrazilianPhone } from "@/lib/phone";
 import { persistWithCatalogImage } from "@/lib/catalog-image";
 
@@ -536,6 +537,8 @@ export async function createClient(formData: FormData) {
     email: optionalText(formData, "email"),
     phone: normalizedPhone,
     birthDate: optionalText(formData, "birthDate"),
+    weightKg: parseClientMeasurement(formData.get("weightKg"), "weightKg"),
+    heightCm: parseClientMeasurement(formData.get("heightCm"), "heightCm"),
     gender: optionalText(formData, "gender"),
     address: optionalText(formData, "address"),
     postalCode: optionalText(formData, "postalCode"),
@@ -581,6 +584,8 @@ export async function updateClient(formData: FormData) {
     email: optionalText(formData, "email"),
     phone: phoneValue ? normalizeBrazilianPhone(phoneValue) : null,
     birthDate: optionalText(formData, "birthDate"),
+    weightKg: parseClientMeasurement(formData.get("weightKg"), "weightKg"),
+    heightCm: parseClientMeasurement(formData.get("heightCm"), "heightCm"),
     gender: optionalText(formData, "gender"),
     address: optionalText(formData, "address"),
     postalCode: optionalText(formData, "postalCode"),
@@ -594,6 +599,7 @@ export async function updateClient(formData: FormData) {
   if (!updated.length) throw new Error("Cliente não encontrado.");
   revalidatePath("/clientes");
   revalidatePath(`/clientes/${id}`);
+  revalidatePath("/atendimento/[id]", "page");
   revalidatePath("/dashboard");
 }
 

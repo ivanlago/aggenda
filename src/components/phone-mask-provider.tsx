@@ -9,6 +9,7 @@ export function PhoneMaskProvider() {
       const input = event.target;
       if (!(input instanceof HTMLInputElement)) return;
       if (input.type !== "tel" && input.inputMode !== "tel") return;
+      if (input.dataset.phoneMask === "off") return;
       const formatted = formatBrazilianPhoneInput(input.value);
       if (input.value !== formatted) input.value = formatted;
     };

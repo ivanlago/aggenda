@@ -18,7 +18,9 @@ function formatNationalPhone(digits: string) {
 }
 
 export function formatBrazilianPhoneInput(value: string) {
-  return formatNationalPhone(normalizeBrazilianPhone(value));
+  let digits = value.replace(/\D/g, "");
+  if ((digits.length === 12 || digits.length === 13) && digits.startsWith("55")) digits = digits.slice(2);
+  return formatNationalPhone(digits.slice(0, 11));
 }
 
 export function formatPhone(value?: string | null) {

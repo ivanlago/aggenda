@@ -2,7 +2,7 @@
 
 import { Download, Mail, MessageCircle, ShieldCheck } from "lucide-react";
 import { useState, type MouseEvent } from "react";
-import { formatPhone } from "@/lib/phone";
+import { formatBrazilianPhoneInput, formatPhone } from "@/lib/phone";
 
 export function DocumentDeliveryControls({ email, phone }: { email?: string | null; phone?: string | null }) {
   const [otherEmail, setOtherEmail] = useState(false);
@@ -39,20 +39,12 @@ export function DocumentDeliveryControls({ email, phone }: { email?: string | nu
     </div>
     <div className="mt-3 grid gap-3 sm:grid-cols-2">
       <div className="grid content-start gap-2">
-        <label className="grid gap-1 text-sm font-bold">Destino do WhatsApp
-          <select className="field" value={otherPhone ? "other" : "registered"} onChange={(event) => { setOtherPhone(event.target.value === "other"); setError(""); }}>
-            <option value="registered">WhatsApp do cadastro</option><option value="other">Outro WhatsApp</option>
-          </select>
-        </label>
-        {otherPhone && <label className="grid gap-1 text-sm font-bold">Outro WhatsApp<input className="field" type="tel" value={alternatePhone} onChange={(event) => { setAlternatePhone(event.target.value); setError(""); }} placeholder="DDD e número do telefone" /></label>}
+        <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={otherPhone} onChange={(event) => { setOtherPhone(event.target.checked); setError(""); }} />Outro número</label>
+        {otherPhone && <label className="grid gap-1 text-sm font-bold"><span className="sr-only">Outro número de WhatsApp</span><input className="field" type="tel" inputMode="tel" data-phone-mask="off" value={alternatePhone} onChange={(event) => { setAlternatePhone(formatBrazilianPhoneInput(event.target.value)); setError(""); }} placeholder="(71) 99181-4240" /></label>}
       </div>
       <div className="grid content-start gap-2">
-        <label className="grid gap-1 text-sm font-bold">Destino do e-mail
-          <select className="field" value={otherEmail ? "other" : "registered"} onChange={(event) => { setOtherEmail(event.target.value === "other"); setError(""); }}>
-            <option value="registered">E-mail do cadastro</option><option value="other">Outro e-mail</option>
-          </select>
-        </label>
-        {otherEmail && <label className="grid gap-1 text-sm font-bold">Outro e-mail<input className="field" type="text" inputMode="email" value={alternateEmail} onChange={(event) => { setAlternateEmail(event.target.value); setError(""); }} placeholder="destinatario@exemplo.com" /></label>}
+        <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={otherEmail} onChange={(event) => { setOtherEmail(event.target.checked); setError(""); }} />Outro e-mail</label>
+        {otherEmail && <label className="grid gap-1 text-sm font-bold"><span className="sr-only">Outro e-mail</span><input className="field" type="text" inputMode="email" value={alternateEmail} onChange={(event) => { setAlternateEmail(event.target.value); setError(""); }} placeholder="destinatario@exemplo.com" /></label>}
       </div>
     </div>
     {(otherEmail || otherPhone) && <p className="mt-2 text-xs text-muted">O destino alternativo será usado apenas neste envio, sem alterar o cadastro.</p>}

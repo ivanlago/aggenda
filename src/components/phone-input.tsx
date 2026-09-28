@@ -28,6 +28,7 @@ export function PhoneInput({ name, defaultValue, value, onValueChange, className
       {...props}
       className={className}
       type="tel"
+      data-phone-mask="off"
       inputMode="tel"
       maxLength={15}
       value={displayValue}
@@ -35,7 +36,7 @@ export function PhoneInput({ name, defaultValue, value, onValueChange, className
       onChange={(event) => {
         const formatted = formatBrazilianPhoneInput(event.target.value);
         if (!controlled) setInternalValue(formatted);
-        onValueChange?.(normalizeBrazilianPhone(formatted));
+        onValueChange?.(formatted.replace(/\D/g, ""));
       }}
     />
   </>;

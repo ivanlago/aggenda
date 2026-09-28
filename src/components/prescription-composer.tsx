@@ -72,7 +72,7 @@ export function PrescriptionComposer({ templateId, organizationName, clients, pr
         <div className="min-w-0"><p className="truncate font-extrabold">{medication.name}{medication.presentation ? ` · ${medication.presentation}` : ""}</p><p className="truncate text-xs font-bold text-emerald-700">{medication.dosage}</p></div>
         <button type="button" className="rounded-lg p-2 text-red-700 hover:bg-red-50" onClick={() => setMedications((current) => current.filter((item) => item.id !== medication.id))} aria-label={`Remover medicamento ${index + 1}`}><Trash2 className="size-4" /></button>
       </div>)}{!medications.length ? <p className="p-4 text-sm text-muted">Nenhum medicamento adicionado.</p> : null}</div>
-      <button type="button" className="secondary-button w-fit" aria-expanded={medicationFormOpen} aria-controls={medicationFormId} onClick={() => setMedicationFormOpen((open) => !open)}>{medicationFormOpen ? "Minimizar formulário" : "+ Adicionar medicamento"}</button>
+      <button type="button" className="primary-button w-fit" aria-expanded={medicationFormOpen} aria-controls={medicationFormId} onClick={() => setMedicationFormOpen((open) => !open)}>{medicationFormOpen ? "Minimizar formulário" : "+ Adicionar medicamento"}</button>
       <div id={medicationFormId} hidden={!medicationFormOpen}>
       <div className="grid gap-3 rounded-2xl border bg-slate-50 p-4">
         <TussAutocomplete key={medicationSearchKey} table="20" label="Buscar medicamento" nameField="medication-search" onSelect={selectMedication} onCustom={selectCustomMedication} />

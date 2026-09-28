@@ -172,7 +172,7 @@ export async function issueProfessionalDocument(data: FormData) {
     issuedAt: now, evidenceHash,
   }).returning({ id: electronicDocuments.id });
   await db.insert(electronicDocumentEvents).values({ organizationId: organization.id, documentId: created.id, eventType: "issued", details: { professionalId: professional.id } });
-  if (template.documentType === "prescription" || ((appointmentId || template.documentType === "exam_request") && text(data, "saveToRecord") === "true")) {
+  if (["prescription", "exam_request"].includes(template.documentType) || (appointmentId && text(data, "saveToRecord") === "true")) {
     await db.insert(clientHistoryEntries).values({ organizationId: organization.id, clientId: client.id, appointmentId: appointmentId || null, authorUserId: session.user.id, electronicDocumentId: created.id, entryType: template.documentType, title, content: contentSnapshot, occurredAt: now });
   }
   let deliveryWarning: string | undefined;

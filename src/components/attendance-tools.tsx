@@ -17,9 +17,8 @@ export function AttendanceTools({ forms }: { forms: Record<ToolId, ReactNode> })
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
 
   return <section className="panel min-w-0" aria-labelledby="attendance-tools-title">
-    <h3 id="attendance-tools-title" className="text-lg font-extrabold">Ferramentas de trabalho</h3>
-    <p className="mt-1 text-sm text-muted">Selecione uma ferramenta para abrir. Clique novamente para recolher.</p>
-    <div className="mt-4 flex gap-2 overflow-x-auto pb-2" role="group" aria-label="Ferramentas de trabalho">
+    <h3 id="attendance-tools-title" className="text-lg font-extrabold">Ferramentas de atendimento</h3>
+    <div className="mt-4 flex gap-2 overflow-x-auto pb-2" role="group" aria-label="Ferramentas de atendimento">
       {tools.map(({ id, label, icon: Icon }) => <button
         key={id}
         id={`${id}-button`}

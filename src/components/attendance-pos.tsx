@@ -1,3 +1,4 @@
+import { attendancePendingItems } from "@/lib/attendance-pending-items";
 import { getPosOfferings } from "@/lib/pos-catalog";
 import { getPosPackageBalances } from "@/lib/pos-package-balances";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
@@ -33,17 +34,24 @@ export async function AttendancePos({ appointmentId }: { appointmentId: string }
     canSell ? getPosOfferings(organization.id) : Promise.resolve([]),
     getPosPackageBalances(organization.id, appointment.clientId),
   ]);
-  const catalog = allOfferings.filter((item) => item.id !== `service:${appointment.serviceId}`);
+  const catalog = allOfferings.filter((item) => appointment.metadata?.primaryProcedureRemoved === true || item.id !== `service:${appointment.serviceId}`);
   const payment = paymentRows[0];
   const paymentState = attendancePaymentState({ paymentStatus: payment?.status, packageStatus: usages[0]?.status, appointmentStatus: appointment.status });
   const amount = payment?.amountInCents ?? appointment.priceInCents ?? service.price ?? 0;
-  const prefillProcedure = shouldPrefillAttendanceCart(paymentState, appointment.serviceId, packageBalances);
+  const prefillProcedure = appointment.metadata?.primaryProcedureRemoved !== true && shouldPrefillAttendanceCart(paymentState, appointment.serviceId, packageBalances);
   const initialCart = prefillProcedure ? [{ variantId: `appointment:${appointment.id}`, quantity: 1, discountInCents: 0 }] : [];
-  const offerings = [...catalog, ...(paymentState === "pending" ? [{ id: `appointment:${appointment.id}`, label: `${service.name} · Procedimento realizado`, barcode: null, priceInCents: amount, stock: 1, kind: "service" as const }] : [])];
+  const offerings = [...catalog, ...(paymentState === "pending" && appointment.metadata?.primaryProcedureRemoved !== true ? [{ id: `appointment:${appointment.id}`, label: `${service.name} · Procedimento realizado`, barcode: null, priceInCents: amount, stock: 1, kind: "service" as const }] : [])];
   const variants = variantRows.map((variant) => ({ id: variant.id, label: `${variant.product} · ${variant.variant}`, barcode: variant.barcode, priceInCents: variant.priceInCents, stock: Math.floor(variant.stock / 1000) })).filter((variant) => variant.stock > 0);
+  const pending = attendancePendingItems(appointment.metadata);
+  for (const item of pending) {
+    if (![...offerings, ...variants].some((entry) => entry.id === item.catalogId)) continue;
+    const existing = initialCart.find((entry) => entry.variantId === item.catalogId);
+    if (existing) existing.quantity += item.quantity;
+    else initialCart.push({ variantId: item.catalogId, quantity: item.quantity, discountInCents: 0 });
+  }
   return <section id="pdv" className="mt-5 scroll-mt-6">
     {paymentState === "blocked" && <p className="mb-4 text-sm text-muted">Revise a situação do atendimento antes de cobrar o procedimento.</p>}
-    {canSell && <SalesWorkspace sale={<RetailSaleForm key={`${appointment.id}:${paymentState}:${prefillProcedure}`} offerings={offerings} attendanceId={appointment.id} initialClientId={client.id} initialCart={initialCart} clients={[client]} variants={variants} canDiscount={hasOrganizationPermission(organization.role, "sales.discount")} />} quote={<AttendanceQuote appointmentId={appointmentId} />} />}
+    {canSell && <SalesWorkspace sale={<RetailSaleForm key={`${appointment.id}:${paymentState}:${prefillProcedure}:${pending.map((item) => item.id).join(",")}`} offerings={offerings} attendanceId={appointment.id} initialClientId={client.id} initialCart={initialCart} pendingAttendanceItems={pending} clients={[client]} variants={variants} canDiscount={hasOrganizationPermission(organization.role, "sales.discount")} />} quote={<AttendanceQuote appointmentId={appointmentId} />} />}
     <section className="panel mt-4"><h3 className="font-extrabold">Vendas e adicionais deste atendimento</h3>
       {sales.map((sale) => <div key={sale.id} className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t pt-3"><div><p className="font-bold">Venda · {currency(sale.total)}</p><p className="text-xs text-muted">{formatOrganizationDateTime(sale.soldAt, organization.timezone)} · {sale.status !== "completed" ? "Cancelada / estornada" : sale.paymentStatus === "received" ? "Pagamento recebido" : "Pagamento pendente"}</p></div><Link className="secondary-button" href={`/recibo/${sale.receiptToken}`} target="_blank">Abrir recibo</Link></div>)}
       {extras.map((extra) => <div key={extra.id} className="mt-3 border-t pt-3"><p className="font-bold">{extra.description} · {currency(extra.amountInCents)}</p><p className="text-xs text-muted">{formatOrganizationDateTime(extra.createdAt, organization.timezone)} · {extra.status === "received" ? "Pagamento recebido" : extra.status}</p></div>)}

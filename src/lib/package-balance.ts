@@ -1,5 +1,6 @@
 import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 
+import { reconcileAttendancePackageItems } from "@/lib/attendance-package-items";
 import { db } from "@/db";
 import {
   clientPackageBalances,
@@ -64,6 +65,7 @@ export async function reconcilePackageUsage(
   executor: typeof db = db,
 ) {
   await executor.transaction(async (tx) => {
+    await reconcileAttendancePackageItems(appointmentId, status, tx as unknown as typeof db);
     const [usage] = await tx
       .select()
       .from(packageUsages)

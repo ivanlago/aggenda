@@ -1,5 +1,6 @@
 "use client";
 
+import { pendingItemsInCart } from "@/lib/attendance-pending-items";
 import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -20,7 +21,7 @@ type Payment = { id: number; method: "cash" | "credit_card" | "debit_card" | "pi
 
 const currency = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export function RetailSaleForm({ variants: productVariants, offerings = [], clients, canDiscount, attendanceId, initialClientId, initialCart = [], packageBalances = [], timezone, quoteId }: { variants: Variant[]; offerings?: Variant[]; clients: Client[]; canDiscount: boolean; attendanceId?: string; initialClientId?: string; initialCart?: CartItem[]; packageBalances?: PosPackageBalance[]; timezone?: string; quoteId?: string }) {
+export function RetailSaleForm({ variants: productVariants, offerings = [], clients, canDiscount, attendanceId, initialClientId, initialCart = [], pendingAttendanceItems = [], packageBalances = [], timezone, quoteId }: { variants: Variant[]; offerings?: Variant[]; clients: Client[]; canDiscount: boolean; attendanceId?: string; initialClientId?: string; initialCart?: CartItem[]; pendingAttendanceItems?: { id: string; catalogId: string; quantity: number }[]; packageBalances?: PosPackageBalance[]; timezone?: string; quoteId?: string }) {
   const variants = useMemo(() => [...productVariants, ...offerings], [productVariants, offerings]);
   const [cart, setCart] = useState<CartItem[]>(initialCart);
   const [payments, setPayments] = useState<Payment[]>([{ id: 1, method: "cash", amount: initialCart.length ? (initialCart.reduce((total, item) => total + (variants.find((variant) => variant.id === item.variantId)?.priceInCents ?? 0) * item.quantity - item.discountInCents, 0) / 100).toFixed(2).replace(".", ",") : "" }]);
@@ -65,6 +66,7 @@ export function RetailSaleForm({ variants: productVariants, offerings = [], clie
   return (
     <ActionForm action={registerRetailSale} successMessage="Venda registrada com sucesso." onSuccess={() => { setCart([]); setDiscountValue(""); setPayments([{ id: Date.now(), method: "cash", amount: "" }]); }} className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr] xl:items-start">
       {attendanceId && <input type="hidden" name="attendanceId" value={attendanceId} />}
+      <input type="hidden" name="pendingAttendanceItemIds" value={JSON.stringify(pendingItemsInCart(pendingAttendanceItems, cart))} />
       <input type="hidden" name="items" value={discountError ? "[]" : JSON.stringify(discountedCart)} />
       <input type="hidden" name="payments" value={JSON.stringify(paymentsPayload)} />
       {quoteId ? <div className="panel"><h2 className="font-extrabold">Converter orçamento em venda</h2><p className="mt-2 text-sm text-muted">Confira os itens e informe o pagamento para concluir a venda com os valores do orçamento.</p><input type="hidden" name="quoteId" value={quoteId} /></div> : <PosCatalog variants={variants} cart={cart} addToCart={addToCart} />}

@@ -21,7 +21,7 @@ export async function selectAttendancePackage(data: FormData) {
   try {
     await db.transaction(async (tx) => {
       const [current] = await tx.select().from(appointments).where(and(eq(appointments.id, appointment.id), eq(appointments.organizationId, organization.id))).limit(1).for("update");
-      if (!current || !["scheduled", "confirmed"].includes(current.status)) throw new Error("Vincule o pacote antes de concluir o atendimento.");
+      if (!current || current.metadata?.primaryProcedureRemoved === true || !["scheduled", "confirmed"].includes(current.status)) throw new Error("Vincule o pacote antes de concluir o atendimento.");
       const [payment] = await tx.select().from(financialEntries).where(and(eq(financialEntries.appointmentId, appointment.id), eq(financialEntries.organizationId, organization.id))).limit(1).for("update");
       if (payment?.status === "received") throw new Error("O procedimento já foi pago e não pode ser abatido de um pacote.");
       const [usage] = await tx.select().from(packageUsages).where(eq(packageUsages.appointmentId, appointment.id));

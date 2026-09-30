@@ -1012,10 +1012,11 @@ export async function registerAppointmentPayment(formData: FormData) {
   const otherMethod = optionalText(formData, "otherPaymentMethod");
   const allowedMethods = ["cash", "credit_card", "debit_card", "pix", "bank_transfer", "boleto", "other", "package"];
   if (!allowedMethods.includes(paymentMethod) || (paymentMethod !== "package" && !amountInCents) || (paymentMethod === "other" && !otherMethod)) throw new Error("Informe valor e forma de pagamento válidos.");
-  const [appointment] = await db.select({ clientId: appointments.clientId, serviceId: appointments.serviceId, status: appointments.status, service: services.name })
+  const [appointment] = await db.select({ clientId: appointments.clientId, serviceId: appointments.serviceId, status: appointments.status, metadata: appointments.metadata, service: services.name })
     .from(appointments).innerJoin(services, eq(services.id, appointments.serviceId))
     .where(and(eq(appointments.id, appointmentId), eq(appointments.organizationId, organization.id))).limit(1);
   if (!appointment) throw new Error("Agendamento não encontrado.");
+  if (appointment.metadata?.primaryProcedureRemoved === true) throw new Error("O procedimento foi removido deste atendimento.");
   if (paymentMethod === "package") {
     const clientPackageId = textValue(formData, "clientPackageId");
     const [existingUsage] = await db.select({ clientPackageId: packageUsages.clientPackageId }).from(packageUsages).where(eq(packageUsages.appointmentId, appointmentId)).limit(1);

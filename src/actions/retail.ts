@@ -1,4 +1,6 @@
 "use server";
+import { attendancePendingItems } from "@/lib/attendance-pending-items";
+import { z } from "zod";
 
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -256,7 +258,7 @@ export async function registerRetailSale(data: FormData) {
   const appointmentKeys = [...grouped.keys()].filter((id) => id.startsWith("appointment:"));
   if (variantIds.length + serviceIds.length + packageIds.length + appointmentKeys.length !== grouped.size) throw new Error("Tipo de item inválido.");
   if (appointmentKeys.length && (!attendance || appointmentKeys.length !== 1 || appointmentKeys[0] !== `appointment:${attendanceId}` || grouped.get(appointmentKeys[0])!.quantity !== 1)) throw new Error("Procedimento do atendimento inválido.");
-  if (attendance && serviceIds.includes(attendance.appointment.serviceId)) throw new Error("Use o item do procedimento realizado, já incluído no carrinho, para receber este atendimento.");
+  if (attendance && attendance.appointment.metadata?.primaryProcedureRemoved !== true && serviceIds.includes(attendance.appointment.serviceId)) throw new Error("Use o item do procedimento realizado, já incluído no carrinho, para receber este atendimento.");
   const clientId = attendance?.appointment.clientId ?? (text(data, "clientId") || null);
   const [client] = clientId ? await db.select({ id: clients.id, email: clients.email, phone: clients.phone }).from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1) : [];
   if (clientId && !client) throw new Error("Cliente não encontrado.");
@@ -281,7 +283,24 @@ export async function registerRetailSale(data: FormData) {
   const received = true;
   const today = organizationDate(new Date(), organization.timezone);
 
+  const pendingIds = z.array(z.uuid()).parse(JSON.parse(String(data.get("pendingAttendanceItemIds") || "[]")));
+  if (pendingIds.length && !attendance) throw new Error("Atendimento obrigatório.");
   const createdSale = await db.transaction(async (tx) => {
+    if (attendance) {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`attendance-payment:${attendanceId}`}, 0))`);
+      const [locked] = await tx.select().from(appointments).where(and(eq(appointments.id, attendance.appointment.id), eq(appointments.organizationId, organization.id))).for("update");
+      if (!locked || ["cancelled", "no_show"].includes(locked.status)) throw new Error("Atendimento indisponível.");
+      if (locked.metadata?.primaryProcedureRemoved === true && appointmentKeys.length) throw new Error("O procedimento principal foi removido. Atualize o carrinho.");
+      if (locked.metadata?.primaryProcedureRemoved !== true && serviceIds.includes(locked.serviceId)) throw new Error("Atualize o procedimento principal no carrinho.");
+      const pending = attendancePendingItems(locked.metadata);
+      const selected = pending.filter((item) => pendingIds.includes(item.id));
+      if (selected.length !== new Set(pendingIds).size) throw new Error("Os itens pendentes foram alterados. Atualize o atendimento.");
+      for (const item of selected) {
+        const quantity = selected.filter((entry) => entry.catalogId === item.catalogId).reduce((sum, entry) => sum + entry.quantity, 0);
+        if ((grouped.get(item.catalogId)?.quantity ?? 0) < quantity) throw new Error("Confira as quantidades dos itens pendentes.");
+      }
+      if (selected.length) await tx.update(appointments).set({ metadata: { ...locked.metadata, pendingAttendanceItems: pending.filter((item) => !pendingIds.includes(item.id)) } }).where(eq(appointments.id, locked.id));
+    }
     if (sourceQuote) {
       const [lockedQuote] = await tx.select().from(retailQuotes).where(and(eq(retailQuotes.id, sourceQuote.id), eq(retailQuotes.organizationId, organization.id))).for("update");
       if (!lockedQuote || lockedQuote.saleId) throw new Error("Este orçamento já foi convertido em venda.");

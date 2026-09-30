@@ -435,6 +435,13 @@
       "when": 1790563429763,
       "tag": "0061_client_measurements",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1790720157561,
+      "tag": "0062_attendance_package_items",
+      "breakpoints": true
     }
   ]
 }

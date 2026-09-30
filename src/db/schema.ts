@@ -1459,6 +1459,20 @@ export const appointments = pgTable(
   ]
 );
 
+export const attendancePackageItems = pgTable("attendance_package_items", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  appointmentId: uuid("appointment_id").notNull().references(() => appointments.id, { onDelete: "cascade" }),
+  clientPackageId: uuid("client_package_id").notNull().references(() => clientPackages.id, { onDelete: "restrict" }),
+  balanceId: uuid("balance_id").notNull().references(() => clientPackageBalances.id, { onDelete: "restrict" }),
+  quantity: integer("quantity").notNull().default(1),
+  status: text("status").notNull().default("reserved"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("attendance_package_items_balance_unique").on(table.appointmentId, table.balanceId),
+  index("attendance_package_items_org_idx").on(table.organizationId),
+]);
+
 export const packageUsages = pgTable(
   "package_usages",
   {

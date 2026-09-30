@@ -1,15 +1,33 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { sumProcedureMaterials } from "@/lib/attendance-materials";
+import { attendancePendingItems } from "@/lib/attendance-pending-items";
+import { attendanceCompletionError } from "@/lib/attendance-completion";
 import { db } from "@/db";
 import { reconcilePackageUsage } from "@/lib/package-balance";
-import { appointmentInventoryConsumptions, appointments, inventoryMovements, inventoryProducts, serviceInventoryItems } from "@/db/schema";
+import { appointmentInventoryConsumptions, appointments, attendancePackageItems, clientPackageBalances, inventoryMovements, inventoryProducts, serviceInventoryItems, retailSaleItems, retailSales, financialEntries, packageUsages, services } from "@/db/schema";
 
 export async function updateAppointmentAndInventory(input: { organizationId: string; appointmentId: string; status: "scheduled" | "confirmed" | "cancelled" | "completed" | "no_show"; cancellationReason: string | null; userId: string }) {
   return db.transaction(async (tx) => {
-    const [appointment] = await tx.select({ id: appointments.id, serviceId: appointments.serviceId, status: appointments.status }).from(appointments).where(and(eq(appointments.id, input.appointmentId), eq(appointments.organizationId, input.organizationId))).limit(1).for("update");
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`attendance-payment:${input.appointmentId}`}, 0))`);
+    const [appointment] = await tx.select({ id: appointments.id, serviceId: appointments.serviceId, priceInCents: appointments.priceInCents, status: appointments.status, metadata: appointments.metadata }).from(appointments).where(and(eq(appointments.id, input.appointmentId), eq(appointments.organizationId, input.organizationId))).limit(1).for("update");
     if (!appointment) return false;
+    if (input.status === "completed" && appointment.status !== "completed") {
+      const [payment] = await tx.select().from(financialEntries).where(and(eq(financialEntries.organizationId, input.organizationId), eq(financialEntries.appointmentId, input.appointmentId)));
+      const [usage] = await tx.select({ status: packageUsages.status }).from(packageUsages).where(and(eq(packageUsages.organizationId, input.organizationId), eq(packageUsages.appointmentId, input.appointmentId)));
+      const [service] = await tx.select({ price: services.priceInCents }).from(services).where(and(eq(services.organizationId, input.organizationId), eq(services.id, appointment.serviceId)));
+      const sales = await tx.select({ amount: retailSales.totalInCents, status: financialEntries.status }).from(retailSales).leftJoin(financialEntries, and(eq(financialEntries.id, retailSales.financialEntryId), eq(financialEntries.organizationId, input.organizationId))).where(and(eq(retailSales.organizationId, input.organizationId), eq(retailSales.attendanceId, input.appointmentId), eq(retailSales.status, "completed")));
+      const extras = await tx.select({ amount: financialEntries.amountInCents, status: financialEntries.status }).from(financialEntries).where(and(eq(financialEntries.organizationId, input.organizationId), eq(financialEntries.attendanceId, input.appointmentId), eq(financialEntries.type, "receivable"), eq(financialEntries.status, "pending")));
+      const error = attendanceCompletionError({ pendingItems: attendancePendingItems(appointment.metadata).length, primaryRemoved: appointment.metadata?.primaryProcedureRemoved === true, primaryAmount: payment?.amountInCents ?? appointment.priceInCents ?? service?.price ?? 0, primaryPaymentStatus: payment?.status, primaryPackageStatus: usage?.status, unpaidAdditional: [...sales, ...extras].some((entry) => entry.amount > 0 && entry.status !== "received") });
+      if (error) throw new Error(error);
+    }
     await reconcilePackageUsage(input.appointmentId, input.status, tx as unknown as typeof db);
     if (input.status === "completed" && appointment.status !== "completed") {
-      const recipe = await tx.select({ productId: serviceInventoryItems.productId, quantity: serviceInventoryItems.quantityMillis }).from(serviceInventoryItems).where(and(eq(serviceInventoryItems.organizationId, input.organizationId), eq(serviceInventoryItems.serviceId, appointment.serviceId)));
+      const extras = await tx.select({ serviceId: clientPackageBalances.serviceId, quantity: attendancePackageItems.quantity }).from(attendancePackageItems).innerJoin(clientPackageBalances, eq(clientPackageBalances.id, attendancePackageItems.balanceId)).where(and(eq(attendancePackageItems.organizationId, input.organizationId), eq(attendancePackageItems.appointmentId, input.appointmentId), eq(attendancePackageItems.status, "consumed")));
+      const purchased = await tx.select({ serviceId: retailSaleItems.serviceId, quantity: retailSaleItems.quantity, variant: retailSaleItems.variantName }).from(retailSaleItems).innerJoin(retailSales, eq(retailSales.id, retailSaleItems.saleId)).where(and(eq(retailSaleItems.organizationId, input.organizationId), eq(retailSales.organizationId, input.organizationId), eq(retailSales.attendanceId, input.appointmentId), eq(retailSales.status, "completed")));
+      const pending = attendancePendingItems(appointment.metadata).filter((item) => item.catalogId.startsWith("service:")).map((item) => ({ serviceId: item.catalogId.slice(8), quantity: item.quantity }));
+      const procedures = [...(appointment.metadata?.primaryProcedureRemoved === true ? [] : [{ serviceId: appointment.serviceId, quantity: 1 }]), ...extras, ...pending, ...purchased.flatMap((item) => item.serviceId && item.variant !== "Procedimento realizado" ? [{ serviceId: item.serviceId, quantity: item.quantity }] : [])];
+      const materials = await tx.select({ serviceId: serviceInventoryItems.serviceId, productId: serviceInventoryItems.productId, quantity: serviceInventoryItems.quantityMillis }).from(serviceInventoryItems).where(and(eq(serviceInventoryItems.organizationId, input.organizationId), inArray(serviceInventoryItems.serviceId, procedures.map((item) => item.serviceId))));
+      const recipe = sumProcedureMaterials(materials, procedures);
       if (recipe.length) {
         await tx.execute(sql`select id from inventory_products where id in (${sql.join(recipe.map((item) => sql`${item.productId}`), sql`, `)}) for update`);
         const products = await tx.select({ id: inventoryProducts.id, name: inventoryProducts.name, quantity: inventoryProducts.currentQuantityMillis }).from(inventoryProducts).where(eq(inventoryProducts.organizationId, input.organizationId));

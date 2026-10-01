@@ -108,8 +108,8 @@ export async function createOrganization(formData: FormData) {
           professionalLabelPlural: "Profissionais",
           serviceLabel: "Procedimento",
           serviceLabelPlural: "Procedimentos",
-          appointmentLabel: "Consulta",
-          appointmentLabelPlural: "Consultas",
+          appointmentLabel: "Agendamento",
+          appointmentLabelPlural: "Agendamentos",
         }
       : businessType === "juridico"
         ? {
@@ -119,8 +119,8 @@ export async function createOrganization(formData: FormData) {
             professionalLabelPlural: "Advogados",
             serviceLabel: "Serviço",
             serviceLabelPlural: "Serviços",
-            appointmentLabel: "Reunião",
-            appointmentLabelPlural: "Reuniões",
+            appointmentLabel: "Agendamento",
+            appointmentLabelPlural: "Agendamentos",
           }
         : {
             clientLabel: "Cliente",
@@ -424,8 +424,8 @@ export async function updateOrganizationTerminology(formData: FormData) {
     professionalLabelPlural: textValue(formData, "professionalLabelPlural"),
     serviceLabel: textValue(formData, "serviceLabel"),
     serviceLabelPlural: textValue(formData, "serviceLabelPlural"),
-    appointmentLabel: textValue(formData, "appointmentLabel"),
-    appointmentLabelPlural: textValue(formData, "appointmentLabelPlural"),
+    appointmentLabel: "Agendamento",
+    appointmentLabelPlural: "Agendamentos",
   };
   if (Object.values(labels).some((label) => label.length < 2 || label.length > 30)) {
     throw new Error("Os termos devem ter entre 2 e 30 caracteres.");

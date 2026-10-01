@@ -89,7 +89,7 @@ export default async function PublicBookingPage({
           labels={{
             service: organization.serviceLabel,
             professional: organization.professionalLabel,
-            appointment: organization.appointmentLabel,
+            appointment: "Agendamento",
           }}
         />
         <div className="mt-5 rounded-2xl border bg-[#f8faf7] p-4 text-center text-sm"><p className="font-bold">Já possui cadastro?</p><a className="mt-1 inline-flex font-extrabold text-brand" href={`/cliente/${slug}`}>Ver, reagendar ou cancelar meus agendamentos →</a></div>

@@ -1,3 +1,4 @@
+import { updateDocumentTemplateLibrary } from "@/actions/electronic-documents";
 import { updateOrganizationTerminology } from "@/actions/app";
 import { updateBookingSettings } from "@/actions/schedule";
 import { ActionForm } from "@/components/action-form";
@@ -25,8 +26,6 @@ export default async function SettingsPage() {
       <label className="grid gap-2 text-sm font-bold">Profissional, no plural<input className="field" name="professionalLabelPlural" defaultValue={organization.professionalLabelPlural} disabled={!canManage} required /></label>
       <label className="grid gap-2 text-sm font-bold">Serviço, no singular<input className="field" name="serviceLabel" defaultValue={organization.serviceLabel} disabled={!canManage} required /></label>
       <label className="grid gap-2 text-sm font-bold">Serviço, no plural<input className="field" name="serviceLabelPlural" defaultValue={organization.serviceLabelPlural} disabled={!canManage} required /></label>
-      <label className="grid gap-2 text-sm font-bold">Agendamento, no singular<input className="field" name="appointmentLabel" defaultValue={organization.appointmentLabel} disabled={!canManage} required /></label>
-      <label className="grid gap-2 text-sm font-bold">Agendamento, no plural<input className="field" name="appointmentLabelPlural" defaultValue={organization.appointmentLabelPlural} disabled={!canManage} required /></label>
       {canManage && <button className="primary-button sm:col-span-2 sm:w-fit">Salvar terminologia</button>}
     </ActionForm>
   </section>;
@@ -87,6 +86,13 @@ export default async function SettingsPage() {
     </ActionForm>
   </section>;
 
+  const documents = <section className="panel max-w-4xl">
+    <h2 className="text-xl font-extrabold">Biblioteca de modelos de documentos</h2>
+    <p className="mt-2 text-sm text-muted">Os modelos nativos ficam disponíveis automaticamente nas páginas de Documentos.</p>
+    <p className="mt-2 text-sm text-muted">Atualize a biblioteca para aplicar os textos padrão mais recentes e adicionar modelos disponíveis. Suas cópias personalizadas, padrões por procedimento e documentos já emitidos são preservados.</p>
+    {hasOrganizationPermission(organization.role, "documents.manage") && <ActionForm action={updateDocumentTemplateLibrary} successMessage="Biblioteca de modelos atualizada." className="mt-5"><button className="primary-button">Atualizar biblioteca de modelos</button></ActionForm>}
+  </section>;
+
   return <div className="page-wrap">
     <PageHeader eyebrow={organization.name} title="Configurações" description="Configure cada área do negócio em uma seção própria." />
     <SettingsTabs tabs={[
@@ -94,6 +100,7 @@ export default async function SettingsPage() {
       { id: "booking", label: "Agendamento", content: booking },
       { id: "identity", label: "Identidade", content: identity },
       { id: "reminders", label: "Lembretes", content: reminders },
+      { id: "documents", label: "Documentos", content: documents },
       { id: "policies", label: "Políticas", content: policies },
       { id: "whatsapp", label: "WhatsApp", content: <WhatsAppSettingsContent /> },
       { id: "automation", label: "Automações e IA", content: <AutomationAndAiSettingsContent /> },

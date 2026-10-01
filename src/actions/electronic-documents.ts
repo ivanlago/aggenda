@@ -5,9 +5,11 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/db";
-import { clientHistoryEntries, clients, documentTemplates, electronicDocumentEvents, electronicDocuments, professionals } from "@/db/schema";
+import { clientHistoryEntries, clients, documentTemplates, electronicDocumentEvents, electronicDocuments, professionals, professionalRegistrations, services, organizations } from "@/db/schema";
 import { writeAuditLog } from "@/lib/audit";
 import { createDocumentCredentials, matchesHash, renderDocumentTemplate, sha256 } from "@/lib/electronic-documents";
+import { legalDefinitions, legalKey, legalFieldValues, legalContextValues, renderLegalDocument, reusableLegalFields } from "@/lib/legal-documents";
+import { syncDocumentPresets } from "@/lib/document-presets-sync";
 import { documentPresets } from "@/lib/document-presets";
 import { anamnesisAnswersToText, isAnamnesisSchema, visibleAnamnesisFields, type AnamnesisAnswers } from "@/lib/anamnesis";
 import { sendElectronicDocumentEmail, sendProfessionalDocumentEmail } from "@/lib/email";
@@ -39,18 +41,16 @@ export async function createDocumentTemplate(data: FormData) {
     organizationId: organization.id, createdByUserId: session.user.id, name, title, content, documentType, workflowType,
   }).returning({ id: documentTemplates.id });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "document_template", entityId: created.id });
-  revalidatePath("/documentos");
+  revalidatePath("/documentos", "layout");
 }
 
-export async function installDefaultDocumentTemplates() {
+export async function updateDocumentTemplateLibrary() {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "documents.manage");
-  const existing = await db.select({ name: documentTemplates.name }).from(documentTemplates).where(eq(documentTemplates.organizationId, organization.id));
-  const names = new Set(existing.map((item) => item.name));
-  const missing = documentPresets.filter((item) => !names.has(item.name));
-  if (missing.length) await db.insert(documentTemplates).values(missing.map((item) => ({ ...item, organizationId: organization.id, createdByUserId: session.user.id, isSystemPreset: true })));
-  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "install_presets", entityType: "document_template", details: { count: missing.length } });
-  revalidatePath("/documentos");
+  const result = await syncDocumentPresets(organization.id, session.user.id, true);
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "update_presets", entityType: "document_template", details: result });
+  revalidatePath("/documentos", "layout");
+  revalidatePath("/configuracoes");
 }
 
 export async function restoreDefaultDocumentTemplates() {
@@ -74,7 +74,7 @@ export async function restoreDefaultDocumentTemplates() {
     }
   }
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "restore_presets", entityType: "document_template", details: { count: documentPresets.length } });
-  revalidatePath("/documentos");
+  revalidatePath("/documentos", "layout");
 }
 
 export async function updateDocumentTemplate(data: FormData) {
@@ -90,7 +90,22 @@ export async function updateDocumentTemplate(data: FormData) {
   if (existing.isSystemPreset) return { error: "Modelos nativos não podem ser editados. Duplique o modelo para personalizá-lo." };
   await db.update(documentTemplates).set({ name, title, content, isSystemPreset: false, updatedAt: new Date() }).where(and(eq(documentTemplates.id, id), eq(documentTemplates.organizationId, organization.id)));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "update", entityType: "document_template", entityId: id });
-  revalidatePath("/documentos");
+  revalidatePath("/documentos", "layout");
+}
+
+export async function deleteDocumentTemplate(data: FormData) {
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "documents.manage");
+  const id = text(data, "id");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return { error: "Modelo não encontrado." };
+  const [deleted] = await db.delete(documentTemplates).where(and(
+    eq(documentTemplates.id, id),
+    eq(documentTemplates.organizationId, organization.id),
+    eq(documentTemplates.isSystemPreset, false),
+  )).returning({ id: documentTemplates.id, name: documentTemplates.name });
+  if (!deleted) return { error: "Modelo não encontrado ou protegido por ser nativo." };
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "delete", entityType: "document_template", entityId: deleted.id, details: { name: deleted.name } });
+  revalidatePath("/documentos", "layout");
 }
 
 export async function duplicateDocumentTemplate(data: FormData) {
@@ -119,7 +134,7 @@ export async function duplicateDocumentTemplate(data: FormData) {
     isActive: true,
   }).returning({ id: documentTemplates.id });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "duplicate", entityType: "document_template", entityId: created.id, details: { sourceTemplateId: source.id } });
-  revalidatePath("/documentos");
+  revalidatePath("/documentos", "layout");
 }
 
 export async function issueProfessionalDocument(data: FormData) {
@@ -186,7 +201,7 @@ export async function issueProfessionalDocument(data: FormData) {
     }
   }
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "issue", entityType: "professional_document", entityId: created.id, details: { professionalId: professional.id, clientId: client.id, deliveryMethod } });
-  revalidatePath("/documentos");
+  revalidatePath("/documentos", "layout");
   revalidatePath(`/clientes/${clientId}`);
   if (appointmentId) revalidatePath(`/atendimento/${appointmentId}`);
   if (deliveryWarning) return { warning: deliveryWarning };
@@ -209,7 +224,7 @@ export async function setDocumentTemplateActive(data: FormData) {
   if (existing.isSystemPreset) return { error: "Modelos nativos permanecem sempre ativos." };
   await db.update(documentTemplates).set({ isActive, updatedAt: new Date() }).where(and(eq(documentTemplates.id, id), eq(documentTemplates.organizationId, organization.id)));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: isActive ? "activate" : "deactivate", entityType: "document_template", entityId: id });
-  revalidatePath("/documentos");
+  revalidatePath("/documentos", "layout");
 }
 
 export async function issueElectronicDocument(data: FormData) {
@@ -219,20 +234,53 @@ export async function issueElectronicDocument(data: FormData) {
   const templateId = text(data, "templateId");
   const [client] = await db.select().from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1);
   const [template] = await db.select().from(documentTemplates).where(and(eq(documentTemplates.id, templateId), eq(documentTemplates.organizationId, organization.id), eq(documentTemplates.isActive, true))).limit(1);
-  if (!client || !template) return { error: "Cliente ou modelo não encontrado." };
+  if (!client || !template || template.workflowType !== "patient_signature") return { error: "Cliente ou modelo não encontrado." };
   const signerEmail = text(data, "signerEmail") || client.email || "";
   if (!/^\S+@\S+\.\S+$/.test(signerEmail)) return { error: "Informe um e-mail válido para confirmar a identidade do signatário." };
   const signerName = text(data, "signerName") || client.name;
   const now = new Date();
   const credentials = createDocumentCredentials();
-  const contentSnapshot = renderDocumentTemplate(template.content, {
-    cliente: client.name,
-    clinica: organization.name,
-    data: now.toLocaleDateString("pt-BR", { timeZone: organization.timezone }),
-  });
+  let issuerProfessionalId: string | null = null;
+  let structuredData: Record<string, unknown> | null = null;
+  let contentSnapshot: string;
+  const definition = legalDefinitions.find(item => item.key === legalKey(template.responseSchema));
+  if (definition) {
+    const professionalId = text(data, "professionalId");
+    const serviceId = definition.procedure ? text(data, "serviceId") : "";
+    const validId = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    if ((professionalId && !validId(professionalId)) || (serviceId && !validId(serviceId))) return { error: "Profissional ou procedimento inválido." };
+    const [[clinic], professionalRows, serviceRows, registrations] = await Promise.all([
+      db.select().from(organizations).where(eq(organizations.id, organization.id)).limit(1),
+      professionalId ? db.select().from(professionals).where(and(eq(professionals.id, professionalId), eq(professionals.organizationId, organization.id), eq(professionals.isActive, true))).limit(1) : Promise.resolve([]),
+      serviceId ? db.select().from(services).where(and(eq(services.id, serviceId), eq(services.organizationId, organization.id), eq(services.isActive, true))).limit(1) : Promise.resolve([]),
+      professionalId ? db.select().from(professionalRegistrations).where(and(eq(professionalRegistrations.professionalId, professionalId), eq(professionalRegistrations.organizationId, organization.id))) : Promise.resolve([]),
+    ]);
+    const professional = professionalRows[0];
+    const service = serviceRows[0];
+    if (!clinic || (professionalId && !professional) || (definition.procedure && (!professional || !service))) return { error: "Selecione um profissional e procedimento ativos da clínica." };
+    let fields: Record<string, string>;
+    const rawFields = text(data, "legalFields");
+    if (rawFields.length > 60000) return { error: "Os dados do documento excedem o limite permitido." };
+    try {
+      const parsed: unknown = JSON.parse(rawFields);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Dados inválidos.");
+      fields = Object.fromEntries(definition.fields.map(field => [field.id, String((parsed as Record<string, unknown>)[field.id] ?? "")]));
+      const values = legalFieldValues(definition, fields);
+      const professionalOption = professional ? { id: professional.id, name: professional.name, registration: registrations.map(item => `${item.council} ${item.registrationNumber}/${item.state}`).join("; ") } : undefined;
+      contentSnapshot = renderLegalDocument(template.content, { ...legalContextValues(clinic, client, professionalOption, service, now.toLocaleDateString("pt-BR", { timeZone: organization.timezone })), ...values });
+    } catch (failure) { return { error: failure instanceof Error ? failure.message : "Revise os dados do documento." }; }
+    if (definition.key === "guardian" && signerName !== fields.guardianName.trim()) return { error: "O signatário deve ser o responsável legal informado." };
+    issuerProfessionalId = professional?.id ?? null;
+    structuredData = { legalDocumentKey: definition.key, version: 1, fields, serviceId: service?.id ?? null, professionalId: issuerProfessionalId };
+  } else {
+    contentSnapshot = renderDocumentTemplate(template.content, { cliente: client.name, clinica: organization.name, data: now.toLocaleDateString("pt-BR", { timeZone: organization.timezone }) });
+    if (/\[PREENCHER|\[PERSONALIZAR/i.test(contentSnapshot)) return { error: "Personalize os campos pendentes do modelo antes de enviar." };
+  }
   const [created] = await db.insert(electronicDocuments).values({
     organizationId: organization.id,
     clientId: client.id,
+    issuerProfessionalId,
+    structuredData,
     templateId: template.id,
     createdByUserId: session.user.id,
     documentType: template.documentType,
@@ -259,7 +307,7 @@ export async function issueElectronicDocument(data: FormData) {
   }
   if (!deliveryWarning) await db.insert(electronicDocumentEvents).values({ organizationId: organization.id, documentId: created.id, eventType: "sent", details: { channel: "email", recipient: signerEmail } });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "issue", entityType: "electronic_document", entityId: created.id, details: { clientId: client.id, channel: "email" } });
-  revalidatePath("/documentos");
+  revalidatePath("/documentos", "layout");
   if (deliveryWarning) return { warning: deliveryWarning };
 }
 
@@ -287,7 +335,7 @@ export async function resendElectronicDocument(data: FormData) {
   }).where(eq(electronicDocuments.id, document.id));
   await db.insert(electronicDocumentEvents).values({ organizationId: organization.id, documentId: document.id, eventType: "resent", details: { channel: "email" } });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "resend", entityType: "electronic_document", entityId: document.id });
-  revalidatePath("/documentos");
+  revalidatePath("/documentos", "layout");
 }
 
 export async function cancelElectronicDocument(data: FormData) {
@@ -299,7 +347,7 @@ export async function cancelElectronicDocument(data: FormData) {
   if (!result.length) return { error: "Documento não encontrado." };
   await db.insert(electronicDocumentEvents).values({ organizationId: organization.id, documentId: id, eventType: "cancelled", details: { userId: session.user.id } });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "cancel", entityType: "electronic_document", entityId: id });
-  revalidatePath("/documentos");
+  revalidatePath("/documentos", "layout");
 }
 
 export async function signElectronicDocument(_previous: { status: string; message: string }, data: FormData) {
@@ -342,4 +390,35 @@ export async function signElectronicDocument(_previous: { status: string; messag
   });
   await writeAuditLog({ organizationId: document.organizationId, action: "signed", entityType: "electronic_document", entityId: document.id, details: { evidenceHash, verification: "email_otp" } });
   return { status: "success", message: "Documento assinado com sucesso. Você já pode baixar sua via em PDF." };
+}
+
+
+export async function saveLegalProcedureDefaults(data: FormData) {
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "documents.manage");
+  const id = text(data, "templateId"), serviceId = text(data, "serviceId");
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuid.test(id) || (serviceId && !uuid.test(serviceId))) return { error: "Modelo ou procedimento inválido." };
+  if (serviceId) {
+    const [service] = await db.select({ id: services.id }).from(services).where(and(eq(services.id, serviceId), eq(services.organizationId, organization.id), eq(services.isActive, true))).limit(1);
+    if (!service) return { error: "Procedimento não encontrado." };
+  }
+  const raw = text(data, "legalFields");
+  if (raw.length > 60000) return { error: "Dados excedem o limite permitido." };
+  let parsed: Record<string, unknown>;
+  try { parsed = JSON.parse(raw); if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(); } catch { return { error: "Dados inválidos." }; }
+  const result = await db.transaction(async tx => {
+    const [template] = await tx.select().from(documentTemplates).where(and(eq(documentTemplates.id, id), eq(documentTemplates.organizationId, organization.id))).limit(1).for("update");
+    const definition = legalDefinitions.find(item => item.key === legalKey(template?.responseSchema));
+    if (!template || !definition || (definition.procedure && !serviceId)) return { error: "Modelo ou procedimento não encontrado." };
+    let defaults: Record<string, string>;
+    try { defaults = reusableLegalFields(definition, parsed); } catch (failure) { return { error: failure instanceof Error ? failure.message : "Revise os campos." }; }
+    const schema = template.responseSchema ?? [];
+    const updated = schema.map(item => item.kind === "legal_document" ? { ...item, defaultsByService: { ...(item.defaultsByService as Record<string, unknown> ?? {}), [definition.procedure ? serviceId : "organization"]: defaults } } : item);
+    await tx.update(documentTemplates).set({ responseSchema: updated, updatedAt: new Date() }).where(eq(documentTemplates.id, id));
+    return undefined;
+  });
+  if (result?.error) return result;
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "update", entityType: "document_template", entityId: id, details: { legalDefaults: true, serviceId: serviceId || null } });
+  revalidatePath("/documentos", "layout");
 }

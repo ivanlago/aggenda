@@ -72,12 +72,10 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       { href: "/pacotes", label: "Pacotes", icon: PackageOpen, permission: "services.read" },
       { href: "/estoque", label: "Estoque", icon: Boxes, permission: "inventory.read" },
       { href: "/documentos", label: "Documentos", icon: FileSignature, permission: "documents.read", children: [
-        { href: "/documentos", label: "Visão geral e histórico", icon: LayoutDashboard, permission: "documents.read", secondary: true },
-        { href: "/documentos/anamneses", label: "Anamnese", icon: ScrollText, permission: "documents.read", secondary: true },
-        { href: "/documentos/atestados", label: "Atestado médico", icon: FileCheck2, permission: "documents.read", secondary: true },
-        { href: "/documentos/receitas", label: "Receita médica", icon: ReceiptText, permission: "documents.read", secondary: true },
-        { href: "/documentos/exames", label: "Solicitação de exames", icon: FileSignature, permission: "documents.read", secondary: true },
-        { href: "/documentos/termos", label: "Termos e contratos", icon: FileCheck2, permission: "documents.read", secondary: true },
+        { href: "/documentos/clinicos", label: "Clínicos", icon: FileCheck2, permission: "documents.read", secondary: true },
+        { href: "/documentos/juridicos", label: "Jurídicos", icon: ScrollText, permission: "documents.read", secondary: true },
+        { href: "/documentos", label: "Criar documentos", icon: FileSignature, permission: "documents.read", secondary: true },
+        { href: "/documentos/historico", label: "Histórico", icon: ReceiptText, permission: "documents.read", secondary: true },
       ] },
     ] },
     { label: "CRM comercial", items: [

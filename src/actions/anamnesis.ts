@@ -34,7 +34,7 @@ export async function installAnamnesisTemplates() {
     isSystemPreset: true,
   })));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "install_presets", entityType: "anamnesis_template", details: { count: missing.length } });
-  revalidatePath("/documentos");
+  revalidatePath("/documentos", "layout");
 }
 
 export async function createAnamnesisTemplate(data: FormData) {
@@ -52,7 +52,7 @@ export async function createAnamnesisTemplate(data: FormData) {
   }
   await db.insert(documentTemplates).values({ organizationId: organization.id, createdByUserId: session.user.id, name, title: name, content: "Responda às perguntas com atenção. As respostas serão anexadas à ficha assinada.", documentType: "anamnesis", workflowType: "patient_signature", responseSchema: schema, schemaVersion: 1, serviceId });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "anamnesis_template", details: { fields: schema.length, serviceId } });
-  revalidatePath("/documentos");
+  revalidatePath("/documentos", "layout");
 }
 
 export async function issueAnamnesis(data: FormData) {
@@ -83,7 +83,7 @@ export async function issueAnamnesis(data: FormData) {
   }).returning({ id: electronicDocuments.id });
   await db.insert(electronicDocumentEvents).values({ organizationId: organization.id, documentId: created.id, eventType: "created", details: { delivery, schemaVersion: template.schemaVersion } });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "issue", entityType: "anamnesis", entityId: created.id, details: { clientId, professionalId, delivery } });
-  revalidatePath("/documentos");
+  revalidatePath("/documentos", "layout");
   const url = `${appUrl()}/assinar/${credentials.token}`;
   if (delivery === "fill_now") return { openUrl: `/assinar/${credentials.token}?code=${credentials.code}` };
   try {
@@ -110,6 +110,6 @@ export async function reviewAnamnesis(data: FormData) {
   await db.update(electronicDocuments).set({ issuerProfessionalId: professional.id, structuredData: { ...current, reviewedAt: reviewedAt.toISOString(), reviewedByProfessionalId: professional.id }, updatedAt: reviewedAt }).where(eq(electronicDocuments.id, document.id));
   await db.insert(electronicDocumentEvents).values({ organizationId: organization.id, documentId: document.id, eventType: "reviewed", details: { professionalId: professional.id } });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "review", entityType: "anamnesis", entityId: document.id, details: { professionalId: professional.id } });
-  revalidatePath("/documentos");
+  revalidatePath("/documentos", "layout");
   revalidatePath(`/clientes/${document.clientId}`);
 }

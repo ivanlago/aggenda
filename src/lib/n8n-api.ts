@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 import { db } from "@/db";
@@ -48,8 +48,8 @@ export async function requireN8nOrganization(request: NextRequest) {
       professionalLabelPlural: organizations.professionalLabelPlural,
       serviceLabel: organizations.serviceLabel,
       serviceLabelPlural: organizations.serviceLabelPlural,
-      appointmentLabel: organizations.appointmentLabel,
-      appointmentLabelPlural: organizations.appointmentLabelPlural,
+      appointmentLabel: sql<string>`'Agendamento'`,
+      appointmentLabelPlural: sql<string>`'Agendamentos'`,
     })
     .from(organizations)
     .where(eq(organizations.id, organizationId))

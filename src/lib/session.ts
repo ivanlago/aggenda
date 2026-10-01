@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
@@ -67,8 +67,8 @@ export const getOrganizationMemberships = cache(async (userId: string) => {
       professionalLabelPlural: organizations.professionalLabelPlural,
       serviceLabel: organizations.serviceLabel,
       serviceLabelPlural: organizations.serviceLabelPlural,
-      appointmentLabel: organizations.appointmentLabel,
-      appointmentLabelPlural: organizations.appointmentLabelPlural,
+      appointmentLabel: sql<string>`'Agendamento'`,
+      appointmentLabelPlural: sql<string>`'Agendamentos'`,
       role: organizationMembers.role,
       subscriptionStatus: organizationSubscriptions.status,
       subscriptionPlan: organizationSubscriptions.plan,

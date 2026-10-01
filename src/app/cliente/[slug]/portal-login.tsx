@@ -18,24 +18,32 @@ export function PortalLogin({ slug, hasChallenge, initialError }: { slug: string
 
   async function requestCode(event: FormEvent) {
     event.preventDefault(); setLoading(true); setMessage("");
-    const payload = mode === "login" ? { intent: "login", identifier } : { intent: "register", name, email, phone };
-    const response = await fetch(`/api/public/client-portal/${slug}/request-code`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-    const result = await response.json(); setLoading(false);
-    if (!response.ok) return setMessage(result.error);
-    setShowCode(true); setMessage(result.message);
+    try {
+      const payload = mode === "login" ? { intent: "login", identifier } : { intent: "register", name, email, phone };
+      const response = await fetch(`/api/public/client-portal/${slug}/request-code`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result) throw new Error(result?.error || "Não foi possível enviar o código de acesso. Tente novamente mais tarde.");
+      setShowCode(true); setMessage(result.message);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Não foi possível solicitar o acesso. Tente novamente.");
+    } finally { setLoading(false); }
   }
   async function verifyCode(event: FormEvent) {
     event.preventDefault(); setLoading(true); setMessage("");
-    const response = await fetch(`/api/public/client-portal/${slug}/verify-code`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }) });
-    const result = await response.json(); setLoading(false);
-    if (!response.ok) return setMessage(result.error);
-    router.refresh();
+    try {
+      const response = await fetch(`/api/public/client-portal/${slug}/verify-code`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }) });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.authenticated) throw new Error(result?.error || "Não foi possível confirmar o código. Tente novamente.");
+      router.refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Não foi possível confirmar o acesso. Tente novamente.");
+    } finally { setLoading(false); }
   }
   return <div className="mt-6 grid gap-5">
     <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1 text-sm font-extrabold"><button type="button" className={`rounded-lg px-3 py-2.5 transition ${mode === "login" ? "bg-white text-brand shadow-sm" : "text-muted"}`} onClick={() => { setMode("login"); setMessage(""); }}>Já sou cliente</button><button type="button" className={`rounded-lg px-3 py-2.5 transition ${mode === "register" ? "bg-white text-brand shadow-sm" : "text-muted"}`} onClick={() => { setMode("register"); setMessage(""); }}>Primeiro acesso</button></div>
     <form className="grid gap-3" onSubmit={requestCode}>
       {mode === "login" ? <label className="grid gap-2 text-sm font-bold">E-mail ou celular<input className="field" autoComplete="username" required value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder="voce@email.com ou (71) 99999-9999" /></label> : <><div><h2 className="font-extrabold">Crie seu acesso</h2><p className="mt-1 text-sm leading-5 text-muted">Confirmaremos seu e-mail antes de criar o cadastro. Se você já existir, reutilizaremos seus dados.</p></div><label className="grid gap-2 text-sm font-bold">Nome completo<input className="field" autoComplete="name" required minLength={2} value={name} onChange={(event) => setName(event.target.value)} /></label><label className="grid gap-2 text-sm font-bold">Celular com DDD<PhoneInput name="phone" autoComplete="tel" required value={phone} onValueChange={setPhone} /></label><label className="grid gap-2 text-sm font-bold">E-mail<input className="field" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="voce@email.com" /></label></>}
-      <button className="primary-button" disabled={loading}>{loading ? "Enviando..." : mode === "login" ? "Login" : "Continuar primeiro acesso"}</button>
+      <button className="primary-button" disabled={loading}>{loading ? "Enviando..." : mode === "login" ? "Receber código de acesso" : "Continuar primeiro acesso"}</button>
     </form>
     {showCode && <form className="grid gap-3 rounded-2xl border bg-[#f8faf7] p-4" onSubmit={verifyCode}>
       <div><h2 className="font-extrabold">Já recebeu o código?</h2><p className="mt-1 text-sm text-muted">Digite os seis números enviados ao seu e-mail.</p></div>

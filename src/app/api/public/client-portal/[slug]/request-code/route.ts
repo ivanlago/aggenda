@@ -8,7 +8,16 @@ import { sendClientPortalAccessEmail } from "@/lib/email";
 
 const genericMessage = "Se os dados puderem ser validados, enviaremos um link e um código de acesso por e-mail.";
 
-export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }) {
+export async function POST(request: Request, context: { params: Promise<{ slug: string }> }) {
+  try {
+    return await requestAccessCode(request, context);
+  } catch (error) {
+    console.error("[client-portal] Falha ao solicitar código de acesso", error);
+    return NextResponse.json({ error: "Não foi possível enviar o código de acesso. Tente novamente mais tarde ou entre em contato com a clínica." }, { status: 503 });
+  }
+}
+
+async function requestAccessCode(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const body = await request.json().catch(() => ({}));
   const intent = body.intent === "register" ? "register" : "login";
@@ -21,12 +30,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
   if (intent === "login" && !isEmail && phone.length < 10) return NextResponse.json({ error: "Informe um e-mail ou celular com DDD." }, { status: 400 });
   if (intent === "register" && (pendingName.length < 2 || !/^\S+@\S+\.\S+$/.test(registrationEmail) || registrationPhone.length < 10)) return NextResponse.json({ error: "Informe nome, e-mail válido e celular com DDD." }, { status: 400 });
 
+  if (!process.env.RESEND_API_KEY) {
+    console.error("[client-portal] RESEND_API_KEY não configurada.");
+    return NextResponse.json({ error: "O envio do código de acesso está indisponível. Entre em contato com a clínica." }, { status: 503 });
+  }
+
   const [organization] = await db.select({ id: organizations.id, name: organizations.name }).from(organizations).where(and(eq(organizations.slug, slug), eq(organizations.bookingEnabled, true))).limit(1);
   if (!organization) return NextResponse.json({ error: "Página indisponível." }, { status: 404 });
   const lookupEmail = intent === "register" ? registrationEmail : isEmail ? identifier : "";
   const lookupPhone = intent === "register" ? registrationPhone : phone;
   const matches = await db.select({ clientId: clients.id, clientName: clients.name, clientEmail: clients.email, clientPhone: clients.phone }).from(clients)
     .where(and(eq(clients.organizationId, organization.id), or(sql`lower(${clients.email}) = ${lookupEmail}`, eq(clients.phone, lookupPhone))));
+  // Um identificador compartilhado não deve selecionar um cadastro arbitrariamente.
+  if (intent === "login" && matches.length !== 1) return NextResponse.json({ message: genericMessage });
   const emailMatch = matches.find((item) => item.clientEmail?.toLowerCase() === lookupEmail);
   const phoneMatch = matches.find((item) => item.clientPhone === lookupPhone);
   if (intent === "register" && phoneMatch && phoneMatch.clientId !== emailMatch?.clientId) return NextResponse.json({ message: genericMessage });
@@ -49,11 +65,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     expiresAt: new Date(Date.now() + CLIENT_CODE_TTL_MINUTES * 60_000),
   }).returning({ id: clientPortalAccessRequests.id });
   const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
-  await sendClientPortalAccessEmail({
+  try {
+    await sendClientPortalAccessEmail({
     email, clientName, organizationName: organization.name,
     accessUrl: `${baseUrl}/cliente/${slug}/verificar?token=${encodeURIComponent(credentials.token)}`,
     code: credentials.code, requestId: created.id,
-  });
+    });
+  } catch (error) {
+    // Um código que não foi enviado não deve bloquear a próxima tentativa.
+    await db.update(clientPortalAccessRequests).set({ usedAt: new Date() }).where(eq(clientPortalAccessRequests.id, created.id));
+    throw error;
+  }
   const response = NextResponse.json({ message: genericMessage, codeRequested: true });
   response.cookies.set(CLIENT_CHALLENGE_COOKIE, credentials.token, { httpOnly: true, secure: secureCookie(), sameSite: "lax", path: "/", maxAge: CLIENT_CODE_TTL_MINUTES * 60 });
   return response;

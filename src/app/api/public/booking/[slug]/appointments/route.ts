@@ -57,8 +57,8 @@ export async function POST(
     .where(and(eq(clientPortalSessions.organizationId, organization.id), eq(clientPortalSessions.tokenHash, portalHash(decodeURIComponent(sessionToken))), gt(clientPortalSessions.expiresAt, new Date()))).limit(1) : [];
   if (portalClient) {
     name = portalClient.name; phone = portalClient.phone ? normalizeBrazilianPhone(portalClient.phone) : ""; email = portalClient.email;
-  } else if (name.length < 2 || phone.length < 10) {
-    return Response.json({ error: "Preencha nome, telefone e horário." }, { status: 400 });
+  } else {
+    return Response.json({ error: "Identifique-se na área do cliente antes de agendar." }, { status: 401 });
   }
   const [[service], [professional]] = await Promise.all([
     db

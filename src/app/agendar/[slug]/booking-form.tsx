@@ -9,12 +9,14 @@ export function BookingForm({
   slug,
   services,
   professionals,
+  serviceProfessionalLinks,
   labels,
   timezone,
 }: {
   slug: string;
   services: Item[];
   professionals: Item[];
+  serviceProfessionalLinks: Array<{ serviceId: string; professionalId: string }>;
   labels: { service: string; professional: string; appointment: string };
   timezone: string;
 }) {
@@ -24,9 +26,15 @@ export function BookingForm({
   const [date, setDate] = useState("");
   const [times, setTimes] = useState<string[]>([]);
   const [message, setMessage] = useState("");
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityMessage, setAvailabilityMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [resultLinks, setResultLinks] = useState<{ paymentUrl?: string; manageUrl?: string }>({});
   const selectedService = services.find((item) => item.id === serviceId);
+  const linkedIds = new Set(serviceProfessionalLinks.filter((link) => link.serviceId === serviceId).map((link) => link.professionalId));
+  const eligibleProfessionals = serviceId
+    ? professionals.filter((item) => !linkedIds.size || linkedIds.has(item.id))
+    : [];
   const requiresDeposit = selectedService?.depositType && selectedService.depositType !== "none";
 
   useEffect(() => {
@@ -41,10 +49,16 @@ export function BookingForm({
       .then(async (response) => {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error);
+        if (controller.signal.aborted) return;
+        setAvailabilityLoading(false);
         setTimes(data.availableTimes);
+        setAvailabilityMessage(data.availableTimes.length ? "" : "Não há horários disponíveis nesta data. Escolha outra data ou profissional.");
       })
       .catch((error) => {
-        if (error.name !== "AbortError") setMessage(error.message);
+        if (!controller.signal.aborted && error.name !== "AbortError") {
+          setAvailabilityLoading(false);
+          setAvailabilityMessage(error.message);
+        }
       });
     return () => controller.abort();
   }, [date, professionalId, serviceId, slug]);
@@ -73,10 +87,15 @@ export function BookingForm({
     <form action={submit} className="mt-8 grid min-w-0 grid-cols-1 gap-4">
       <select
         className="field"
+        aria-label={labels.service}
         name="serviceId"
         value={serviceId}
         onChange={(event) => {
           setServiceId(event.target.value);
+          setProfessionalId("");
+          setAvailabilityLoading(false);
+          setAvailabilityMessage("");
+          setMessage("");
           setTimes([]);
         }}
         required
@@ -90,19 +109,24 @@ export function BookingForm({
       </select>
       <select
         className="field"
+        aria-label={labels.professional}
+        disabled={!serviceId || !eligibleProfessionals.length}
         name="professionalId"
         value={professionalId}
         onChange={(event) => {
           setProfessionalId(event.target.value);
+          setAvailabilityLoading(Boolean(serviceId && event.target.value && date));
+          setAvailabilityMessage("");
           setTimes([]);
         }}
         required
       >
         <option value="">Selecione o {labels.professional.toLowerCase()}</option>
-        {professionals.map((item) => (
+        {eligibleProfessionals.map((item) => (
           <option key={item.id} value={item.id}>{item.name}</option>
         ))}
       </select>
+      {serviceId && !eligibleProfessionals.length && <p role="status" className="text-sm text-muted">Nenhum profissional disponível para este {labels.service.toLowerCase()} no agendamento online.</p>}
       <div className="min-w-0">
         <label className="mb-2 block text-sm font-bold" htmlFor={dateInputId}>
           Data do agendamento
@@ -111,11 +135,14 @@ export function BookingForm({
           id={dateInputId}
           aria-describedby={`${dateInputId}-hint`}
           className="field box-border min-h-12 min-w-0 max-w-full appearance-none text-base text-foreground [color-scheme:light] [&::-webkit-date-and-time-value]:min-h-6 [&::-webkit-date-and-time-value]:text-left"
+          disabled={!professionalId}
           type="date"
           min={minimumDate}
           value={date}
           onChange={(event) => {
             setDate(event.target.value);
+            setAvailabilityLoading(Boolean(serviceId && professionalId && event.target.value));
+            setAvailabilityMessage("");
             setTimes([]);
           }}
           required
@@ -124,9 +151,9 @@ export function BookingForm({
           Toque no campo para selecionar a data no calendário.
         </p>
       </div>
-      <select className="field" name="startsAt" required defaultValue="">
+      <select className="field" aria-label="Horário" name="startsAt" required defaultValue="" key={`${serviceId}-${professionalId}-${date}`} disabled={availabilityLoading || !times.length}>
         <option value="">
-          {loading ? "Consultando horários..." : "Selecione o horário"}
+          {availabilityLoading ? "Consultando horários..." : "Selecione o horário"}
         </option>
         {times.map((time) => (
           <option key={time} value={time}>
@@ -138,13 +165,14 @@ export function BookingForm({
           </option>
         ))}
       </select>
+      {availabilityMessage && <p role="status" className="text-sm text-muted">{availabilityMessage}</p>}
       <div className="my-2 border-t" />
       <input className="field" name="name" placeholder="Seu nome" required />
       <PhoneInput name="phone" placeholder="WhatsApp: (71) 99999-9999" autoComplete="tel" required />
       <input className="field" name="email" type="email" placeholder="E-mail (opcional)" />
       <input className="field" name="voucherCode" placeholder="Voucher ou cupom (opcional)" />
       {requiresDeposit && <><input className="field" name="document" inputMode="numeric" placeholder="CPF do responsável pelo pagamento" required /><div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm"><strong>Reserva com sinal.</strong> O horário fica reservado por 30 minutos e será confirmado após o pagamento seguro na conta Asaas da empresa.</div></>}
-      <button className="primary-button" disabled={loading || !times.length}>
+      <button className="primary-button" disabled={loading || availabilityLoading || !times.length}>
         Confirmar {labels.appointment.toLowerCase()}
       </button>
       {message && (

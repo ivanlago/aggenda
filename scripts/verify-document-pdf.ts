@@ -14,7 +14,6 @@ const pdf = await createSignedDocumentPdf({
   organizationWebsite: "https://clinicaexemplo.com.br",
   organizationAddress: "Av. Exemplo, 100, Salvador - BA",
   organizationBrandColor: "#37664f",
-  organizationFooter: "Atendimento com hora marcada",
   title: "Solicitação de exames",
   documentType: "exam_request",
   content,

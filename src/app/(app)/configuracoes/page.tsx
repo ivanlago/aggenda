@@ -43,7 +43,7 @@ export default async function SettingsPage() {
   </section>;
 
   const identity = <section className="panel max-w-4xl">
-    <h2 className="text-xl font-extrabold">Identidade e dados institucionais</h2><p className="mt-2 text-sm text-muted">Informações usadas na página pública, nos documentos e PDFs.</p>
+    <h2 className="text-xl font-extrabold">Identidade e dados institucionais</h2><p className="mt-2 text-sm text-muted">Informações usadas na página pública, nos documentos e PDFs. O endereço e os contatos compõem automaticamente o rodapé dos documentos.</p>
     <ActionForm action={updateBookingSettings} successMessage="Identidade institucional salva." className="mt-6 grid gap-4 sm:grid-cols-3">
       <input type="hidden" name="settingsSection" value="identity" />
       <label className="grid gap-2 text-sm font-bold sm:col-span-3">Apresentação pública<textarea className="field min-h-20" name="publicDescription" defaultValue={organization.publicDescription ?? ""} disabled={!canManage} placeholder="Conte a especialidade e os diferenciais do negócio" /></label>
@@ -58,7 +58,6 @@ export default async function SettingsPage() {
       <label className="grid gap-2 text-sm font-bold">Logo (URL)<input className="field" name="publicLogoUrl" type="url" defaultValue={organization.publicLogoUrl ?? ""} disabled={!canManage} /></label>
       <label className="grid gap-2 text-sm font-bold">Capa (URL)<input className="field" name="publicCoverUrl" type="url" defaultValue={organization.publicCoverUrl ?? ""} disabled={!canManage} /></label>
       <label className="grid gap-2 text-sm font-bold">Domínio próprio<input className="field" name="customDomain" defaultValue={organization.customDomain ?? ""} disabled={!canManage} placeholder="agenda.suamarca.com.br" /></label>
-      <label className="grid gap-2 text-sm font-bold sm:col-span-3">Rodapé dos documentos<textarea className="field min-h-20" name="documentFooter" defaultValue={organization.documentFooter ?? ""} disabled={!canManage} /></label>
       {saveButton("Salvar identidade institucional")}
     </ActionForm>
   </section>;

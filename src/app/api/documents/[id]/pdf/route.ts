@@ -17,7 +17,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     organizationName: row.institution.name, organizationLegalName: row.institution.legalName, organizationTaxId: row.institution.taxId,
     organizationPhone: row.institution.phone, organizationWhatsapp: row.institution.publicWhatsapp, organizationEmail: row.institution.publicEmail,
     organizationWebsite: row.institution.publicWebsite, organizationAddress: row.institution.publicAddress, organizationLogoUrl: row.institution.publicLogoUrl,
-    organizationBrandColor: row.institution.brandColor, organizationFooter: row.institution.documentFooter,
+    organizationBrandColor: row.institution.brandColor,
     title: row.document.title, documentType: row.document.documentType, content: row.document.contentSnapshot, signerName: row.document.signerName, signerEmail: row.document.signerEmail,
     signatureData: row.document.signatureData, signerResponses: row.document.signerResponses, signedAt: row.document.signedAt,
     signerIpAddress: row.document.signerIpAddress, signerUserAgent: row.document.signerUserAgent, contentHash: row.document.contentHash,

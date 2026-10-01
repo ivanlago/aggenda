@@ -49,7 +49,6 @@ export async function createSignedDocumentPdf(input: {
   organizationAddress?: string | null;
   organizationLogoUrl?: string | null;
   organizationBrandColor?: string | null;
-  organizationFooter?: string | null;
   title: string;
   documentType?: string | null;
   content: string;
@@ -91,6 +90,12 @@ export async function createSignedDocumentPdf(input: {
       }
     } catch { /* O cabeçalho textual permanece disponível. */ }
   }
+  const contact = [formatPhone(input.organizationPhone), input.organizationWhatsapp && input.organizationWhatsapp !== input.organizationPhone ? `WhatsApp ${formatPhone(input.organizationWhatsapp)}` : null, input.organizationEmail, input.organizationWebsite].filter(Boolean).join(" - ");
+  const footerLines = [input.organizationAddress, contact]
+    .filter((line): line is string => Boolean(line))
+    .flatMap((line) => wrapText(line, regular, 7.5, pageSize[0] - margin * 2));
+  const footerTop = 52 + footerLines.length * 11;
+  const contentBottom = Math.max(92, footerTop + 24);
   let y = 748;
   const drawHeader = () => {
     if (logo) {
@@ -101,15 +106,12 @@ export async function createSignedDocumentPdf(input: {
     page.drawText(input.organizationName, { x: headerX, y: 786, size: 14, font: bold, color: brand });
     const legal = [input.organizationLegalName, input.organizationTaxId ? `CNPJ/CPF ${input.organizationTaxId}` : null].filter(Boolean).join(" - ");
     if (legal) page.drawText(legal.slice(0, 90), { x: headerX, y: 770, size: 7.5, font: regular, color: rgb(0.35, 0.39, 0.36) });
-    const contact = [formatPhone(input.organizationPhone), input.organizationWhatsapp && input.organizationWhatsapp !== input.organizationPhone ? `WhatsApp ${formatPhone(input.organizationWhatsapp)}` : null, input.organizationEmail, input.organizationWebsite].filter(Boolean).join(" - ");
-    if (contact) page.drawText(contact.slice(0, 115), { x: headerX, y: 757, size: 7.5, font: regular, color: rgb(0.35, 0.39, 0.36) });
-    if (input.organizationAddress) page.drawText(input.organizationAddress.slice(0, 115), { x: headerX, y: 744, size: 7.5, font: regular, color: rgb(0.35, 0.39, 0.36) });
     page.drawLine({ start: { x: margin, y: 730 }, end: { x: pageSize[0] - margin, y: 730 }, thickness: 1.2, color: brand });
   };
   const addPage = () => { page = pdf.addPage(pageSize); drawHeader(); y = 704; };
   const drawLines = (text: string, font: PDFFont, size: number, color = rgb(0.12, 0.16, 0.13)) => {
     for (const line of wrapText(text, font, size, pageSize[0] - margin * 2)) {
-      if (y < 92) addPage();
+      if (y < contentBottom) addPage();
       page.drawText(line, { x: margin, y, size, font, color });
       y -= size * 1.55;
     }
@@ -128,7 +130,7 @@ export async function createSignedDocumentPdf(input: {
   }
 
   if (input.signedAt) {
-    if (y < 260) addPage();
+    if (y < contentBottom + 168) addPage();
     y -= 24;
     page.drawLine({ start: { x: margin, y }, end: { x: pageSize[0] - margin, y }, thickness: 0.8, color: rgb(0.75, 0.78, 0.75) });
     y -= 28;
@@ -151,7 +153,7 @@ export async function createSignedDocumentPdf(input: {
   if (input.workflowType === "professional_issue") {
     const reservesManualSignature = input.documentType === "prescription" || input.documentType === "exam_request";
     const signatureSpace = reservesManualSignature ? 110 : 24;
-    if (y < 156 + signatureSpace) addPage();
+    if (y < contentBottom + 64 + signatureSpace) addPage();
     y -= signatureSpace;
     page.drawLine({ start: { x: margin, y }, end: { x: pageSize[0] - margin, y }, thickness: 0.8, color: rgb(0.75, 0.78, 0.75) });
     y -= 28;
@@ -162,9 +164,13 @@ export async function createSignedDocumentPdf(input: {
   }
   const pages = pdf.getPages();
   pages.forEach((current, index) => {
-    const footer = [input.organizationFooter, `Documento ${index + 1}/${pages.length} - gerado pelo Aggenda`].filter(Boolean).join(" - ");
-    current.drawLine({ start: { x: margin, y: 48 }, end: { x: pageSize[0] - margin, y: 48 }, thickness: 0.5, color: rgb(0.8, 0.82, 0.8) });
-    current.drawText(footer.slice(0, 135), { x: margin, y: 31, size: 7, font: regular, color: rgb(0.4, 0.44, 0.4) });
+    current.drawLine({ start: { x: margin, y: footerTop }, end: { x: pageSize[0] - margin, y: footerTop }, thickness: 0.5, color: brand });
+    footerLines.forEach((line, lineIndex) => {
+      const width = regular.widthOfTextAtSize(line, 7.5);
+      current.drawText(line, { x: (pageSize[0] - width) / 2, y: footerTop - 14 - lineIndex * 11, size: 7.5, font: regular, color: brand });
+    });
+    const pagination = `Documento ${index + 1}/${pages.length} - gerado pelo Aggenda`;
+    current.drawText(pagination, { x: (pageSize[0] - regular.widthOfTextAtSize(pagination, 7)) / 2, y: 27, size: 7, font: regular, color: rgb(0.4, 0.44, 0.4) });
   });
   pdf.setTitle(input.title);
   pdf.setAuthor(input.organizationName);

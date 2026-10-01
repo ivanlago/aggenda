@@ -186,7 +186,6 @@ export async function updateBookingSettings(formData: FormData) {
       taxId: value(formData, "taxId").replace(/\D/g, "") || null,
       publicEmail: value(formData, "publicEmail").toLowerCase() || null,
       publicWebsite: value(formData, "publicWebsite") || null, publicWhatsapp: value(formData, "publicWhatsapp") || null,
-      documentFooter: value(formData, "documentFooter") || null,
       brandColor: /^#[0-9a-f]{6}$/i.test(value(formData, "brandColor")) ? value(formData, "brandColor") : "#37664f",
       customDomain: value(formData, "customDomain").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "") || null,
     });

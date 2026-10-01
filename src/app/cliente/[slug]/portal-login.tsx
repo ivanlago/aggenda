@@ -55,6 +55,17 @@ export function PortalLogin({ slug, hasChallenge, initialError }: { slug: string
 }
 
 export function PortalLogout({ slug }: { slug: string }) {
-  const router = useRouter();
-  return <button className="secondary-button" onClick={async () => { await fetch(`/api/public/client-portal/${slug}/logout`, { method: "POST" }); router.refresh(); }}>Sair</button>;
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  async function logout() {
+    setLoading(true); setError("");
+    try {
+      const response = await fetch(`/api/public/client-portal/${slug}/logout`, { method: "POST" });
+      if (!response.ok) throw new Error("Não foi possível sair. Tente novamente.");
+      window.location.replace(`/cliente/${encodeURIComponent(slug)}`);
+    } catch {
+      setError("Não foi possível sair. Tente novamente."); setLoading(false);
+    }
+  }
+  return <div><button type="button" className="secondary-button" disabled={loading} onClick={logout}>{loading ? "Saindo..." : "Sair"}</button>{error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}</div>;
 }

@@ -55,7 +55,7 @@ export default async function SettingsPage() {
       <label className="grid gap-2 text-sm font-bold sm:col-span-2">Site<input className="field" type="url" name="publicWebsite" defaultValue={organization.publicWebsite ?? ""} disabled={!canManage} placeholder="https://..." /></label>
       <label className="grid gap-2 text-sm font-bold">Cor da marca<input className="field h-12" name="brandColor" type="color" defaultValue={organization.brandColor} disabled={!canManage} /></label>
       <label className="grid gap-2 text-sm font-bold sm:col-span-3">Endereço público<input className="field" name="publicAddress" defaultValue={organization.publicAddress ?? ""} disabled={!canManage} /></label>
-      <label className="grid gap-2 text-sm font-bold">Logo (URL)<input className="field" name="publicLogoUrl" type="url" defaultValue={organization.publicLogoUrl ?? ""} disabled={!canManage} /></label>
+      <label className="grid gap-2 text-sm font-bold">Logo da empresa<input className="field" name="publicLogoUrl" type="url" defaultValue={organization.publicLogoUrl ?? ""} disabled={!canManage} placeholder="https://.../logo.png" /><span className="text-xs font-normal text-muted">Endereço da imagem usada no agendamento online e no cabeçalho dos documentos.</span></label>
       <label className="grid gap-2 text-sm font-bold">Capa (URL)<input className="field" name="publicCoverUrl" type="url" defaultValue={organization.publicCoverUrl ?? ""} disabled={!canManage} /></label>
       <label className="grid gap-2 text-sm font-bold">Domínio próprio<input className="field" name="customDomain" defaultValue={organization.customDomain ?? ""} disabled={!canManage} placeholder="agenda.suamarca.com.br" /></label>
       {saveButton("Salvar identidade institucional")}

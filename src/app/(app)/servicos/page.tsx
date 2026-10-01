@@ -2,6 +2,9 @@ import { eq } from "drizzle-orm";
 import { Trash2 } from "lucide-react";
 
 import { createService, deleteService, updateService } from "@/actions/app";
+import { ServiceCreateToggle } from "@/components/service-create-toggle";
+import { ServiceReturnFields } from "@/components/service-return-fields";
+import { ModalShell } from "@/components/modal-shell";
 import { PageHeader } from "@/components/page-header";
 import { TussAutocomplete } from "@/components/tuss-autocomplete";
 import { db } from "@/db";
@@ -26,33 +29,27 @@ export default async function ServicesPage() {
         title={organization.serviceLabelPlural}
         description={`Defina duração e preço dos ${organization.serviceLabelPlural.toLowerCase()} oferecidos.`}
       />
-      <div className="content-grid xl:grid-cols-2">
-        {canManage && <form action={createService} className="panel form-stack">
-          <h2 className="text-lg font-extrabold">
-            Novo {organization.serviceLabel.toLowerCase()}
-          </h2>
-          <TussAutocomplete table="22" label="Guia TUSS 22 (opcional)" onSelectNameField="name" onSelectCodeField="manualTussCode" />
-          <input
-            className="field"
-            name="name"
-            required
-            placeholder={`Nome do ${organization.serviceLabel.toLowerCase()}`}
-          />
-          <div className="grid gap-2 sm:grid-cols-2"><input className="field" name="manualTussCode" placeholder="Código TUSS (opcional)" /><input className="field" name="shortName" maxLength={80} placeholder="Nome curto, ex.: RM, USG" /></div>
-          <textarea className="field min-h-24" name="preparation" placeholder="Preparação necessária para o exame/procedimento" />
-          <textarea className="field min-h-20" name="description" placeholder="Descrição" />
-          <input className="field" name="durationMinutes" type="number" min="5" step="5" required placeholder="Duração em minutos" />
-          <input className="field" name="price" inputMode="decimal" placeholder="Preço em reais (ex.: 150,00)" />
-          <input className="field" name="estimatedCost" inputMode="decimal" placeholder="Custo estimado (produtos, taxas etc.)" />
-          <EntityImageField label={`Imagem do ${organization.serviceLabel.toLowerCase()}`} />
-          <div className="grid gap-2 sm:grid-cols-2">
-            <select className="field" name="depositType" defaultValue="none"><option value="none">Sem sinal</option><option value="fixed">Sinal em reais</option><option value="percentage">Sinal percentual</option><option value="full">Pagamento integral</option></select>
-            <input className="field" name="depositValue" type="number" min="0" placeholder="Valor em centavos ou %" />
-          </div>
-          <button className="primary-button">
-            Adicionar {organization.serviceLabel.toLowerCase()}
-          </button>
-        </form>}
+      <div className="grid gap-6">
+        {canManage && <ServiceCreateToggle label={organization.serviceLabel}>
+          <form action={createService} className="grid min-w-0 gap-5 sm:grid-cols-2">
+            <div className="min-w-0 sm:col-span-2"><TussAutocomplete table="22" label="Guia TUSS 22 (opcional)" onSelectNameField="name" onSelectCodeField="manualTussCode" /></div>
+            <label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Nome do {organization.serviceLabel.toLowerCase()}<input className="field" name="name" required /></label>
+            <label className="grid min-w-0 gap-2 text-sm font-bold">Código TUSS (opcional)<input className="field" name="manualTussCode" /></label>
+            <label className="grid min-w-0 gap-2 text-sm font-bold">Nome curto<input className="field" name="shortName" maxLength={80} placeholder="Ex.: RM, USG" /></label>
+            <label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Preparação necessária<textarea className="field min-h-24" name="preparation" /></label>
+            <label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Descrição<textarea className="field min-h-24" name="description" /></label>
+            <div className="grid min-w-0 gap-5 sm:col-span-2 lg:grid-cols-3">
+              <label className="grid min-w-0 gap-2 text-sm font-bold">Duração em minutos<input className="field" name="durationMinutes" type="number" min="5" step="5" required /></label>
+              <label className="grid min-w-0 gap-2 text-sm font-bold">Preço em reais<input className="field" name="price" inputMode="decimal" placeholder="Ex.: 150,00" /></label>
+              <label className="grid min-w-0 gap-2 text-sm font-bold">Custo estimado em reais<input className="field" name="estimatedCost" inputMode="decimal" placeholder="Produtos, taxas etc." /></label>
+            </div>
+            <div className="min-w-0 sm:col-span-2"><EntityImageField label={`Imagem do ${organization.serviceLabel.toLowerCase()}`} /></div>
+            <label className="grid min-w-0 gap-2 text-sm font-bold">Tipo de sinal<select className="field" name="depositType" defaultValue="none"><option value="none">Sem sinal</option><option value="fixed">Sinal em reais</option><option value="percentage">Sinal percentual</option><option value="full">Pagamento integral</option></select></label>
+            <label className="grid min-w-0 gap-2 text-sm font-bold">Valor do sinal em centavos ou %<input className="field" name="depositValue" type="number" min="0" /></label>
+            <ServiceReturnFields />
+            <div className="border-t pt-4 sm:col-span-2"><button className="primary-button">Adicionar {organization.serviceLabel.toLowerCase()}</button></div>
+          </form>
+        </ServiceCreateToggle>}
         <section className="panel">
           <h2 className="text-lg font-extrabold">
             {items.length}{" "}
@@ -72,25 +69,28 @@ export default async function ServicesPage() {
                     {item.priceInCents != null ? ` · ${(item.priceInCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}
                   </p>
                 </div>
-                {canManage && <details className="relative">
-                  <summary className="cursor-pointer text-sm font-bold text-brand">Editar</summary>
-                  <form action={updateService} className="absolute right-0 z-10 mt-2 grid w-72 gap-2 rounded-2xl border bg-white p-4 shadow-xl">
+                {canManage && <ModalShell title={`Editar ${organization.serviceLabel.toLowerCase()}: ${item.name}`} variant="edit">
+                  <form action={updateService} className="grid min-w-0 gap-5 sm:grid-cols-2">
                     <input type="hidden" name="id" value={item.id} />
-                    <TussAutocomplete table="22" label="Guia TUSS 22" defaultCode={item.tussCode ?? ""} defaultName={item.tussName ?? ""} onSelectNameField="name" onSelectCodeField="manualTussCode" />
-                    <input className="field" name="name" defaultValue={item.name} required />
-                    <div className="grid gap-2 sm:grid-cols-2"><input className="field" name="manualTussCode" defaultValue={item.tussCode ?? ""} placeholder="Código TUSS" /><input className="field" name="shortName" defaultValue={item.shortName ?? ""} placeholder="Nome curto" /></div>
-                    <textarea className="field" name="preparation" defaultValue={item.preparation ?? ""} placeholder="Preparação necessária" />
-                    <textarea className="field" name="description" defaultValue={item.description ?? ""} placeholder="Descrição" />
-                    <input className="field" name="durationMinutes" type="number" min="5" step="5" defaultValue={item.durationMinutes} required />
-                    <input className="field" name="price" inputMode="decimal" defaultValue={item.priceInCents == null ? "" : (item.priceInCents / 100).toFixed(2).replace(".", ",")} placeholder="Preço em reais" />
-                    <input className="field" name="estimatedCost" inputMode="decimal" defaultValue={(item.estimatedCostInCents / 100).toFixed(2).replace(".", ",")} placeholder="Custo estimado" />
-                    <EntityImageField currentUrl={item.imageUrl} label={`Imagem do ${organization.serviceLabel.toLowerCase()}`} />
-                    <select className="field" name="depositType" defaultValue={item.depositType}><option value="none">Sem sinal</option><option value="fixed">Sinal em reais</option><option value="percentage">Sinal percentual</option><option value="full">Pagamento integral</option></select>
-                    <input className="field" name="depositValue" type="number" min="0" defaultValue={item.depositValue} aria-label="Valor do sinal em centavos ou percentual" />
-                    <label className="flex gap-2 text-sm"><input type="checkbox" name="isActive" defaultChecked={item.isActive} /> Ativo</label>
-                    <button className="primary-button">Salvar</button>
+                    <div className="min-w-0 sm:col-span-2"><TussAutocomplete table="22" label="Guia TUSS 22" defaultCode={item.tussCode ?? ""} defaultName={item.tussName ?? ""} onSelectNameField="name" onSelectCodeField="manualTussCode" /></div>
+                    <label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Nome do {organization.serviceLabel.toLowerCase()}<input className="field" name="name" defaultValue={item.name} required /></label>
+                    <label className="grid min-w-0 gap-2 text-sm font-bold">Código TUSS<input className="field" name="manualTussCode" defaultValue={item.tussCode ?? ""} /></label>
+                    <label className="grid min-w-0 gap-2 text-sm font-bold">Nome curto<input className="field" name="shortName" maxLength={80} defaultValue={item.shortName ?? ""} /></label>
+                    <label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Preparação necessária<textarea className="field min-h-24" name="preparation" defaultValue={item.preparation ?? ""} /></label>
+                    <label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Descrição<textarea className="field min-h-24" name="description" defaultValue={item.description ?? ""} /></label>
+                    <div className="grid min-w-0 gap-5 sm:col-span-2 lg:grid-cols-3">
+                      <label className="grid min-w-0 gap-2 text-sm font-bold">Duração em minutos<input className="field" name="durationMinutes" type="number" min="5" step="5" defaultValue={item.durationMinutes} required /></label>
+                      <label className="grid min-w-0 gap-2 text-sm font-bold">Preço em reais<input className="field" name="price" inputMode="decimal" defaultValue={item.priceInCents == null ? "" : (item.priceInCents / 100).toFixed(2).replace(".", ",")} /></label>
+                      <label className="grid min-w-0 gap-2 text-sm font-bold">Custo estimado em reais<input className="field" name="estimatedCost" inputMode="decimal" defaultValue={(item.estimatedCostInCents / 100).toFixed(2).replace(".", ",")} /></label>
+                    </div>
+                    <div className="min-w-0 sm:col-span-2"><EntityImageField currentUrl={item.imageUrl} label={`Imagem do ${organization.serviceLabel.toLowerCase()}`} /></div>
+                    <label className="grid min-w-0 gap-2 text-sm font-bold">Tipo de sinal<select className="field" name="depositType" defaultValue={item.depositType}><option value="none">Sem sinal</option><option value="fixed">Sinal em reais</option><option value="percentage">Sinal percentual</option><option value="full">Pagamento integral</option></select></label>
+                    <label className="grid min-w-0 gap-2 text-sm font-bold">Valor do sinal em centavos ou %<input className="field" name="depositValue" type="number" min="0" defaultValue={item.depositValue} /></label>
+                    <ServiceReturnFields settings={item} />
+                    <label className="flex items-center gap-2 text-sm font-bold sm:col-span-2"><input type="checkbox" name="isActive" defaultChecked={item.isActive} /> Ativo</label>
+                    <div className="border-t pt-4 sm:col-span-2"><button className="primary-button">Salvar alterações</button></div>
                   </form>
-                </details>}
+                </ModalShell>}
                 {canManage && <form action={deleteService}>
                   <input type="hidden" name="id" value={item.id} />
                   <button className="icon-button" aria-label={`Excluir ${item.name}`}><Trash2 className="size-4" /></button>

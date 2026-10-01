@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { db } from "@/db";
+import { parseReturnOverrides, serviceReturnSettings } from "@/lib/procedure-return-rules";
 import {
   appointments,
   clients,
@@ -786,6 +787,7 @@ export async function createService(formData: FormData) {
     tussTable: optionalText(formData, "tussTable"),
     shortName: optionalText(formData, "shortName"),
     preparation: optionalText(formData, "preparation"),
+    ...serviceReturnSettings(formData),
     durationMinutes,
     priceInCents: optionalMoneyInCents(formData, "price"),
     estimatedCostInCents: optionalMoneyInCents(formData, "estimatedCost") ?? 0,
@@ -833,6 +835,7 @@ export async function updateService(formData: FormData) {
     tussTable: optionalText(formData, "tussTable"),
     shortName: optionalText(formData, "shortName"),
     preparation: optionalText(formData, "preparation"),
+    ...serviceReturnSettings(formData),
     priceInCents: optionalMoneyInCents(formData, "price"),
     estimatedCostInCents: optionalMoneyInCents(formData, "estimatedCost") ?? 0,
     depositType: ["none", "fixed", "percentage", "full"].includes(textValue(formData, "depositType")) ? textValue(formData, "depositType") : "none",
@@ -1253,7 +1256,8 @@ export async function updateAppointmentStatus(formData: FormData) {
   if (!previousAppointment) return { error: "Agendamento não encontrado ou fora da sua agenda." };
   let updatedAppointment = false;
   try {
-    updatedAppointment = await updateAppointmentAndInventory({ organizationId: organization.id, appointmentId, status, cancellationReason, userId: session.user.id });
+    const returnOverrides = status === "completed" ? parseReturnOverrides(formData) : undefined;
+    updatedAppointment = await updateAppointmentAndInventory({ organizationId: organization.id, appointmentId, status, cancellationReason, userId: session.user.id, returnOverrides });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Não foi possível movimentar o estoque." };
   }
@@ -1271,6 +1275,7 @@ export async function updateAppointmentStatus(formData: FormData) {
       details: {
         previousStatus: previousAppointment?.status,
         status,
+        ...(status === "completed" ? { returnOverrides: parseReturnOverrides(formData) } : {}),
         ...(cancellationReason ? { cancellationReason } : {}),
       },
     }),
@@ -1297,5 +1302,7 @@ export async function updateAppointmentStatus(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/financeiro");
   revalidatePath("/estoque");
+  revalidatePath("/crescimento");
+  revalidatePath(`/cliente/${organization.slug}`);
   if (previousAppointment) revalidatePath(`/clientes/${previousAppointment.clientId}`);
 }

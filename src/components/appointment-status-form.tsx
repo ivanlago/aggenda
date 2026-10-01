@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { ActionForm } from "@/components/action-form";
 
@@ -12,12 +12,14 @@ export function AppointmentStatusForm({
   initialStatus,
   initialCancellationReason,
   statuses,
+  returnSettings,
 }: {
   action: (formData: FormData) => Promise<void | { error?: string }>;
   appointmentId: string;
   initialStatus: AppointmentStatus;
   initialCancellationReason: string | null;
   statuses: ReadonlyArray<readonly [AppointmentStatus, string]>;
+  returnSettings?: ReactNode;
 }) {
   const serverReason = initialCancellationReason ?? "";
   const [draft, setDraft] = useState({
@@ -62,6 +64,7 @@ export function AppointmentStatusForm({
           required
         />
       )}
+      {status === "completed" && returnSettings}
       <button className="mt-2 w-full text-xs font-extrabold text-brand">Atualizar</button>
     </ActionForm>
   );

@@ -20,6 +20,7 @@ import { AttendancePos } from "@/components/attendance-pos";
 import { AttendanceItems } from "@/components/attendance-items";
 import { CompanionDeclaration } from "@/components/attendance-extras";
 import { AppointmentStatusForm } from "@/components/appointment-status-form";
+import { AttendanceReturnSettings } from "@/components/attendance-return-settings";
 
 export const metadata = { title: "Atendimento" };
 const statuses = [["scheduled", "Agendado"], ["confirmed", "Confirmado"], ["completed", "Concluído"], ["cancelled", "Cancelado"], ["no_show", "Não compareceu"]] as const;
@@ -107,6 +108,6 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
       </div>
       {canReadDocuments && <details className="panel mt-4"><summary className="cursor-pointer font-extrabold">Documentos do cliente</summary>{documents.filter((document) => ["issued", "signed"].includes(document.status)).map((document) => <div key={document.id} className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3"><div><p className="font-bold">{document.title}</p><p className="text-xs text-muted">{formatOrganizationDateTime(document.createdAt, organization.timezone)}{document.structuredData?.appointmentId === id ? " · Neste atendimento" : ""}</p></div><Link className="secondary-button" href={`/api/documents/${document.id}/pdf`}>Abrir PDF</Link></div>)}</details>}
     </section>
-    {canWrite && <section className="panel mt-5"><h2 className="mb-3 text-lg font-extrabold">Situação do atendimento</h2><AppointmentStatusForm action={updateAttendanceStatus} appointmentId={id} initialStatus={appointment.status} initialCancellationReason={appointment.cancellationReason} statuses={statuses} /></section>}
+    {canWrite && <section className="panel mt-5"><h2 className="mb-3 text-lg font-extrabold">Situação do atendimento</h2><AppointmentStatusForm action={updateAttendanceStatus} appointmentId={id} initialStatus={appointment.status} initialCancellationReason={appointment.cancellationReason} statuses={statuses} returnSettings={<AttendanceReturnSettings appointment={appointment} timezone={organization.timezone} />} /></section>}
   </div>;
 }

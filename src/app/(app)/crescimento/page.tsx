@@ -8,13 +8,16 @@ import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { appointments, clientMemberships, clients, organizationFinancialIntegrations, servicePackages, services, vouchers } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
+import { hasOrganizationPermission } from "@/lib/permissions";
+import { ProcedureReturnsPanel } from "@/components/procedure-returns-panel";
 
 const money = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export const metadata = { title: "Crescimento e recorrência" };
 
-export default async function GrowthPage() {
+export default async function GrowthPage({ searchParams }: { searchParams: Promise<{ returnState?: string; returnSearch?: string }> }) {
   const { organization } = await requireOrganization();
+  const query = await searchParams;
   const now = new Date(); const monthStart = new Date(now.getFullYear(), now.getMonth(), 1); const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const recoveryLimit = new Date(now.getTime() - organization.patientRecoveryDays * 86_400_000);
   const [monthAppointments, pastAppointments, clientRows, voucherRows, membershipRows, packageRows, asaas] = await Promise.all([
@@ -41,6 +44,7 @@ export default async function GrowthPage() {
       [UserRoundSearch, money(activeMembershipRevenue), "Receita recorrente mensal ativa"],
     ].map(([Icon, value, label]) => <article className="panel" key={String(label)}><Icon className="size-5 text-brand" /><p className="mt-6 text-2xl font-extrabold">{String(value)}</p><p className="mt-1 text-sm text-muted">{String(label)}</p></article>)}</section>
 
+    {hasOrganizationPermission(organization.role, "crm.read") && <ProcedureReturnsPanel organizationId={organization.id} timezone={organization.timezone} canManage={hasOrganizationPermission(organization.role, "crm.manage")} filter={query.returnState} search={query.returnSearch} />}
     <section className="mt-5 grid gap-5 xl:grid-cols-2">
       <article className="panel"><div className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-extrabold">Recuperação de pacientes</h2><p className="mt-1 text-sm text-muted">Sem atendimento há {organization.patientRecoveryDays} dias ou nunca atendidos.</p></div><Link className="secondary-button" href="/configuracoes">Configurar prazo</Link></div><div className="mt-4 divide-y">{inactive.map((client) => <div className="flex items-center justify-between gap-3 py-3" key={client.id}><div><p className="font-bold">{client.name}</p><p className="text-xs text-muted">Último atendimento: {latest.get(client.id)?.toLocaleDateString("pt-BR") ?? "nenhum"}</p></div><ActionForm action={sendRecoveryMessage} successMessage="Convite de retorno enfileirado."><input type="hidden" name="clientId" value={client.id} /><button className="secondary-button"><MessageCircleMore className="mr-2 size-4" />Convidar</button></ActionForm></div>)}{!inactive.length && <p className="empty-state">Nenhum paciente elegível no prazo atual.</p>}</div></article>
 

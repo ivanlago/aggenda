@@ -16,6 +16,7 @@ import { formatPhone } from "@/lib/phone";
 import { PortalLogin, PortalLogout } from "./portal-login";
 import { PortalBooking } from "./portal-booking";
 import { NewAppointmentToggle } from "./new-appointment-toggle";
+import { getProcedureReturns } from "@/lib/procedure-returns";
 
 const statusLabels = { scheduled: "Agendado", confirmed: "Confirmado", cancelled: "Cancelado", completed: "Concluído", no_show: "Não compareceu" };
 
@@ -25,7 +26,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return { title: organization ? `Área do cliente · ${organization.name}` : "Área do cliente" };
 }
 
-export default async function ClientPortalPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ erro?: string }> }) {
+export default async function ClientPortalPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ erro?: string; novo?: string }> }) {
   const { slug } = await params;
   const query = await searchParams;
   const [organization] = await db.select().from(organizations).where(and(eq(organizations.slug, slug), eq(organizations.bookingEnabled, true))).limit(1);
@@ -50,6 +51,7 @@ export default async function ClientPortalPage({ params, searchParams }: { param
   }
   const upcoming = items.filter((item) => item.startsAt >= new Date() && !["cancelled", "completed", "no_show"].includes(item.status));
   const history = items.filter((item) => !upcoming.includes(item));
+  const suggestedReturns = (await getProcedureReturns(organization.id, organization.timezone, identity.clientId)).filter((item) => !item.nextAppointment && item.contactStatus !== "dismissed" && ["upcoming", "overdue", "contacted"].includes(item.state));
   const [serviceCatalog, professionalCatalog, qualificationLinks] = await Promise.all([
     db.select({ id: services.id, name: services.name, durationMinutes: services.durationMinutes, priceInCents: services.priceInCents, depositType: services.depositType }).from(services).where(and(eq(services.organizationId, organization.id), eq(services.isActive, true))).orderBy(services.name),
     db.select({ id: professionals.id, name: professionals.name }).from(professionals).where(and(eq(professionals.organizationId, organization.id), eq(professionals.isActive, true), eq(professionals.isBookable, true))).orderBy(professionals.name),
@@ -58,9 +60,10 @@ export default async function ClientPortalPage({ params, searchParams }: { param
   const bookableServices = serviceCatalog.map((service) => ({ ...service, professionalIds: qualificationLinks.filter((link) => link.serviceId === service.id).map((link) => link.professionalId) }));
   return <main className="min-h-screen p-4 sm:p-8" style={{ background: `linear-gradient(145deg, ${organization.brandColor}18, #f3f5f1 55%)` }}><div className="mx-auto grid max-w-5xl gap-6">
     <CompanyHero organization={organization} />
-    <section className="panel"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-sm font-bold text-brand">Olá, {identity.name}</p><h1 className="text-3xl font-extrabold">Seus agendamentos</h1><div className="mt-2 flex flex-wrap gap-4 text-sm text-muted">{identity.email && <span className="flex items-center gap-1"><Mail className="size-4" />{identity.email}</span>}{identity.phone && <span className="flex items-center gap-1"><Phone className="size-4" />{formatPhone(identity.phone)}</span>}</div></div><PortalLogout slug={slug} /></div><NewAppointmentToggle><PortalBooking slug={slug} services={bookableServices} professionals={professionalCatalog} timezone={organization.timezone} horizonDays={organization.bookingHorizonDays} hasUpcoming={upcoming.length > 0} /></NewAppointmentToggle></section>
+    <section className="panel"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-sm font-bold text-brand">Olá, {identity.name}</p><h1 className="text-3xl font-extrabold">Seus agendamentos</h1><div className="mt-2 flex flex-wrap gap-4 text-sm text-muted">{identity.email && <span className="flex items-center gap-1"><Mail className="size-4" />{identity.email}</span>}{identity.phone && <span className="flex items-center gap-1"><Phone className="size-4" />{formatPhone(identity.phone)}</span>}</div></div><PortalLogout slug={slug} /></div><NewAppointmentToggle defaultOpen={query.novo === "1"}><PortalBooking slug={slug} services={bookableServices} professionals={professionalCatalog} timezone={organization.timezone} horizonDays={organization.bookingHorizonDays} hasUpcoming={upcoming.length > 0} /></NewAppointmentToggle></section>
     <section className="panel"><h2 className="text-xl font-extrabold">Próximos agendamentos</h2>{!upcoming.length ? <p className="empty-state">Você não possui agendamentos futuros ativos.</p> : <div className="mt-4 grid gap-4">{upcoming.map((item) => <AppointmentCard key={item.id} item={item} organization={organization} />)}</div>}</section>
     <details className="panel"><summary className="cursor-pointer text-xl font-extrabold">Histórico</summary>{!history.length ? <p className="empty-state">Nenhum atendimento anterior.</p> : <div className="mt-4 grid gap-3">{history.map((item) => <div className="rounded-2xl border p-4" key={item.id}><div className="flex flex-wrap justify-between gap-2"><div><p className="font-extrabold">{item.service}</p><p className="mt-1 text-sm text-muted">{formatOrganizationDateTime(item.startsAt, organization.timezone)} · {item.professional || "Profissional a definir"}</p></div><span className="status-pill">{statusLabels[item.status]}</span></div></div>)}</div>}</details>
+    {suggestedReturns.length > 0 && <section className="panel"><h2 className="text-xl font-extrabold">Retornos sugeridos</h2><p className="mt-2 text-sm text-muted">Converse com a clínica para avaliar seu próximo atendimento.</p><div className="mt-4 grid gap-3">{suggestedReturns.map((item) => <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4" key={item.id}><div><p className="font-bold">{item.service}</p><p className="text-sm text-muted">Data sugerida: {item.dueDate.split("-").reverse().join("/")}</p></div><a className="secondary-button" href={`/cliente/${slug}?novo=1#novo-agendamento`}>Agendar retorno</a></div>)}</div></section>}
     <CompanyFooter organization={organization} />
   </div></main>;
 }

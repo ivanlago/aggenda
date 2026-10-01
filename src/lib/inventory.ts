@@ -3,13 +3,16 @@ import { sumProcedureMaterials } from "@/lib/attendance-materials";
 import { attendancePendingItems } from "@/lib/attendance-pending-items";
 import { attendanceCompletionError } from "@/lib/attendance-completion";
 import { db } from "@/db";
+import { organizationDate } from "@/lib/appointment-safety";
+import { returnDate, type ReturnOverride } from "@/lib/procedure-return-rules";
+import { organizations, procedureReturns } from "@/db/schema";
 import { reconcilePackageUsage } from "@/lib/package-balance";
 import { appointmentInventoryConsumptions, appointments, attendancePackageItems, clientPackageBalances, inventoryMovements, inventoryProducts, serviceInventoryItems, retailSaleItems, retailSales, financialEntries, packageUsages, services } from "@/db/schema";
 
-export async function updateAppointmentAndInventory(input: { organizationId: string; appointmentId: string; status: "scheduled" | "confirmed" | "cancelled" | "completed" | "no_show"; cancellationReason: string | null; userId: string }) {
-  return db.transaction(async (tx) => {
+export async function updateAppointmentAndInventory(input: { organizationId: string; appointmentId: string; status: "scheduled" | "confirmed" | "cancelled" | "completed" | "no_show"; cancellationReason: string | null; userId: string; returnOverrides?: Record<string, ReturnOverride> }, database = db) {
+  return database.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`attendance-payment:${input.appointmentId}`}, 0))`);
-    const [appointment] = await tx.select({ id: appointments.id, serviceId: appointments.serviceId, priceInCents: appointments.priceInCents, status: appointments.status, metadata: appointments.metadata }).from(appointments).where(and(eq(appointments.id, input.appointmentId), eq(appointments.organizationId, input.organizationId))).limit(1).for("update");
+    const [appointment] = await tx.select({ id: appointments.id, clientId: appointments.clientId, startsAt: appointments.startsAt, serviceId: appointments.serviceId, priceInCents: appointments.priceInCents, status: appointments.status, metadata: appointments.metadata }).from(appointments).where(and(eq(appointments.id, input.appointmentId), eq(appointments.organizationId, input.organizationId))).limit(1).for("update");
     if (!appointment) return false;
     if (input.status === "completed" && appointment.status !== "completed") {
       const [payment] = await tx.select().from(financialEntries).where(and(eq(financialEntries.organizationId, input.organizationId), eq(financialEntries.appointmentId, input.appointmentId)));
@@ -26,6 +29,14 @@ export async function updateAppointmentAndInventory(input: { organizationId: str
       const purchased = await tx.select({ serviceId: retailSaleItems.serviceId, quantity: retailSaleItems.quantity, variant: retailSaleItems.variantName }).from(retailSaleItems).innerJoin(retailSales, eq(retailSales.id, retailSaleItems.saleId)).where(and(eq(retailSaleItems.organizationId, input.organizationId), eq(retailSales.organizationId, input.organizationId), eq(retailSales.attendanceId, input.appointmentId), eq(retailSales.status, "completed")));
       const pending = attendancePendingItems(appointment.metadata).filter((item) => item.catalogId.startsWith("service:")).map((item) => ({ serviceId: item.catalogId.slice(8), quantity: item.quantity }));
       const procedures = [...(appointment.metadata?.primaryProcedureRemoved === true ? [] : [{ serviceId: appointment.serviceId, quantity: 1 }]), ...extras, ...pending, ...purchased.flatMap((item) => item.serviceId && item.variant !== "Procedimento realizado" ? [{ serviceId: item.serviceId, quantity: item.quantity }] : [])];
+      const performedServices = await tx.select().from(services).where(and(eq(services.organizationId, input.organizationId), inArray(services.id, [...new Set(procedures.map((item) => item.serviceId))])));
+      const [organization] = await tx.select({ timezone: organizations.timezone }).from(organizations).where(eq(organizations.id, input.organizationId));
+      const performedDate = organizationDate(appointment.startsAt, organization.timezone);
+      for (const service of performedServices) {
+        const dueDate = returnDate(performedDate, service.returnInterval, service.returnIntervalUnit, input.returnOverrides?.[service.id]);
+        // Snapshot por realização: alterações no catálogo não mudam retornos já definidos.
+        await tx.insert(procedureReturns).values({ organizationId: input.organizationId, appointmentId: appointment.id, clientId: appointment.clientId, serviceId: service.id, performedAt: appointment.startsAt, dueDate, reminderDays: service.returnReminderDays }).onConflictDoUpdate({ target: [procedureReturns.appointmentId, procedureReturns.serviceId], set: { performedAt: appointment.startsAt, dueDate, reminderDays: service.returnReminderDays, contactStatus: "pending", contactedAt: null, contactNote: null } });
+      }
       const materials = await tx.select({ serviceId: serviceInventoryItems.serviceId, productId: serviceInventoryItems.productId, quantity: serviceInventoryItems.quantityMillis }).from(serviceInventoryItems).where(and(eq(serviceInventoryItems.organizationId, input.organizationId), inArray(serviceInventoryItems.serviceId, procedures.map((item) => item.serviceId))));
       const recipe = sumProcedureMaterials(materials, procedures);
       if (recipe.length) {
@@ -35,8 +46,25 @@ export async function updateAppointmentAndInventory(input: { organizationId: str
         for (const item of recipe) { const product = products.find((candidate) => candidate.id === item.productId)!; const balance = product.quantity - item.quantity; await tx.update(inventoryProducts).set({ currentQuantityMillis: balance, updatedAt: new Date() }).where(eq(inventoryProducts.id, item.productId)); await tx.insert(appointmentInventoryConsumptions).values({ organizationId: input.organizationId, appointmentId: input.appointmentId, productId: item.productId, quantityMillis: item.quantity }).onConflictDoUpdate({ target: [appointmentInventoryConsumptions.appointmentId, appointmentInventoryConsumptions.productId], set: { quantityMillis: item.quantity, consumedAt: new Date(), reversedAt: null } }); await tx.insert(inventoryMovements).values({ organizationId: input.organizationId, productId: item.productId, appointmentId: input.appointmentId, type: "consumption", quantityMillis: -item.quantity, balanceAfterMillis: balance, createdByUserId: input.userId }); }
       }
     } else if (input.status !== "completed" && appointment.status === "completed") {
+      await tx.delete(procedureReturns).where(and(eq(procedureReturns.organizationId, input.organizationId), eq(procedureReturns.appointmentId, appointment.id)));
       const consumed = await tx.select().from(appointmentInventoryConsumptions).where(and(eq(appointmentInventoryConsumptions.organizationId, input.organizationId), eq(appointmentInventoryConsumptions.appointmentId, input.appointmentId), isNull(appointmentInventoryConsumptions.reversedAt)));
       for (const item of consumed) { await tx.execute(sql`select id from inventory_products where id = ${item.productId} for update`); const [product] = await tx.select({ quantity: inventoryProducts.currentQuantityMillis }).from(inventoryProducts).where(eq(inventoryProducts.id, item.productId)).limit(1); if (!product) continue; const balance = product.quantity + item.quantityMillis; await tx.update(inventoryProducts).set({ currentQuantityMillis: balance, updatedAt: new Date() }).where(eq(inventoryProducts.id, item.productId)); await tx.update(appointmentInventoryConsumptions).set({ reversedAt: new Date() }).where(and(eq(appointmentInventoryConsumptions.appointmentId, input.appointmentId), eq(appointmentInventoryConsumptions.productId, item.productId))); await tx.insert(inventoryMovements).values({ organizationId: input.organizationId, productId: item.productId, appointmentId: input.appointmentId, type: "reversal", quantityMillis: item.quantityMillis, balanceAfterMillis: balance, createdByUserId: input.userId }); }
+    }
+    if (input.status === "completed" && appointment.status === "completed") {
+      const [organization] = await tx.select({ timezone: organizations.timezone }).from(organizations).where(eq(organizations.id, input.organizationId));
+      const extras = await tx.select({ serviceId: clientPackageBalances.serviceId }).from(attendancePackageItems).innerJoin(clientPackageBalances, eq(clientPackageBalances.id, attendancePackageItems.balanceId)).where(and(eq(attendancePackageItems.organizationId, input.organizationId), eq(attendancePackageItems.appointmentId, appointment.id), eq(attendancePackageItems.status, "consumed")));
+      const purchases = await tx.select({ serviceId: retailSaleItems.serviceId, variant: retailSaleItems.variantName }).from(retailSaleItems).innerJoin(retailSales, eq(retailSales.id, retailSaleItems.saleId)).where(and(eq(retailSales.organizationId, input.organizationId), eq(retailSales.attendanceId, appointment.id), eq(retailSales.status, "completed")));
+      const ids = [...new Set([...(appointment.metadata?.primaryProcedureRemoved === true ? [] : [appointment.serviceId]), ...extras.map((item) => item.serviceId), ...purchases.flatMap((item) => item.serviceId && item.variant !== "Procedimento realizado" ? [item.serviceId] : [])])];
+      const catalog = await tx.select().from(services).where(and(eq(services.organizationId, input.organizationId), inArray(services.id, ids)));
+      const saved = await tx.select().from(procedureReturns).where(and(eq(procedureReturns.organizationId, input.organizationId), eq(procedureReturns.appointmentId, appointment.id)));
+      for (const service of catalog) {
+        const snapshot = saved.find((item) => item.serviceId === service.id);
+        const override = input.returnOverrides?.[service.id];
+        if (snapshot && (!override || override.mode === "default")) continue;
+        const dueDate = returnDate(organizationDate(appointment.startsAt, organization.timezone), service.returnInterval, service.returnIntervalUnit, override);
+        if (!snapshot) await tx.insert(procedureReturns).values({ organizationId: input.organizationId, appointmentId: appointment.id, clientId: appointment.clientId, serviceId: service.id, performedAt: appointment.startsAt, dueDate, reminderDays: service.returnReminderDays });
+        else if (snapshot.dueDate !== dueDate) await tx.update(procedureReturns).set({ dueDate, contactStatus: "pending", contactedAt: null, contactNote: null }).where(and(eq(procedureReturns.organizationId, input.organizationId), eq(procedureReturns.id, snapshot.id)));
+      }
     }
     await tx.update(appointments).set({ status: input.status, confirmedAt: input.status === "confirmed" ? new Date() : undefined, cancellationReason: input.status === "cancelled" ? input.cancellationReason : null, updatedAt: new Date() }).where(eq(appointments.id, input.appointmentId));
     return true;

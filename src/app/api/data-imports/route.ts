@@ -103,7 +103,7 @@ export async function POST(request: Request) {
               await tx.insert(dataImportRows).values({ importId: input.importId, rowNumber, entityId: found.id, action: "updated", previousData: found });
             } else {
               const [created] = await tx.insert(services).values({ organizationId: organization.id, ...values }).returning({ id: services.id });
-              existingServices.push({ id: created.id, organizationId: organization.id, imageUrl: null, imagePublicId: null, createdAt: new Date(), ...values });
+              existingServices.push({ id: created.id, organizationId: organization.id, imageUrl: null, imagePublicId: null, createdAt: new Date(), returnInterval: null, returnIntervalUnit: "days", returnReminderDays: 7, ...values });
               createdRows += 1; results.push({ row: rowNumber, action: "created" });
               await tx.insert(dataImportRows).values({ importId: input.importId, rowNumber, entityId: created.id, action: "created" });
             }

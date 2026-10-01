@@ -1,4 +1,5 @@
 import {
+  check,
   boolean,
   date,
   index,
@@ -13,6 +14,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import type { QuoteLine } from "@/lib/retail-quote-items";
 
 export const organizationRoleEnum = pgEnum("organization_role", [
@@ -1062,6 +1064,9 @@ export const services = pgTable(
     tussName: text("tuss_name"),
     shortName: text("short_name"),
     preparation: text("preparation"),
+    returnInterval: integer("return_interval"),
+    returnIntervalUnit: text("return_interval_unit").default("days").notNull(),
+    returnReminderDays: integer("return_reminder_days").default(7).notNull(),
     imageUrl: text("image_url"),
     imagePublicId: text("image_public_id"),
     durationMinutes: integer("duration_minutes").notNull(),
@@ -1075,7 +1080,7 @@ export const services = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [index("services_organization_idx").on(table.organizationId)]
+  (table) => [index("services_organization_idx").on(table.organizationId), check("services_return_settings_check", sql`(${table.returnInterval} IS NULL OR ${table.returnInterval} BETWEEN 1 AND 3650) AND ${table.returnIntervalUnit} IN ('days', 'months') AND ${table.returnReminderDays} BETWEEN 0 AND 365`)]
 );
 
 export const inventoryProducts = pgTable("inventory_products", {
@@ -1458,6 +1463,27 @@ export const appointments = pgTable(
     index("appointments_client_idx").on(table.clientId),
   ]
 );
+
+export const procedureReturns = pgTable("procedure_returns", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  appointmentId: uuid("appointment_id").notNull().references(() => appointments.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "restrict" }),
+  serviceId: uuid("service_id").notNull().references(() => services.id, { onDelete: "restrict" }),
+  performedAt: timestamp("performed_at").notNull(),
+  dueDate: date("due_date"),
+  reminderDays: integer("reminder_days").default(7).notNull(),
+  contactStatus: text("contact_status").default("pending").notNull(),
+  contactedAt: timestamp("contacted_at"),
+  contactNote: text("contact_note"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("procedure_returns_appointment_service_unique").on(table.appointmentId, table.serviceId),
+  index("procedure_returns_org_due_idx").on(table.organizationId, table.dueDate),
+  index("procedure_returns_client_service_idx").on(table.organizationId, table.clientId, table.serviceId),
+  check("procedure_returns_reminder_days_check", sql`${table.reminderDays} BETWEEN 0 AND 365`),
+  check("procedure_returns_contact_status_check", sql`${table.contactStatus} IN ('pending', 'contacted', 'dismissed')`),
+]);
 
 export const attendancePackageItems = pgTable("attendance_package_items", {
   id: uuid("id").defaultRandom().primaryKey(),

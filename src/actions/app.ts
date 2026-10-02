@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { db } from "@/db";
+import { serviceDepositSettings } from "@/lib/service-deposit";
 import { parseReturnOverrides, serviceReturnSettings } from "@/lib/procedure-return-rules";
 import {
   appointments,
@@ -791,8 +792,7 @@ export async function createService(formData: FormData) {
     durationMinutes,
     priceInCents: optionalMoneyInCents(formData, "price"),
     estimatedCostInCents: optionalMoneyInCents(formData, "estimatedCost") ?? 0,
-    depositType: ["none", "fixed", "percentage", "full"].includes(textValue(formData, "depositType")) ? textValue(formData, "depositType") : "none",
-    depositValue: Number.parseInt(textValue(formData, "depositValue") || "0", 10) || 0,
+    ...serviceDepositSettings(formData),
     ...image,
   }) });
   revalidatePath("/servicos");
@@ -838,8 +838,7 @@ export async function updateService(formData: FormData) {
     ...serviceReturnSettings(formData),
     priceInCents: optionalMoneyInCents(formData, "price"),
     estimatedCostInCents: optionalMoneyInCents(formData, "estimatedCost") ?? 0,
-    depositType: ["none", "fixed", "percentage", "full"].includes(textValue(formData, "depositType")) ? textValue(formData, "depositType") : "none",
-    depositValue: Number.parseInt(textValue(formData, "depositValue") || "0", 10) || 0,
+    ...serviceDepositSettings(formData),
     isActive: formData.get("isActive") === "on", ...image, updatedAt: new Date(),
   }).where(and(eq(services.id, id), eq(services.organizationId, organization.id))) });
   revalidatePath("/servicos");

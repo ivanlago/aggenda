@@ -3,6 +3,7 @@ import { Trash2 } from "lucide-react";
 
 import { createService, deleteService, updateService } from "@/actions/app";
 import { ServiceCreateToggle } from "@/components/service-create-toggle";
+import { ServiceDepositFields } from "@/components/service-deposit-fields";
 import { ServiceReturnFields } from "@/components/service-return-fields";
 import { ModalShell } from "@/components/modal-shell";
 import { PageHeader } from "@/components/page-header";
@@ -33,20 +34,20 @@ export default async function ServicesPage() {
         {canManage && <ServiceCreateToggle label={organization.serviceLabel}>
           <form action={createService} className="grid min-w-0 gap-5 sm:grid-cols-2">
             <div className="min-w-0 sm:col-span-2"><TussAutocomplete table="22" label="Guia TUSS 22 (opcional)" onSelectNameField="name" onSelectCodeField="manualTussCode" /></div>
-            <label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Nome do {organization.serviceLabel.toLowerCase()}<input className="field" name="name" required /></label>
-            <label className="grid min-w-0 gap-2 text-sm font-bold">Código TUSS (opcional)<input className="field" name="manualTussCode" /></label>
-            <label className="grid min-w-0 gap-2 text-sm font-bold">Nome curto<input className="field" name="shortName" maxLength={80} placeholder="Ex.: RM, USG" /></label>
-            <label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Preparação necessária<textarea className="field min-h-24" name="preparation" /></label>
-            <label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Descrição<textarea className="field min-h-24" name="description" /></label>
+            <label className="grid min-w-0 content-start gap-2 text-sm font-bold sm:col-span-2">Nome completo do procedimento<input className="field" name="name" required /></label>
             <div className="grid min-w-0 gap-5 sm:col-span-2 lg:grid-cols-3">
-              <label className="grid min-w-0 gap-2 text-sm font-bold">Duração em minutos<input className="field" name="durationMinutes" type="number" min="5" step="5" required /></label>
-              <label className="grid min-w-0 gap-2 text-sm font-bold">Preço em reais<input className="field" name="price" inputMode="decimal" placeholder="Ex.: 150,00" /></label>
-              <label className="grid min-w-0 gap-2 text-sm font-bold">Custo estimado em reais<input className="field" name="estimatedCost" inputMode="decimal" placeholder="Produtos, taxas etc." /></label>
+              <label className="grid min-w-0 content-start gap-2 text-sm font-bold">Código TUSS (opcional)<input className="field" name="manualTussCode" /></label>
+            <label className="grid min-w-0 content-start gap-2 text-sm font-bold">Nome reduzido<input className="field" name="shortName" maxLength={80} placeholder="Ex.: RM, USG" /></label>
+              <label className="grid min-w-0 content-start gap-2 text-sm font-bold">Duração em minutos<input className="field" name="durationMinutes" type="number" min="5" step="5" required /></label>
             </div>
-            <div className="min-w-0 sm:col-span-2"><EntityImageField label={`Imagem do ${organization.serviceLabel.toLowerCase()}`} /></div>
-            <label className="grid min-w-0 gap-2 text-sm font-bold">Tipo de sinal<select className="field" name="depositType" defaultValue="none"><option value="none">Sem sinal</option><option value="fixed">Sinal em reais</option><option value="percentage">Sinal percentual</option><option value="full">Pagamento integral</option></select></label>
-            <label className="grid min-w-0 gap-2 text-sm font-bold">Valor do sinal em centavos ou %<input className="field" name="depositValue" type="number" min="0" /></label>
-            <ServiceReturnFields />
+            <label className="grid min-w-0 content-start gap-2 text-sm font-bold sm:col-span-2">Descrição<textarea className="field min-h-24" name="description" /></label>
+            <label className="grid min-w-0 content-start gap-2 text-sm font-bold sm:col-span-2">Preparação necessária<textarea className="field min-h-24" name="preparation" /></label>
+            <div className="grid min-w-0 gap-5 sm:col-span-2 lg:grid-cols-4 lg:[&>label]:grid-rows-[2.5rem_auto]">
+              
+              <label className="grid min-w-0 content-start gap-2 text-sm font-bold"><span className="self-end">Preço em reais</span><input className="field" name="price" inputMode="decimal" placeholder="Ex.: 150,00" /></label>
+              <label className="grid min-w-0 content-start gap-2 text-sm font-bold"><span className="self-end">Custo estimado em reais</span><input className="field" name="estimatedCost" inputMode="decimal" placeholder="Produtos, taxas etc." /></label>
+            <ServiceDepositFields /></div>
+            <div className="grid min-w-0 items-start gap-5 sm:col-span-2 lg:grid-cols-[2fr_1fr]"><ServiceReturnFields /><div className="min-w-0"><EntityImageField label={`Imagem do ${organization.serviceLabel.toLowerCase()}`} /></div></div>
             <div className="border-t pt-4 sm:col-span-2"><button className="primary-button">Adicionar {organization.serviceLabel.toLowerCase()}</button></div>
           </form>
         </ServiceCreateToggle>}
@@ -69,24 +70,24 @@ export default async function ServicesPage() {
                     {item.priceInCents != null ? ` · ${(item.priceInCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}
                   </p>
                 </div>
-                {canManage && <ModalShell title={`Editar ${organization.serviceLabel.toLowerCase()}: ${item.name}`} variant="edit">
+                {canManage && <ModalShell title={`Editar ${organization.serviceLabel.toLowerCase()}: ${item.name}`} variant="edit" wide>
                   <form action={updateService} className="grid min-w-0 gap-5 sm:grid-cols-2">
                     <input type="hidden" name="id" value={item.id} />
                     <div className="min-w-0 sm:col-span-2"><TussAutocomplete table="22" label="Guia TUSS 22" defaultCode={item.tussCode ?? ""} defaultName={item.tussName ?? ""} onSelectNameField="name" onSelectCodeField="manualTussCode" /></div>
-                    <label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Nome do {organization.serviceLabel.toLowerCase()}<input className="field" name="name" defaultValue={item.name} required /></label>
-                    <label className="grid min-w-0 gap-2 text-sm font-bold">Código TUSS<input className="field" name="manualTussCode" defaultValue={item.tussCode ?? ""} /></label>
-                    <label className="grid min-w-0 gap-2 text-sm font-bold">Nome curto<input className="field" name="shortName" maxLength={80} defaultValue={item.shortName ?? ""} /></label>
-                    <label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Preparação necessária<textarea className="field min-h-24" name="preparation" defaultValue={item.preparation ?? ""} /></label>
-                    <label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Descrição<textarea className="field min-h-24" name="description" defaultValue={item.description ?? ""} /></label>
-                    <div className="grid min-w-0 gap-5 sm:col-span-2 lg:grid-cols-3">
-                      <label className="grid min-w-0 gap-2 text-sm font-bold">Duração em minutos<input className="field" name="durationMinutes" type="number" min="5" step="5" defaultValue={item.durationMinutes} required /></label>
-                      <label className="grid min-w-0 gap-2 text-sm font-bold">Preço em reais<input className="field" name="price" inputMode="decimal" defaultValue={item.priceInCents == null ? "" : (item.priceInCents / 100).toFixed(2).replace(".", ",")} /></label>
-                      <label className="grid min-w-0 gap-2 text-sm font-bold">Custo estimado em reais<input className="field" name="estimatedCost" inputMode="decimal" defaultValue={(item.estimatedCostInCents / 100).toFixed(2).replace(".", ",")} /></label>
-                    </div>
-                    <div className="min-w-0 sm:col-span-2"><EntityImageField currentUrl={item.imageUrl} label={`Imagem do ${organization.serviceLabel.toLowerCase()}`} /></div>
-                    <label className="grid min-w-0 gap-2 text-sm font-bold">Tipo de sinal<select className="field" name="depositType" defaultValue={item.depositType}><option value="none">Sem sinal</option><option value="fixed">Sinal em reais</option><option value="percentage">Sinal percentual</option><option value="full">Pagamento integral</option></select></label>
-                    <label className="grid min-w-0 gap-2 text-sm font-bold">Valor do sinal em centavos ou %<input className="field" name="depositValue" type="number" min="0" defaultValue={item.depositValue} /></label>
-                    <ServiceReturnFields settings={item} />
+                    <label className="grid min-w-0 content-start gap-2 text-sm font-bold sm:col-span-2">Nome completo do procedimento<input className="field" name="name" defaultValue={item.name} required /></label>
+            <div className="grid min-w-0 gap-5 sm:col-span-2 lg:grid-cols-3">
+                      <label className="grid min-w-0 content-start gap-2 text-sm font-bold">Código TUSS (opcional)<input className="field" name="manualTussCode" defaultValue={item.tussCode ?? ""} /></label>
+                    <label className="grid min-w-0 content-start gap-2 text-sm font-bold">Nome reduzido<input className="field" name="shortName" maxLength={80} defaultValue={item.shortName ?? ""} /></label>
+              <label className="grid min-w-0 content-start gap-2 text-sm font-bold">Duração em minutos<input className="field" name="durationMinutes" type="number" min="5" step="5" defaultValue={item.durationMinutes} required /></label>
+            </div>
+                    <label className="grid min-w-0 content-start gap-2 text-sm font-bold sm:col-span-2">Descrição<textarea className="field min-h-24" name="description" defaultValue={item.description ?? ""} /></label>
+                    <label className="grid min-w-0 content-start gap-2 text-sm font-bold sm:col-span-2">Preparação necessária<textarea className="field min-h-24" name="preparation" defaultValue={item.preparation ?? ""} /></label>
+                    <div className="grid min-w-0 gap-5 sm:col-span-2 lg:grid-cols-4 lg:[&>label]:grid-rows-[2.5rem_auto]">
+                      
+                      <label className="grid min-w-0 content-start gap-2 text-sm font-bold"><span className="self-end">Preço em reais</span><input className="field" name="price" inputMode="decimal" defaultValue={item.priceInCents == null ? "" : (item.priceInCents / 100).toFixed(2).replace(".", ",")} /></label>
+                      <label className="grid min-w-0 content-start gap-2 text-sm font-bold"><span className="self-end">Custo estimado em reais</span><input className="field" name="estimatedCost" inputMode="decimal" defaultValue={(item.estimatedCostInCents / 100).toFixed(2).replace(".", ",")} /></label>
+                    <ServiceDepositFields type={item.depositType} value={item.depositValue} /></div>
+                    <div className="grid min-w-0 items-start gap-5 sm:col-span-2 lg:grid-cols-[2fr_1fr]"><ServiceReturnFields settings={item} /><div className="min-w-0"><EntityImageField currentUrl={item.imageUrl} label={`Imagem do ${organization.serviceLabel.toLowerCase()}`} /></div></div>
                     <label className="flex items-center gap-2 text-sm font-bold sm:col-span-2"><input type="checkbox" name="isActive" defaultChecked={item.isActive} /> Ativo</label>
                     <div className="border-t pt-4 sm:col-span-2"><button className="primary-button">Salvar alterações</button></div>
                   </form>

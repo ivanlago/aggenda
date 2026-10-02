@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
-import { Trash2 } from "lucide-react";
+import { Calculator, Trash2 } from "lucide-react";
+import Link from "next/link";
 
 import { createService, deleteService, updateService } from "@/actions/app";
 import { ServiceCreateToggle } from "@/components/service-create-toggle";
@@ -30,6 +31,7 @@ export default async function ServicesPage() {
         title={organization.serviceLabelPlural}
         description={`Defina duração e preço dos ${organization.serviceLabelPlural.toLowerCase()} oferecidos.`}
       />
+      <div className="mb-5"><Link className="secondary-button" href="/calculadora-retorno" target="_blank" rel="noopener noreferrer"><Calculator className="mr-2 size-4" />Calculadora de retorno</Link></div>
       <div className="grid gap-6">
         {canManage && <ServiceCreateToggle label={organization.serviceLabel}>
           <form action={createService} className="grid min-w-0 gap-5 sm:grid-cols-2">

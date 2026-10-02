@@ -35,7 +35,7 @@ async function requestAccessCode(request: Request, { params }: { params: Promise
     return NextResponse.json({ error: "O envio do código de acesso está indisponível. Entre em contato com a clínica." }, { status: 503 });
   }
 
-  const [organization] = await db.select({ id: organizations.id, name: organizations.name }).from(organizations).where(and(eq(organizations.slug, slug), eq(organizations.bookingEnabled, true))).limit(1);
+  const [organization] = await db.select({ id: organizations.id, name: organizations.name, customDomain: organizations.customDomain, customDomainVerifiedAt: organizations.customDomainVerifiedAt }).from(organizations).where(and(eq(organizations.slug, slug), eq(organizations.bookingEnabled, true))).limit(1);
   if (!organization) return NextResponse.json({ error: "Página indisponível." }, { status: 404 });
   const lookupEmail = intent === "register" ? registrationEmail : isEmail ? identifier : "";
   const lookupPhone = intent === "register" ? registrationPhone : phone;
@@ -64,11 +64,12 @@ async function requestAccessCode(request: Request, { params }: { params: Promise
     tokenHash: credentials.tokenHash, codeHash: credentials.codeHash,
     expiresAt: new Date(Date.now() + CLIENT_CODE_TTL_MINUTES * 60_000),
   }).returning({ id: clientPortalAccessRequests.id });
-  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  const baseUrl = (organization.customDomain && organization.customDomainVerifiedAt ? `https://${organization.customDomain}` : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  const voucher = /^[A-Za-z0-9_-]{3,40}$/.test(String(body.voucherCode ?? "")) ? `&voucher=${encodeURIComponent(String(body.voucherCode))}` : "";
   try {
     await sendClientPortalAccessEmail({
     email, clientName, organizationName: organization.name,
-    accessUrl: `${baseUrl}/cliente/${slug}/verificar?token=${encodeURIComponent(credentials.token)}`,
+    accessUrl: `${baseUrl}/cliente/${slug}/verificar?token=${encodeURIComponent(credentials.token)}${voucher}`,
     code: credentials.code, requestId: created.id,
     });
   } catch (error) {

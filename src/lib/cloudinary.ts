@@ -75,7 +75,7 @@ export type CatalogImageUpload = {
   bytes: number;
 };
 
-export type CatalogEntityType = "clients" | "professionals" | "services" | "products";
+export type CatalogEntityType = "clients" | "professionals" | "services" | "products" | "logos";
 
 export async function uploadCatalogImage(file: File, organizationId: string, entityType: CatalogEntityType): Promise<CatalogImageUpload> {
   if (!file.type.startsWith("image/")) throw new Error("Selecione um arquivo de imagem válido.");
@@ -86,8 +86,8 @@ export async function uploadCatalogImage(file: File, organizationId: string, ent
     const stream = api.uploader.upload_stream({
       resource_type: "image",
       type: "upload",
-      format: "webp",
-      transformation: [{ width: 1200, height: 1200, crop: "limit", quality: 82, angle: "exif" }],
+      format: entityType === "logos" ? "png" : "webp",
+      transformation: [{ width: entityType === "logos" ? 600 : 1200, height: entityType === "logos" ? 600 : 1200, crop: "limit", quality: 82, angle: "exif" }],
       folder: `aggenda/organizations/${organizationId}/catalog/${entityType}`,
       use_filename: false,
       unique_filename: true,

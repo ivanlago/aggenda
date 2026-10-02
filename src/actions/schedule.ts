@@ -4,6 +4,8 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/db";
+import { persistWithCatalogImage } from "@/lib/catalog-image";
+import { managedOrganizationLogoId } from "@/lib/organization-logo";
 import {
   appointments,
   availabilityExceptions,
@@ -181,13 +183,12 @@ export async function updateBookingSettings(formData: FormData) {
   } else if (section === "identity") {
     Object.assign(updates, {
       publicDescription: value(formData, "publicDescription") || null, phone: value(formData, "phone") || null,
-      publicAddress: value(formData, "publicAddress") || null, publicLogoUrl: value(formData, "publicLogoUrl") || null,
+      publicAddress: value(formData, "publicAddress") || null,
       publicCoverUrl: value(formData, "publicCoverUrl") || null, legalName: value(formData, "legalName") || null,
       taxId: value(formData, "taxId").replace(/\D/g, "") || null,
       publicEmail: value(formData, "publicEmail").toLowerCase() || null,
       publicWebsite: value(formData, "publicWebsite") || null, publicWhatsapp: value(formData, "publicWhatsapp") || null,
       brandColor: /^#[0-9a-f]{6}$/i.test(value(formData, "brandColor")) ? value(formData, "brandColor") : "#37664f",
-      customDomain: value(formData, "customDomain").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "") || null,
     });
   } else if (section === "reminders") {
     Object.assign(updates, {
@@ -205,10 +206,14 @@ export async function updateBookingSettings(formData: FormData) {
   } else {
     throw new Error("Bloco de configurações inválido.");
   }
-  await db
-    .update(organizations)
-    .set(updates)
-    .where(eq(organizations.id, organization.id));
+  if (section === "identity") {
+    const [current] = await db.select({ logo: organizations.publicLogoUrl }).from(organizations).where(eq(organizations.id, organization.id)).limit(1);
+    await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "logos", currentPublicId: managedOrganizationLogoId(current?.logo ?? null, organization.id, process.env.CLOUDINARY_CLOUD_NAME), persist: async (imageFields) => {
+      await db.update(organizations).set({ ...updates, ...(imageFields.imageUrl !== undefined ? { publicLogoUrl: imageFields.imageUrl } : {}) }).where(eq(organizations.id, organization.id));
+    } });
+  } else {
+    await db.update(organizations).set(updates).where(eq(organizations.id, organization.id));
+  }
   await writeAuditLog({
     organizationId: organization.id,
     userId: session.user.id,

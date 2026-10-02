@@ -1,5 +1,6 @@
 import { and, asc, desc, eq } from "drizzle-orm";
-import { Boxes, CircleDollarSign, WalletCards } from "lucide-react";
+import { Boxes, Calculator, CircleDollarSign, WalletCards } from "lucide-react";
+import Link from "next/link";
 
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
@@ -89,6 +90,7 @@ export default async function InventoryPage() {
 
   return <div className="page-wrap">
     <PageHeader eyebrow="Operação" title="Estoque" description="Cadastre produtos, registre entradas e saídas e acompanhe os valores do estoque." />
+    <div className="mb-5"><Link className="secondary-button" href="/calculadora-retorno/produtos" target="_blank" rel="noopener noreferrer"><Calculator className="mr-2 size-4" />Calculadora de retorno de produtos</Link></div>
     <section className="grid gap-4 sm:grid-cols-3">
       <article className="panel"><Boxes className="size-5 text-brand" /><p className="mt-4 text-3xl font-extrabold">{items.length}</p><p className="text-sm text-muted">produtos cadastrados</p></article>
       <article className="panel"><WalletCards className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{currency(costValue)}</p><p className="text-sm text-muted">valor de custo</p></article>

@@ -1,9 +1,14 @@
 import { updateDocumentTemplateLibrary } from "@/actions/electronic-documents";
+import { headers } from "next/headers";
+import { CustomDomainSettings } from "@/components/custom-domain-settings";
+import { ownershipRecord, type DomainState } from "@/lib/custom-domain-rules";
+import { domainIntegrationReady, inspectCustomDomain } from "@/lib/vercel-domains";
 import { updateOrganizationTerminology } from "@/actions/app";
 import { updateBookingSettings } from "@/actions/schedule";
 import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { PhoneInput } from "@/components/phone-input";
+import { OrganizationLogoField } from "@/components/organization-logo-field";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
@@ -14,6 +19,18 @@ export const metadata = { title: "Configurações" };
 
 export default async function SettingsPage() {
   const { organization } = await requireOrganization();
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
+  const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL || `${protocol}://${host}`;
+  const bookingUrl = new URL(`/agendar/${encodeURIComponent(organization.slug)}`, appUrl).href;
+  let domainState: DomainState = { domain: organization.customDomain, status: organization.customDomain ? "pending" : "empty", records: [] };
+  if (organization.customDomain) {
+    try {
+      domainState.records = [ownershipRecord(organization.id, organization.customDomain, process.env.BETTER_AUTH_SECRET ?? "")];
+      if (domainIntegrationReady()) domainState = await inspectCustomDomain(organization.id, organization.customDomain, organization.customDomainVerifiedAt);
+    } catch { domainState.message = "Não foi possível consultar a conexão agora. Use Verificar conexão para tentar novamente."; }
+  }
   const canManage = hasOrganizationPermission(organization.role, "organization.settings.manage");
   const saveButton = (label: string) => canManage && <button className="primary-button sm:col-span-3 sm:w-fit">{label}</button>;
 
@@ -31,7 +48,8 @@ export default async function SettingsPage() {
   </section>;
 
   const booking = <section className="panel max-w-4xl">
-    <h2 className="text-xl font-extrabold">Agendamento público</h2><p className="mt-2 text-sm text-muted">Link público: /agendar/{organization.slug}</p>
+    <h2 className="text-xl font-extrabold">Agendamento público</h2>
+    <CustomDomainSettings initial={domainState} defaultUrl={bookingUrl} canManage={canManage} integrationReady={domainIntegrationReady()} />
     <ActionForm action={updateBookingSettings} successMessage="Regras de agendamento salvas." className="mt-6 grid gap-4 sm:grid-cols-3">
       <input type="hidden" name="settingsSection" value="booking" />
       <label className="flex items-center gap-3 text-sm font-bold sm:col-span-3"><input name="bookingEnabled" type="checkbox" defaultChecked={organization.bookingEnabled} disabled={!canManage} />Permitir agendamentos pela página pública</label>
@@ -44,7 +62,7 @@ export default async function SettingsPage() {
 
   const identity = <section className="panel max-w-4xl">
     <h2 className="text-xl font-extrabold">Identidade e dados institucionais</h2><p className="mt-2 text-sm text-muted">Informações usadas na página pública, nos documentos e PDFs. O endereço e os contatos compõem automaticamente o rodapé dos documentos.</p>
-    <ActionForm action={updateBookingSettings} successMessage="Identidade institucional salva." className="mt-6 grid gap-4 sm:grid-cols-3">
+    <ActionForm action={updateBookingSettings} successMessage="Identidade institucional salva." className="mt-6 grid items-start gap-4 sm:grid-cols-3">
       <input type="hidden" name="settingsSection" value="identity" />
       <label className="grid gap-2 text-sm font-bold sm:col-span-3">Apresentação pública<textarea className="field min-h-20" name="publicDescription" defaultValue={organization.publicDescription ?? ""} disabled={!canManage} placeholder="Conte a especialidade e os diferenciais do negócio" /></label>
       <label className="grid gap-2 text-sm font-bold sm:col-span-2">Razão social<input className="field" name="legalName" defaultValue={organization.legalName ?? ""} disabled={!canManage} /></label>
@@ -55,9 +73,8 @@ export default async function SettingsPage() {
       <label className="grid gap-2 text-sm font-bold sm:col-span-2">Site<input className="field" type="url" name="publicWebsite" defaultValue={organization.publicWebsite ?? ""} disabled={!canManage} placeholder="https://..." /></label>
       <label className="grid gap-2 text-sm font-bold">Cor da marca<input className="field h-12" name="brandColor" type="color" defaultValue={organization.brandColor} disabled={!canManage} /></label>
       <label className="grid gap-2 text-sm font-bold sm:col-span-3">Endereço público<input className="field" name="publicAddress" defaultValue={organization.publicAddress ?? ""} disabled={!canManage} /></label>
-      <label className="grid gap-2 text-sm font-bold">Logo da empresa<input className="field" name="publicLogoUrl" type="url" defaultValue={organization.publicLogoUrl ?? ""} disabled={!canManage} placeholder="https://.../logo.png" /><span className="text-xs font-normal text-muted">Endereço da imagem usada no agendamento online e no cabeçalho dos documentos.</span></label>
-      <label className="grid gap-2 text-sm font-bold">Capa (URL)<input className="field" name="publicCoverUrl" type="url" defaultValue={organization.publicCoverUrl ?? ""} disabled={!canManage} /></label>
-      <label className="grid gap-2 text-sm font-bold">Domínio próprio<input className="field" name="customDomain" defaultValue={organization.customDomain ?? ""} disabled={!canManage} placeholder="agenda.suamarca.com.br" /></label>
+      <OrganizationLogoField currentUrl={organization.publicLogoUrl} disabled={!canManage} />
+      <label className="grid content-start gap-2 text-sm font-bold">Capa (URL)<input className="field" name="publicCoverUrl" type="url" defaultValue={organization.publicCoverUrl ?? ""} disabled={!canManage} /></label>
       {saveButton("Salvar identidade institucional")}
     </ActionForm>
   </section>;

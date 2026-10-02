@@ -1,0 +1,13 @@
+# Vouchers e campanhas
+
+Em Crescimento e recorrência, crie descontos fixos em reais ou percentuais. Um código público pode ser compartilhado com qualquer cliente. Um voucher exclusivo é vinculado a um cadastro e tem um uso por padrão. Os códigos antigos continuam públicos.
+
+O cliente entra na sua área, escolhe o procedimento e aplica o voucher. A prévia consulta o servidor e mostra preço original, desconto e total. A confirmação revalida empresa, cliente, validade e limite sob bloqueio de linha e registra o uso na mesma transação do agendamento. O desconto também reduz o valor usado no cálculo do sinal. O uso é consumido ao reservar; cancelamentos não devolvem o uso automaticamente. Utilizações anteriores à migração não possuem detalhamento individual.
+
+Envio individual ou campanha: escolha voucher, canal e destinatários (até 100). Os filtros incluem clientes selecionados, sem atendimento concluído há N dias e nunca atendidos. Revise nomes, contatos e mensagem antes de enviar. E-mail utiliza o Resend já configurado. Cada mensagem usa chave de idempotência e a fila impede repetir o mesmo voucher/cliente/canal. O histórico distingue fila, processamento, aceito pelo provedor, falha e cancelamento; aceitação não garante leitura nem entrega final. Falhas podem ser reenviadas pelo botão Tentar novamente.
+
+WhatsApp individual abre `wa.me` com a mensagem pronta e não declara envio ou entrega no Aggenda. O automático requer canal ativo, plano WhatsApp compatível e `META_TEMPLATE_VOUCHER_OFFER`, um modelo MARKETING aprovado na Meta em pt_BR com seis parâmetros de corpo, nesta ordem: nome do cliente, clínica, benefício, código, validade e URL. Modelo sugerido: `Olá, {{1}}! A {{2}} oferece {{3}} no seu próximo agendamento. Use o código {{4}}. {{5}}. Agende aqui: {{6}}`. Os destinatários devem ter autorizado o recebimento de ofertas. Nunca reutilizar um modelo de lembrete como oferta. O sistema registra o uso de WhatsApp na contagem empresarial.
+
+A fila é processada após a resposta, em execuções limitadas, e continua por endpoint interno com assinatura HMAC de curta duração. O botão Processar fila retoma pendências e tentativas interrompidas. O cron de lembretes existente também drena até 20 envios caso esteja configurado; nenhuma nova tarefa cron é obrigatória. Desativar um voucher cancela pendências ainda não iniciadas. Não há envio no simples cadastro.
+
+Migração aditiva `0064_voucher_campaigns.sql`. Aplicação controlada: `tsx scripts/apply-voucher-migration.ts`. Validação isolada: `tsx --test tests/voucher-rules.test.ts` e `tsx scripts/verify-vouchers.ts` (rollback, sem mensagens reais).

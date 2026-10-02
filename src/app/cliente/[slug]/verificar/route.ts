@@ -8,7 +8,9 @@ import { completeClientPortalAccess } from "@/lib/client-portal-completion";
 
 export async function GET(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const token = new URL(request.url).searchParams.get("token") || "";
+  const query = new URL(request.url).searchParams;
+  const token = query.get("token") || "";
+  const voucher = /^[A-Za-z0-9_-]{3,40}$/.test(query.get("voucher") || "") ? `?novo=1&voucher=${encodeURIComponent(query.get("voucher")!)}` : "";
   const [item] = await db.select({ id: clientPortalAccessRequests.id, clientId: clientPortalAccessRequests.clientId, organizationId: clientPortalAccessRequests.organizationId, email: clientPortalAccessRequests.email, pendingName: clientPortalAccessRequests.pendingName, pendingPhone: clientPortalAccessRequests.pendingPhone })
     .from(clientPortalAccessRequests).innerJoin(organizations, eq(organizations.id, clientPortalAccessRequests.organizationId))
     .where(and(eq(organizations.slug, slug), eq(clientPortalAccessRequests.tokenHash, portalHash(token)), isNull(clientPortalAccessRequests.usedAt), gt(clientPortalAccessRequests.expiresAt, new Date()))).limit(1);
@@ -17,7 +19,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
   try { session = await completeClientPortalAccess(item); }
   catch (error) { if (error instanceof Error && error.message === "REGISTRATION_CONFLICT") return NextResponse.redirect(new URL(`/cliente/${slug}?erro=cadastro-existente`, request.url)); throw error; }
   if (!session) return NextResponse.redirect(new URL(`/cliente/${slug}?erro=link-expirado`, request.url));
-  const response = NextResponse.redirect(new URL(`/cliente/${slug}`, request.url));
+  const response = NextResponse.redirect(new URL(`/cliente/${slug}${voucher}`, request.url));
   response.cookies.set(CLIENT_PORTAL_COOKIE, "", { httpOnly: true, secure: secureCookie(), sameSite: "lax", path: `/cliente/${slug}`, maxAge: 0 });
   response.cookies.set(CLIENT_PORTAL_COOKIE, session.token, { httpOnly: true, secure: secureCookie(), sameSite: "lax", path: "/", maxAge: CLIENT_SESSION_TTL_DAYS * 86_400 });
   response.cookies.delete({ name: CLIENT_CHALLENGE_COOKIE, path: "/" });

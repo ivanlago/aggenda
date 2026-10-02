@@ -1,0 +1,15 @@
+# Domínios próprios para agendamento
+
+Em Configurações → Agendamento, administradores com `organization.settings.manage` conectam um domínio, copiam os registros DNS e verificam a conexão. O cadastro antigo em Identidade foi removido: salvar identidade não altera o domínio.
+
+Configure no servidor `VERCEL_DOMAINS_TOKEN`, `VERCEL_DOMAINS_PROJECT_ID` (ID `prj_…`, não nome) e, para projetos de equipe, `VERCEL_DOMAINS_TEAM_ID`. O token precisa poder consultar, adicionar, verificar e remover domínios somente da equipe do projeto. Ele nunca vai ao navegador. O segredo `BETTER_AUTH_SECRET` também precisa estar configurado. A autenticação do conector Vercel no Codex não fornece automaticamente uma credencial para o servidor.
+
+A integração usa GET/DELETE `/v9/projects/{id}/domains/{domain}`, POST `/v10/projects/{id}/domains`, POST `/v9/projects/{id}/domains/{domain}/verify` e GET `/v6/domains/{domain}/config`. As instruções de A/CNAME vêm das recomendações retornadas pela hospedagem; nenhum IP ou destino é fixado no código. Não há transferência forçada entre projetos, nem compra de domínio ou mudança dos nameservers.
+
+Cada empresa precisa publicar um TXT `_aggenda-verification.<domínio>` com desafio HMAC específico da empresa e do domínio, mesmo quando a Vercel já confirma propriedade na equipe. A conexão exige esse TXT, vínculo ao projeto de produção, confirmação da Vercel, DNS válido e certificado TLS válido. A consulta TLS usa IPv4 público resolvido e fixado, SNI e validação do certificado, sem seguir redirects ou acessar redes privadas.
+
+`organizations.custom_domain` reserva o endereço de maneira exclusiva; `custom_domain_verified_at` só ativa o portal após a verificação completa. Cadastro e ações são serializados pelo bloqueio da empresa; falhas temporárias conservam uma reserva pendente para repetir sem duplicação. A desconexão remove o vínculo da Vercel antes de limpar o cadastro local. Registros DNS são administrados pelo cliente no provedor; o Aggenda não altera registros de e-mail. O TXT deve permanecer publicado. Alterar `BETTER_AUTH_SECRET` exige atualizar esse TXT e verificar de novo.
+
+O domínio ativo abre o portal identificado da clínica na raiz e conserva os parâmetros de URL. O link padrão permanece disponível; e-mails de acesso passam a usar o domínio conectado. Cookies continuam com escopo do host. O usuário pode informar o código recebido por e-mail na tela atual ou abrir o link enviado. Login, primeiro acesso, novo agendamento, cancelamento e reagendamento devem ser conferidos no domínio real após DNS/HTTPS, pois testes locais não provisionam certificados.
+
+As verificações são iniciadas pelo administrador: não existe monitoramento recorrente de DNS nesta versão. A tela consulta propriedade e configuração ao ser aberta; use “Verificar conexão” para atualizar o estado persistido, incluindo HTTPS. O campo de cadastro fica indisponível enquanto a credencial da plataforma não estiver configurada. Não se deve cadastrar um domínio fictício em produção para testar: os testes de integração usam respostas simuladas da Vercel.

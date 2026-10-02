@@ -1333,6 +1333,7 @@ export const vouchers = pgTable("vouchers", {
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
   code: text("code").notNull(),
   description: text("description"),
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "restrict" }),
   discountType: text("discount_type").default("fixed").notNull(),
   discountValue: integer("discount_value").notNull(),
   maxUses: integer("max_uses"),
@@ -1342,6 +1343,37 @@ export const vouchers = pgTable("vouchers", {
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [uniqueIndex("vouchers_org_code_unique").on(table.organizationId, table.code), index("vouchers_org_active_idx").on(table.organizationId, table.isActive)]);
+
+export const voucherRedemptions = pgTable("voucher_redemptions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  voucherId: uuid("voucher_id").notNull().references(() => vouchers.id, { onDelete: "restrict" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "restrict" }),
+  appointmentId: uuid("appointment_id").notNull().references(() => appointments.id, { onDelete: "restrict" }),
+  discountInCents: integer("discount_in_cents").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [uniqueIndex("voucher_redemptions_appointment_unique").on(table.appointmentId), index("voucher_redemptions_org_voucher_idx").on(table.organizationId, table.voucherId)]);
+
+export const voucherDeliveries = pgTable("voucher_deliveries", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  voucherId: uuid("voucher_id").notNull().references(() => vouchers.id, { onDelete: "restrict" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "restrict" }),
+  batchId: uuid("batch_id").notNull(),
+  campaignName: text("campaign_name").notNull(),
+  channel: text("channel").notNull(),
+  recipient: text("recipient").notNull(),
+  message: text("message").notNull(),
+  bookingUrl: text("booking_url").notNull(),
+  status: text("status").default("pending").notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  lastError: text("last_error"),
+  providerMessageId: text("provider_message_id"),
+  sentAt: timestamp("sent_at"),
+  createdByUserId: text("created_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [uniqueIndex("voucher_deliveries_recipient_unique").on(table.voucherId, table.clientId, table.channel), index("voucher_deliveries_org_status_idx").on(table.organizationId, table.status)]);
 
 export const clientPackageBalances = pgTable(
   "client_package_balances",

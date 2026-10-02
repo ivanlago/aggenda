@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { PhoneInput } from "@/components/phone-input";
 
-export function PortalLogin({ slug, hasChallenge, initialError }: { slug: string; hasChallenge: boolean; initialError?: string }) {
+export function PortalLogin({ slug, hasChallenge, initialError, voucherCode }: { slug: string; hasChallenge: boolean; initialError?: string; voucherCode?: string }) {
   const router = useRouter();
   const [identifier, setIdentifier] = useState("");
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -20,7 +20,7 @@ export function PortalLogin({ slug, hasChallenge, initialError }: { slug: string
     event.preventDefault(); setLoading(true); setMessage("");
     try {
       const payload = mode === "login" ? { intent: "login", identifier } : { intent: "register", name, email, phone };
-      const response = await fetch(`/api/public/client-portal/${slug}/request-code`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const response = await fetch(`/api/public/client-portal/${slug}/request-code`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...payload, voucherCode }) });
       const result = await response.json().catch(() => null);
       if (!response.ok || !result) throw new Error(result?.error || "Não foi possível enviar o código de acesso. Tente novamente mais tarde.");
       setShowCode(true); setMessage(result.message);

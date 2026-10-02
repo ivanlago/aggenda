@@ -27,11 +27,20 @@ async function sendEmail(input: {
 }) {
   if (!resend) throw new Error("RESEND_API_KEY não configurada.");
 
-  const { error } = await resend.emails.send(
+  const { data, error } = await resend.emails.send(
     { from, to: input.to, subject: input.subject, html: input.html },
     { idempotencyKey: input.idempotencyKey },
   );
   if (error) throw new Error(error.message);
+  return data?.id;
+}
+
+export async function sendVoucherEmail(input: { email: string; organizationName: string; message: string; bookingUrl: string; deliveryId: string }) {
+  return sendEmail({
+    to: input.email, subject: `Seu voucher — ${input.organizationName}`,
+    idempotencyKey: `voucher-delivery-${input.deliveryId}`,
+    html: emailLayout("Um benefício para seu próximo agendamento", `<p style="line-height:1.7">${escapeHtml(input.message)}</p><p><a href="${escapeHtml(input.bookingUrl)}" style="display:inline-block;background:#24543a;color:#fff;padding:14px 20px;border-radius:12px;text-decoration:none">Agendar com meu voucher</a></p>`),
+  });
 }
 
 export async function sendPasswordResetEmail(input: {

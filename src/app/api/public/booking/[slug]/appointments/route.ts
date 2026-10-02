@@ -5,7 +5,6 @@ import { db } from "@/db";
 import {
   appointments,
   auditLogs,
-  clientPortalSessions,
   clients,
   financialEntries,
   organizations,
@@ -14,6 +13,7 @@ import {
   professionals,
   services,
   vouchers,
+  voucherRedemptions,
 } from "@/db/schema";
 import { isTimeAvailable } from "@/lib/availability";
 import { formatOrganizationDateTime, organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
@@ -23,7 +23,8 @@ import { organizationAsaasRequest } from "@/lib/asaas";
 import { getOrganizationAsaasCredential } from "@/lib/organization-asaas";
 import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
 import { sendAppointmentManagementEmail } from "@/lib/email";
-import { CLIENT_PORTAL_COOKIE, portalHash } from "@/lib/client-portal";
+import { portalRequestClient } from "@/lib/portal-request";
+import { reserveBookingVoucher } from "@/lib/voucher-booking";
 import { normalizeBrazilianPhone } from "@/lib/phone";
 
 export async function POST(
@@ -51,10 +52,7 @@ export async function POST(
   if (!organization) {
     return Response.json({ error: "Agenda indisponível." }, { status: 404 });
   }
-  const sessionToken = request.headers.get("cookie")?.match(new RegExp(`(?:^|; )${CLIENT_PORTAL_COOKIE}=([^;]+)`))?.[1];
-  const [portalClient] = sessionToken ? await db.select({ id: clients.id, name: clients.name, phone: clients.phone, email: clients.email })
-    .from(clientPortalSessions).innerJoin(clients, eq(clients.id, clientPortalSessions.clientId))
-    .where(and(eq(clientPortalSessions.organizationId, organization.id), eq(clientPortalSessions.tokenHash, portalHash(decodeURIComponent(sessionToken))), gt(clientPortalSessions.expiresAt, new Date()))).limit(1) : [];
+  const portalClient = await portalRequestClient(request, organization.id);
   if (portalClient) {
     name = portalClient.name; phone = portalClient.phone ? normalizeBrazilianPhone(portalClient.phone) : ""; email = portalClient.email;
   } else {
@@ -89,14 +87,13 @@ export async function POST(
     return Response.json({ error: "Serviço ou profissional inválido." }, { status: 400 });
   }
   try {
-    const [voucher] = voucherCode ? await db.select().from(vouchers).where(and(eq(vouchers.organizationId, organization.id), eq(vouchers.code, voucherCode), eq(vouchers.isActive, true))).limit(1) : [];
-    if (voucherCode && (!voucher || (voucher.validUntil && voucher.validUntil < new Date()) || (voucher.maxUses != null && voucher.usedCount >= voucher.maxUses))) return Response.json({ error: "Voucher inválido, expirado ou esgotado." }, { status: 400 });
-    const discount = voucher ? voucher.discountType === "percentage" ? Math.round((service.price ?? 0) * voucher.discountValue / 100) : voucher.discountValue : 0;
-    const finalPrice = Math.max(0, (service.price ?? 0) - discount);
-    const depositAmount = service.depositType === "full" ? finalPrice : service.depositType === "percentage" ? Math.round(finalPrice * service.depositValue / 100) : service.depositType === "fixed" ? Math.min(finalPrice, service.depositValue) : 0;
-    if (depositAmount > 0 && ![11, 14].includes(document.length)) return Response.json({ error: "Informe um CPF ou CNPJ válido para gerar o sinal." }, { status: 400 });
     const manageToken = randomUUID();
     const appointment = await withAppointmentLock(organization.id, professionalId, async (tx) => {
+      const pricing = await reserveBookingVoucher(tx, organization.id, portalClient.id, voucherCode, service.price);
+      const { voucher } = pricing;
+      const finalPrice = pricing.finalPriceInCents;
+      const depositAmount = service.depositType === "full" ? finalPrice : service.depositType === "percentage" ? Math.round(finalPrice * service.depositValue / 100) : service.depositType === "fixed" ? Math.min(finalPrice, service.depositValue) : 0;
+      if (depositAmount > 0 && ![11, 14].includes(document.length)) throw new Error("DEPOSIT_DOCUMENT_INVALID");
       const available = await isTimeAvailable({
         organizationId: organization.id, timezone: organization.timezone,
         date: organizationDate(startsAt, organization.timezone), serviceId, professionalId,
@@ -157,9 +154,14 @@ export async function POST(
           status: "scheduled",
         },
       });
-      if (voucher) await tx.update(vouchers).set({ usedCount: voucher.usedCount + 1 }).where(eq(vouchers.id, voucher.id));
-      return created;
+      if (voucher) {
+        await tx.update(vouchers).set({ usedCount: voucher.usedCount + 1 }).where(eq(vouchers.id, voucher.id));
+        await tx.insert(voucherRedemptions).values({ organizationId: organization.id, voucherId: voucher.id, clientId, appointmentId: created.id, discountInCents: pricing.discountInCents });
+      }
+      return { ...created, finalPrice, depositAmount };
+
     });
+    const { finalPrice, depositAmount } = appointment;
     await syncAppointmentFinancialEntry(appointment.id);
     if (depositAmount > 0) {
       const remaining = finalPrice - depositAmount;
@@ -201,6 +203,8 @@ export async function POST(
     }
     return Response.json({ id: appointment.id, manageToken, paymentUrl, manageUrl: `/agendamento/${manageToken}` }, { status: 201 });
   } catch (error) {
+    if (error instanceof Error && error.message === "VOUCHER_INVALID") return Response.json({ error: "Voucher inválido, expirado, esgotado ou indisponível para este cliente." }, { status: 400 });
+    if (error instanceof Error && error.message === "DEPOSIT_DOCUMENT_INVALID") return Response.json({ error: "Informe um CPF ou CNPJ válido para gerar o sinal." }, { status: 400 });
     if (error instanceof Error && error.message === "APPOINTMENT_CONFLICT") {
       return Response.json(
         { error: "Este horário acabou de ficar indisponível. Escolha outro." },

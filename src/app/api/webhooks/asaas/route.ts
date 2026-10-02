@@ -8,7 +8,6 @@ import {
   billingWebhookEvents,
   auditLogs,
   appointments,
-  clientMemberships,
   financialEntries,
   organizationMembers,
   organizationFinancialIntegrations,
@@ -159,9 +158,6 @@ async function processOrganizationCharge(organizationId: string, event: AsaasWeb
         reservationExpiresAt: status === "paid" ? null : undefined,
         updatedAt: now,
       }).where(and(eq(appointments.id, charge.originId), eq(appointments.organizationId, organizationId)));
-    }
-    if (charge.originType === "membership") {
-      await tx.update(clientMemberships).set({ status: status === "paid" ? "active" : status === "cancelled" ? "cancelled" : status === "overdue" ? "past_due" : undefined, updatedAt: now }).where(and(eq(clientMemberships.id, charge.originId), eq(clientMemberships.organizationId, organizationId)));
     }
     if (status === "refunded" && charge.financialEntryId && charge.status === "paid") {
       await tx.update(financialEntries).set({ status: "pending", realizedDate: null, paymentMethod: null, updatedAt: now }).where(and(

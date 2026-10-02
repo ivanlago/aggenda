@@ -4,6 +4,9 @@ import { db } from "@/db";
 import { appointments, organizations, organizationServicePlans } from "@/db/schema";
 import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
 
+import { processVoucherDeliveries } from "@/lib/voucher-delivery";
+
+export const maxDuration = 60;
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
@@ -43,5 +46,6 @@ export async function GET(request: Request) {
     }
   }
 
-  return Response.json({ ok: true, scanned: candidates.length, queued });
+  const voucherDeliveries = await processVoucherDeliveries(undefined, 20);
+  return Response.json({ ok: true, scanned: candidates.length, queued, voucherDeliveries });
 }

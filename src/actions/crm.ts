@@ -73,7 +73,7 @@ export async function initializeCrm() {
     ]);
   });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "crm.initialized", entityType: "crm_pipeline" });
-  revalidatePath("/crm");
+  revalidatePath("/crm"); revalidatePath("/crescimento");
 }
 
 export async function createCrmLead(formData: FormData) {
@@ -113,7 +113,7 @@ export async function createCrmLead(formData: FormData) {
     return inserted;
   });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "crm.lead.created", entityType: "crm_lead", entityId: lead.id, details: { source: text(formData, "source") || "manual" } });
-  revalidatePath("/crm");
+  revalidatePath("/crm"); revalidatePath("/crescimento");
 }
 
 export async function moveCrmOpportunity(formData: FormData) {
@@ -128,7 +128,7 @@ export async function moveCrmOpportunity(formData: FormData) {
   if (!stage || !opportunity || stage.pipelineId !== opportunity.pipelineId) throw new Error("Movimentação inválida.");
   await db.update(crmOpportunities).set({ stageId, updatedAt: new Date() }).where(eq(crmOpportunities.id, opportunityId));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "crm.opportunity.moved", entityType: "crm_opportunity", entityId: opportunityId, details: { stageId } });
-  revalidatePath("/crm");
+  revalidatePath("/crm"); revalidatePath("/crescimento");
 }
 
 export async function closeCrmOpportunity(formData: FormData) {
@@ -147,7 +147,7 @@ export async function closeCrmOpportunity(formData: FormData) {
     updatedAt: new Date(),
   }).where(eq(crmOpportunities.id, id));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: `crm.opportunity.${status}`, entityType: "crm_opportunity", entityId: id });
-  revalidatePath("/crm");
+  revalidatePath("/crm"); revalidatePath("/crescimento");
 }
 
 export async function createCrmTask(formData: FormData) {
@@ -168,7 +168,7 @@ export async function createCrmTask(formData: FormData) {
     dueAt,
   }).returning({ id: crmTasks.id });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "crm.task.created", entityType: "crm_task", entityId: task.id });
-  revalidatePath("/crm");
+  revalidatePath("/crm"); revalidatePath("/crescimento");
 }
 
 export async function completeCrmTask(formData: FormData) {
@@ -177,7 +177,7 @@ export async function completeCrmTask(formData: FormData) {
   const id = text(formData, "taskId");
   await db.update(crmTasks).set({ completedAt: new Date(), updatedAt: new Date() })
     .where(and(eq(crmTasks.id, id), eq(crmTasks.organizationId, organization.id)));
-  revalidatePath("/crm");
+  revalidatePath("/crm"); revalidatePath("/crescimento");
 }
 
 export async function convertCrmLeadToClient(formData: FormData) {
@@ -202,7 +202,7 @@ export async function convertCrmLeadToClient(formData: FormData) {
     return created;
   });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "crm.lead.converted", entityType: "crm_lead", entityId: leadId, details: { clientId: client.id } });
-  revalidatePath("/crm");
+  revalidatePath("/crm"); revalidatePath("/crescimento");
   revalidatePath("/clientes");
 }
 
@@ -247,7 +247,7 @@ export async function createCrmLeadFromConversation(formData: FormData) {
     return created;
   });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "crm.conversation.imported", entityType: "crm_lead", entityId: lead.id, details: { conversationId } });
-  revalidatePath("/crm"); revalidatePath("/crm/inbox");
+  revalidatePath("/crm"); revalidatePath("/crm/inbox"); revalidatePath("/crescimento");
 }
 
 export async function updateCrmHandoff(formData: FormData) {
@@ -271,7 +271,7 @@ export async function updateCrmHandoff(formData: FormData) {
     updatedAt: now,
   }).where(eq(chatConversations.id, conversationId));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: `crm.handoff.${status}`, entityType: "chat_conversation", entityId: conversationId });
-  revalidatePath("/crm/inbox");
+  revalidatePath("/crm/inbox"); revalidatePath("/crescimento");
 }
 
 export async function createCrmProposal(formData: FormData) {
@@ -325,7 +325,7 @@ export async function updateCrmProposalStatus(formData: FormData) {
     }
   });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: `crm.proposal.${status}`, entityType: "crm_proposal", entityId: proposalId });
-  revalidatePath("/crm"); revalidatePath("/crm/propostas");
+  revalidatePath("/crm"); revalidatePath("/crescimento"); revalidatePath("/crm/propostas");
 }
 
 export async function addCrmTag(formData: FormData) {
@@ -391,5 +391,5 @@ export async function reviewCrmAiInsight(formData: FormData) {
   if (status !== "approved" && status !== "dismissed") throw new Error("Revisão inválida.");
   await db.update(crmAiInsights).set({ status, reviewedByUserId: session.user.id, reviewedAt: new Date() }).where(and(eq(crmAiInsights.id, id), eq(crmAiInsights.organizationId, organization.id)));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: `crm.ai.${status}`, entityType: "crm_ai_insight", entityId: id });
-  revalidatePath("/crm");
+  revalidatePath("/crm"); revalidatePath("/crescimento");
 }

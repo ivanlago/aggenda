@@ -13,16 +13,20 @@ import { GrowthTabs } from "@/components/growth-tabs";
 import { VouchersPanel } from "@/components/vouchers-panel";
 import { ProcedureReturnsPanel } from "@/components/procedure-returns-panel";
 
+import { CommercialConversationsPanel, type ConversationFilters } from "@/components/commercial-conversations-panel";
+
+import { CrmPipelinePanel } from "@/components/crm-pipeline-panel";
+
 const money = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export const maxDuration = 60;
 
 export const metadata = { title: "Crescimento e recorrência" };
 
-export default async function GrowthPage({ searchParams }: { searchParams: Promise<{ returnState?: string; returnSearch?: string; tab?: string }> }) {
+export default async function GrowthPage({ searchParams }: { searchParams: Promise<ConversationFilters & { returnState?: string; returnSearch?: string; tab?: string }> }) {
   const { organization } = await requireOrganization();
   const query = await searchParams;
-  const initialTab = query.tab === "voucher" || query.tab === "recuperacao" ? query.tab : "retornos";
+  const initialTab = query.tab === "voucher" || query.tab === "recuperacao" || query.tab === "conversas" || query.tab === "funil" ? query.tab : "retornos";
   const now = new Date(); const monthStart = new Date(now.getFullYear(), now.getMonth(), 1); const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const recoveryLimit = new Date(now.getTime() - organization.patientRecoveryDays * 86_400_000);
   const [monthAppointments, pastAppointments, clientRows] = await Promise.all([
@@ -43,7 +47,7 @@ export default async function GrowthPage({ searchParams }: { searchParams: Promi
       [BadgePercent, money(margin), "Margem estimada após custos"],
     ].map(([Icon, value, label]) => <article className="panel" key={String(label)}><Icon className="size-5 text-brand" /><p className="mt-6 text-2xl font-extrabold">{String(value)}</p><p className="mt-1 text-sm text-muted">{String(label)}</p></article>)}</section>
 
-    <GrowthTabs initialTab={initialTab} panels={{
+    <GrowthTabs key={JSON.stringify(query)} initialTab={initialTab} panels={{
       retornos: hasOrganizationPermission(organization.role, "crm.read") ? <ProcedureReturnsPanel organizationId={organization.id} timezone={organization.timezone} canManage={hasOrganizationPermission(organization.role, "crm.manage")} filter={query.returnState} search={query.returnSearch} /> : null,
       recuperacao: (
     <section className="mt-5 grid gap-5">
@@ -52,6 +56,8 @@ export default async function GrowthPage({ searchParams }: { searchParams: Promi
     </section>
       ),
       voucher: hasOrganizationPermission(organization.role, "crm.read") ? <VouchersPanel organization={organization} referenceTime={now.getTime()} /> : null,
+      conversas: hasOrganizationPermission(organization.role, "crm.read") ? <CommercialConversationsPanel organizationId={organization.id} timezone={organization.timezone} canManage={hasOrganizationPermission(organization.role, "chat.inbox")} canCreateLead={hasOrganizationPermission(organization.role, "crm.manage")} filters={query} /> : null,
+      funil: hasOrganizationPermission(organization.role, "crm.read") ? <CrmPipelinePanel organizationId={organization.id} timezone={organization.timezone} /> : null,
     }} />
     <section className="panel mt-5"><h2 className="text-lg font-extrabold">Aquisição pública</h2><p className="mt-1 text-sm text-muted">Compartilhe a página personalizada da empresa para receber agendamentos.</p><div className="mt-4 flex flex-wrap gap-3"><Link className="secondary-button" href={`/agendar/${organization.slug}`} target="_blank">Ver página pública</Link></div></section>
   </div>;

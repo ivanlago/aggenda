@@ -43,7 +43,7 @@ export default async function CrmLeadPage({ params }: { params: Promise<{ id: st
   ]);
 
   return <div className="page-wrap">
-    <Link className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-brand" href="/crm"><ArrowLeft className="size-4" /> Voltar ao funil</Link>
+    <Link className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-brand" href="/crescimento?tab=funil"><ArrowLeft className="size-4" /> Voltar ao funil</Link>
     <PageHeader eyebrow={`Lead · ${lead.source}`} title={lead.name} description={[lead.company, formatPhone(lead.phone), lead.email].filter(Boolean).join(" · ") || "Sem contato informado"} />
     <section className="grid gap-5 lg:grid-cols-[1fr_.8fr]">
       <article className="panel">

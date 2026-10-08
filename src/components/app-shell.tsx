@@ -65,6 +65,9 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     { label: "Venda e orçamento", items: [
       { href: "/vendas", label: "Venda e orçamento", icon: ShoppingCart, permission: "inventory.read" },
     ] },
+    { label: "CRM", items: [
+      { href: "/crescimento", label: "CRM", icon: TrendingUp, permission: "crm.read" },
+    ] },
     { label: "Atendimento", items: [
       { href: "/servicos", label: organization.serviceLabelPlural, icon: Wrench, permission: "services.read" },
       { href: "/pacotes", label: "Pacotes", icon: PackageOpen, permission: "services.read" },
@@ -75,11 +78,6 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
         { href: "/documentos", label: "Criar documentos", icon: FileSignature, permission: "documents.read", secondary: true },
         { href: "/documentos/historico", label: "Histórico", icon: ReceiptText, permission: "documents.read", secondary: true },
       ] },
-    ] },
-    { label: "CRM comercial", items: [
-      { href: "/crescimento", label: "Crescimento e recorrência", icon: TrendingUp, permission: "crm.read" },
-      { href: "/crm/propostas", label: "Propostas", icon: FileCheck2, permission: "crm.read" },
-      { href: "/crm/relatorios", label: "Relatórios do CRM", icon: ChartNoAxesCombined, permission: "crm.read" },
     ] },
     { label: "Financeiro", items: [
       { href: "/financeiro", label: "Contas e fluxo de caixa", icon: WalletCards, permission: "finance.read" },

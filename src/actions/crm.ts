@@ -304,7 +304,7 @@ export async function createCrmProposal(formData: FormData) {
     return created;
   });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "crm.proposal.created", entityType: "crm_proposal", entityId: proposal.id, details: { opportunityId, totalInCents: subtotal - discount } });
-  revalidatePath("/crm/propostas"); revalidatePath(`/crm/leads/${opportunity.leadId}`);
+  revalidatePath("/crm/propostas"); revalidatePath("/crescimento"); revalidatePath(`/crm/leads/${opportunity.leadId}`);
 }
 
 export async function updateCrmProposalStatus(formData: FormData) {

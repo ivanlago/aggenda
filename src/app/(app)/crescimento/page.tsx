@@ -17,16 +17,19 @@ import { CommercialConversationsPanel, type ConversationFilters } from "@/compon
 
 import { CrmPipelinePanel } from "@/components/crm-pipeline-panel";
 
+import { CrmProposalsPanel } from "@/components/crm-propostas-panel";
+import { CrmReportsPanel } from "@/components/crm-relatorios-panel";
+
 const money = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export const maxDuration = 60;
 
-export const metadata = { title: "Crescimento e recorrência" };
+export const metadata = { title: "CRM" };
 
 export default async function GrowthPage({ searchParams }: { searchParams: Promise<ConversationFilters & { returnState?: string; returnSearch?: string; tab?: string }> }) {
   const { organization } = await requireOrganization();
   const query = await searchParams;
-  const initialTab = query.tab === "voucher" || query.tab === "recuperacao" || query.tab === "conversas" || query.tab === "funil" ? query.tab : "retornos";
+  const initialTab = query.tab === "voucher" || query.tab === "recuperacao" || query.tab === "conversas" || query.tab === "funil" || query.tab === "relatorios" ? query.tab : "retornos";
   const now = new Date(); const monthStart = new Date(now.getFullYear(), now.getMonth(), 1); const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const recoveryLimit = new Date(now.getTime() - organization.patientRecoveryDays * 86_400_000);
   const [monthAppointments, pastAppointments, clientRows] = await Promise.all([
@@ -40,7 +43,7 @@ export default async function GrowthPage({ searchParams }: { searchParams: Promi
   const latest = new Map<string, Date>(); for (const item of pastAppointments) if (!latest.has(item.clientId)) latest.set(item.clientId, item.startsAt);
   const inactive = clientRows.filter((client) => client.phone && (!latest.get(client.id) || latest.get(client.id)! < recoveryLimit)).slice(0, 30);
   return <div className="page-wrap">
-    <PageHeader eyebrow="Receita previsível" title="Crescimento e recorrência" description="Acompanhe presença e margem, recupere pacientes e crie vouchers para campanhas." />
+    <PageHeader eyebrow="Relacionamento e oportunidades" title="CRM" description="Gerencie retornos, campanhas, conversas, oportunidades, propostas e resultados em um só lugar." />
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{[
       [ChartNoAxesCombined, `${presenceRate}%`, "Taxa de presença no mês"],
       [CreditCard, money(revenue), "Receita de atendimentos concluídos"],
@@ -58,7 +61,9 @@ export default async function GrowthPage({ searchParams }: { searchParams: Promi
       voucher: hasOrganizationPermission(organization.role, "crm.read") ? <VouchersPanel organization={organization} referenceTime={now.getTime()} /> : null,
       conversas: hasOrganizationPermission(organization.role, "crm.read") ? <CommercialConversationsPanel organizationId={organization.id} timezone={organization.timezone} canManage={hasOrganizationPermission(organization.role, "chat.inbox")} canCreateLead={hasOrganizationPermission(organization.role, "crm.manage")} filters={query} /> : null,
       funil: hasOrganizationPermission(organization.role, "crm.read") ? <CrmPipelinePanel organizationId={organization.id} timezone={organization.timezone} /> : null,
+      relatorios: hasOrganizationPermission(organization.role, "crm.read") ? <CrmReportsPanel organizationId={organization.id} /> : null,
     }} />
+    {hasOrganizationPermission(organization.role, "crm.read") && <div id="propostas" className="scroll-mt-5"><CrmProposalsPanel organizationId={organization.id} /></div>}
     <section className="panel mt-5"><h2 className="text-lg font-extrabold">Aquisição pública</h2><p className="mt-1 text-sm text-muted">Compartilhe a página personalizada da empresa para receber agendamentos.</p><div className="mt-4 flex flex-wrap gap-3"><Link className="secondary-button" href={`/agendar/${organization.slug}`} target="_blank">Ver página pública</Link></div></section>
   </div>;
 }

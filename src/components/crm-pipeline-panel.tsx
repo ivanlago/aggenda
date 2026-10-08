@@ -63,7 +63,7 @@ export async function CrmPipelinePanel({ organizationId, timezone }: { organizat
   return (
     <section className="mt-5 min-w-0">
       <div className="mb-5"><h2 className="text-lg font-extrabold">Funil e oportunidades</h2><p className="mt-1 text-sm text-muted">Acompanhe contatos, oportunidades, responsáveis e próximas ações em um só lugar.</p></div>
-      <nav className="mb-5 flex flex-wrap gap-2 text-sm font-bold"><Link className="secondary-button" href="/crm/propostas">Propostas</Link><Link className="secondary-button" href="/crm/relatorios">Relatórios</Link><Link className="secondary-button" href="/crm/configuracoes">Configurações</Link></nav>
+      <nav className="mb-5 flex flex-wrap gap-2 text-sm font-bold"><Link className="secondary-button" href="/crm/configuracoes">Configurações</Link></nav>
 
       {!pipeline ? (
         <section className="panel mx-auto max-w-2xl text-center">

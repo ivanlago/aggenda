@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode, type KeyboardEvent } from "react";
-import { CalendarClock, KanbanSquare, MessageCircleMore, TicketPercent, UserRoundSearch } from "lucide-react";
+import { CalendarClock, ChartNoAxesCombined, KanbanSquare, MessageCircleMore, TicketPercent, UserRoundSearch } from "lucide-react";
 
 const tabs = [
   { id: "retornos", label: "Retornos por procedimento", icon: CalendarClock },
@@ -9,6 +9,7 @@ const tabs = [
   { id: "voucher", label: "Voucher", icon: TicketPercent },
   { id: "conversas", label: "Conversas comerciais", icon: MessageCircleMore },
   { id: "funil", label: "Funil e oportunidades", icon: KanbanSquare },
+  { id: "relatorios", label: "Relatórios", icon: ChartNoAxesCombined },
 ] as const;
 type TabId = (typeof tabs)[number]["id"];
 
@@ -32,7 +33,7 @@ export function GrowthTabs({ initialTab, panels }: { initialTab: TabId; panels: 
     document.getElementById(`growth-tab-${tabs[next].id}`)?.focus();
   }
   return <section className="mt-5 min-w-0">
-    <div className="flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label="Crescimento e recorrência">
+    <div className="flex gap-2 overflow-x-auto pb-2 lg:flex-wrap" role="tablist" aria-label="Ferramentas do CRM">
       {tabs.map(({ id, label, icon: Icon }, index) => <button key={id} id={`growth-tab-${id}`} type="button" role="tab" aria-selected={active === id} aria-controls={`growth-panel-${id}`} tabIndex={active === id ? 0 : -1}
         className={`${active === id ? "primary-button" : "secondary-button"} shrink-0 gap-2 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand`}
         onClick={() => select(id)} onKeyDown={(event) => navigate(event, index)}><Icon className="size-4 shrink-0" aria-hidden="true" />{label}</button>)}

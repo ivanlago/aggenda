@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
     serviceId,
     professionalId,
     excludeAppointmentId,
+    roomId: request.nextUrl.searchParams.get("roomId"),
     slotIntervalMinutes: organization.slotIntervalMinutes,
   });
   if (times === null) return Response.json({ error: "Serviço não encontrado." }, { status: 404 });

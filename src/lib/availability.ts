@@ -1,8 +1,9 @@
-import { and, eq, gte, inArray, isNull, lt, ne, or } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNull, lt, ne, or } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
   appointments,
+  rooms,
   availabilityExceptions,
   services,
   servicesToProfessionals,
@@ -18,6 +19,7 @@ type AvailabilityInput = {
   slotIntervalMinutes?: number;
   noticeHours?: number;
   excludeAppointmentId?: string;
+  roomId?: string | null;
 };
 
 function zonedParts(date: Date, timezone: string) {
@@ -117,7 +119,7 @@ export async function getAvailableTimes(input: AvailabilityInput) {
 
   const appointmentConditions = [
     eq(appointments.organizationId, input.organizationId),
-    gte(appointments.startsAt, dayStart),
+    gt(appointments.endsAt, dayStart),
     lt(appointments.startsAt, dayEnd),
     inArray(appointments.status, ["scheduled", "confirmed"]),
   ];
@@ -142,13 +144,22 @@ export async function getAvailableTimes(input: AvailabilityInput) {
     );
   }
 
-  const [busy, exceptions] = await Promise.all([
+  const [busy, exceptions, roomItems, roomBookings] = await Promise.all([
     db
       .select({ startsAt: appointments.startsAt, endsAt: appointments.endsAt })
       .from(appointments)
       .where(and(...appointmentConditions)),
     db.select().from(availabilityExceptions).where(and(...exceptionConditions)),
+    db.select({ id: rooms.id, isActive: rooms.isActive }).from(rooms).where(eq(rooms.organizationId, input.organizationId)),
+    db.select({ roomId: appointments.roomId, startsAt: appointments.startsAt, endsAt: appointments.endsAt }).from(appointments).where(and(
+      eq(appointments.organizationId, input.organizationId), lt(appointments.startsAt, dayEnd), gt(appointments.endsAt, dayStart),
+      inArray(appointments.status, ["scheduled", "confirmed", "completed"]),
+      input.excludeAppointmentId ? ne(appointments.id, input.excludeAppointmentId) : undefined,
+    )),
   ]);
+
+  const eligibleRooms = roomItems.filter(room => room.isActive && (!input.roomId || room.id === input.roomId));
+  if (input.roomId && !eligibleRooms.length) return [];
 
   const effectiveRanges = [
     ...ranges.map((range) => ({ start: range.startsAt, end: range.endsAt })),
@@ -178,6 +189,7 @@ export async function getAvailableTimes(input: AvailabilityInput) {
       if (start < minimum) continue;
       if (busy.some((item) => start < item.endsAt && end > item.startsAt)) continue;
       if (blocked.some((item) => start < item.endsAt && end > item.startsAt)) continue;
+      if (roomItems.length && !eligibleRooms.some(room => !roomBookings.some(item => item.roomId === room.id && start < item.endsAt && end > item.startsAt))) continue;
       slots.push(start.toISOString());
     }
   }

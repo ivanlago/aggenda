@@ -1,3 +1,4 @@
+import { roomBookingError } from "@/lib/room-errors";
 import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -211,7 +212,7 @@ async function execute(input: Input, pending: Pending, clientId: string, timezon
   const startsAt = new Date(pending.startsAt); const [service] = await db.select({ duration: services.durationMinutes }).from(services).where(eq(services.id, current.serviceId)).limit(1);
   const updated = await withAppointmentLock(input.organizationId, current.professionalId, async (tx) => {
     if (!await isTimeAvailable({ organizationId: input.organizationId, timezone, date: organizationDate(startsAt, timezone), serviceId: current.serviceId, professionalId: current.professionalId, excludeAppointmentId: current.id, startsAt })) throw new Error("Esse horário acabou de ficar indisponível. Escolha outro horário.");
-    const [row] = await tx.update(appointments).set({ startsAt, endsAt: new Date(startsAt.getTime() + service.duration * 60000), status: "scheduled", reminderClaimedAt: null, reminderSentAt: null, metadata: { ...(current.metadata ?? {}), whatsappCommandMessageId: input.messageId, conversationId: input.conversationId }, updatedAt: new Date() }).where(eq(appointments.id, current.id)).returning();
+    const [row] = await tx.update(appointments).set({ startsAt, roomId: null, endsAt: new Date(startsAt.getTime() + service.duration * 60000), status: "scheduled", reminderClaimedAt: null, reminderSentAt: null, metadata: { ...(current.metadata ?? {}), whatsappCommandMessageId: input.messageId, conversationId: input.conversationId }, updatedAt: new Date() }).where(eq(appointments.id, current.id)).returning();
     await tx.insert(auditLogs).values({ organizationId: input.organizationId, action: "reschedule", entityType: "appointment", entityId: current.id, details: { from: current.startsAt.toISOString(), to: startsAt.toISOString(), source: "whatsapp", messageId: input.messageId } }); return row;
   });
   await Promise.allSettled([syncAppointmentToGoogleCalendar(updated.id), syncAppointmentFinancialEntry(updated.id)]); return `Seu agendamento de ${current.serviceName} foi reagendado para ${formatOrganizationDateTime(updated.startsAt, timezone)}.`;
@@ -250,7 +251,7 @@ export async function POST(request: NextRequest) {
   if (pending && (isAffirmativeWhatsAppCommand(input.text) || isNegativeWhatsAppCommand(input.text))) {
     if (isNegativeWhatsAppCommand(input.text)) { await send(input, conversation, { reply: "Tudo bem. A operação não foi realizada. Como mais posso ajudar?", model: "aggenda-transactional-v1", intent: "operation_declined", confidence: 1 }); return NextResponse.json({ accepted: true, action: "declined" }); }
     try { const reply = await execute(input, pending, clientId, organization.timezone); await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: pending.kind, confidence: 1 }); return NextResponse.json({ accepted: true, action: pending.kind }); }
-    catch (error) { const reply = error instanceof Error ? error.message : "Não foi possível concluir a operação."; await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: `${pending.kind}_failed`, confidence: 1 }); return NextResponse.json({ accepted: true, action: `${pending.kind}_failed` }); }
+    catch (error) { const reply = roomBookingError(error) || (error instanceof Error ? error.message : "Não foi possível concluir a operação."); await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: `${pending.kind}_failed`, confidence: 1 }); return NextResponse.json({ accepted: true, action: `${pending.kind}_failed` }); }
   }
   const [catalog, professionalRows, future, history] = await Promise.all([
     db.select({ id: services.id, name: services.name, description: services.description, durationMinutes: services.durationMinutes, priceInCents: services.priceInCents }).from(services).where(and(eq(services.organizationId, input.organizationId), eq(services.isActive, true))).limit(50),

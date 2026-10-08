@@ -35,6 +35,8 @@ import {
   requireOrganization,
 } from "@/lib/session";
 
+import { AppHeader } from "./app-header";
+
 import { SignOutButton } from "./sign-out-button";
 import { AppNavLink } from "./app-nav-link";
 
@@ -177,7 +179,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           <div className="mt-4"><SignOutButton /></div>
         </div>
       </aside>
-      <main className="min-w-0">{children}</main>
+      <main className="min-w-0"><AppHeader organizationId={organization.id} role={organization.role} timezone={organization.timezone} userId={session.user.id} userName={session.user.name} />{children}</main>
     </div>
   );
 }

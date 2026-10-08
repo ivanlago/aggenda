@@ -1445,6 +1445,16 @@ export const availabilityExceptions = pgTable(
   ]
 );
 
+export const rooms = pgTable("rooms", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, table => [index("rooms_organization_idx").on(table.organizationId), uniqueIndex("rooms_organization_name_idx").on(table.organizationId, table.name), check("rooms_name_not_empty", sql`length(trim(${table.name})) > 0`)]);
+
 export const appointments = pgTable(
   "appointments",
   {
@@ -1461,6 +1471,7 @@ export const appointments = pgTable(
     serviceId: uuid("service_id")
       .notNull()
       .references(() => services.id, { onDelete: "restrict" }),
+    roomId: uuid("room_id").references(() => rooms.id, { onDelete: "restrict" }),
     startsAt: timestamp("starts_at").notNull(),
     endsAt: timestamp("ends_at").notNull(),
     status: appointmentStatusEnum("status").default("scheduled").notNull(),
@@ -1493,6 +1504,7 @@ export const appointments = pgTable(
       table.startsAt
     ),
     index("appointments_client_idx").on(table.clientId),
+    index("appointments_room_start_idx").on(table.roomId, table.startsAt),
   ]
 );
 

@@ -456,6 +456,13 @@
       "when": 1790899200000,
       "tag": "0064_voucher_campaigns",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1791417600000,
+      "tag": "0065_appointment_rooms",
+      "breakpoints": true
     }
   ]
 }

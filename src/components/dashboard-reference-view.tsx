@@ -1,13 +1,16 @@
 import { and, eq, gte, lt } from "drizzle-orm";
-import { BanknoteArrowDown, CalendarDays, Cake, CircleDollarSign, ShoppingCart, UserPlus, WalletCards } from "lucide-react";
+import { Cake, CircleDollarSign, WalletCards } from "lucide-react";
 import Link from "next/link";
 
 import { db } from "@/db";
 import { appointments, clients, financialEntries } from "@/db/schema";
-import { organizationDate } from "@/lib/appointment-safety";
+import { organizationDate, organizationDayRange } from "@/lib/appointment-safety";
 import { hasOrganizationPermission } from "@/lib/permissions";
-import { requireOrganization } from "@/lib/session";
+import { requireOrganization, requireProfessionalScope } from "@/lib/session";
 import { formatPhone } from "@/lib/phone";
+
+import { zonedDate } from "@/lib/availability";
+import { DashboardActivity } from "./dashboard-activity";
 
 import { PageHeader } from "./page-header";
 
@@ -23,15 +26,18 @@ export async function DashboardReferenceView() {
   const nextMonth = new Date(Date.UTC(year, month, 1));
   const monthEnd = nextMonth.toISOString().slice(0, 10);
   const canReadFinance = hasOrganizationPermission(organization.role, "finance.read");
-  const canManageAppointments = hasOrganizationPermission(organization.role, "appointments.manage");
-  const canManageClients = hasOrganizationPermission(organization.role, "clients.manage");
-  const canManageInventory = hasOrganizationPermission(organization.role, "inventory.manage");
-  const canManageFinance = hasOrganizationPermission(organization.role, "finance.manage");
+  const professionalId = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
+  const appointmentScope = professionalId ? eq(appointments.professionalId, professionalId) : undefined;
+  const weekStartDate = new Date(`${today}T12:00:00Z`);
+  weekStartDate.setUTCDate(weekStartDate.getUTCDate() - 6);
+  const weekStart = weekStartDate.toISOString().slice(0, 10);
+  const { end: todayEnd } = organizationDayRange(now, organization.timezone);
 
-  const [monthAppointments, monthEntries, birthdayClients] = await Promise.all([
-    db.select({ startsAt: appointments.startsAt, status: appointments.status }).from(appointments).where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, new Date(`${monthStart}T00:00:00-03:00`)), lt(appointments.startsAt, new Date(`${monthEnd}T00:00:00-03:00`)))),
+  const [monthAppointments, monthEntries, birthdayClients, recentAppointments] = await Promise.all([
+    db.select({ startsAt: appointments.startsAt, status: appointments.status }).from(appointments).where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, zonedDate(monthStart, "00:00", organization.timezone)), lt(appointments.startsAt, zonedDate(monthEnd, "00:00", organization.timezone)), appointmentScope)),
     canReadFinance ? db.select({ type: financialEntries.type, status: financialEntries.status, amount: financialEntries.amountInCents, dueDate: financialEntries.dueDate, realizedDate: financialEntries.realizedDate }).from(financialEntries).where(and(eq(financialEntries.organizationId, organization.id), gte(financialEntries.dueDate, monthStart), lt(financialEntries.dueDate, monthEnd))) : Promise.resolve([]),
     db.select({ id: clients.id, name: clients.name, birthDate: clients.birthDate, phone: clients.phone }).from(clients).where(eq(clients.organizationId, organization.id)),
+    db.select({ startsAt: appointments.startsAt, status: appointments.status }).from(appointments).where(and(eq(appointments.organizationId, organization.id), gte(appointments.startsAt, zonedDate(weekStart, "00:00", organization.timezone)), lt(appointments.startsAt, todayEnd), appointmentScope)),
   ]);
 
   const sum = (predicate: (entry: typeof monthEntries[number]) => boolean) => monthEntries.filter(predicate).reduce((total, entry) => total + entry.amount, 0);
@@ -52,18 +58,12 @@ export async function DashboardReferenceView() {
   });
   const birthdays = birthdayClients.filter((client) => client.birthDate && Number(client.birthDate.slice(5, 7)) === month).sort((a, b) => (a.birthDate ?? "").localeCompare(b.birthDate ?? ""));
   const monthName = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: organization.timezone }).format(now);
-  const quickLinks = [
-    { show: canManageAppointments, href: "/agenda?novo=1", label: "Novo Agendamento", icon: CalendarDays, color: "bg-brand" },
-    { show: canManageClients, href: "/clientes", label: `Novo ${organization.clientLabel}`, icon: UserPlus, color: "bg-tertiary" },
-    { show: canManageInventory, href: "/vendas", label: "Nova Venda", icon: ShoppingCart, color: "bg-secondary" },
-    { show: canManageFinance, href: "/financeiro", label: "Nova Conta a Pagar", icon: BanknoteArrowDown, color: "bg-secondary-dark" },
-  ].filter((item) => item.show);
 
   return <div className="page-wrap">
     <PageHeader eyebrow={organization.name} title="Dashboard" description={`Olá, ${session.user.name.split(" ")[0]}. Acompanhe os principais indicadores do negócio.`} />
     <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="min-w-0">
-        <section><h2 className="mb-3 text-lg font-extrabold">Acesso rápido</h2><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{quickLinks.map(({ href, label, icon: Icon, color }) => <Link key={label} href={href} className={`${color} flex min-h-24 items-center gap-3 rounded-2xl p-4 font-extrabold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg`}><span className="grid size-11 shrink-0 place-items-center rounded-xl bg-white/15"><Icon className="size-6" /></span><span>{label}</span></Link>)}</div></section>
+        <DashboardActivity monthAppointments={monthAppointments} recentAppointments={recentAppointments} today={today} timezone={organization.timezone} />
         {canReadFinance && <>
           <section className="mt-6"><h2 className="mb-3 text-lg font-extrabold">Saúde financeira</h2><div className="grid gap-3 sm:grid-cols-2"><FinancialCard label="A receber hoje" value={receivableToday} href="/financeiro" icon={CircleDollarSign} tone="emerald" /><FinancialCard label="A pagar hoje" value={payableToday} href="/financeiro" icon={WalletCards} tone="rose" /><FinancialCard label="Recebimentos vencidos" value={overdueReceivable} href="/financeiro" icon={CircleDollarSign} tone="sky" soft /><FinancialCard label="Pagamentos vencidos" value={overduePayable} href="/financeiro" icon={WalletCards} tone="amber" soft /></div></section>
           <section className="panel mt-6"><h2 className="text-lg font-extrabold">Contas no período</h2><p className="mt-1 text-sm text-muted">{new Date(`${monthStart}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(new Date(`${monthEnd}T12:00:00`).getTime() - 86400000).toLocaleDateString("pt-BR")}</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[560px] text-sm"><thead className="border-b text-left text-xs uppercase text-muted"><tr><th className="p-3">Status</th><th className="p-3 text-right">Contas a receber</th><th className="p-3 text-right">Contas a pagar</th><th className="p-3 text-right">Saldo</th></tr></thead><tbody className="divide-y"><SummaryRow label="Previsto" incoming={expectedReceivable} outgoing={expectedPayable} /><SummaryRow label="Vencido" incoming={overdueReceivable} outgoing={overduePayable} /><SummaryRow label="Realizado" incoming={received} outgoing={paid} /></tbody></table></div></section>

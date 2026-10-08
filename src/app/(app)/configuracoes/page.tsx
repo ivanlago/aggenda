@@ -1,3 +1,4 @@
+import { RoomSettings } from "@/components/room-settings";
 import { updateDocumentTemplateLibrary } from "@/actions/electronic-documents";
 import { headers } from "next/headers";
 import { CustomDomainSettings } from "@/components/custom-domain-settings";
@@ -114,6 +115,7 @@ export default async function SettingsPage() {
     <SettingsTabs tabs={[
       { id: "terminology", label: "Terminologia", content: terminology },
       { id: "booking", label: "Agendamento", content: booking },
+      { id: "rooms", label: "Salas", content: <RoomSettings organizationId={organization.id} canManage={canManage} /> },
       { id: "identity", label: "Identidade", content: identity },
       { id: "reminders", label: "Lembretes", content: reminders },
       { id: "documents", label: "Documentos", content: documents },

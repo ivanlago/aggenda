@@ -1,3 +1,4 @@
+import { roomBookingError } from "@/lib/room-errors";
 import { and, eq, gt, inArray, lt } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
@@ -203,6 +204,8 @@ export async function POST(
     }
     return Response.json({ id: appointment.id, manageToken, paymentUrl, manageUrl: `/agendamento/${manageToken}` }, { status: 201 });
   } catch (error) {
+    const roomError = roomBookingError(error);
+    if (roomError) return Response.json({ error: roomError }, { status: 409 });
     if (error instanceof Error && error.message === "VOUCHER_INVALID") return Response.json({ error: "Voucher inválido, expirado, esgotado ou indisponível para este cliente." }, { status: 400 });
     if (error instanceof Error && error.message === "DEPOSIT_DOCUMENT_INVALID") return Response.json({ error: "Informe um CPF ou CNPJ válido para gerar o sinal." }, { status: 400 });
     if (error instanceof Error && error.message === "APPOINTMENT_CONFLICT") {

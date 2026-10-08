@@ -1,5 +1,7 @@
 "use server";
 
+import { roomBookingError } from "@/lib/room-errors";
+
 import { and, eq, ilike, inArray, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -1121,6 +1123,7 @@ export async function createAppointment(formData: FormData) {
   const serviceId = textValue(formData, "serviceId");
   const clientId = textValue(formData, "clientId");
   const professionalId = optionalText(formData, "professionalId");
+  const roomId = optionalText(formData, "roomId");
   const professionalScopeId = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
   if (professionalScopeId && professionalId !== professionalScopeId) throw new Error("Você só pode criar agendamentos na própria agenda.");
   const clientPackageId = optionalText(formData, "clientPackageId");
@@ -1177,17 +1180,18 @@ export async function createAppointment(formData: FormData) {
       const available = await isTimeAvailable({
         organizationId: organization.id, timezone: organization.timezone,
         date: organizationDate(startsAt, organization.timezone), serviceId, professionalId,
-        slotIntervalMinutes: organization.slotIntervalMinutes, startsAt,
+        slotIntervalMinutes: organization.slotIntervalMinutes, startsAt, roomId,
       });
       if (!available) throw new Error("O horário selecionado não está disponível.");
     }
     const [result] = await tx.insert(appointments).values({
-      organizationId: organization.id, clientId, serviceId, professionalId, startsAt, endsAt,
+      organizationId: organization.id, clientId, serviceId, professionalId, roomId, startsAt, endsAt,
       priceInCents: optionalMoneyInCents(formData, "price") ?? service.priceInCents,
       notes: optionalText(formData, "notes"),
     }).returning({ id: appointments.id });
     return result;
-  });
+  }).catch(error => { const message = roomBookingError(error); if (message) return { error: message }; throw error; });
+  if ("error" in created) return created;
   if (clientPackageId) {
     try {
       await reservePackageSession({

@@ -61,7 +61,7 @@ export async function PATCH(
         endsAt = new Date(input.startsAt.getTime() + service.duration * 60_000);
       }
       const [updated] = await tx.update(appointments).set({
-        startsAt: input.startsAt, endsAt, status: input.status,
+        startsAt: input.startsAt, endsAt, status: input.status, roomId: input.startsAt ? null : undefined,
         confirmedAt: input.status === "confirmed" ? new Date() : undefined,
         cancellationReason: input.status === "cancelled" ? input.cancellationReason : undefined,
         reminderClaimedAt: input.startsAt ? null : undefined,

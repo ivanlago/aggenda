@@ -1,6 +1,8 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { roomBookingError } from "@/lib/room-errors";
+
+import { and, eq, gt, inArray, lt } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/db";
@@ -108,62 +110,46 @@ export async function createAvailabilityException(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "availability.manage");
   const professionalId = value(formData, "professionalId") || null;
-  const professionalScopeId = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
-  const startsAt = parseOrganizationDateTime(value(formData, "startsAt"), organization.timezone);
-  const endsAt = parseOrganizationDateTime(value(formData, "endsAt"), organization.timezone);
+  const scope = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
+  if (scope && professionalId !== scope) return { error: "Você só pode bloquear a própria agenda." };
   const type = value(formData, "type") === "available" ? "available" : "blocked";
-  if (
-    Number.isNaN(startsAt.getTime()) ||
-    Number.isNaN(endsAt.getTime()) ||
-    startsAt >= endsAt
-  ) {
-    throw new Error("Informe o início e o fim do período.");
+  const reason = value(formData, "reason");
+  if (reason.length > 500 || (type === "blocked" && !reason)) return { error: "Informe o motivo do bloqueio (até 500 caracteres)." };
+  let startsAt: Date, endsAt: Date;
+  try {
+    startsAt = parseOrganizationDateTime(value(formData, "startsAt"), organization.timezone);
+    endsAt = parseOrganizationDateTime(value(formData, "endsAt"), organization.timezone);
+  } catch { return { error: "Informe o início e o fim do período." }; }
+  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || startsAt >= endsAt) return { error: "O fim do bloqueio deve ser posterior ao início." };
+  if (type === "blocked" && endsAt <= new Date()) return { error: "O bloqueio precisa terminar no futuro." };
+  if (professionalId) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(professionalId)) return { error: "Selecione um profissional válido." };
+    const [professional] = await db.select({ id: professionals.id }).from(professionals).where(and(eq(professionals.id, professionalId), eq(professionals.organizationId, organization.id))).limit(1);
+    if (!professional) return { error: "Profissional não encontrado nesta clínica." };
   }
-  if (professionalScopeId && professionalId !== professionalScopeId) throw new Error("Você só pode alterar a própria disponibilidade.");
-  const [created] = await db
-    .insert(availabilityExceptions)
-    .values({
-      organizationId: organization.id,
-      professionalId,
-      startsAt,
-      endsAt,
-      type,
-      reason: value(formData, "reason") || null,
-    })
-    .returning({ id: availabilityExceptions.id });
-  await writeAuditLog({
-    organizationId: organization.id,
-    userId: session.user.id,
-    action: "create",
-    entityType: "availability_exception",
-    entityId: created.id,
-    details: { type },
+  const created = await withAppointmentLock(organization.id, professionalId, async tx => {
+    const [row] = await tx.insert(availabilityExceptions).values({ organizationId: organization.id, professionalId, startsAt, endsAt, type, reason: reason || null }).returning({ id: availabilityExceptions.id });
+    const affected = type === "blocked" ? await tx.select({ id: appointments.id }).from(appointments).where(and(
+      eq(appointments.organizationId, organization.id), professionalId ? eq(appointments.professionalId, professionalId) : undefined,
+      inArray(appointments.status, ["scheduled", "confirmed"]), lt(appointments.startsAt, endsAt), gt(appointments.endsAt, startsAt),
+    )) : [];
+    return { ...row, affected: affected.length };
   });
-  revalidatePath("/disponibilidade");
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "availability_exception", entityId: created.id, details: { type, professionalId, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), affectedAppointments: created.affected } });
+  revalidatePath("/agenda"); revalidatePath("/disponibilidade"); revalidatePath("/dashboard");
+  if (created.affected) return { warning: `Bloqueio criado. ${created.affected} agendamento(s) no período precisam de revisão; nenhum foi cancelado.` };
 }
 
 export async function deleteAvailabilityException(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "availability.manage");
   const id = value(formData, "id");
-  const professionalScopeId = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
-  await db
-    .delete(availabilityExceptions)
-    .where(
-      and(
-        eq(availabilityExceptions.id, id),
-        eq(availabilityExceptions.organizationId, organization.id)
-        , professionalScopeId ? eq(availabilityExceptions.professionalId, professionalScopeId) : undefined
-      )
-    );
-  await writeAuditLog({
-    organizationId: organization.id,
-    userId: session.user.id,
-    action: "delete",
-    entityType: "availability_exception",
-    entityId: id,
-  });
-  revalidatePath("/disponibilidade");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return { error: "Bloqueio inválido." };
+  const scope = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
+  const [deleted] = await db.delete(availabilityExceptions).where(and(eq(availabilityExceptions.id, id), eq(availabilityExceptions.organizationId, organization.id), scope ? eq(availabilityExceptions.professionalId, scope) : undefined)).returning({ id: availabilityExceptions.id });
+  if (!deleted) return { error: "Bloqueio não encontrado ou fora da sua agenda." };
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "delete", entityType: "availability_exception", entityId: deleted.id });
+  revalidatePath("/agenda"); revalidatePath("/disponibilidade"); revalidatePath("/dashboard");
 }
 
 export async function updateBookingSettings(formData: FormData) {
@@ -227,6 +213,7 @@ export async function rescheduleAppointment(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "appointments.manage");
   const id = value(formData, "id");
+  const roomId = value(formData, "roomId") || null;
   const professionalScopeId = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
   const startsAt = parseOrganizationDateTime(value(formData, "startsAt"), organization.timezone);
   const [item] = await db
@@ -255,15 +242,15 @@ export async function rescheduleAppointment(formData: FormData) {
       organizationId: organization.id, timezone: organization.timezone,
       date: organizationDate(startsAt, organization.timezone), serviceId: item.serviceId,
       professionalId: item.professionalId, slotIntervalMinutes: organization.slotIntervalMinutes,
-      excludeAppointmentId: id, startsAt,
+      excludeAppointmentId: id, startsAt, roomId,
     });
     if (!available) return false;
-    await tx.update(appointments).set({ startsAt,
+    await tx.update(appointments).set({ startsAt, roomId,
       endsAt: new Date(startsAt.getTime() + item.duration * 60_000), status: "scheduled",
       updatedAt: new Date(),
     }).where(and(eq(appointments.id, id), eq(appointments.organizationId, organization.id)));
     return true;
-  });
+  }).catch(error => { if (roomBookingError(error)) return false; throw error; });
   if (!rescheduled) {
     return { error: "Este horário não está mais disponível. Escolha outro horário na lista." };
   }

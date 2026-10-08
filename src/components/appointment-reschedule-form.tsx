@@ -10,20 +10,26 @@ export function AppointmentRescheduleForm({
   serviceId,
   professionalId,
   timezone,
+  rooms = [],
+  initialRoomId = null,
 }: {
   action: (formData: FormData) => Promise<void | { error?: string }>;
   appointmentId: string;
   serviceId: string;
   professionalId: string;
   timezone: string;
+  rooms?: Array<{ id: string; name: string; isActive: boolean }>;
+  initialRoomId?: string | null;
 }) {
+  const [roomId, setRoomId] = useState(initialRoomId ?? "");
+  const [date, setDate] = useState("");
   const [times, setTimes] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState("");
   const requestController = useRef<AbortController | null>(null);
   const minimumDate = new Date().toISOString().slice(0, 10);
 
-  function loadAvailability(date: string) {
+  function loadAvailability(date: string, nextRoomId = roomId) {
     requestController.current?.abort();
     setTimes([]);
     setAvailabilityError("");
@@ -37,6 +43,7 @@ export function AppointmentRescheduleForm({
       serviceId,
       professionalId,
       excludeAppointmentId: appointmentId,
+      roomId: nextRoomId,
     });
 
     fetch(`/api/availability?${query}`, { signal: controller.signal })
@@ -56,14 +63,15 @@ export function AppointmentRescheduleForm({
   return (
     <ActionForm action={action} successMessage="Agendamento remarcado com sucesso." className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
       <input type="hidden" name="id" value={appointmentId} />
+      {rooms.length > 0 && <label className="grid gap-2 text-sm font-bold sm:col-span-3">Sala<select className="field" name="roomId" value={roomId} onChange={event => { const next = event.target.value; setRoomId(next); loadAvailability(date, next); }}><option value="">Selecionar automaticamente</option>{rooms.filter(room => room.isActive || room.id === initialRoomId).map(room => <option key={room.id} value={room.id}>{room.name}{!room.isActive ? " (inativa)" : ""}</option>)}</select></label>}
       <input
         className="field py-2"
         type="date"
         min={minimumDate}
-        onChange={(event) => loadAvailability(event.target.value)}
+        onChange={(event) => { setDate(event.target.value); loadAvailability(event.target.value); }}
         required
       />
-      <select className="field py-2" name="startsAt" required defaultValue="" disabled={loading || !times.length}>
+      <select key={`${date}:${roomId}`} className="field py-2" name="startsAt" required defaultValue="" disabled={loading || !times.length}>
         <option value="">
           {loading ? "Consultando horários…" : times.length ? "Selecione o horário" : "Nenhum horário disponível"}
         </option>

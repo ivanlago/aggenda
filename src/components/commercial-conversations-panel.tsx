@@ -1,4 +1,4 @@
-import { and, desc, eq, exists, gte, ilike, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, exists, gte, ilike, isNull, lt, ne, or } from "drizzle-orm";
 import { Bot, MessageCircle, UserRoundCheck } from "lucide-react";
 import Link from "next/link";
 
@@ -18,7 +18,7 @@ function validDate(value: string | undefined) {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value);
 }
 
-const statuses: Record<string, string> = { bot: "Com a IA", requested: "Aguardando equipe", human: "Com a equipe", resolved: "Resolvida" };
+const statuses: Record<string, string> = { open: "Em aberto", bot: "Com a IA", requested: "Aguardando equipe", human: "Com a equipe", resolved: "Resolvida" };
 const pageSize = 50;
 
 export async function CommercialConversationsPanel({ organizationId, timezone, canManage, canCreateLead, filters }: { organizationId: string; timezone: string; canManage: boolean; canCreateLead: boolean; filters: ConversationFilters }) {
@@ -47,7 +47,7 @@ export async function CommercialConversationsPanel({ organizationId, timezone, c
         or(and(gte(chatConversations.lastMessageAt, start), lt(chatConversations.lastMessageAt, end)), exists(db.select({ id: chatMessages.id }).from(chatMessages).where(and(eq(chatMessages.organizationId, organizationId), eq(chatMessages.conversationId, chatConversations.id), gte(chatMessages.occurredAt, start), lt(chatMessages.occurredAt, end))))),
         search ? or(ilike(chatConversations.contactName, pattern), ilike(crmLeads.name, pattern), ilike(clients.name, pattern), ilike(chatConversations.externalContactId, phoneDigits ? `%${phoneDigits}%` : pattern)) : undefined,
         client ? eq(chatConversations.clientId, client) : undefined,
-        status ? eq(chatConversations.handoffStatus, status) : undefined,
+        status === "open" ? ne(chatConversations.handoffStatus, "resolved") : status ? eq(chatConversations.handoffStatus, status) : undefined,
         owner === "unassigned" ? isNull(chatConversations.assignedUserId) : owner ? eq(chatConversations.assignedUserId, owner) : undefined,
       )).orderBy(desc(chatConversations.lastMessageAt), desc(chatConversations.id)).limit(pageSize + 1).offset((page - 1) * pageSize),
     db.select({ id: users.id, name: users.name }).from(organizationMembers).innerJoin(users, eq(users.id, organizationMembers.userId)).where(eq(organizationMembers.organizationId, organizationId)).orderBy(users.name),

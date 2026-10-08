@@ -1,3 +1,4 @@
+import { roomBookingError } from "@/lib/room-errors";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
@@ -52,14 +53,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       });
       if (!available) return false;
       await tx.update(appointments).set({
-        startsAt,
+        startsAt, roomId: null,
         endsAt: new Date(startsAt.getTime() + item.duration * 60_000),
         status: "scheduled",
         confirmedAt: null,
         updatedAt,
       }).where(and(eq(appointments.id, item.id), eq(appointments.organizationId, item.organizationId)));
       return true;
-    });
+    }).catch(error => { if (roomBookingError(error)) return false; throw error; });
     if (!rescheduled) return Response.json({ error: "Este horário não está mais disponível. Escolha outro." }, { status: 409 });
 
     const followUps: Promise<unknown>[] = [

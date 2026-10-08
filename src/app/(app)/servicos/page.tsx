@@ -63,7 +63,7 @@ export default async function ServicesPage() {
           </h2>
           <div className="mt-5 divide-y">
             {items.map((item) => (
-              <div key={item.id} className="flex items-center gap-4 py-4">
+              <div key={item.id} id={`procedimento-${item.id}`} className="flex scroll-mt-32 items-center gap-4 py-4 target:rounded-lg target:bg-brand/5">
                 <EntityThumbnail src={item.imageUrl} alt={item.name} fallback={item.name[0]} />
                 <div className="min-w-0 flex-1">
                   <p className="font-bold">{item.shortName || item.name}</p>

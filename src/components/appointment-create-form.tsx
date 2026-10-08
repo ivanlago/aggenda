@@ -15,8 +15,9 @@ export function AppointmentCreateForm({
   packageBalances,
   labels,
   timezone,
+  rooms = [],
 }: {
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<void | { error?: string }>;
   clients: Item[];
   services: Item[];
   professionals: Item[];
@@ -24,7 +25,9 @@ export function AppointmentCreateForm({
   packageBalances: Array<{ clientPackageId: string; clientId: string; serviceId: string; packageName: string; remaining: number; expiresAt: string | null }>;
   labels: { client: string; service: string; professional: string; appointment: string };
   timezone: string;
+  rooms?: Array<{ id: string; name: string; isActive: boolean }>;
 }) {
+  const [roomId, setRoomId] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [clientId, setClientId] = useState("");
   const [professionalId, setProfessionalId] = useState("");
@@ -48,7 +51,7 @@ export function AppointmentCreateForm({
     [clientId, packageBalances, serviceId]
   );
 
-  function loadAvailability(nextServiceId: string, nextProfessionalId: string, nextDate: string) {
+  function loadAvailability(nextServiceId: string, nextProfessionalId: string, nextDate: string, nextRoomId = roomId) {
     requestController.current?.abort();
     setTimes([]);
     if (!nextServiceId || !nextProfessionalId || !nextDate) {
@@ -59,7 +62,7 @@ export function AppointmentCreateForm({
     requestController.current = controller;
     setLoading(true);
     setAvailabilityError("");
-    fetch(`/api/availability?date=${encodeURIComponent(nextDate)}&serviceId=${nextServiceId}&professionalId=${nextProfessionalId}`, { signal: controller.signal })
+    fetch(`/api/availability?date=${encodeURIComponent(nextDate)}&serviceId=${nextServiceId}&professionalId=${nextProfessionalId}&roomId=${encodeURIComponent(nextRoomId)}`, { signal: controller.signal })
       .then(async (response) => {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Não foi possível consultar os horários.");
@@ -101,8 +104,9 @@ export function AppointmentCreateForm({
         <option value="">Selecione o {labels.professional.toLowerCase()}</option>
         {eligibleProfessionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
       </select>
+      {rooms.length > 0 && <label className="grid gap-2 text-sm font-bold">Sala<select className="field" name="roomId" value={roomId} onChange={event => { const next = event.target.value; setRoomId(next); loadAvailability(serviceId, professionalId, date, next); }}><option value="">Selecionar sala disponível automaticamente</option>{rooms.filter(room => room.isActive).map(room => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label>}
       <input className="field" type="date" min={minimumDate} value={date} onChange={(event) => { const next = event.target.value; setDate(next); loadAvailability(serviceId, professionalId, next); }} required />
-      <select className="field" name="startsAt" required defaultValue="" disabled={loading || !times.length}>
+      <select key={`${date}:${serviceId}:${professionalId}:${roomId}`} className="field" name="startsAt" required defaultValue="" disabled={loading || !times.length}>
         <option value="">{loading ? "Consultando horários…" : times.length ? "Selecione o horário" : "Nenhum horário disponível"}</option>
         {times.map((time) => <option key={time} value={time}>{new Date(time).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: timezone })}</option>)}
       </select>

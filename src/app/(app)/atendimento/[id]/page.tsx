@@ -1,3 +1,4 @@
+import { AppointmentRoomForm } from "@/components/appointment-room-form";
 import { AttendanceTools } from "@/components/attendance-tools";
 import { AttendanceClientPackages } from "@/components/attendance-client-packages";
 import { and, desc, eq } from "drizzle-orm";
@@ -5,7 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import type { ReactNode } from "react";
 import { db } from "@/db";
-import { clients, professionals, services, clientHistoryEntries, documentTemplates, electronicDocuments, professionalRegistrations } from "@/db/schema";
+import { clients, rooms, professionals, services, clientHistoryEntries, documentTemplates, electronicDocuments, professionalRegistrations } from "@/db/schema";
 import { requireAttendance } from "@/lib/attendance";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { formatOrganizationDateTime } from "@/lib/appointment-safety";
@@ -41,7 +42,7 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
   const canWrite = hasOrganizationPermission(organization.role, "appointments.manage");
   const canReadDocuments = hasOrganizationPermission(organization.role, "documents.read");
   const canIssue = hasOrganizationPermission(organization.role, "documents.manage");
-  const [[client], professionalRows, [service], entries, documents, templates, procedures, registrations] = await Promise.all([
+  const [[client], professionalRows, [service], entries, documents, templates, procedures, registrations, roomItems] = await Promise.all([
     db.select().from(clients).where(and(eq(clients.id, appointment.clientId), eq(clients.organizationId, organization.id))).limit(1),
     appointment.professionalId ? db.select().from(professionals).where(and(eq(professionals.id, appointment.professionalId), eq(professionals.organizationId, organization.id))).limit(1) : Promise.resolve([]),
     db.select().from(services).where(and(eq(services.id, appointment.serviceId), eq(services.organizationId, organization.id))).limit(1),
@@ -50,8 +51,10 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
     canIssue ? db.select().from(documentTemplates).where(and(eq(documentTemplates.organizationId, organization.id), eq(documentTemplates.isActive, true), eq(documentTemplates.workflowType, "professional_issue"))) : Promise.resolve([]),
     canIssue ? db.select({ id: services.id, name: services.name, shortName: services.shortName, tussCode: services.tussCode, preparation: services.preparation }).from(services).where(and(eq(services.organizationId, organization.id), eq(services.isActive, true))) : Promise.resolve([]),
     appointment.professionalId ? db.select().from(professionalRegistrations).where(and(eq(professionalRegistrations.professionalId, appointment.professionalId), eq(professionalRegistrations.organizationId, organization.id))) : Promise.resolve([]),
+    db.select().from(rooms).where(eq(rooms.organizationId, organization.id)).orderBy(rooms.name),
   ]);
   const professional = professionalRows[0];
+  const room = roomItems.find(item => item.id === appointment.roomId);
   const historyUrl = `/clientes/${client.id}`;
   const visibleEntries = entries.filter((entry) => !entry.electronicDocumentId || canReadDocuments);
   const anamneses = visibleEntries.filter((entry) => entry.entryType === "anamnesis");
@@ -79,7 +82,7 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-5">{[["Sexo", client.gender ? ({ female: "Feminino", male: "Masculino", other: "Outro", not_informed: "Prefere não informar" } as Record<string, string>)[client.gender] ?? client.gender : null], ["Idade", calculateAge(client.birthDate) != null ? `${calculateAge(client.birthDate)} anos` : null], ["Peso", client.weightKg ? `${Number(client.weightKg).toLocaleString("pt-BR")} kg` : null], ["Altura", client.heightCm ? `${Number(client.heightCm).toLocaleString("pt-BR")} cm` : null], ["Profissão", client.profession], ["Estado civil", client.maritalStatus], ["CPF", client.cpf]].map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-muted">{label}</dt><dd className="break-words font-bold">{value || "Não informado"}</dd></div>)}</dl>
         <p className="mt-4 whitespace-pre-wrap rounded-xl bg-amber-50 p-3 text-sm"><strong>Observações do cadastro:</strong> {client.notes || "Nenhuma observação registrada."}</p>
       </section>
-      <section className="panel"><h2 className="text-lg font-extrabold">Profissional e procedimento</h2><p className="mt-3 font-bold">{professional?.name || "Sem profissional vinculado"}</p><p className="text-sm text-muted">{professional?.title || professional?.customProfession}</p>{registrations.map((registration) => <p key={registration.id} className="text-sm">{registration.council} {registration.registrationNumber} / {registration.state}</p>)}<p className="mt-3 font-bold">{service.name}</p><p className="text-sm">{service.durationMinutes} minutos · {(price / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>{service.description && <p className="mt-2 whitespace-pre-wrap text-sm text-muted">{service.description}</p>}{service.preparation && <p className="mt-2 text-sm"><strong>Preparo:</strong> {service.preparation}</p>}{appointment.notes && <p className="mt-2 whitespace-pre-wrap text-sm"><strong>Agendamento:</strong> {appointment.notes}</p>}</section>
+      <section className="panel"><h2 className="text-lg font-extrabold">Profissional e procedimento</h2><p className="mt-3 text-sm"><strong>Sala:</strong> {room?.name ?? "Sem sala atribuída"}</p>{canWrite && <div className="mt-3"><AppointmentRoomForm appointmentId={appointment.id} roomId={appointment.roomId} rooms={roomItems} /></div>}<p className="mt-3 font-bold">{professional?.name || "Sem profissional vinculado"}</p><p className="text-sm text-muted">{professional?.title || professional?.customProfession}</p>{registrations.map((registration) => <p key={registration.id} className="text-sm">{registration.council} {registration.registrationNumber} / {registration.state}</p>)}<p className="mt-3 font-bold">{service.name}</p><p className="text-sm">{service.durationMinutes} minutos · {(price / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>{service.description && <p className="mt-2 whitespace-pre-wrap text-sm text-muted">{service.description}</p>}{service.preparation && <p className="mt-2 text-sm"><strong>Preparo:</strong> {service.preparation}</p>}{appointment.notes && <p className="mt-2 whitespace-pre-wrap text-sm"><strong>Agendamento:</strong> {appointment.notes}</p>}</section>
       <section id="anamnese" className="panel scroll-mt-6 lg:col-span-3"><h2 className="text-lg font-extrabold">Anamnese</h2><p className="mt-1 text-sm text-muted">Confira alergias, medicamentos em uso, condições de saúde e procedimentos anteriores registrados.</p>
         {anamneses.slice(0, 3).map((entry) => <article key={entry.id} className="mt-4 rounded-xl border p-4"><p className="text-xs text-muted">{formatOrganizationDateTime(entry.occurredAt, organization.timezone)}</p><p className="mt-2 whitespace-pre-wrap text-sm">{entry.content}</p></article>)}
         {anamnesisDocuments.slice(0, 3).map((document) => <details key={document.id} className="mt-3 rounded-xl border p-3"><summary className="cursor-pointer font-bold">{document.title} · {document.status === "signed" ? "Assinada" : "Pendente de conclusão"}</summary><p className="mt-3 whitespace-pre-wrap text-sm">{document.signerResponses || "Sem respostas registradas."}</p>{document.status === "signed" && <Link className="mt-3 inline-block font-bold text-brand" href={`/api/documents/${document.id}/pdf`}>Abrir anamnese em PDF</Link>}</details>)}

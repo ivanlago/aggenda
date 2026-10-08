@@ -1,3 +1,4 @@
+import { roomBookingError } from "@/lib/room-errors";
 import { timingSafeEqual } from "node:crypto";
 
 import { eq, sql } from "drizzle-orm";
@@ -62,7 +63,7 @@ export async function requireN8nOrganization(request: NextRequest) {
 export function apiError(error: unknown) {
   console.error("[Aggenda n8n]", error);
   return NextResponse.json(
-    { error: error instanceof Error ? error.message : "Unexpected error" },
+    { error: roomBookingError(error) || (error instanceof Error ? error.message : "Unexpected error") },
     { status: 400 }
   );
 }

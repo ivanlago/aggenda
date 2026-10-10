@@ -1,5 +1,6 @@
 import {
   check,
+  foreignKey,
   boolean,
   date,
   index,
@@ -550,6 +551,7 @@ export const professionals = pgTable(
   },
   (table) => [
     index("professionals_organization_idx").on(table.organizationId),
+    uniqueIndex("professionals_org_id_unique").on(table.organizationId, table.id),
     index("professionals_profession_idx").on(table.professionId),
     uniqueIndex("professionals_organization_user_unique").on(table.organizationId, table.userId),
   ]
@@ -774,8 +776,83 @@ export const electronicDocuments = pgTable("electronic_documents", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
   index("electronic_documents_org_idx").on(table.organizationId, table.createdAt),
+  uniqueIndex("electronic_documents_org_id_unique").on(table.organizationId, table.id),
   index("electronic_documents_client_idx").on(table.clientId, table.createdAt),
   index("electronic_documents_status_idx").on(table.organizationId, table.status),
+]);
+
+export const documentSignatureBlobs = pgTable("document_signature_blobs", {
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "restrict" }),
+  storageKey: text("storage_key").notNull(),
+  encryptedContent: text("encrypted_content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.organizationId, table.storageKey] })]);
+
+export const documentArtifacts = pgTable("document_artifacts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "restrict" }),
+  documentId: uuid("document_id").notNull(),
+  kind: text("kind").notNull(),
+  storageKey: text("storage_key").notNull(),
+  sha256: text("sha256").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("document_artifacts_org_document_id_unique").on(table.organizationId, table.documentId, table.id),
+  uniqueIndex("document_artifacts_storage_unique").on(table.organizationId, table.storageKey),
+  foreignKey({ name: "artifacts_document_tenant_fk", columns: [table.organizationId, table.documentId], foreignColumns: [electronicDocuments.organizationId, electronicDocuments.id] }),
+  check("document_artifacts_kind_check", sql`${table.kind} IN ('original', 'signed')`),
+  check("document_artifacts_hash_check", sql`${table.sha256} ~ '^[a-f0-9]{64}$'`),
+  check("document_artifacts_size_check", sql`${table.sizeBytes} > 0`),
+]);
+
+export const documentSignatureRequests = pgTable("document_signature_requests", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "restrict" }),
+  documentId: uuid("document_id").notNull(),
+  professionalId: uuid("professional_id").notNull(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  signerCpf: text("signer_cpf").notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  originalArtifactId: uuid("original_artifact_id").notNull(),
+  signedArtifactId: uuid("signed_artifact_id"),
+  method: text("method").default("cloud").notNull(),
+  provider: text("provider").notNull(),
+  providerId: text("provider_id"),
+  status: text("status").default("PENDING").notNull(),
+  certificateFingerprint: text("certificate_fingerprint"),
+  validatedAt: timestamp("validated_at"),
+  failureCode: text("failure_code"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("document_signature_requests_org_id_unique").on(table.organizationId, table.id),
+  uniqueIndex("document_signature_requests_idempotency_unique").on(table.organizationId, table.idempotencyKey),
+  uniqueIndex("document_signature_requests_provider_unique").on(table.provider, table.providerId),
+  index("document_signature_requests_pending_idx").on(table.organizationId, table.status, table.createdAt),
+  foreignKey({ name: "signature_requests_document_tenant_fk", columns: [table.organizationId, table.documentId], foreignColumns: [electronicDocuments.organizationId, electronicDocuments.id] }),
+  foreignKey({ name: "signature_requests_professional_tenant_fk", columns: [table.organizationId, table.professionalId], foreignColumns: [professionals.organizationId, professionals.id] }),
+  foreignKey({ name: "signature_requests_original_tenant_fk", columns: [table.organizationId, table.documentId, table.originalArtifactId], foreignColumns: [documentArtifacts.organizationId, documentArtifacts.documentId, documentArtifacts.id] }),
+  foreignKey({ name: "signature_requests_signed_tenant_fk", columns: [table.organizationId, table.documentId, table.signedArtifactId], foreignColumns: [documentArtifacts.organizationId, documentArtifacts.documentId, documentArtifacts.id] }),
+  check("document_signature_requests_status_check", sql`${table.status} IN ('PENDING', 'SIGNED', 'FAILED', 'CANCELLED')`),
+  check("document_signature_requests_method_check", sql`${table.method} IN ('cloud', 'local_a1')`),
+  check("document_signature_requests_cpf_check", sql`${table.signerCpf} ~ '^[0-9]{11}$'`),
+  check("document_signature_requests_key_check", sql`length(trim(${table.idempotencyKey})) BETWEEN 1 AND 128`),
+  check("document_signature_requests_signed_check", sql`${table.status} <> 'SIGNED' OR (${table.signedArtifactId} IS NOT NULL AND ${table.validatedAt} IS NOT NULL AND ${table.certificateFingerprint} IS NOT NULL AND ${table.provider} <> 'mock')`),
+]);
+
+export const documentSignatureEvents = pgTable("document_signature_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull(),
+  requestId: uuid("request_id").notNull(),
+  eventType: text("event_type").notNull(),
+  externalEventId: text("external_event_id"),
+  code: text("code"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  foreignKey({ name: "signature_events_request_tenant_fk", columns: [table.organizationId, table.requestId], foreignColumns: [documentSignatureRequests.organizationId, documentSignatureRequests.id] }),
+  uniqueIndex("document_signature_events_external_unique").on(table.organizationId, table.requestId, table.externalEventId),
+  index("document_signature_events_request_idx").on(table.organizationId, table.requestId, table.createdAt),
 ]);
 
 export const electronicDocumentEvents = pgTable("electronic_document_events", {

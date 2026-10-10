@@ -3,11 +3,20 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { electronicDocuments, organizations, professionalRegistrations, professionals } from "@/db/schema";
 import { createSignedDocumentPdf, sha256 } from "@/lib/electronic-documents";
+import { storedSignaturePdf } from "@/lib/signatures/document-download";
+import { SignatureDeliveryUnavailable } from "@/lib/signatures/delivery";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const [row] = await db.select({ document: electronicDocuments, institution: organizations, professionalName: professionals.name }).from(electronicDocuments).innerJoin(organizations, eq(organizations.id, electronicDocuments.organizationId)).leftJoin(professionals, eq(professionals.id, electronicDocuments.issuerProfessionalId)).where(eq(electronicDocuments.accessTokenHash, sha256(token))).limit(1);
   if (!row || !["signed", "issued"].includes(row.document.status) || row.document.tokenExpiresAt < new Date()) return Response.json({ error: "Documento finalizado não encontrado ou link expirado." }, { status: 404 });
+  try {
+    const stored = await storedSignaturePdf(row.document.organizationId, row.document.id);
+    if (stored) return new Response(Buffer.from(stored), { headers: { "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="documento-${row.document.id}.pdf"`, "Cache-Control": "private, no-store", "X-Robots-Tag": "noindex, nofollow" } });
+  } catch (error) {
+    if (error instanceof SignatureDeliveryUnavailable) return Response.json({ error: error.message }, { status: error.httpStatus, headers: { "Cache-Control": "private, no-store", "X-Robots-Tag": "noindex, nofollow" } });
+    throw error;
+  }
   const [registration] = row.document.issuerProfessionalId ? await db.select().from(professionalRegistrations).where(and(eq(professionalRegistrations.professionalId, row.document.issuerProfessionalId), eq(professionalRegistrations.organizationId, row.document.organizationId))).limit(1) : [];
   const pdf = await createSignedDocumentPdf({
     organizationName: row.institution.name, organizationLegalName: row.institution.legalName, organizationTaxId: row.institution.taxId,

@@ -463,6 +463,20 @@
       "when": 1791417600000,
       "tag": "0065_appointment_rooms",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1791597988306,
+      "tag": "0066_powerful_butterfly",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1791599435716,
+      "tag": "0067_tearful_tiger_shark",
+      "breakpoints": true
     }
   ]
 }

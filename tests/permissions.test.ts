@@ -83,6 +83,14 @@ test("papel desconhecido não recebe nenhuma permissão", () => {
   }
 });
 
+test("assinatura profissional tem permissão própria sem conceder acesso global aos documentos", () => {
+  assert.equal(hasOrganizationPermission("professional", "documents.sign"), true);
+  assert.equal(hasOrganizationPermission("professional", "documents.read"), false);
+  for (const role of ["manager", "receptionist", "financial", "staff", "viewer", "member"]) {
+    assert.equal(hasOrganizationPermission(role, "documents.sign"), false, role);
+  }
+});
+
 test("empresa solicitada só é selecionada quando pertence ao usuário", () => {
   const aura = { id: "aura", name: "Clínica Aura" };
   const cliniHora = { id: "clinihora", name: "CliniHora" };

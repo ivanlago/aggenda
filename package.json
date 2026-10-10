@@ -16,7 +16,8 @@
     "db:studio": "drizzle-kit studio",
     "worker:outbox": "tsx workers/outbox-worker.ts",
     "test:whatsapp-agent": "tsx --test tests/whatsapp-command.test.ts",
-    "test:permissions": "tsx --test tests/permissions.test.ts"
+    "test:permissions": "tsx --test tests/permissions.test.ts",
+    "test:signatures": "tsx --test tests/document-signatures.test.ts tests/signature-security.test.ts tests/signature-postgres.test.ts"
   },
   "dependencies": {
     "better-auth": "^1.6.25",
@@ -42,6 +43,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/papaparse": "^5.5.2",

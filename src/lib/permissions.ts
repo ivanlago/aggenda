@@ -30,6 +30,7 @@ export const organizationPermissions = [
   "cash.close",
   "documents.read",
   "documents.manage",
+  "documents.sign",
 ] as const;
 
 export type OrganizationPermission = (typeof organizationPermissions)[number];
@@ -95,6 +96,7 @@ const rolePermissions: Record<OrganizationRole, ReadonlySet<OrganizationPermissi
     "documents.manage",
   ]),
   professional: new Set([
+    "documents.sign",
     "organization.read",
     "clients.read",
     "services.read",

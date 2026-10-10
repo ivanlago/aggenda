@@ -17,9 +17,13 @@
     "worker:outbox": "tsx workers/outbox-worker.ts",
     "test:whatsapp-agent": "tsx --test tests/whatsapp-command.test.ts",
     "test:permissions": "tsx --test tests/permissions.test.ts",
-    "test:signatures": "tsx --test tests/document-signatures.test.ts tests/signature-security.test.ts tests/signature-postgres.test.ts"
+    "test:signatures": "tsx --test tests/document-signatures.test.ts tests/signature-security.test.ts tests/signature-postgres.test.ts tests/signature-pades.test.ts tests/signature-cms.test.ts",
+    "signature:pilot": "tsx scripts/signature-pilot.ts"
   },
   "dependencies": {
+    "@signpdf/placeholder-pdf-lib": "^3.3.0",
+    "@signpdf/utils": "^3.3.0",
+    "asn1js": "^3.0.10",
     "better-auth": "^1.6.25",
     "cloudinary": "^2.10.0",
     "clsx": "^2.1.1",
@@ -34,6 +38,7 @@
     "papaparse": "^5.5.4",
     "pdf-lib": "^1.17.1",
     "pg": "^8.22.0",
+    "pkijs": "^3.4.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-konva": "^19.2.6",

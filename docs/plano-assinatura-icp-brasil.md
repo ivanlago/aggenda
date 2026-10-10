@@ -125,4 +125,14 @@ Aplicar migrações em ambiente de homologação antes do piloto. As rotas verif
 
 ### Limites desta entrega e próximo passo
 
-Persistência, controles e entrega estão implementados, mas não há botão público nem endpoint de início de assinatura, agente A1, webhook de provedor ou validador ICP-Brasil real. O próximo passo é implementar e homologar o método A1 desktop (começando por Windows, sujeito à confirmação do escopo de sistemas), incluindo canal autenticado com origem restrita, aprovação humana, proteção contra replay, montagem PAdES e verificação de cadeia/revogação. Somente após validar esse ciclo com certificado real será habilitada a operação para o profissional. Mobile seguirá por integração em nuvem, sem guarda própria de chaves pelo Aggenda. Não enviar documentos de pacientes ao mock e não declarar conformidade com base nos testes sintéticos.
+Persistência, controles e entrega estão implementados, mas não há botão público nem endpoint de início de assinatura, webhook de provedor ou validador ICP-Brasil completo. Mobile seguirá por integração em nuvem, sem guarda própria de chaves pelo Aggenda. Não enviar documentos de pacientes ao mock e não declarar conformidade com base nos testes sintéticos.
+
+### Piloto Windows e montagem de PDF
+
+- `pades.ts`: prepara um PDF de assinatura única, reserva `Contents`, fixa `ByteRange`, extrai bytes a assinar e incorpora CMS sem modificar os demais bytes. Rejeita assinaturas anteriores e revisões anexadas; limite de 10 MiB. O hash autorizado/persistido deve ser o do PDF **preparado**. A preparação ainda não está conectada ao endpoint da aplicação.
+- `agents/windows/SignPreparedPdf.cs`: agente manual compilável com .NET Framework, seleção de certificado pessoal RSA instalado, confirmação explícita do caminho/titular/hash, verificação preliminar de cadeia/revogação pelo Windows e geração de CMS SHA-256 com ESS `signingCertificateV2`. Não abre porta nem transporta PFX/chave privada. Não filtra A1 contra A3 e não é distribuível como produto final.
+- `cms-verification.ts`: verifica matematicamente CMS destacado e vínculo com os bytes e certificado. Não presume confiança ICP em certificado embutido. Não retorna qualificação nem substitui o validador de cadeia/revogação/identidade.
+- `npm run signature:pilot`: ciclo manual com arquivos sintéticos, sem gravar estado `SIGNED`. Instruções em `agents/windows/README.md`. Compilação verificada; não foi executada assinatura com certificado pessoal.
+- Testes incluem assinatura RSA/CMS com certificado autossinado efêmero, adulteração criptográfica, vínculo ESS, preparação e integridade. Certificado sintético não comprova ICP-Brasil.
+
+Ainda faltam canal autenticado e desafio de uso único, integração com a sessão e autorização reforçada, CPF do certificado, cadeia/política ICP com revogação atualizada, instalador/atualizações assinados, interface e homologação real. Somente após validar esse ciclo será habilitada a operação para o profissional.

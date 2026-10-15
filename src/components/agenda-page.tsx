@@ -63,7 +63,7 @@ export async function AgendaPage({ openNewAppointment = false, filters = {} }: {
 
   return <div className="page-wrap">
     <PageHeader eyebrow="Operação" title="Agenda" description="Acompanhe e gerencie os próximos atendimentos." />
-    <div className="mb-5 flex flex-wrap gap-3">{canManage && <div><ModalShell key={openNewAppointment ? filters.inicio ?? "open" : "closed"} title="Novo Agendamento" variant="new" defaultOpen={openNewAppointment}>{createForm}</ModalShell></div>}{canManageAvailability && <div><ScheduleBlockForm professionals={professionalItems} /></div>}</div>
+    <div className="mb-5 flex flex-wrap gap-3">{canManage && <div><ModalShell key={openNewAppointment ? filters.inicio ?? "open" : "closed"} title="Novo Agendamento" variant="new" defaultOpen={openNewAppointment}>{createForm}</ModalShell></div>}{canManageAvailability && <div><ScheduleBlockForm key={filters.bloquear === "1" ? "open-block" : "closed-block"} professionals={professionalItems} defaultOpen={filters.bloquear === "1"} /></div>}</div>
     <form className="panel mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6" action="/agenda">
       <select className="field" name="serviceId" defaultValue={filters.serviceId ?? ""}><option value="">Todos os atendimentos</option>{serviceItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
       <select className="field" name="status" defaultValue={filters.status ?? ""}><option value="">Todos os status</option>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>

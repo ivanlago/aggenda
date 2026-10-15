@@ -1,8 +1,8 @@
 import { createAvailabilityException } from "@/actions/schedule";
 import { ActionForm } from "@/components/action-form";
 import { ModalShell } from "@/components/modal-shell";
-export function ScheduleBlockForm({ professionals }: { professionals: Array<{ id: string; name: string }> }) {
- return <ModalShell title="Bloquear horário" variant="new"><ActionForm action={createAvailabilityException} successMessage="Horário bloqueado." className="grid gap-4 sm:grid-cols-2">
+export function ScheduleBlockForm({ professionals, defaultOpen = false }: { professionals: Array<{ id: string; name: string }>; defaultOpen?: boolean }) {
+ return <ModalShell title="Bloquear horário" variant="new" defaultOpen={defaultOpen}><ActionForm action={createAvailabilityException} successMessage="Horário bloqueado." className="grid gap-4 sm:grid-cols-2">
   <input type="hidden" name="type" value="blocked" />
   <label className="grid gap-2 text-sm font-bold sm:col-span-2">Profissional<select className="field" name="professionalId" defaultValue={professionals.length === 1 ? professionals[0].id : ""} required><option value="" disabled>Selecione o profissional</option>{professionals.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
   <label className="grid gap-2 text-sm font-bold">Início do bloqueio<input className="field" type="datetime-local" name="startsAt" required /></label>

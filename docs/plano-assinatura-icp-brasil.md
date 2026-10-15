@@ -1,6 +1,8 @@
 # Plano de assinatura qualificada ICP-Brasil
 
 Status: base e persistência próprias implementadas; execução criptográfica A1/nuvem e homologação pendentes.
+
+Atualização de 15/10/2026: controles operacionais compartilhados com a experiência da NFS-e implementados abaixo. Integração com a interface, canal do agente local, fornecedor de nuvem e validador real de confiança ICP continuam pendentes. Não há assinatura clínica qualificada liberada para produção.
 Origem: proposta prompt_codex_assinatura_icp_brasil.md fornecida pelo usuário.
 
 ## Decisão
@@ -136,3 +138,26 @@ Persistência, controles e entrega estão implementados, mas não há botão pú
 - Testes incluem assinatura RSA/CMS com certificado autossinado efêmero, adulteração criptográfica, vínculo ESS, preparação e integridade. Certificado sintético não comprova ICP-Brasil.
 
 Ainda faltam canal autenticado e desafio de uso único, integração com a sessão e autorização reforçada, CPF do certificado, cadeia/política ICP com revogação atualizada, instalador/atualizações assinados, interface e homologação real. Somente após validar esse ciclo será habilitada a operação para o profissional.
+
+### Controles comuns para A1 local e nuvem — 15/10/2026
+
+- O método `local_a1`/`cloud` agora é transportado pelo serviço e persistido explicitamente no campo já existente. Reutilização da chave, consulta e cancelamento recusam troca de método/provedor no meio de uma solicitação. Adaptadores antigos sem método explícito continuam classificados como `cloud` por compatibilidade.
+- `providers/resumable.ts` implementa a política compartilhada de recuperação, mediante um transporte real injetado. Consulta por chave antes de iniciar; falha de consulta não vira autorização para novo envio; resposta deve corresponder à chave e ao hash do documento. O transporte precisa garantir idempotência durável, inclusive concorrência entre processos, e autorização por clínica/conta. A classe não fornece integração HTTP, credenciais, fornecedor ou ponte local e não deve ser apresentada como serviço já disponível.
+- `qualified-validation.ts` combina a verificação CMS/PAdES existente com um validador independente de confiança. Antes da aprovação verifica vínculo do PDF, validade atual do certificado, fingerprint, resultado de confiança ICP, política permitida, CPF retornado e revogação atualizada. Confiança/revogação indisponível mantém pendente; assinatura inválida não é aprovada. O CPF ainda é comparado com o profissional esperado pelo serviço.
+- `createQualifiedSignatureService` é a composição recomendada para o perfil restrito. Exige explicitamente `CertificateTrustValidator`, políticas homologadas e evidência real de autorização. Não há implementação de confiança permissiva ou provedor escolhido. O contrato exige validação da cadeia até âncoras ICP confiáveis, CPF em otherName, política e revogação; metadados enviados pelo navegador ou pelo próprio assinante não satisfazem esse contrato. Certificados embutidos são entradas não confiáveis.
+- O perfil admite uma única assinatura preparada pelo Aggenda, sem revisões incrementais e sem carimbo do tempo/LTV. A verificação atual usa vigência/revogação no momento da validação; não implementa validação histórica baseada em carimbo de tempo. Habilitar outros perfis de nuvem exige validação e testes próprios.
+- `scripts/rotate-signature-storage.ts` confere e recifra PDFs existentes sem alterar seus bytes, hashes, artefatos ou assinaturas. Escopo explícito por organização, transação com auditoria, limites de 500 arquivos e 100 MiB por execução; acima disso aborta sem escrita e exige implementar manutenção em lotes. Dados órfãos também são conferidos, sem excluir arquivos.
+
+Conferência sem escrita:
+
+```powershell
+npx tsx scripts/rotate-signature-storage.ts --organization=<uuid>
+```
+
+Para aplicar, somente após ensaio de restauração em banco isolado, adicionar `--apply`. Adicionar uma chave nova ao conjunto, manter as antigas e selecionar a nova em `SIGNATURE_STORAGE_ACTIVE_KEY`; nunca substituir o material de um identificador existente. Retenção de backups exige preservar as chaves correspondentes. A ferramenta não foi executada no banco conectado nesta tarefa. A consulta sem escrita ainda usa transação e bloqueia os arquivos durante a conferência; executar em janela apropriada.
+
+Não houve alteração de schema nesta continuação: o campo de método e as tabelas já pertenciam às migrações 0066/0067. A eventual existência dessas tabelas no banco deve ser verificada pelo fluxo habitual de migração. Chaves de PDFs clínicos permanecem separadas das chaves fiscais; nenhum PFX ou senha profissional é armazenado.
+
+Os testes usam certificados sintéticos, transporte simulado e PostgreSQL isolado. Verificam recuperação após timeout, incompatibilidade de método, integridade/isolamento/rollback da rotação e recusa de confiança/revogação inconclusiva. Não comprovam conformidade ICP-Brasil. A próxima integração depende da definição de fornecedor de nuvem e da conclusão do canal autenticado do agente local; os controles comuns podem ser homologados antes disso.
+
+O usuário informou que ainda não há cliente piloto ou fornecedor utilizado pelos profissionais; buscará o primeiro cliente para teste após a preparação. Não presumir disponibilidade de certificado, conta de nuvem ou credenciais. A ausência de cliente não impede concluir desenvolvimento local; não confundir pendências de implementação com homologação externa. Permanecem pendentes no código: canal autenticado/desafio de uso único para o agente, início e autorização pela interface, implementação concreta de confiança ICP e adaptador de nuvem selecionado. Somente depois dessas etapas o produto estará pronto para um piloto completo com usuário.

@@ -7,6 +7,7 @@ import { Attribute, AttributeTypeAndValue, Certificate, ContentInfo, CryptoEngin
 import { PDFDocument } from "pdf-lib";
 import { embedDetachedCms, inspectPreparedPdf, preparePadesPdf } from "../src/lib/signatures/pades";
 import { verifyDetachedPades } from "../src/lib/signatures/cms-verification";
+import { QualifiedPadesValidator, type TrustResult } from "../src/lib/signatures/qualified-validation";
 
 test("CMS real com certificado sintético: verifica criptografia e rejeita CMS e certificado adulterados", async () => {
   const engine = new CryptoEngine({ name: "test", crypto: webcrypto as unknown as Crypto });
@@ -49,6 +50,28 @@ test("CMS real com certificado sintético: verifica criptografia e rejeita CMS e
   assert.equal(result.certificateFingerprint, createHash("sha256").update(new Uint8Array(certBytes)).digest("hex"));
   // A self-signed certificate verifies mathematically but receives no ICP qualification.
   assert.equal("qualified" in result, false);
+  const signedPdf = embedDetachedCms(prepared, cms);
+  const checkedAt = new Date();
+  // This trust double is deliberately NOT a production validator or ICP proof.
+  const trusted: TrustResult = { outcome: "valid", certificateFingerprint: result.certificateFingerprint,
+    signerCpf: "12345678901", icpBrasil: true, revocation: "good", policyOid: "test-policy", checkedAt };
+  const validate = (trust: TrustResult) => new QualifiedPadesValidator({ async validate() { return trust; } },
+    new Set(["test-policy"]), () => checkedAt).validate(signedPdf, parsed.originalHash);
+  assert.equal((await validate(trusted)).outcome, "valid");
+  for (const changed of [{ icpBrasil: false }, { revocation: "revoked" as const },
+    { certificateFingerprint: "different" }, { policyOid: "unapproved" }, { signerCpf: "invalid" }]) {
+    assert.equal((await validate({ ...trusted, ...changed })).outcome, "invalid");
+  }
+  for (const changed of [{ revocation: "unknown" as const }, { checkedAt: new Date(checkedAt.getTime() - 301_000) },
+    { checkedAt: new Date(checkedAt.getTime() + 1) }]) {
+    assert.equal((await validate({ ...trusted, ...changed })).outcome, "unavailable");
+  }
+  const unavailable = new QualifiedPadesValidator({ async validate() { throw new Error("offline"); } }, new Set(["test-policy"]));
+  assert.equal((await unavailable.validate(signedPdf, parsed.originalHash)).outcome, "unavailable");
+  assert.equal((await unavailable.validate(signedPdf, "a".repeat(64))).outcome, "invalid");
+  const expired = new QualifiedPadesValidator({ async validate() { return trusted; } }, new Set(["test-policy"]),
+    () => new Date(cert.notAfter.value.getTime() + 1000));
+  assert.equal((await expired.validate(signedPdf, parsed.originalHash)).outcome, "invalid");
   const damaged = Uint8Array.from(cms);
   damaged[damaged.length - 1] ^= 1;
   await assert.rejects(() => verifyDetachedPades(embedDetachedCms(prepared, damaged), parsed.originalHash));

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { SignatureService } from "../src/lib/signatures/service";
 import { MockSignatureProvider } from "../src/lib/signatures/providers/mock";
+import { ResumableSignatureProvider, type SigningOperation } from "../src/lib/signatures/providers/resumable";
+import { createHash } from "node:crypto";
 import type { SignatureInput, SignatureProvider, SignatureRepository, SignatureRequest, ValidationResult } from "../src/lib/signatures/types";
 
 function setup(options: { simulated?: boolean; validation?: ValidationResult; deny?: boolean; failSignedStorage?: boolean } = {}) {
@@ -63,6 +65,38 @@ test("retries reuse the request and do not call the provider twice", async () =>
   const second = await context.service.start(input);
   assert.equal(first.id, second.id);
   assert.equal(context.starts(), 1);
+});
+
+test("local and cloud providers recover an accepted timeout by key before any new start", async () => {
+  for (const method of ["cloud", "local_a1"] as const) {
+    let saved: SigningOperation | null = null; let calls = 0; let lookupFails = false;
+    const provider = new ResumableSignatureProvider(`test-${method}`, method, {
+      async findByKey() { if (lookupFails) throw new Error("lookup offline"); return saved; },
+      async start(value) {
+        calls++;
+        saved = { id: "operation", idempotencyKey: value.idempotencyKey,
+          documentHash: createHash("sha256").update(value.pdf).digest("hex") };
+        throw new Error("accepted but timeout");
+      },
+      async get(id) { return { id, result: { status: "PENDING" } }; },
+    });
+    await assert.rejects(provider.start(input), /timeout/);
+    assert.deepEqual(await provider.start(input), { id: "operation" });
+    assert.equal(calls, 1);
+    await assert.rejects(provider.start({ ...input, pdf: Buffer.from("changed") }), /incompatível/);
+    lookupFails = true;
+    await assert.rejects(provider.start(input), /offline/);
+    assert.equal(calls, 1);
+    assert.equal(provider.cancel, undefined);
+  }
+});
+
+test("a request cannot be reconciled through a different signing method", async () => {
+  const context = setup();
+  const request = await context.service.start(input);
+  context.rows.set(request.id, { ...request, method: "local_a1" });
+  await assert.rejects(context.service.reconcile(input.organizationId, request.id), /incompatível/);
+  assert.equal(context.rows.get(request.id)?.status, "PENDING");
 });
 
 test("idempotency key rejects altered bytes, document or signer", async () => {

@@ -10,6 +10,7 @@ import { SignatureEncryption } from "../src/lib/signatures/encryption";
 import { PostgresSignatureRepository } from "../src/lib/signatures/postgres-repository";
 import { PostgresSignatureStorage } from "../src/lib/signatures/postgres-storage";
 import type { SignatureRequest } from "../src/lib/signatures/types";
+import { rotateSignatureStorage } from "../src/lib/signatures/rotate-storage";
 
 test("signature persistence against an isolated PostgreSQL engine", async (t) => {
   const client = new PGlite();
@@ -20,6 +21,8 @@ test("signature persistence against an isolated PostgreSQL engine", async (t) =>
       CREATE TABLE users (id text PRIMARY KEY);
       CREATE TABLE professionals (id uuid PRIMARY KEY, organization_id uuid NOT NULL);
       CREATE TABLE electronic_documents (id uuid PRIMARY KEY, organization_id uuid NOT NULL, status text NOT NULL);
+      CREATE TABLE audit_logs (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid NOT NULL,
+        user_id text, action text NOT NULL, entity_type text NOT NULL, entity_id text, details jsonb DEFAULT '{}', created_at timestamp DEFAULT now());
     `);
     for (const file of ["0066_powerful_butterfly.sql", "0067_tearful_tiger_shark.sql"]) {
       await client.exec(await readFile(new URL(`../drizzle/${file}`, import.meta.url), "utf8"));
@@ -46,7 +49,7 @@ test("signature persistence against an isolated PostgreSQL engine", async (t) =>
       await storage.put(organizationId, originalKey, pdf);
       return { id, organizationId, documentId, professionalId, userId: "user", signerCpf: "12345678901",
         idempotencyKey: randomUUID(), originalKey, inputHash: createHash("sha256").update(pdf).digest("hex"),
-        sizeBytes: pdf.length, provider: "test-fixture", providerId: null, status: "PENDING" };
+        sizeBytes: pdf.length, provider: "test-fixture", method: "cloud", providerId: null, status: "PENDING" };
     }
 
     await t.test("encrypted private storage is immutable and tenant scoped", async () => {
@@ -80,6 +83,36 @@ test("signature persistence against an isolated PostgreSQL engine", async (t) =>
       await assert.rejects(repository.attachProvider(organizationId, request.id, "remote-b"), /divergentes/);
       const events = await client.query<{ count: number }>("SELECT count(*)::int AS count FROM document_signature_events WHERE request_id = $1 AND event_type = 'provider_attached'", [request.id]);
       assert.equal(events.rows[0].count, 1);
+    });
+
+    await t.test("local signing method survives persistence and never defaults to cloud", async () => {
+      const request = await repository.createOrGet({ ...await newRequest(), method: "local_a1" });
+      assert.equal((await repository.find(organizationId, request.id))?.method, "local_a1");
+    });
+
+    await t.test("rotation verifies all bytes, preserves signed PDFs and isolates tenants", async () => {
+      const keyring = { old: randomBytes(32).toString("base64"), next: randomBytes(32).toString("base64") };
+      const old = new SignatureEncryption(keyring, "old"); const next = new SignatureEncryption(keyring, "next");
+      const org = randomUUID(); const other = randomUUID();
+      await client.query("INSERT INTO organizations VALUES ($1), ($2)", [org, other]);
+      const original = Buffer.from("%PDF bytes with immutable signature fixture");
+      const originalEnvelope = old.encrypt(org, "one", original);
+      await client.query("INSERT INTO document_signature_blobs (organization_id, storage_key, encrypted_content) VALUES ($1,'one',$2),($3,'one',$4)",
+        [org, originalEnvelope, other, old.encrypt(other, "one", original)]);
+      assert.equal((await rotateSignatureStorage(database, org, next)).rotated, 1);
+      const read = async (id: string) => (await client.query<{ encrypted_content: string }>(
+        "SELECT encrypted_content FROM document_signature_blobs WHERE organization_id=$1 AND storage_key='one'", [id])).rows[0].encrypted_content;
+      assert.equal(await read(org), originalEnvelope);
+      assert.equal((await rotateSignatureStorage(database, org, next, true)).rotated, 1);
+      assert.deepEqual(Buffer.from(next.decrypt(org, "one", await read(org))), original);
+      assert.ok((await read(other)).startsWith("v1.old."));
+      assert.equal((await rotateSignatureStorage(database, org, next, true)).rotated, 0);
+      // The old backup stays readable while its key is retained.
+      assert.deepEqual(Buffer.from(next.decrypt(org, "one", originalEnvelope)), original);
+      await client.query("UPDATE document_signature_blobs SET encrypted_content=$1 WHERE organization_id=$2", [originalEnvelope, org]);
+      await client.query("INSERT INTO document_signature_blobs (organization_id,storage_key,encrypted_content) VALUES ($1,'broken','corrupt')", [org]);
+      await assert.rejects(rotateSignatureStorage(database, org, next, true));
+      assert.equal(await read(org), originalEnvelope);
     });
 
     await t.test("completion commits signed artifact and audit atomically, without terminal regression", async () => {

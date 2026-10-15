@@ -31,12 +31,12 @@ export class SignatureService {
         id, organizationId: input.organizationId, documentId: input.documentId,
         professionalId: input.professionalId, userId: input.userId, signerCpf: input.signerCpf,
         idempotencyKey: input.idempotencyKey, inputHash, originalKey, sizeBytes: frozen.pdf.byteLength,
-        provider: provider.name, providerId: null, status: "PENDING",
+        provider: provider.name, method: provider.method ?? "cloud", providerId: null, status: "PENDING",
       });
     }
     if (request.inputHash !== inputHash || request.documentId !== input.documentId ||
         request.professionalId !== input.professionalId || request.signerCpf !== input.signerCpf ||
-        request.userId !== input.userId || request.provider !== provider.name) {
+        request.userId !== input.userId || request.provider !== provider.name || request.method !== (provider.method ?? "cloud")) {
       throw new Error("Chave idempotente já utilizada em outra solicitação.");
     }
     if (request.status !== "PENDING" || request.providerId) return request;
@@ -56,7 +56,7 @@ export class SignatureService {
     const request = await repository.find(organizationId, id);
     if (!request) throw new Error("Solicitação não encontrada.");
     if (request.status !== "PENDING" || !request.providerId) return;
-    if (request.provider !== provider.name) throw new Error("Provedor incompatível.");
+    if (request.provider !== provider.name || request.method !== (provider.method ?? "cloud")) throw new Error("Provedor incompatível.");
     const result = await provider.getStatus(request.providerId);
     if (result.status === "PENDING") return;
     if (result.status !== "COMPLETED") {
@@ -90,7 +90,7 @@ export class SignatureService {
     await authorization.assertCanSign({ organizationId, userId, professionalId: request.professionalId,
       documentId: request.documentId, signerCpf: request.signerCpf, documentHash: request.inputHash });
     if (request.status !== "PENDING") return;
-    if (request.provider !== provider.name || !request.providerId || !provider.cancel) {
+    if (request.provider !== provider.name || request.method !== (provider.method ?? "cloud") || !request.providerId || !provider.cancel) {
       throw new Error("O cancelamento exige confirmação do método de assinatura.");
     }
     await provider.cancel(request.providerId);

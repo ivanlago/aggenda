@@ -1,4 +1,5 @@
 export type SignatureStatus = "PENDING" | "SIGNED" | "FAILED" | "CANCELLED";
+export type SignatureMethod = "cloud" | "local_a1";
 
 export interface SignatureInput {
   organizationId: string;
@@ -11,6 +12,7 @@ export interface SignatureInput {
 }
 
 export interface SignatureRequest {
+  method: SignatureMethod;
   id: string;
   organizationId: string;
   documentId: string;
@@ -32,6 +34,7 @@ export type ProviderResult =
   | { status: "COMPLETED"; pdf: Uint8Array };
 
 export interface SignatureProvider {
+  readonly method?: SignatureMethod;
   readonly name: string;
   readonly simulated: boolean;
   // Implementations MUST honor this key across retries, including ambiguous timeouts.

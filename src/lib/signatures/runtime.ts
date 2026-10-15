@@ -6,6 +6,7 @@ import { PostgresSignatureRepository } from "./postgres-repository";
 import { signatureStorage } from "./storage-config";
 import { SignatureService } from "./service";
 import type { SignatureProvider, SignatureValidator } from "./types";
+import { QualifiedPadesValidator, type CertificateTrustValidator } from "./qualified-validation";
 
 /** Real methods must be explicitly supplied; no mock or permissive validator fallback. */
 export function createInternalSignatureService(options: {
@@ -25,5 +26,19 @@ export function createInternalSignatureService(options: {
       },
       evidence: options.evidence, eligibleTypes: options.eligibleTypes,
     }),
+  });
+}
+
+/** Preferred composition for the restricted local/cloud PAdES pilot. The trust
+ * implementation and allowed policies must be independently homologated. */
+export function createQualifiedSignatureService(options: {
+  provider: SignatureProvider;
+  trust: CertificateTrustValidator;
+  allowedPolicies: ReadonlySet<string>;
+  evidence: () => Promise<SignatureIdentityEvidence | null>;
+  eligibleTypes: ReadonlySet<string>;
+}) {
+  return createInternalSignatureService({ ...options,
+    validator: new QualifiedPadesValidator(options.trust, options.allowedPolicies),
   });
 }

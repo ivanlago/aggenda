@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, desc, eq, isNull, or } from "drizzle-orm";
 import type { db } from "@/db";
 import { documentArtifacts, documentSignatureEvents, documentSignatureRequests, electronicDocuments } from "@/db/schema";
-import type { SignatureRepository, SignatureRequest, SignatureStatus } from "./types";
+import type { SignatureMethod, SignatureRepository, SignatureRequest, SignatureStatus } from "./types";
 
 type Database = typeof db;
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
@@ -21,7 +21,7 @@ async function findRequest(database: Database | Transaction, organizationId: str
     professionalId: row.request.professionalId, userId: row.request.userId, signerCpf: row.request.signerCpf,
     idempotencyKey: row.request.idempotencyKey, inputHash: row.original.sha256,
     originalKey: row.original.storageKey, sizeBytes: row.original.sizeBytes,
-    provider: row.request.provider, providerId: row.request.providerId, status: row.request.status as SignatureStatus,
+    provider: row.request.provider, method: row.request.method as SignatureMethod, providerId: row.request.providerId, status: row.request.status as SignatureStatus,
   };
 }
 
@@ -53,7 +53,7 @@ export class PostgresSignatureRepository implements SignatureRepository {
         id: request.id, organizationId: request.organizationId, documentId: request.documentId,
         professionalId: request.professionalId, userId: request.userId, signerCpf: request.signerCpf,
         idempotencyKey: request.idempotencyKey, originalArtifactId: artifactId,
-        provider: request.provider, status: "PENDING",
+        provider: request.provider, method: request.method, status: "PENDING",
       }).onConflictDoNothing({ target: [documentSignatureRequests.organizationId, documentSignatureRequests.idempotencyKey] })
         .returning({ id: documentSignatureRequests.id });
       if (!inserted.length) {

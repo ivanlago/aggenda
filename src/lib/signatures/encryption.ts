@@ -4,7 +4,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 export class SignatureEncryption {
   private readonly keys: ReadonlyMap<string, Buffer>;
 
-  constructor(keys: Record<string, string>, private readonly activeKey: string) {
+  constructor(keys: Record<string, string>, readonly activeKey: string) {
     this.keys = new Map(Object.entries(keys).map(([id, encoded]) => {
       const key = Buffer.from(encoded, "base64");
       if (!/^[a-zA-Z0-9_-]{1,40}$/.test(id) || key.length !== 32 || key.toString("base64") !== encoded) {
@@ -21,6 +21,11 @@ export class SignatureEncryption {
     cipher.setAAD(Buffer.from(JSON.stringify([organizationId, storageKey])));
     const ciphertext = Buffer.concat([cipher.update(bytes), cipher.final()]);
     return ["v1", this.activeKey, iv.toString("base64"), cipher.getAuthTag().toString("base64"), ciphertext.toString("base64")].join(".");
+  }
+
+  rotate(organizationId: string, storageKey: string, envelope: string): string {
+    const bytes = this.decrypt(organizationId, storageKey, envelope);
+    return envelope.split(".")[1] === this.activeKey ? envelope : this.encrypt(organizationId, storageKey, bytes);
   }
 
   decrypt(organizationId: string, storageKey: string, envelope: string): Uint8Array {

@@ -25,6 +25,18 @@ test("proprietário mantém acesso integral", () => {
   }
 });
 
+test("prontuário é separado da recepção, gestão comercial e financeiro", () => {
+  for (const role of ["receptionist", "manager", "financial", "staff", "viewer", "member"]) {
+    for (const permission of ["clinical.read", "clinical.manage", "clinical.issue"] as const) {
+      assert.equal(hasOrganizationPermission(role, permission), false, `${role}:${permission}`);
+    }
+    assert.equal(hasOrganizationPermission(role, "documents.read"), false);
+  }
+  for (const permission of ["clinical.read", "clinical.manage", "clinical.issue"] as const) assert.equal(hasOrganizationPermission("professional", permission), true);
+  assert.equal(hasOrganizationPermission("receptionist", "appointments.manage"), true);
+  assert.equal(hasOrganizationPermission("receptionist", "clients.manage"), true);
+});
+
 test("administrador possui acesso integral, exceto cobrança", () => {
   for (const permission of organizationPermissions) {
     assert.equal(

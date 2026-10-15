@@ -8,6 +8,7 @@ import { PostgresSignatureRepository } from "@/lib/signatures/postgres-repositor
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { session, organization } = await requireOrganization();
+  if (!hasOrganizationPermission(organization.role, "clinical.read")) return Response.json({ error: "Acesso não autorizado." }, { status: 403, headers: { "Cache-Control": "private, no-store" } });
   const { id } = await params;
   const headers = { "Cache-Control": "private, no-store" };
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {

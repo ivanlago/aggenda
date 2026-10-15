@@ -1,4 +1,5 @@
 import { AppointmentRoomForm } from "@/components/appointment-room-form";
+import { ClinicalWorkspace } from "@/components/clinical-workspace";
 import { AttendanceTools } from "@/components/attendance-tools";
 import { AttendanceClientPackages } from "@/components/attendance-client-packages";
 import { and, desc, eq } from "drizzle-orm";
@@ -38,10 +39,12 @@ function calculateAge(birthDate: string | null) {
 
 export default async function AttendancePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { appointment, organization } = await requireAttendance(id);
+  const { appointment, organization, session } = await requireAttendance(id);
   const canWrite = hasOrganizationPermission(organization.role, "appointments.manage");
-  const canReadDocuments = hasOrganizationPermission(organization.role, "documents.read");
-  const canIssue = hasOrganizationPermission(organization.role, "documents.manage");
+  const canReadClinical = hasOrganizationPermission(organization.role, "clinical.read");
+  if (!canReadClinical) return <div className="page-wrap"><PageHeader eyebrow="Agenda" title="Atendimento administrativo" description="Gerencie procedimentos, pagamentos e a situação do agendamento." /><Link className="secondary-button mb-5" href="/agenda">Voltar à agenda</Link><AttendanceItems appointmentId={id} /><AttendancePos appointmentId={id} />{canWrite && <section className="panel mt-5"><AppointmentStatusForm action={updateAttendanceStatus} appointmentId={id} initialStatus={appointment.status} initialCancellationReason={appointment.cancellationReason} statuses={statuses} /></section>}</div>;
+  const canReadDocuments = hasOrganizationPermission(organization.role, "documents.read") || hasOrganizationPermission(organization.role, "clinical.read");
+  const canIssue = hasOrganizationPermission(organization.role, "clinical.issue");
   const [[client], professionalRows, [service], entries, documents, templates, procedures, registrations, roomItems] = await Promise.all([
     db.select().from(clients).where(and(eq(clients.id, appointment.clientId), eq(clients.organizationId, organization.id))).limit(1),
     appointment.professionalId ? db.select().from(professionals).where(and(eq(professionals.id, appointment.professionalId), eq(professionals.organizationId, organization.id))).limit(1) : Promise.resolve([]),
@@ -54,6 +57,8 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
     db.select().from(rooms).where(eq(rooms.organizationId, organization.id)).orderBy(rooms.name),
   ]);
   const professional = professionalRows[0];
+  const hasMedicalRegistration = registrations.some(registration => registration.council === "CRM" && registration.registrationNumber && registration.state);
+  const canIssueMedical = canIssue && professional?.userId === session.user.id && hasMedicalRegistration;
   const room = roomItems.find(item => item.id === appointment.roomId);
   const historyUrl = `/clientes/${client.id}`;
   const visibleEntries = entries.filter((entry) => !entry.electronicDocumentId || canReadDocuments);
@@ -76,6 +81,7 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
       <Link className="secondary-button" href={`${historyUrl}?section=photos#fotografias-clinicas`}>Fotos clínicas e simulações</Link>
       <a className="secondary-button" href="#anamnese">Anamnese</a><a className="secondary-button" href="#registro-atendimento">Registro do atendimento</a><a className="secondary-button" href="#documentos">Ferramentas de atendimento</a>
     </nav>
+    <ClinicalWorkspace clientId={client.id} summaryOnly />
     <div className="grid gap-5 lg:grid-cols-3">
       <section className="panel lg:col-span-2">
         <div className="flex items-start gap-4">{client.imageUrl ? <Image src={client.imageUrl} alt={`Foto de ${client.name}`} width={96} height={96} className="size-24 rounded-xl object-cover" /> : <div className="grid size-24 shrink-0 place-items-center rounded-xl bg-teal-50 text-3xl font-extrabold text-brand">{client.name[0]}</div>}<div className="min-w-0"><h2 className="text-xl font-extrabold">{client.name}</h2><p className="text-sm text-muted">{formatPhone(client.phone) || "Sem telefone"} · {client.email || "Sem e-mail"}</p><p className="mt-1 break-words text-sm font-bold">{client.address || "Endereço não informado"}</p></div></div>
@@ -98,10 +104,11 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
         </div>
       </section>
     </div>
+    <ClinicalWorkspace clientId={client.id} appointmentId={id} defaultMode={hasMedicalRegistration ? "medical" : "aesthetic"} hideSummary />
     <AttendanceClientPackages appointmentId={id} />
     <section id="documentos" className="mt-5 scroll-mt-6">
       <div className="grid gap-4">
-        <AttendanceTools forms={{
+        <AttendanceTools availableTools={canIssueMedical ? undefined : ["orcamento", "acompanhamento"]} forms={{
           receituario: canIssue && professional && templateFor("prescription") ? documentForm(<PrescriptionComposer templateId={templateFor("prescription")!.id} organizationName={organization.name} clients={clientOptions} professionals={professionalOptions} initial={initial} fixedParticipants />) : missingTemplate,
           atestado: canIssue && professional && templateFor("certificate") ? documentForm(<CertificateComposer templateId={templateFor("certificate")!.id} clients={clientOptions} professionals={professionalOptions} initial={initial} fixedParticipants />) : missingTemplate,
           acompanhamento: canIssue && professional ? documentForm(<CompanionDeclaration clientName={client.name} date={appointment.startsAt.toLocaleDateString("pt-BR", { timeZone: organization.timezone })} />) : missingTemplate,

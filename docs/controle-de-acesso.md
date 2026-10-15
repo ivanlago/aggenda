@@ -29,14 +29,22 @@ servidor; o cookie do proxy serve apenas como redirecionamento antecipado.
 - `admin`: administração da empresa, exceto cobrança.
 - `manager`: operação, cadastros, agenda, equipe em leitura e auditoria.
 - `receptionist`: clientes, agenda e inbox.
-- `professional`: leitura operacional; o escopo de "somente os próprios dados"
-  deve ser implementado antes de liberar esse papel em produção.
+- `professional`: agenda própria e acesso clínico a pacientes vinculados à sua agenda;
+  o vínculo com `professionals.user_id` é resolvido no servidor.
 - `staff`: leitura operacional e inbox.
 - `viewer`: somente leitura.
 - `member`: legado tratado conservadoramente como somente leitura.
 
 As permissões estão centralizadas em `src/lib/permissions.ts`. A interface filtra
 a navegação, mas a proteção obrigatória ocorre nas Server Actions.
+
+Desde 15/10/2026, `clinical.read`, `clinical.manage` e `clinical.issue` separam
+prontuário de cadastro/agenda. Proprietário e administrador mantêm acesso clínico
+global; profissional recebe acesso com escopo. Gerente, recepção, financeiro,
+staff, viewer e member não recebem acesso clínico nem leitura global de documentos.
+A emissão e finalização de consulta exigem o usuário do profissional responsável.
+Formulários médicos exigem CRM/UF cadastrados, sem consulta automática ao conselho.
+Consultar [guia do piloto clínico](clinicas-piloto.md) para implantação e limites.
 
 ## Organização ativa
 
@@ -79,4 +87,6 @@ Papéis válidos para `PLATFORM_ADMIN_ROLE`: `super_admin`, `support`, `billing`
 - Fluxo de encerramento manual de sessão de suporte.
 - Elevação operacional de suporte com reautenticação.
 - Permissões customizadas por usuário além dos papéis predefinidos.
-- Testes automatizados de matriz de autorização e isolamento entre tenants.
+- Homologação dos controles com a equipe do primeiro cliente; testes locais de
+  matriz, ações e isolamento já existem em `tests/permissions.test.ts` e
+  `tests/clinical-workspace.test.ts`.

@@ -11,7 +11,7 @@ const allowedWidths = new Set([320, 640, 800, 1200, 1600]);
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "clients.read");
+  assertOrganizationPermission(organization.role, "clinical.read");
   const professionalScopeId = organization.role === "professional"
     ? await requireProfessionalScope(organization.id, session.user.id)
     : null;

@@ -31,6 +31,9 @@ export const organizationPermissions = [
   "documents.read",
   "documents.manage",
   "documents.sign",
+  "clinical.read",
+  "clinical.manage",
+  "clinical.issue",
 ] as const;
 
 export type OrganizationPermission = (typeof organizationPermissions)[number];
@@ -55,7 +58,7 @@ const operationalRead: OrganizationPermission[] = [
   "availability.read",
   "crm.read",
   "inventory.read",
-  "documents.read",
+
 ];
 
 const rolePermissions: Record<OrganizationRole, ReadonlySet<OrganizationPermission>> = {
@@ -76,7 +79,7 @@ const rolePermissions: Record<OrganizationRole, ReadonlySet<OrganizationPermissi
     "sales.discount",
     "sales.cancel",
     "cash.close",
-    "documents.manage",
+
   ]),
   receptionist: new Set([
     "organization.read",
@@ -86,16 +89,19 @@ const rolePermissions: Record<OrganizationRole, ReadonlySet<OrganizationPermissi
     "appointments.read",
     "availability.read",
     "crm.read",
-    "documents.read",
+
     "clients.manage",
     "appointments.manage",
     "chat.inbox",
     "crm.manage",
     "sales.sell",
     "cash.close",
-    "documents.manage",
+
   ]),
   professional: new Set([
+    "clinical.read",
+    "clinical.manage",
+    "clinical.issue",
     "documents.sign",
     "organization.read",
     "clients.read",

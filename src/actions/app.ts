@@ -39,6 +39,7 @@ import {
   users,
 } from "@/db/schema";
 import { auth } from "@/lib/auth";
+import { requireClinicalClient } from "@/lib/clinical-access";
 import { requireOrganization, requireProfessionalScope, requireSession } from "@/lib/session";
 import { isTimeAvailable } from "@/lib/availability";
 import { organizationDate, parseOrganizationDateTime, withAppointmentLock } from "@/lib/appointment-safety";
@@ -608,9 +609,8 @@ export async function updateClient(formData: FormData) {
 }
 
 export async function createClientHistoryEntry(formData: FormData) {
-  const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "clients.manage");
   const clientId = textValue(formData, "clientId");
+  const { session, organization } = await requireClinicalClient(clientId, true);
   const content = textValue(formData, "content");
   if (!clientId || content.length < 2) throw new Error("Informe o conteúdo do registro.");
   const [client] = await db.select({ id: clients.id }).from(clients).where(and(
@@ -641,7 +641,7 @@ export async function createClientClinicalMedia(formData: FormData) {
     const [allowed] = await db.select({ id: appointments.id }).from(appointments).where(and(eq(appointments.organizationId, organization.id), eq(appointments.clientId, clientId), eq(appointments.professionalId, professionalId))).limit(1);
     if (!allowed) throw new Error("Este cliente não pertence à sua agenda profissional.");
   } else {
-    assertOrganizationPermission(organization.role, "clients.manage");
+    assertOrganizationPermission(organization.role, "clinical.manage");
   }
   const file = formData.get("file");
   if (!clientId || !(file instanceof File) || file.size === 0 || formData.get("consentConfirmed") !== "on") {
@@ -761,7 +761,7 @@ export async function deleteClientClinicalMedia(formData: FormData) {
     const [allowed] = await db.select({ id: appointments.id }).from(appointments).where(and(eq(appointments.organizationId, organization.id), eq(appointments.clientId, media.clientId), eq(appointments.professionalId, professionalId))).limit(1);
     if (!allowed) throw new Error("Este cliente não pertence à sua agenda profissional.");
   } else {
-    assertOrganizationPermission(organization.role, "clients.manage");
+    assertOrganizationPermission(organization.role, "clinical.manage");
   }
   if (media.storageProvider === "cloudinary" && media.storagePublicId) await deleteClinicalImage(media.storagePublicId);
   await db.delete(clientClinicalMedia).where(and(

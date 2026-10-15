@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:clinical": "tsx --test tests/clinical-workspace.test.ts tests/permissions.test.ts",
     "test:nfse": "tsx --test tests/nfse.test.ts tests/nfse-custody.test.ts",
     "dev": "next dev",
     "build": "next build",

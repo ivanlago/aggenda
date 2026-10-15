@@ -13,13 +13,14 @@ const tools = [
 
 type ToolId = (typeof tools)[number]["id"];
 
-export function AttendanceTools({ forms }: { forms: Record<ToolId, ReactNode> }) {
+export function AttendanceTools({ forms, availableTools }: { forms: Record<ToolId, ReactNode>; availableTools?: readonly ToolId[] }) {
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
+  const visibleTools = availableTools ? tools.filter(tool => availableTools.includes(tool.id)) : tools;
 
   return <section className="panel min-w-0" aria-labelledby="attendance-tools-title">
     <h3 id="attendance-tools-title" className="text-lg font-extrabold">Ferramentas de atendimento</h3>
     <div className="mt-4 flex gap-2 overflow-x-auto pb-2" role="group" aria-label="Ferramentas de atendimento">
-      {tools.map(({ id, label, icon: Icon }) => <button
+      {visibleTools.map(({ id, label, icon: Icon }) => <button
         key={id}
         id={`${id}-button`}
         type="button"
@@ -33,7 +34,7 @@ export function AttendanceTools({ forms }: { forms: Record<ToolId, ReactNode> })
         <ChevronDown className={`size-4 shrink-0 transition-transform ${activeTool === id ? "rotate-180" : ""}`} aria-hidden="true" />
       </button>)}
     </div>
-    {tools.map(({ id }) => <div
+    {visibleTools.map(({ id }) => <div
       key={id}
       id={id}
       role="region"

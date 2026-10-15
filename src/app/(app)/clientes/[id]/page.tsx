@@ -15,6 +15,7 @@ import { ClinicalMediaGallery } from "@/components/clinical-media-gallery";
 import { ClinicalPhotoClassificationFields } from "@/components/clinical-photo-classification-fields";
 import { GuidedClinicalPhotoInput } from "@/components/guided-clinical-photo-input";
 import { PageHeader } from "@/components/page-header";
+import { ClinicalWorkspace } from "@/components/clinical-workspace";
 import { db } from "@/db";
 import { appointments, auditLogs, clientClinicalMedia, clientHistoryEntries, clientPackageBalances, clientPackages, clients, electronicDocuments, professionals, servicePackages, services, users } from "@/db/schema";
 import { requireOrganization, requireProfessionalScope } from "@/lib/session";
@@ -57,9 +58,11 @@ export default async function ClientHistoryPage({
     ? await requireProfessionalScope(organization.id, session.user.id)
     : null;
   const canManage = hasOrganizationPermission(organization.role, "clients.manage");
-  const canManageClinicalMedia = canManage || organization.role === "professional";
+  const canReadClinical = hasOrganizationPermission(organization.role, "clinical.read");
+  const canManageClinical = hasOrganizationPermission(organization.role, "clinical.manage");
+  const canManageClinicalMedia = canManageClinical;
   const canIssueDocuments = hasOrganizationPermission(organization.role, "documents.manage");
-  const canReadDocuments = hasOrganizationPermission(organization.role, "documents.read");
+  const canReadDocuments = canReadClinical;
   const [client] = await db
     .select()
     .from(clients)
@@ -94,7 +97,7 @@ export default async function ClientHistoryPage({
       )
     )
     .orderBy(desc(appointments.startsAt)),
-    db.select({
+    canReadClinical ? db.select({
       id: clientHistoryEntries.id,
       entryType: clientHistoryEntries.entryType,
       title: clientHistoryEntries.title,
@@ -107,7 +110,7 @@ export default async function ClientHistoryPage({
     }).from(clientHistoryEntries)
       .innerJoin(users, eq(users.id, clientHistoryEntries.authorUserId))
       .where(and(eq(clientHistoryEntries.clientId, client.id), eq(clientHistoryEntries.organizationId, organization.id)))
-      .orderBy(desc(clientHistoryEntries.occurredAt)),
+      .orderBy(desc(clientHistoryEntries.occurredAt)) : Promise.resolve([]),
     db.select({
       id: clientPackages.id,
       packageName: servicePackages.name,
@@ -123,7 +126,7 @@ export default async function ClientHistoryPage({
       .innerJoin(services, eq(services.id, clientPackageBalances.serviceId))
       .where(and(eq(clientPackages.clientId, client.id), eq(clientPackages.organizationId, organization.id)))
       .orderBy(desc(clientPackages.purchasedAt)),
-    db.select().from(clientClinicalMedia).where(and(eq(clientClinicalMedia.clientId, client.id), eq(clientClinicalMedia.organizationId, organization.id))).orderBy(desc(clientClinicalMedia.capturedAt)),
+    canReadClinical ? db.select().from(clientClinicalMedia).where(and(eq(clientClinicalMedia.clientId, client.id), eq(clientClinicalMedia.organizationId, organization.id))).orderBy(desc(clientClinicalMedia.capturedAt)) : Promise.resolve([]),
     canReadDocuments ? db.select({
       id: electronicDocuments.id,
       title: electronicDocuments.title,
@@ -138,6 +141,7 @@ export default async function ClientHistoryPage({
         eq(electronicDocuments.clientId, client.id),
         eq(electronicDocuments.organizationId, organization.id),
         inArray(electronicDocuments.status, ["issued", "signed"]),
+        professionalScopeId ? eq(electronicDocuments.issuerProfessionalId, professionalScopeId) : undefined,
       ))
       .orderBy(desc(electronicDocuments.createdAt)) : Promise.resolve([]),
   ]);
@@ -231,7 +235,8 @@ export default async function ClientHistoryPage({
                     </ActionForm>
                   </details>}
       </section>
-      <CollapsiblePanel title="Fotografias clínicas" id="fotografias-clinicas" open={section === "photos"}>
+      {canReadClinical && <ClinicalWorkspace clientId={client.id} />}
+      {canReadClinical && <CollapsiblePanel title="Fotografias clínicas" id="fotografias-clinicas" open={section === "photos"}>
         <p className="text-sm text-muted">Crie sessões de antes, evolução e depois para qualquer região corporal. Registros com a mesma sessão, região e vista são pareados automaticamente.</p>
         {canManageClinicalMedia && <ActionForm action={createClientClinicalMedia} successMessage="Fotografia clínica enviada." className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <input type="hidden" name="clientId" value={client.id} />
@@ -260,7 +265,7 @@ export default async function ClientHistoryPage({
           annotations: Array.isArray(item.annotations) ? item.annotations : [],
           src: item.storageProvider === "cloudinary" ? `/api/clinical-media/${item.id}?width=1600` : item.url,
         }))} />
-      </CollapsiblePanel>
+      </CollapsiblePanel>}
       {canReadDocuments && <CollapsiblePanel title={`Documentos emitidos (${documents.length})`} id="documentos-emitidos">
         <p className="text-sm text-muted">Consulte os documentos do cliente ou use uma receita anterior como base para uma nova emissão.</p>
         <div className="mt-4 divide-y">
@@ -295,9 +300,9 @@ export default async function ClientHistoryPage({
           {!packages.size && <p className="empty-state md:col-span-2">Este {organization.clientLabel.toLowerCase()} ainda não possui pacotes.</p>}
         </div>
       </CollapsiblePanel>
-      <CollapsiblePanel title={recordLabel}>
+      {canReadClinical && <CollapsiblePanel title={recordLabel}>
         <p className="text-sm text-muted">Registre evoluções e informações relevantes com autoria e data.</p>
-        {canManage && <ActionForm action={createClientHistoryEntry} successMessage={`${recordLabel} atualizado com sucesso.`} className="mt-5 grid gap-3">
+        {canManageClinical && <ActionForm action={createClientHistoryEntry} successMessage={`${recordLabel} atualizado com sucesso.`} className="mt-5 grid gap-3">
           <input type="hidden" name="clientId" value={client.id} />
           <div className="grid gap-3 sm:grid-cols-2">
             <select className="field" name="entryType" defaultValue={isHealth ? "evolution" : "note"}>
@@ -329,7 +334,7 @@ export default async function ClientHistoryPage({
           </article>)}
           {!visibleEntries.length && <p className="empty-state">Nenhum registro adicionado.</p>}
         </div>
-      </CollapsiblePanel>
+      </CollapsiblePanel>}
       <CollapsiblePanel title={`${history.length} ${organization.appointmentLabelPlural.toLowerCase()}`}>
         <div className="flex justify-end">
           <Link href="/clientes" className="text-sm font-bold text-brand">Voltar</Link>

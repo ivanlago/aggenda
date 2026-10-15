@@ -19,6 +19,7 @@ import {
 import { sql } from "drizzle-orm";
 import type { QuoteLine } from "@/lib/retail-quote-items";
 import type { SocialLinks } from "@/lib/social-links";
+import type { ClinicalSummaryData, ClinicalConsultationData } from "@/lib/clinical-record";
 
 export const organizationRoleEnum = pgEnum("organization_role", [
   "owner",
@@ -659,6 +660,7 @@ export const clients = pgTable(
   },
   (table) => [
     index("clients_organization_idx").on(table.organizationId),
+    uniqueIndex("clients_org_id_unique").on(table.organizationId, table.id),
     uniqueIndex("clients_organization_phone_unique").on(
       table.organizationId,
       table.phone
@@ -1575,6 +1577,7 @@ export const appointments = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
+    uniqueIndex("appointments_org_client_id_unique").on(table.organizationId, table.clientId, table.id),
     index("appointments_organization_start_idx").on(
       table.organizationId,
       table.startsAt
@@ -2056,3 +2059,43 @@ export const outboxEvents = pgTable(
     index("outbox_events_organization_idx").on(table.organizationId),
   ]
 );
+
+export const clinicalSummaryVersions = pgTable("clinical_summary_versions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull(), clientId: uuid("client_id").notNull(),
+  authorUserId: text("author_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  data: jsonb("data").$type<ClinicalSummaryData>().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => [
+  foreignKey({ name: "clinical_summary_client_tenant_fk", columns: [table.organizationId, table.clientId], foreignColumns: [clients.organizationId, clients.id] }),
+  index("clinical_summary_client_idx").on(table.organizationId, table.clientId, table.createdAt),
+]);
+
+export const clinicalAttachments = pgTable("clinical_attachments", {
+  id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull(), clientId: uuid("client_id").notNull(),
+  storageKey: text("storage_key").notNull(), sha256: text("sha256").notNull(), sizeBytes: integer("size_bytes").notNull(),
+  title: text("title").notNull(), authorUserId: text("author_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  reviewedByUserId: text("reviewed_by_user_id").references(() => users.id, { onDelete: "restrict" }), reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => [
+  foreignKey({ name: "clinical_attachments_client_tenant_fk", columns: [table.organizationId, table.clientId], foreignColumns: [clients.organizationId, clients.id] }),
+  foreignKey({ name: "clinical_attachments_blob_tenant_fk", columns: [table.organizationId, table.storageKey], foreignColumns: [documentSignatureBlobs.organizationId, documentSignatureBlobs.storageKey] }),
+  index("clinical_attachments_client_idx").on(table.organizationId, table.clientId, table.createdAt),
+  check("clinical_attachments_size_check", sql`${table.sizeBytes} > 0 AND ${table.sizeBytes} <= 3145728`),
+]);
+
+export const clinicalConsultationRecords = pgTable("clinical_consultation_records", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull(), clientId: uuid("client_id").notNull(), appointmentId: uuid("appointment_id").notNull(),
+  authorUserId: text("author_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  requestKey: uuid("request_key").notNull(), kind: text("kind").notNull(), parentRecordId: uuid("parent_record_id"),
+  data: jsonb("data").$type<ClinicalConsultationData | { addendum: string }>().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => [
+  uniqueIndex("clinical_records_request_unique").on(table.organizationId, table.requestKey),
+  uniqueIndex("clinical_records_tenant_id_unique").on(table.organizationId, table.clientId, table.appointmentId, table.id),
+  foreignKey({ name: "clinical_records_appointment_tenant_fk", columns: [table.organizationId, table.clientId, table.appointmentId], foreignColumns: [appointments.organizationId, appointments.clientId, appointments.id] }),
+  check("clinical_records_kind_check", sql`(${table.kind} = 'evolution' AND ${table.parentRecordId} IS NULL) OR (${table.kind} = 'addendum' AND ${table.parentRecordId} IS NOT NULL)`),
+  foreignKey({ name: "clinical_records_parent_tenant_fk", columns: [table.organizationId, table.clientId, table.appointmentId, table.parentRecordId], foreignColumns: [table.organizationId, table.clientId, table.appointmentId, table.id] }),
+  index("clinical_records_client_idx").on(table.organizationId, table.clientId, table.createdAt),
+]);

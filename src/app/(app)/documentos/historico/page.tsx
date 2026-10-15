@@ -8,7 +8,7 @@ import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { clients, electronicDocuments, professionals } from "@/db/schema";
-import { hasOrganizationPermission } from "@/lib/permissions";
+import { hasOrganizationPermission, assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 import { isAnamnesisSchema, type AnamnesisAnswers } from "@/lib/anamnesis";
 
@@ -18,6 +18,8 @@ const statusLabels: Record<string, string> = { pending: "Aguardando", viewed: "V
 
 export default async function HistoryPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
  const { organization } = await requireOrganization();
+ assertOrganizationPermission(organization.role, "clinical.read");
+ assertOrganizationPermission(organization.role, "documents.read");
  const params = await searchParams;
  const value = (key: string) => typeof params[key] === "string" ? params[key] as string : "";
  const q = value("q").trim().slice(0, 180), type = value("type"), status = value("status");

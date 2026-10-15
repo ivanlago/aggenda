@@ -505,6 +505,20 @@
       "when": 1792095993152,
       "tag": "0071_organization_social_links",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1792104437198,
+      "tag": "0072_clinical_workspace",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1792104684538,
+      "tag": "0073_clinical_attachments",
+      "breakpoints": true
     }
   ]
 }

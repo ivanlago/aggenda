@@ -18,6 +18,7 @@ const appUrl = () => (process.env.NEXT_PUBLIC_APP_URL || "https://www.aggenda.ap
 export async function installAnamnesisTemplates() {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "documents.manage");
+  assertOrganizationPermission(organization.role, "clinical.read");
   const existing = await db.select({ name: documentTemplates.name }).from(documentTemplates).where(eq(documentTemplates.organizationId, organization.id));
   const names = new Set(existing.map((item) => item.name));
   const missing = anamnesisPresets.filter((preset) => !names.has(preset.name));
@@ -40,6 +41,7 @@ export async function installAnamnesisTemplates() {
 export async function createAnamnesisTemplate(data: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "documents.manage");
+  assertOrganizationPermission(organization.role, "clinical.read");
   const name = value(data, "name").slice(0, 120);
   const serviceId = value(data, "serviceId") || null;
   let schema: AnamnesisField[];
@@ -58,6 +60,7 @@ export async function createAnamnesisTemplate(data: FormData) {
 export async function issueAnamnesis(data: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "documents.manage");
+  assertOrganizationPermission(organization.role, "clinical.read");
   const clientId = value(data, "clientId");
   const templateId = value(data, "templateId");
   const professionalId = value(data, "professionalId") || null;
@@ -99,6 +102,7 @@ export async function issueAnamnesis(data: FormData) {
 export async function reviewAnamnesis(data: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "documents.manage");
+  assertOrganizationPermission(organization.role, "clinical.read");
   const id = value(data, "id");
   const professionalId = value(data, "professionalId");
   const [professional] = await db.select({ id: professionals.id }).from(professionals).where(and(eq(professionals.id, professionalId), eq(professionals.organizationId, organization.id), eq(professionals.isActive, true))).limit(1);

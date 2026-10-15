@@ -4,20 +4,21 @@ import { db } from "@/db";
 import { electronicDocuments, organizations, professionalRegistrations, professionals } from "@/db/schema";
 import { createSignedDocumentPdf } from "@/lib/electronic-documents";
 import { assertOrganizationPermission, hasOrganizationPermission } from "@/lib/permissions";
-import { getOrganizationProfessionalId, requireOrganization } from "@/lib/session";
+import { requireOrganization } from "@/lib/session";
+import { requireClinicalClient } from "@/lib/clinical-access";
 import { storedSignaturePdf } from "@/lib/signatures/document-download";
 import { SignatureDeliveryUnavailable } from "@/lib/signatures/delivery";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { session, organization } = await requireOrganization();
+  const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "clinical.read");
   const canReadAll = hasOrganizationPermission(organization.role, "documents.read");
   if (!canReadAll) assertOrganizationPermission(organization.role, "documents.sign");
   const { id } = await params;
   const [row] = await db.select({ document: electronicDocuments, institution: organizations, professionalName: professionals.name }).from(electronicDocuments).innerJoin(organizations, eq(organizations.id, electronicDocuments.organizationId)).leftJoin(professionals, eq(professionals.id, electronicDocuments.issuerProfessionalId)).where(and(eq(electronicDocuments.id, id), eq(electronicDocuments.organizationId, organization.id))).limit(1);
   if (!row || !["signed", "issued"].includes(row.document.status)) return Response.json({ error: "Documento finalizado não encontrado." }, { status: 404 });
   if (!canReadAll) {
-    const professionalId = await getOrganizationProfessionalId(organization.id, session.user.id);
-    if (!professionalId || professionalId !== row.document.issuerProfessionalId) return Response.json({ error: "Documento finalizado não encontrado." }, { status: 404 });
+    await requireClinicalClient(row.document.clientId);
   }
   try {
     const stored = await storedSignaturePdf(organization.id, row.document.id);

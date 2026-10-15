@@ -1,4 +1,5 @@
 "use server";
+import { requireClinicalClient, assertClinicalIssuer, assertMedicalRegistration } from "@/lib/clinical-access";
 
 import { and, eq } from "drizzle-orm";
 import { headers } from "next/headers";
@@ -29,6 +30,7 @@ function appUrl() {
 export async function createDocumentTemplate(data: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "documents.manage");
+  assertOrganizationPermission(organization.role, "clinical.read");
   const name = text(data, "name").slice(0, 120);
   const title = text(data, "title").slice(0, 180);
   const content = text(data, "content").slice(0, 30_000);
@@ -47,6 +49,7 @@ export async function createDocumentTemplate(data: FormData) {
 export async function updateDocumentTemplateLibrary() {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "documents.manage");
+  assertOrganizationPermission(organization.role, "clinical.read");
   const result = await syncDocumentPresets(organization.id, session.user.id, true);
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "update_presets", entityType: "document_template", details: result });
   revalidatePath("/documentos", "layout");
@@ -56,6 +59,7 @@ export async function updateDocumentTemplateLibrary() {
 export async function restoreDefaultDocumentTemplates() {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "documents.manage");
+  assertOrganizationPermission(organization.role, "clinical.read");
   const existing = await db.select({ name: documentTemplates.name }).from(documentTemplates).where(eq(documentTemplates.organizationId, organization.id));
   const names = new Set(existing.map((item) => item.name));
   for (const preset of documentPresets) {
@@ -80,6 +84,7 @@ export async function restoreDefaultDocumentTemplates() {
 export async function updateDocumentTemplate(data: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "documents.manage");
+  assertOrganizationPermission(organization.role, "clinical.read");
   const id = text(data, "id");
   const name = text(data, "name").slice(0, 120);
   const title = text(data, "title").slice(0, 180);
@@ -96,6 +101,7 @@ export async function updateDocumentTemplate(data: FormData) {
 export async function deleteDocumentTemplate(data: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "documents.manage");
+  assertOrganizationPermission(organization.role, "clinical.read");
   const id = text(data, "id");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return { error: "Modelo não encontrado." };
   const [deleted] = await db.delete(documentTemplates).where(and(
@@ -111,6 +117,7 @@ export async function deleteDocumentTemplate(data: FormData) {
 export async function duplicateDocumentTemplate(data: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "documents.manage");
+  assertOrganizationPermission(organization.role, "clinical.read");
   const id = text(data, "id");
   const [source] = await db.select().from(documentTemplates).where(and(eq(documentTemplates.id, id), eq(documentTemplates.organizationId, organization.id))).limit(1);
   if (!source) return { error: "Modelo não encontrado." };
@@ -139,10 +146,13 @@ export async function duplicateDocumentTemplate(data: FormData) {
 
 export async function issueProfessionalDocument(data: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "documents.manage");
+  assertOrganizationPermission(organization.role, "clinical.issue");
+  assertOrganizationPermission(organization.role, "clinical.read");
   const clientId = text(data, "clientId");
   const templateId = text(data, "templateId");
   const professionalId = text(data, "professionalId");
+  await requireClinicalClient(clientId);
+  await assertClinicalIssuer(organization.id, session.user.id, professionalId);
   const appointmentId = text(data, "appointmentId");
   if (appointmentId) {
     const { appointment } = await requireAttendance(appointmentId);
@@ -153,6 +163,7 @@ export async function issueProfessionalDocument(data: FormData) {
   const [professional] = await db.select().from(professionals).where(and(eq(professionals.id, professionalId), eq(professionals.organizationId, organization.id), eq(professionals.isActive, true))).limit(1);
   const [template] = await db.select().from(documentTemplates).where(and(eq(documentTemplates.id, templateId), eq(documentTemplates.organizationId, organization.id), eq(documentTemplates.isActive, true))).limit(1);
   if (!client || !professional || !template || template.workflowType !== "professional_issue") return { error: "Paciente, profissional ou modelo não encontrado." };
+  if (["prescription", "certificate", "exam_request", "report", "referral"].includes(template.documentType)) await assertMedicalRegistration(organization.id, professional.id);
   const patientEmail = text(data, "useAlternateEmail") === "true" ? text(data, "patientEmail") : text(data, "patientEmail") || client.email || "";
   if (deliveryMethod === "email" && !/^\S+@\S+\.\S+$/.test(patientEmail)) return { error: "Cadastre ou informe um e-mail válido para o paciente." };
   const patientPhone = (text(data, "useAlternatePhone") === "true" ? text(data, "patientPhone") : client.phone || text(data, "patientPhone")).replace(/\D/g, "");
@@ -217,6 +228,7 @@ export async function issueProfessionalDocument(data: FormData) {
 export async function setDocumentTemplateActive(data: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "documents.manage");
+  assertOrganizationPermission(organization.role, "clinical.read");
   const id = text(data, "id");
   const isActive = text(data, "active") === "true";
   const [existing] = await db.select({ isSystemPreset: documentTemplates.isSystemPreset }).from(documentTemplates).where(and(eq(documentTemplates.id, id), eq(documentTemplates.organizationId, organization.id))).limit(1);
@@ -230,6 +242,7 @@ export async function setDocumentTemplateActive(data: FormData) {
 export async function issueElectronicDocument(data: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "documents.manage");
+  assertOrganizationPermission(organization.role, "clinical.read");
   const clientId = text(data, "clientId");
   const templateId = text(data, "templateId");
   const [client] = await db.select().from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1);
@@ -314,6 +327,7 @@ export async function issueElectronicDocument(data: FormData) {
 export async function resendElectronicDocument(data: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "documents.manage");
+  assertOrganizationPermission(organization.role, "clinical.read");
   const id = text(data, "id");
   const [document] = await db.select().from(electronicDocuments).where(and(eq(electronicDocuments.id, id), eq(electronicDocuments.organizationId, organization.id))).limit(1);
   if (!document || !["pending", "viewed", "expired"].includes(document.status)) return { error: "Este documento não pode ser reenviado." };
@@ -341,6 +355,7 @@ export async function resendElectronicDocument(data: FormData) {
 export async function cancelElectronicDocument(data: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "documents.manage");
+  assertOrganizationPermission(organization.role, "clinical.read");
   const id = text(data, "id");
   const now = new Date();
   const result = await db.update(electronicDocuments).set({ status: "cancelled", cancelledAt: now, updatedAt: now }).where(and(eq(electronicDocuments.id, id), eq(electronicDocuments.organizationId, organization.id))).returning({ id: electronicDocuments.id });
@@ -396,6 +411,7 @@ export async function signElectronicDocument(_previous: { status: string; messag
 export async function saveLegalProcedureDefaults(data: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "documents.manage");
+  assertOrganizationPermission(organization.role, "clinical.read");
   const id = text(data, "templateId"), serviceId = text(data, "serviceId");
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!uuid.test(id) || (serviceId && !uuid.test(serviceId))) return { error: "Modelo ou procedimento inválido." };

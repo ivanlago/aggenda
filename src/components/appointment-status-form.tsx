@@ -65,7 +65,7 @@ export function AppointmentStatusForm({
         />
       )}
       {status === "completed" && returnSettings}
-      <button className="mt-2 w-full text-xs font-extrabold text-brand">Atualizar</button>
+      <button className="secondary-button mt-3">Salvar situação do agendamento</button>
     </ActionForm>
   );
 }

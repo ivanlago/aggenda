@@ -15,6 +15,8 @@ import { drizzle } from "drizzle-orm/pglite";
 import type { db } from "../src/db";
 import * as schema from "../src/db/schema";
 import { ClinicalRepository } from "../src/lib/clinical-repository";
+import { ClinicalDraftRepository } from "../src/lib/clinical-draft-repository";
+import { blankClinicalDraft } from "../src/lib/clinical-draft";
 import { clinicalConsultationSchema, clinicalSummarySchema } from "../src/lib/clinical-record";
 
 const consultation = clinicalConsultationSchema.parse({ mode: "medical", subjective: "Relato sintético", assessment: "Avaliação sintética", plan: "Plano sintético", vitals: { weight: "65,5", height: "165" } });
@@ -41,6 +43,7 @@ test("clinical persistence and actual authorization against isolated PostgreSQL"
     await client.exec(await readFile(new URL("../drizzle/0072_clinical_workspace.sql", import.meta.url), "utf8"));
     await client.exec(`CREATE TABLE document_signature_blobs (organization_id uuid NOT NULL, storage_key text NOT NULL, encrypted_content text NOT NULL, created_at timestamp DEFAULT now(), PRIMARY KEY (organization_id, storage_key));`);
     await client.exec(await readFile(new URL("../drizzle/0073_clinical_attachments.sql", import.meta.url), "utf8"));
+    await client.exec(await readFile(new URL("../drizzle/0074_clinical_drafts.sql", import.meta.url), "utf8"));
     for (const column of Object.values(getTableColumns(schema.appointments))) {
       if (["id", "organization_id", "client_id", "professional_id", "status"].includes(column.name)) continue;
       await client.exec(`ALTER TABLE appointments ADD COLUMN "${column.name}" ${column.name === "source" ? "text" : column.getSQLType()};`);
@@ -77,8 +80,8 @@ test("clinical persistence and actual authorization against isolated PostgreSQL"
     scope.clinicalTestDb = database; scope.clinicalTestProfessional = professional;
     scope.clinicalTestEncryption = new SignatureEncryption({ test: randomBytes(32).toString("base64") }, "test");
     scope.clinicalTestStorage = new PostgresSignatureStorage(database, scope.clinicalTestEncryption as SignatureEncryption);
-    const bundle = await build({ stdin: { contents: 'export { requireClinicalClient, assertClinicalIssuer } from "./src/lib/clinical-access"; export { saveClinicalConsultation } from "./src/actions/clinical-record"; export { uploadClinicalAttachment, reviewClinicalAttachment } from "./src/actions/clinical-attachments"; export { GET as downloadClinicalAttachment } from "./src/app/api/clinical-attachments/[id]/route"; export { ClinicalWorkspace } from "./src/components/clinical-workspace";', resolveDir: process.cwd(), loader: "ts" }, write: false, bundle: true, platform: "node", format: "cjs", packages: "external", plugins: [{ name: "clinical-session", setup(builder) {
-      const mocks: Record<string, string> = { "@/db": "export const db=globalThis.clinicalTestDb;", "@/lib/session": "export async function requireOrganization(){return globalThis.clinicalTestContext;} export async function requireProfessionalScope(){return globalThis.clinicalTestProfessional;}", "next/cache": "export function revalidatePath(){}", "@/lib/signatures/storage-config": "export function signatureEncryption(){return globalThis.clinicalTestEncryption;} export function signatureStorage(){return globalThis.clinicalTestStorage;}", "./action-form": "import {createElement} from 'react'; export function ActionForm({children}){return createElement('form',null,children);}", "next/link": "import {createElement} from 'react'; export default function Link({children,...props}){return createElement('a',props,children);}" };
+    const bundle = await build({ stdin: { contents: 'export { requireClinicalClient, assertClinicalIssuer } from "./src/lib/clinical-access"; export { saveClinicalConsultation } from "./src/actions/clinical-record"; export { saveClinicalDraft, finalizeClinicalDraft } from "./src/actions/clinical-draft"; export { uploadClinicalAttachment, reviewClinicalAttachment } from "./src/actions/clinical-attachments"; export { GET as downloadClinicalAttachment } from "./src/app/api/clinical-attachments/[id]/route"; export { ClinicalWorkspace } from "./src/components/clinical-workspace";', resolveDir: process.cwd(), loader: "ts" }, write: false, bundle: true, platform: "node", format: "cjs", packages: "external", plugins: [{ name: "clinical-session", setup(builder) {
+      const mocks: Record<string, string> = { "@/db": "export const db=globalThis.clinicalTestDb;", "@/lib/session": "export async function requireOrganization(){return globalThis.clinicalTestContext;} export async function requireProfessionalScope(){return globalThis.clinicalTestProfessional;}", "next/cache": "export function revalidatePath(){}", "@/lib/signatures/storage-config": "export function signatureEncryption(){return globalThis.clinicalTestEncryption;} export function signatureStorage(){return globalThis.clinicalTestStorage;}", "./clinical-consultation-editor": "import {createElement} from 'react'; export function ClinicalConsultationEditor(){return createElement('section',null,'Editor da consulta');}", "./action-form": "import {createElement} from 'react'; export function ActionForm({children}){return createElement('form',null,children);}", "next/link": "import {createElement} from 'react'; export default function Link({children,...props}){return createElement('a',props,children);}" };
       builder.onResolve({ filter: /./ }, args => mocks[args.path] ? { path: args.path, namespace: "mock-session" } : undefined);
       builder.onLoad({ filter: /./, namespace: "mock-session" }, args => ({ contents: mocks[args.path], loader: "js", resolveDir: process.cwd() }));
     } }] });
@@ -88,6 +91,9 @@ test("clinical persistence and actual authorization against isolated PostgreSQL"
     await assert.rejects(exported.exports.requireClinicalClient(patient), /permissão/);
     const form = new FormData(); form.set("appointmentId", appointment);
     await assert.rejects(exported.exports.saveClinicalConsultation(form), /permissão/);
+    const deniedDraft = { appointmentId: appointment, id: randomUUID(), version: 0, data: blankClinicalDraft("medical"), reviewConfirmed: true };
+    await assert.rejects(exported.exports.saveClinicalDraft(deniedDraft), /permissão/);
+    await assert.rejects(exported.exports.finalizeClinicalDraft(deniedDraft), /permissão/);
     await assert.rejects(exported.exports.ClinicalWorkspace({ clientId: patient }), /permissão/);
     scope.clinicalTestContext = { session: { user: { id: "doctor" } }, organization: { id: org, role: "professional" } };
     await exported.exports.requireClinicalClient(patient);
@@ -124,7 +130,7 @@ test("clinical persistence and actual authorization against isolated PostgreSQL"
     await exported.exports.reviewClinicalAttachment(review); await exported.exports.reviewClinicalAttachment(review);
     assert.equal((await client.query("SELECT * FROM audit_logs WHERE entity_type='clinical_attachment' AND action='review'")).rows.length, 1);
     const markup = renderToStaticMarkup(await exported.exports.ClinicalWorkspace({ clientId: patient, appointmentId: appointment }) as ReactNode);
-    assert.match(markup, /Resumo clínico do paciente/); assert.match(markup, /Laudo sintético/); assert.match(markup, /Adendo/); assert.match(markup, /Saturação/);
+    assert.match(markup, /Resumo clínico do paciente/); assert.match(markup, /Laudo sintético/); assert.match(markup, /Adendo/); assert.match(markup, /Editor da consulta/);
     scope.clinicalTestContext = { session: { user: { id: "doctor" } }, organization: { id: otherOrg, role: "professional" } };
     const denied = await exported.exports.downloadClinicalAttachment(new Request("https://example.invalid"), { params: Promise.resolve({ id: attachment.id }) }) as Response;
     assert.equal(denied.status, 404);
@@ -135,6 +141,37 @@ test("clinical persistence and actual authorization against isolated PostgreSQL"
     await client.query("UPDATE document_signature_blobs SET encrypted_content='corrupt' WHERE storage_key=$1", [attachment.storage_key]);
     const corrupt = await exported.exports.downloadClinicalAttachment(new Request("https://example.invalid"), { params: Promise.resolve({ id: attachment.id }) }) as Response;
     assert.equal(corrupt.status, 503);
+    const drafts = new ClinicalDraftRepository(database);
+    const draftIdentity = { organizationId: org, clientId: patient, appointmentId: appointment, userId: "doctor", id: randomUUID(), version: 0 };
+    const partial = { ...blankClinicalDraft("aesthetic"), subjective: "Texto incompleto recuperável" };
+    const firstSave = await drafts.save({ ...draftIdentity, data: partial });
+    assert.equal(firstSave.version, 1);
+    assert.equal((await drafts.save({ ...draftIdentity, data: partial })).version, 1); // lost-response recovery
+    await assert.rejects(drafts.save({ ...draftIdentity, data: { ...partial, subjective: "Outra aba" } }), /outra aba/);
+    const complete = { ...partial, assessment: "Avaliação sintética", plan: "Plano sintético" };
+    const secondSave = await drafts.save({ ...draftIdentity, version: 1, data: complete });
+    assert.equal(secondSave.version, 2);
+    await assert.rejects(drafts.finalize({ ...draftIdentity, version: 1 }), /outra aba/);
+    await assert.rejects(drafts.finalize({ ...draftIdentity, organizationId: otherOrg, version: 2 }));
+    const beforeFinalize = (await client.query("SELECT * FROM clinical_consultation_records")).rows.length;
+    await client.exec("ALTER TABLE audit_logs ADD CONSTRAINT reject_clinical_audit CHECK (entity_type <> 'clinical_record') NOT VALID");
+    await assert.rejects(drafts.finalize({ ...draftIdentity, version: 2 }));
+    assert.equal((await client.query<{ status: string }>("SELECT status FROM clinical_consultation_drafts WHERE id=$1", [draftIdentity.id])).rows[0].status, "active");
+    await client.exec("ALTER TABLE audit_logs DROP CONSTRAINT reject_clinical_audit");
+    const finalized = await drafts.finalize({ ...draftIdentity, version: 2 });
+    assert.equal((await drafts.finalize({ ...draftIdentity, version: 2 })).id, finalized.id);
+    assert.equal((await client.query("SELECT * FROM clinical_consultation_records")).rows.length, beforeFinalize + 1);
+    const finishedDraft = (await client.query<{ status: string; data: unknown }>("SELECT status,data FROM clinical_consultation_drafts WHERE id=$1", [draftIdentity.id])).rows[0];
+    assert.equal(finishedDraft.status, "finalized"); assert.deepEqual(finishedDraft.data, {});
+    await assert.rejects(drafts.save({ ...draftIdentity, data: complete }), /outra aba/);
+    const actionDraft = { appointmentId: appointment, id: randomUUID(), version: 0, data: { ...complete, mode: "medical" }, reviewConfirmed: true };
+    await assert.rejects(exported.exports.saveClinicalDraft({ ...actionDraft, appointmentId: otherAppointment }), /sem acesso/);
+    assert.equal((await exported.exports.saveClinicalDraft(actionDraft) as { ok: boolean }).ok, true);
+    await client.query("DELETE FROM professional_registrations WHERE professional_id=$1", [professional]);
+    assert.match((await exported.exports.finalizeClinicalDraft({ ...actionDraft, version: 1 }) as { error: string }).error, /CRM/);
+    assert.equal((await exported.exports.finalizeClinicalDraft({ ...actionDraft, version: 1, reviewConfirmed: false }) as { ok: boolean }).ok, false);
+    await client.query("INSERT INTO professional_registrations(organization_id,professional_id,council,registration_number,state) VALUES ($1,$2,'CRM','000000','BA')", [org, professional]);
+    assert.equal((await exported.exports.finalizeClinicalDraft({ ...actionDraft, version: 1 }) as { ok: boolean }).ok, true);
   } finally {
     delete scope.clinicalTestDb; delete scope.clinicalTestContext; delete scope.clinicalTestProfessional;
     delete scope.clinicalTestEncryption; delete scope.clinicalTestStorage;

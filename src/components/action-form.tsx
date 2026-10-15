@@ -2,7 +2,7 @@
 
 import { CheckCircle2, LoaderCircle, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState } from "react";
+import { startTransition, useActionState, useEffect, useId, useRef, useState } from "react";
 
 type ActionState = {
   id: number;
@@ -53,6 +53,9 @@ export function ActionForm({
   onSuccess?: () => void;
 }) {
   const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const feedbackId = useId();
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     async (_previousState, formData) => {
       try {
@@ -61,10 +64,12 @@ export function ActionForm({
           return { id: Date.now(), status: "error", message: result.error };
         }
         if (result?.openUrl) window.open(result.openUrl, "_blank", "noopener,noreferrer");
+        formRef.current?.reset();
+        formRef.current?.dispatchEvent(new CustomEvent("aggenda:form-saved", { bubbles: true }));
         onSuccess?.();
         return { id: Date.now(), status: "success", message: result?.warning ?? successMessage };
       } catch (error) {
-        console.error("[action-form] Falha ao executar comando", error);
+        console.error("[action-form] Falha ao executar comando", error instanceof Error ? error.name : "UnknownError");
         return {
           id: Date.now(),
           status: "error",
@@ -77,11 +82,18 @@ export function ActionForm({
 
   useEffect(() => {
     if (state.status === "success") router.refresh();
+    if (state.status === "error") errorRef.current?.focus();
   }, [router, state.id, state.status]);
 
   return (
     <>
-      <form action={formAction} className={className} aria-busy={pending}>
+      <form ref={formRef} onSubmit={event => {
+        event.preventDefault();
+        const submitter = (event.nativeEvent as SubmitEvent).submitter;
+        const formData = new FormData(event.currentTarget, submitter);
+        startTransition(() => formAction(formData));
+      }} className={className} aria-busy={pending} aria-describedby={state.status === "error" ? feedbackId : undefined}>
+        {state.status === "error" && <div ref={errorRef} id={feedbackId} tabIndex={-1} role="alert" className="col-span-full rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-800">{state.message}</div>}
         <fieldset className="contents" disabled={pending}>
           {children}
         </fieldset>
@@ -96,7 +108,7 @@ export function ActionForm({
           <span>Salvando alterações…</span>
         </div>
       )}
-      {!pending && state.status !== "idle" && <ActionToast key={state.id} state={state} />}
+      {!pending && state.status === "success" && <ActionToast key={state.id} state={state} />}
     </>
   );
 }

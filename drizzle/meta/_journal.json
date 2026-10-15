@@ -519,6 +519,13 @@
       "when": 1792104684538,
       "tag": "0073_clinical_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1792107068691,
+      "tag": "0074_clinical_drafts",
+      "breakpoints": true
     }
   ]
 }

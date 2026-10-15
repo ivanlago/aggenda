@@ -46,7 +46,7 @@ export default async function ClientsPage({
         description={`Mantenha ${organization.clientLabelPlural.toLowerCase()} e observações importantes organizados.`}
       />
       <div className="grid min-w-0 gap-5">
-        {canManage && <NewClientForm>
+        {canManage && <NewClientForm clientLabel={organization.clientLabel}>
           <h2 className="text-lg font-extrabold sm:col-span-2 lg:col-span-3">
             Novo {organization.clientLabel.toLowerCase()}
           </h2>

@@ -20,6 +20,7 @@ import { sql } from "drizzle-orm";
 import type { QuoteLine } from "@/lib/retail-quote-items";
 import type { SocialLinks } from "@/lib/social-links";
 import type { ClinicalSummaryData, ClinicalConsultationData } from "@/lib/clinical-record";
+import type { ClinicalDraftData } from "@/lib/clinical-draft";
 
 export const organizationRoleEnum = pgEnum("organization_role", [
   "owner",
@@ -2069,6 +2070,18 @@ export const clinicalSummaryVersions = pgTable("clinical_summary_versions", {
 }, table => [
   foreignKey({ name: "clinical_summary_client_tenant_fk", columns: [table.organizationId, table.clientId], foreignColumns: [clients.organizationId, clients.id] }),
   index("clinical_summary_client_idx").on(table.organizationId, table.clientId, table.createdAt),
+]);
+
+export const clinicalConsultationDrafts = pgTable("clinical_consultation_drafts", {
+  id: uuid("id").primaryKey(), organizationId: uuid("organization_id").notNull(), clientId: uuid("client_id").notNull(), appointmentId: uuid("appointment_id").notNull(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  version: integer("version").default(1).notNull(), status: text("status").default("active").notNull(),
+  data: jsonb("data").$type<ClinicalDraftData | Record<string, never>>().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, table => [
+  uniqueIndex("clinical_drafts_active_unique").on(table.organizationId, table.appointmentId, table.userId).where(sql`${table.status} = 'active'`),
+  foreignKey({ name: "clinical_drafts_appointment_tenant_fk", columns: [table.organizationId, table.clientId, table.appointmentId], foreignColumns: [appointments.organizationId, appointments.clientId, appointments.id] }),
+  check("clinical_drafts_status_check", sql`${table.status} IN ('active', 'finalized', 'discarded')`),
+  check("clinical_drafts_version_check", sql`${table.version} > 0`),
 ]);
 
 export const clinicalAttachments = pgTable("clinical_attachments", {

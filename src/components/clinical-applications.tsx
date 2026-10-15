@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 
-type Application = { product: string; lot: string; expiresOn: string; quantity: string; unit: string; region: string };
+export type Application = { product: string; lot: string; expiresOn: string; quantity: string; unit: "mL" | "mg" | "g" | "UI" | "unidade"; region: string };
 const blank = (): Application => ({ product: "", lot: "", expiresOn: "", quantity: "", unit: "mL", region: "" });
 
-export function ClinicalApplications() {
-  const [rows, setRows] = useState<Application[]>([]);
-  const update = (index: number, key: keyof Application, value: string) => setRows(current => current.map((row, position) => position === index ? { ...row, [key]: value } : row));
+export function ClinicalApplications({ value, onChange }: { value?: Application[]; onChange?: (value: Application[]) => void }) {
+  const [internalRows, setInternalRows] = useState<Application[]>([]);
+  const rows = value ?? internalRows;
+  const setRows = (update: (current: Application[]) => Application[]) => { const next = update(rows); if (onChange) onChange(next); else setInternalRows(next); };
+  const update = (index: number, key: keyof Application, value: string) => setRows(current => current.map((row, position) => position === index ? { ...row, [key]: value } as Application : row));
   return <fieldset className="grid gap-3 md:col-span-2"><legend className="mb-2 font-bold">Produtos aplicados e rastreabilidade</legend>
     <p className="text-xs text-muted">Registre produto, lote e validade utilizados neste paciente. Este registro não movimenta o estoque; o consumo do procedimento continua no controle de estoque existente.</p>
     <input type="hidden" name="applications" value={JSON.stringify(rows)} />

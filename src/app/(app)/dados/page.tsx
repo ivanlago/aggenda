@@ -17,6 +17,7 @@ export default async function DataPage() {
   const history = await db.select().from(dataImports).where(eq(dataImports.organizationId, organization.id)).orderBy(desc(dataImports.createdAt)).limit(20);
   return <div className="page-wrap">
     <PageHeader eyebrow="Portabilidade" title="Importar e exportar dados" description="Traga sua carteira de outra plataforma ou baixe uma cópia dos dados cadastrados no Aggenda." />
+    <p className="mb-5 text-sm text-muted">Importações e exportações gratuitas nesta fase inicial.</p>
     <DataImporter />
     <section className="panel mt-6">
       <div className="flex items-center gap-2"><Download className="size-5 text-brand" /><h2 className="text-lg font-extrabold">Exportar dados atuais</h2></div>

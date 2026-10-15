@@ -4,8 +4,8 @@ export type ImplementationMode = (typeof implementationModes)[number];
 export const fiscalSetupModes = ["none", "self_service", "assisted"] as const;
 export type FiscalSetupMode = (typeof fiscalSetupModes)[number];
 
-export const IMPLEMENTATION_ASSISTED_PRICE_IN_CENTS = 24_900;
-export const FISCAL_SETUP_ASSISTED_PRICE_IN_CENTS = 29_900;
+export const IMPLEMENTATION_ASSISTED_PRICE_IN_CENTS = 0;
+export const FISCAL_SETUP_ASSISTED_PRICE_IN_CENTS = 0;
 
 export function isImplementationMode(value: string): value is ImplementationMode {
   return implementationModes.includes(value as ImplementationMode);

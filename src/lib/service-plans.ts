@@ -28,7 +28,7 @@ export const nfsePublicOffer = {
   monthlyPriceInCents: 4990,
   monthlyLimit: 100,
   overageInCents: 49,
-  assistedSetupInCents: 14900,
+  assistedSetupInCents: 0,
 } as const;
 
 export const corePlans: Record<CorePlanCode, {

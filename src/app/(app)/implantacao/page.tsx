@@ -22,11 +22,6 @@ import { PageHeader } from "@/components/page-header";
 import { WhatsAppConnectButton } from "@/components/whatsapp-connect-button";
 import { db } from "@/db";
 import { organizationImplementationPreferences, professionals, services, weeklyAvailability, whatsappChannels } from "@/db/schema";
-import {
-  FISCAL_SETUP_ASSISTED_PRICE_IN_CENTS,
-  formatImplementationPrice,
-  IMPLEMENTATION_ASSISTED_PRICE_IN_CENTS,
-} from "@/lib/implementation-services";
 import { getOrganizationServicePlan, whatsappServices } from "@/lib/service-plans";
 import { requireOrganization } from "@/lib/session";
 import { formatPhone } from "@/lib/phone";
@@ -248,7 +243,7 @@ export default async function ImplantationPage() {
           <p className="text-xs font-extrabold uppercase tracking-widest text-brand">Modalidade de implantação</p>
           <h2 className="mt-2 text-xl font-extrabold">Escolha quanto apoio você deseja</h2>
           <p className="mt-2 text-sm leading-6 text-muted">
-            A ativação guiada é gratuita. Os serviços assistidos são opcionais e cobrados uma única vez, sem alterar sua mensalidade.
+            Nesta fase inicial, implantação e ativação são gratuitas, inclusive com assistência da equipe. Importações e exportações também não têm custo.
           </p>
         </div>
 
@@ -267,7 +262,7 @@ export default async function ImplantationPage() {
               </label>
               <label className="cursor-pointer rounded-2xl border p-4 has-[:checked]:border-brand has-[:checked]:bg-[#edf7f1]">
                 <input className="mr-2" type="radio" name="implementationMode" value="assisted" defaultChecked={implementation?.implementationMode === "assisted"} />
-                <strong>Implantação assistida — {formatImplementationPrice(IMPLEMENTATION_ASSISTED_PRICE_IN_CENTS)}</strong>
+                <strong>Implantação assistida — gratuita</strong>
                 <span className="mt-2 block text-sm leading-6 text-muted">Cadastro inicial, importação de clientes e serviços, revisão das configurações e orientação remota.</span>
               </label>
             </div>
@@ -288,7 +283,7 @@ export default async function ImplantationPage() {
               </label>
               <label className="cursor-pointer rounded-2xl border p-4 has-[:checked]:border-brand has-[:checked]:bg-[#edf7f1]">
                 <input className="mr-2" type="radio" name="fiscalSetupMode" value="assisted" defaultChecked={implementation?.fiscalSetupMode === "assisted"} />
-                <strong>Configuração fiscal assistida — {formatImplementationPrice(FISCAL_SETUP_ASSISTED_PRICE_IN_CENTS)}</strong>
+                <strong>Configuração fiscal assistida — gratuita</strong>
                 <span className="mt-2 block text-sm leading-6 text-muted">Conferência cadastral, credencial, homologação e primeiro teste acompanhado.</span>
               </label>
             </div>
@@ -301,7 +296,7 @@ export default async function ImplantationPage() {
         </ActionForm>
         {(implementation?.implementationStatus === "requested" || implementation?.fiscalSetupStatus === "requested") && (
           <p className="mt-4 rounded-xl bg-[#edf7f1] p-3 text-sm font-bold text-brand">
-            Solicitação recebida. A equipe Aggenda entrará em contato antes de gerar qualquer cobrança do serviço opcional.
+            Solicitação recebida. A equipe Aggenda entrará em contato para orientar a configuração, sem custo de implantação ou ativação nesta fase inicial.
           </p>
         )}
       </section>

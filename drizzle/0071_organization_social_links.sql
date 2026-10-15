@@ -1,0 +1,1 @@
+ALTER TABLE "organizations" ADD COLUMN "public_social_links" jsonb DEFAULT '{}'::jsonb NOT NULL;

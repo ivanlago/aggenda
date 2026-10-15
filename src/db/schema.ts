@@ -18,6 +18,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { QuoteLine } from "@/lib/retail-quote-items";
+import type { SocialLinks } from "@/lib/social-links";
 
 export const organizationRoleEnum = pgEnum("organization_role", [
   "owner",
@@ -238,6 +239,7 @@ export const organizations = pgTable("organizations", {
   taxId: text("tax_id"),
   publicEmail: text("public_email"),
   publicWebsite: text("public_website"),
+  publicSocialLinks: jsonb("public_social_links").$type<SocialLinks>().default({}).notNull(),
   publicWhatsapp: text("public_whatsapp"),
   documentFooter: text("document_footer"),
   brandColor: text("brand_color").default("#37664f").notNull(),

@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { persistWithCatalogImage } from "@/lib/catalog-image";
 import { managedOrganizationLogoId } from "@/lib/organization-logo";
+import { normalizeSocialUrl, socialPlatforms, type SocialLinks } from "@/lib/social-links";
 import {
   appointments,
   availabilityExceptions,
@@ -167,7 +168,13 @@ export async function updateBookingSettings(formData: FormData) {
       bookingHorizonDays: horizon, slotIntervalMinutes: interval,
     });
   } else if (section === "identity") {
+    const publicSocialLinks: SocialLinks = {};
+    for (const platform of socialPlatforms) {
+      const url = normalizeSocialUrl(platform, value(formData, `social_${platform.id}`));
+      if (url) publicSocialLinks[platform.id] = url;
+    }
     Object.assign(updates, {
+      publicSocialLinks,
       publicDescription: value(formData, "publicDescription") || null, phone: value(formData, "phone") || null,
       publicAddress: value(formData, "publicAddress") || null,
       publicCoverUrl: value(formData, "publicCoverUrl") || null, legalName: value(formData, "legalName") || null,

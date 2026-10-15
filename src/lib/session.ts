@@ -49,6 +49,7 @@ export const getOrganizationMemberships = cache(async (userId: string) => {
       taxId: organizations.taxId,
       publicEmail: organizations.publicEmail,
       publicWebsite: organizations.publicWebsite,
+      publicSocialLinks: organizations.publicSocialLinks,
       publicWhatsapp: organizations.publicWhatsapp,
       documentFooter: organizations.documentFooter,
       brandColor: organizations.brandColor,

@@ -12,6 +12,7 @@ import { PhoneInput } from "@/components/phone-input";
 import { OrganizationLogoField } from "@/components/organization-logo-field";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
+import { socialPlatforms } from "@/lib/social-links";
 
 import { SettingsTabs } from "./settings-tabs";
 import { AutomationAndAiSettingsContent, WhatsAppSettingsContent } from "./automation-settings-content";
@@ -75,6 +76,7 @@ export default async function SettingsPage() {
       <label className="grid gap-2 text-sm font-bold">Cor da marca<input className="field h-12" name="brandColor" type="color" defaultValue={organization.brandColor} disabled={!canManage} /></label>
       <label className="grid gap-2 text-sm font-bold sm:col-span-3">Endereço público<input className="field" name="publicAddress" defaultValue={organization.publicAddress ?? ""} disabled={!canManage} /></label>
       <OrganizationLogoField currentUrl={organization.publicLogoUrl} disabled={!canManage} />
+      <fieldset className="grid gap-4 sm:col-span-3 sm:grid-cols-2"><legend className="mb-2 text-base font-extrabold">Redes sociais</legend><p className="text-sm text-muted sm:col-span-2">Informe o link completo do perfil da empresa. As redes preenchidas aparecem na página pública de agendamento. Deixe em branco para remover um atalho.</p>{socialPlatforms.map(platform => <label className="grid gap-2 text-sm font-bold" key={platform.id}>{platform.label}<input className="field" type="url" name={`social_${platform.id}`} defaultValue={organization.publicSocialLinks?.[platform.id] ?? ""} placeholder={platform.placeholder} maxLength={2048} disabled={!canManage} /></label>)}</fieldset>
       <label className="grid content-start gap-2 text-sm font-bold">Capa (URL)<input className="field" name="publicCoverUrl" type="url" defaultValue={organization.publicCoverUrl ?? ""} disabled={!canManage} /></label>
       {saveButton("Salvar identidade institucional")}
     </ActionForm>

@@ -40,6 +40,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+/tmp/nfse-schemas/
+/tmp/nfse-schemas.zip
+/tmp/nfse-dps-fixture.xml
+/tmp/nfse-rules.xlsx
+/tmp/nfse-danfse/
 
 /Aggenda.txt
 .vercel

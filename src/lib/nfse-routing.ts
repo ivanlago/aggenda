@@ -8,6 +8,9 @@ export type NfseFiscalProfile = {
   compatibilityCheckedAt?: string;
   compatibilityMessage?: string;
   partnerFallbackAuthorized: boolean;
+  certificateExpiresAt?: string;
+  certificateFingerprint?: string;
+  dpsSeries?: string;
 };
 
 export type NfseCertificateSecret = {
@@ -31,34 +34,31 @@ export function readNfseProfile(metadata: Record<string, unknown> | null | undef
     compatibilityCheckedAt: value.compatibilityCheckedAt,
     compatibilityMessage: value.compatibilityMessage,
     partnerFallbackAuthorized: value.partnerFallbackAuthorized === true,
+    certificateExpiresAt: value.certificateExpiresAt,
+    certificateFingerprint: value.certificateFingerprint,
+    dpsSeries: value.dpsSeries,
   };
 }
 
-function governmentParametersBase(environment: string) {
-  if (environment === "production") return process.env.NFSE_GOVERNMENT_PARAMETERS_URL || "https://adn.nfse.gov.br/parametrizacao";
-  return process.env.NFSE_GOVERNMENT_PARAMETERS_SANDBOX_URL || "https://adn.producaorestrita.nfse.gov.br/parametrizacao";
-}
-
-export async function checkGovernmentNfseCompatibility(municipalityCode: string, environment: string) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
+export async function checkGovernmentNfseCompatibility(municipalityCode: string, transport: import("./nfse/government").FiscalTransport) {
   try {
-    const response = await fetch(`${governmentParametersBase(environment)}/parametros_municipais/${municipalityCode}/convenio`, { headers: { accept: "application/json" }, cache: "no-store", signal: controller.signal });
-    if (response.status === 404 || response.status === 422) return { status: "incompatible" as const, message: "O município não está habilitado para emissão pela SEFIN Nacional." };
-    if (!response.ok) return { status: "unavailable" as const, message: `A consulta ao ambiente nacional está temporariamente indisponível (HTTP ${response.status}).` };
-    const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
-    const explicitlyDisabled = payload && [payload.aderente, payload.emissorNacional, payload.habilitado].some((value) => value === false);
-    if (explicitlyDisabled) return { status: "incompatible" as const, message: "O convênio municipal não autoriza o Emissor Público Nacional para este contribuinte." };
-    return { status: "compatible" as const, message: "Município disponível para emissão direta pelo ambiente nacional." };
+    const response = await transport(`/${municipalityCode}/convenio`, { service: "parameters" });
+    return interpretMunicipalAgreement(response.status, response.body);
   } catch {
-    return { status: "unavailable" as const, message: "Não foi possível consultar o ambiente nacional agora. Tente novamente antes de usar o parceiro." };
-  } finally {
-    clearTimeout(timeout);
+    return { status: "unavailable" as const, message: "Consulta indisponível. Verifique o certificado e tente novamente." };
   }
+}
+export function interpretMunicipalAgreement(status: number, payload: Record<string, unknown> | null) {
+  // Unknown or numeric flags require confirmation against the authenticated API contract.
+  // Never treat an arbitrary HTTP 200 or a missing field as municipal approval.
+  if (status === 200 && payload?.aderenteEmissorNacional === true) return { status: "compatible" as const, message: "Convênio indica adesão ao emissor nacional. A autorização da clínica depende da validação da DPS." };
+  if (status === 200 && payload?.aderenteEmissorNacional === false) return { status: "incompatible" as const, message: "Convênio não indica adesão ao emissor nacional. Cobertura por parceiro requer análise." };
+  return { status: "unavailable" as const, message: "Não foi possível confirmar a adesão municipal. A emissão de teste é a validação efetiva do contribuinte." };
 }
 
 export function selectNfseRoute(status: NfseFiscalProfile["compatibilityStatus"], partnerFallbackAuthorized: boolean): NfseFiscalProfile["routingMode"] {
   if (status === "compatible") return "government";
-  if (status === "incompatible" && partnerFallbackAuthorized) return "partner";
+  // Authorization alone is not a configured, homologated partner integration.
+  void partnerFallbackAuthorized;
   return "pending_analysis";
 }

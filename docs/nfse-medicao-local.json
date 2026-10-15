@@ -1,0 +1,96 @@
+{
+  "measuredAt": "2026-10-15T19:20:36.583Z",
+  "runtime": "v22.19.0",
+  "platform": "win32",
+  "cpuModel": "Intel(R) Core(TM) i7-8565U CPU @ 1.80GHz",
+  "caveats": [
+    "Synthetic self-signed RSA-2048 certificate; not ICP-Brasil acceptance",
+    "No external network or production database",
+    "Local CPU and duration are not measurements of deployed hosting",
+    "Synthetic XML sizes; excludes PDF, audits, history, backups and WAL",
+    "PGlite page allocation is illustrative, not a Neon storage invoice"
+  ],
+  "bytes": {
+    "pfx": 2313,
+    "encryptedCertificate": 4252,
+    "dps": 3046,
+    "gzipBase64Dps": 2468
+  },
+  "operations": {
+    "certificateRead": {
+      "repetitions": 80,
+      "medianMs": 14.894099999999526,
+      "p95Ms": 16.07089999999971,
+      "meanCpuMs": 15.425
+    },
+    "signDps": {
+      "repetitions": 80,
+      "medianMs": 3.6952999999994063,
+      "p95Ms": 5.287000000000262,
+      "meanCpuMs": 7.0375
+    },
+    "submitLocalCrypto": {
+      "repetitions": 80,
+      "medianMs": 17.47949999999946,
+      "p95Ms": 19.897100000000137,
+      "meanCpuMs": 19.1375
+    }
+  },
+  "storage": [
+    {
+      "syntheticXmlBytes": 8529,
+      "encryptedDraftBytes": 324,
+      "encryptedDpsBytes": 4102,
+      "encryptedXmlBytes": 11412,
+      "encryptedPayloadBytesPerNote": 15838
+    },
+    {
+      "syntheticXmlBytes": 33105,
+      "encryptedDraftBytes": 324,
+      "encryptedDpsBytes": 4102,
+      "encryptedXmlBytes": 44180,
+      "encryptedPayloadBytesPerNote": 48606
+    },
+    {
+      "syntheticXmlBytes": 131409,
+      "encryptedDraftBytes": 324,
+      "encryptedDpsBytes": 4102,
+      "encryptedXmlBytes": 175252,
+      "encryptedPayloadBytesPerNote": 179678
+    }
+  ],
+  "statements": {
+    "prepare": {
+      "selects": 3,
+      "inserts": 1,
+      "updates": 1,
+      "transactions": 0
+    },
+    "submitTimeout": {
+      "selects": 3,
+      "inserts": 0,
+      "updates": 2,
+      "transactions": 0
+    },
+    "recover": {
+      "selects": 1,
+      "inserts": 0,
+      "updates": 1,
+      "transactions": 0
+    },
+    "storageSample": {
+      "selects": 0,
+      "inserts": 100,
+      "updates": 0,
+      "transactions": 0
+    }
+  },
+  "networkCalls": 3,
+  "postgresSample": {
+    "rows": 100,
+    "xmlPaddingBytes": 32768,
+    "relationBytesBefore": 98304,
+    "relationBytesAfter": 5455872,
+    "addedBytesPerNote": 53575.68
+  }
+}

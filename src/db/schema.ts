@@ -2,6 +2,7 @@ import {
   check,
   foreignKey,
   boolean,
+  bigserial,
   date,
   index,
   integer,
@@ -1786,6 +1787,42 @@ export const paymentChargeEvents = pgTable("payment_charge_events", {
   uniqueIndex("payment_charge_events_provider_event_unique").on(table.providerEventId),
   index("payment_charge_events_charge_idx").on(table.chargeId, table.createdAt),
 ]);
+
+export const nfseRequests = pgTable("nfse_requests", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  financialEntryId: uuid("financial_entry_id").notNull().references(() => financialEntries.id),
+  sequence: bigserial("sequence", { mode: "number" }).notNull(),
+  environment: text("environment").notNull(),
+  cnpj: text("cnpj").notNull(),
+  dpsId: text("dps_id").notNull(),
+  status: text("status").default("draft").notNull(),
+  amountInCents: integer("amount_in_cents").notNull(),
+  encryptedDraft: text("encrypted_draft").notNull(),
+  encryptedDps: text("encrypted_dps"),
+  encryptedXml: text("encrypted_xml"),
+  encryptedCancellation: text("encrypted_cancellation"),
+  encryptedEvent: text("encrypted_event"),
+  accessKey: text("access_key"),
+  number: text("number"),
+  message: text("message"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("nfse_requests_entry_environment_unique").on(table.organizationId, table.environment, table.financialEntryId).where(sql`${table.status} <> 'rejected'`),
+  uniqueIndex("nfse_requests_dps_unique").on(table.environment, table.dpsId),
+  index("nfse_requests_org_idx").on(table.organizationId, table.createdAt),
+]);
+
+export const nfseRequestEvents = pgTable("nfse_request_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  requestId: uuid("request_id").notNull().references(() => nfseRequests.id, { onDelete: "cascade" }),
+  userId: text("user_id"),
+  type: text("type").notNull(),
+  details: jsonb("details").$type<Record<string, unknown>>().default({}).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [index("nfse_events_request_idx").on(table.organizationId, table.requestId, table.createdAt)]);
 
 export const fiscalDocuments = pgTable("fiscal_documents", {
   id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), financialEntryId: uuid("financial_entry_id").references(() => financialEntries.id, { onDelete: "set null" }), provider: text("provider").default("manual").notNull(), externalId: text("external_id"), number: text("number"), status: text("status").default("draft").notNull(), amountInCents: integer("amount_in_cents").notNull(), issuedAt: timestamp("issued_at"), verificationUrl: text("verification_url"), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),

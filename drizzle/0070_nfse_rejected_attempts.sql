@@ -1,0 +1,2 @@
+DROP INDEX "nfse_requests_entry_environment_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX "nfse_requests_entry_environment_unique" ON "nfse_requests" USING btree ("organization_id","environment","financial_entry_id") WHERE "nfse_requests"."status" <> 'rejected';

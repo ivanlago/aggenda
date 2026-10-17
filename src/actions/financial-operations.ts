@@ -59,6 +59,7 @@ function digits(data: FormData, key: string) { return value(data, key).replace(/
 export async function saveNfseFiscalProfile(data: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "integrations.manage");
+  if (!process.env.NFSE_STORAGE_KEYS || !process.env.NFSE_STORAGE_ACTIVE_KEY) return { error: "O cadastro de A1 depende da configuração da custódia fiscal no servidor." };
   const cnpj = digits(data, "cnpj");
   const municipalRegistration = value(data, "municipalRegistration");
   const municipalityCode = digits(data, "municipalityCode");

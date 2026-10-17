@@ -1,3 +1,5 @@
+import { zonedDate, zonedParts } from "@/lib/organization-time";
+export { zonedDate } from "@/lib/organization-time";
 import { and, eq, gt, gte, inArray, isNull, lt, ne, or } from "drizzle-orm";
 
 import { db } from "@/db";
@@ -21,36 +23,6 @@ type AvailabilityInput = {
   excludeAppointmentId?: string;
   roomId?: string | null;
 };
-
-function zonedParts(date: Date, timezone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(date);
-  return Object.fromEntries(parts.map((part) => [part.type, part.value]));
-}
-
-export function zonedDate(date: string, time: string, timezone: string) {
-  const desired = new Date(`${date}T${time}:00Z`);
-  let result = new Date(desired);
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const parts = zonedParts(result, timezone);
-    const represented = Date.UTC(
-      Number(parts.year),
-      Number(parts.month) - 1,
-      Number(parts.day),
-      Number(parts.hour),
-      Number(parts.minute)
-    );
-    result = new Date(result.getTime() + desired.getTime() - represented);
-  }
-  return result;
-}
 
 function timeToMinutes(value: string) {
   const [hour, minute] = value.split(":").map(Number);

@@ -35,6 +35,7 @@ import {
   requireOrganization,
 } from "@/lib/session";
 
+import { AppNavigation } from "./app-navigation";
 import { AppHeader } from "./app-header";
 
 import { SignOutButton } from "./sign-out-button";
@@ -105,7 +106,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   })).filter((group) => group.items.length > 0);
 
   return (
-    <div className="min-h-screen bg-background lg:grid lg:grid-cols-[264px_1fr]">
+    <div className="internal-app min-h-screen min-w-0 bg-background lg:grid lg:grid-cols-[264px_minmax(0,1fr)]">
       <aside className="border-b border-slate-200 bg-white p-4 text-foreground shadow-[4px_0_24px_rgba(15,23,42,0.04)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:overflow-hidden lg:border-b-0 lg:border-r">
         <div className="flex items-center justify-between lg:block lg:shrink-0">
           <Link href="/dashboard" className="flex items-center gap-3 text-xl font-extrabold">
@@ -116,7 +117,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
           <div className="lg:hidden"><SignOutButton compact /></div>
         </div>
-        <nav className="app-menu-scrollbar mt-5 flex gap-2 overflow-x-auto overflow-y-hidden pb-1 lg:mt-7 lg:grid lg:min-h-0 lg:flex-1 lg:content-start lg:overflow-x-hidden lg:overflow-y-auto lg:pb-4">
+        <AppNavigation>
           {navigation.map((group) => group.items.length === 1 && group.items[0].label === group.label ? (
             <AppNavLink
               key={group.label}
@@ -135,7 +136,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                 {group.label}
                 <ChevronDown className="size-3.5 transition group-open/nav:rotate-180" />
               </summary>
-              <div className="absolute left-0 top-full z-30 mt-2 grid min-w-64 gap-0.5 rounded-xl border border-slate-200 bg-white p-2 shadow-xl lg:static lg:mt-1 lg:min-w-0 lg:border-0 lg:bg-transparent lg:p-0 lg:pl-2 lg:shadow-none">
+              <div className="mt-1 grid min-w-0 gap-0.5 border-l border-slate-200 pl-2">
                 {group.items.map(({ href, label, icon: Icon, secondary, children }) => children ? (
                   <details className="group/submenu" key={href}>
                     <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-bold text-slate-600 transition hover:bg-surface-soft hover:text-brand [&::-webkit-details-marker]:hidden">
@@ -162,7 +163,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
               <UserRoundCog className="size-4" /> Administração SaaS
             </AppNavLink>
           )}
-        </nav>
+        </AppNavigation>
         <div className="mt-4 hidden shrink-0 border-t border-slate-200 pt-4 lg:block">
           {memberships.length > 1 && (
             <form action={selectActiveOrganization} className="mb-4 grid gap-2">

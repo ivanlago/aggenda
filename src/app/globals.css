@@ -151,3 +151,8 @@ a[href]:focus-visible {
     @apply py-10 text-center text-sm text-muted;
   }
 }
+
+/* Internal workspace only: keep wide content inside its own scroll region. */
+.internal-app .page-wrap,
+.internal-app .panel,
+.internal-app .field { min-width: 0; max-width: 100%; }

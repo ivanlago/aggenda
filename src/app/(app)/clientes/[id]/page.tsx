@@ -359,7 +359,7 @@ export default async function ClientHistoryPage({
                   </p>
                 )}
               </div>
-              <span className="status-pill">{statusLabels[item.status]}</span>
+              <div className="flex flex-wrap items-center gap-2"><div className="flex flex-wrap items-center gap-2"><span className="status-pill">{statusLabels[item.status]}</span>{hasOrganizationPermission(organization.role, "appointments.read") && <Link className="secondary-button" href={`/atendimento/${item.id}`}>Abrir atendimento</Link>}</div>{hasOrganizationPermission(organization.role, "appointments.read") && <Link className="secondary-button" href={`/atendimento/${item.id}`}>Abrir atendimento</Link>}</div>
             </article>
           ))}
           {!history.length && <p className="empty-state">Nenhum histórico registrado.</p>}

@@ -14,6 +14,8 @@ import { allocateOrderDiscount, type DiscountType } from "@/lib/order-discount";
 import { PosPackageNotice } from "@/components/pos-package-notice";
 import type { PosPackageBalance } from "@/lib/pos-package-balances";
 
+import type { CommissionBeneficiaryOption } from "@/lib/commission-beneficiary";
+
 type Variant = { id: string; label: string; barcode: string | null; priceInCents: number; stock: number; kind?: "product" | "service" | "package"; unavailableReason?: string };
 type Client = { id: string; name: string; email: string | null; phone: string | null };
 type CartItem = { variantId: string; quantity: number; discountInCents: number };
@@ -21,7 +23,7 @@ type Payment = { id: number; method: "cash" | "credit_card" | "debit_card" | "pi
 
 const currency = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export function RetailSaleForm({ variants: productVariants, offerings = [], clients, canDiscount, attendanceId, initialClientId, initialCart = [], pendingAttendanceItems = [], packageBalances = [], timezone, quoteId }: { variants: Variant[]; offerings?: Variant[]; clients: Client[]; canDiscount: boolean; attendanceId?: string; initialClientId?: string; initialCart?: CartItem[]; pendingAttendanceItems?: { id: string; catalogId: string; quantity: number }[]; packageBalances?: PosPackageBalance[]; timezone?: string; quoteId?: string }) {
+export function RetailSaleForm({ variants: productVariants, commissionChoices = [], offerings = [], clients, canDiscount, attendanceId, initialClientId, initialCart = [], pendingAttendanceItems = [], packageBalances = [], timezone, quoteId }: { variants: Variant[]; commissionChoices?: CommissionBeneficiaryOption[]; offerings?: Variant[]; clients: Client[]; canDiscount: boolean; attendanceId?: string; initialClientId?: string; initialCart?: CartItem[]; pendingAttendanceItems?: { id: string; catalogId: string; quantity: number }[]; packageBalances?: PosPackageBalance[]; timezone?: string; quoteId?: string }) {
   const variants = useMemo(() => [...productVariants, ...offerings], [productVariants, offerings]);
   const [cart, setCart] = useState<CartItem[]>(initialCart);
   const [payments, setPayments] = useState<Payment[]>([{ id: 1, method: "cash", amount: initialCart.length ? (initialCart.reduce((total, item) => total + (variants.find((variant) => variant.id === item.variantId)?.priceInCents ?? 0) * item.quantity - item.discountInCents, 0) / 100).toFixed(2).replace(".", ",") : "" }]);
@@ -72,6 +74,7 @@ export function RetailSaleForm({ variants: productVariants, offerings = [], clie
       {quoteId ? <div className="panel"><h2 className="font-extrabold">Converter orçamento em venda</h2><p className="mt-2 text-sm text-muted">Confira os itens e informe o pagamento para concluir a venda com os valores do orçamento.</p><input type="hidden" name="quoteId" value={quoteId} /></div> : <PosCatalog variants={variants} cart={cart} addToCart={addToCart} />}
 
       <aside className="panel form-stack xl:sticky xl:top-5">
+        <label className="grid gap-2 text-sm font-bold">Beneficiário das comissões dos itens vendidos<select className="field" name="commissionBeneficiary" defaultValue=""><option value="">Definir depois / sem comissão</option>{commissionChoices.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select><span className="text-xs font-normal text-muted">Separado do operador do caixa. O procedimento principal do atendimento continua vinculado ao profissional responsável. Pacotes são comissionados por sessão utilizada.</span></label>
         <PosPackageNotice balances={packageBalances.filter((balance) => balance.clientId === clientId)} timezone={timezone} />
         <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-xl bg-brand/10 text-brand"><ShoppingCart className="size-5" /></span><div><h2 className="text-lg font-extrabold">Carrinho</h2><p className="text-sm text-muted">{cart.length} {cart.length === 1 ? "item" : "itens"}</p></div></div>
         <div className="divide-y rounded-2xl border px-3">

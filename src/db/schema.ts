@@ -1249,6 +1249,8 @@ export const retailSales = pgTable("retail_sales", {
   attendanceId: uuid("attendance_id"),
   financialEntryId: uuid("financial_entry_id").references(() => financialEntries.id, { onDelete: "set null" }),
   appointmentFinancialEntryId: uuid("appointment_financial_entry_id").references((): import("drizzle-orm/pg-core").AnyPgColumn => financialEntries.id, { onDelete: "set null" }),
+  commissionProfessionalId: uuid("commission_professional_id").references(() => professionals.id, { onDelete: "restrict" }),
+  commissionUserId: text("commission_user_id").references(() => users.id, { onDelete: "restrict" }),
   status: text("status").default("completed").notNull(),
   paymentMethod: text("payment_method"),
   receiptToken: uuid("receipt_token").defaultRandom().notNull(),
@@ -1729,12 +1731,39 @@ export const financialBudgets = pgTable(
 );
 
 export const commissionRules = pgTable("commission_rules", {
-  id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), professionalId: uuid("professional_id").references(() => professionals.id, { onDelete: "cascade" }), serviceId: uuid("service_id").references(() => services.id, { onDelete: "cascade" }), trigger: text("trigger").default("completed_appointment").notNull(), calculationType: text("calculation_type").default("percentage").notNull(), value: integer("value").notNull(), isActive: boolean("is_active").default(true).notNull(), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => [index("commission_rules_org_idx").on(table.organizationId), index("commission_rules_professional_idx").on(table.professionalId)]);
+  id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  professionalId: uuid("professional_id").references(() => professionals.id, { onDelete: "restrict" }),
+  beneficiaryUserId: text("beneficiary_user_id").references(() => users.id, { onDelete: "restrict" }),
+  sourceType: text("source_type").default("appointment").notNull(),
+  serviceId: uuid("service_id").references(() => services.id, { onDelete: "restrict" }),
+  variantId: uuid("variant_id").references(() => retailProductVariants.id, { onDelete: "restrict" }),
+  trigger: text("trigger").default("completed_appointment").notNull(), calculationType: text("calculation_type").default("percentage").notNull(), value: integer("value").notNull(), isActive: boolean("is_active").default(true).notNull(), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, table => [index("commission_rules_org_idx").on(table.organizationId), index("commission_rules_professional_idx").on(table.professionalId)]);
+
+export const commissionPayments = pgTable("commission_payments", {
+  id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  requestKey: uuid("request_key").notNull(), beneficiaryKey: text("beneficiary_key").notNull(), beneficiaryName: text("beneficiary_name").notNull(), amountInCents: integer("amount_in_cents").notNull(),
+  financialEntryId: uuid("financial_entry_id").notNull().references(() => financialEntries.id, { onDelete: "restrict" }),
+  paidOn: date("paid_on").notNull(), paidByUserId: text("paid_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  notes: text("notes"), reversedAt: timestamp("reversed_at"), reversedByUserId: text("reversed_by_user_id").references(() => users.id, { onDelete: "restrict" }), reversalReason: text("reversal_reason"), createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => [uniqueIndex("commission_payment_request_unique").on(table.organizationId, table.requestKey), index("commission_payment_org_date_idx").on(table.organizationId, table.paidOn)]);
 
 export const commissionEntries = pgTable("commission_entries", {
-  id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), ruleId: uuid("rule_id").references(() => commissionRules.id, { onDelete: "set null" }), professionalId: uuid("professional_id").notNull().references(() => professionals.id, { onDelete: "restrict" }), appointmentId: uuid("appointment_id").references(() => appointments.id, { onDelete: "set null" }), baseAmountInCents: integer("base_amount_in_cents").notNull(), amountInCents: integer("amount_in_cents").notNull(), status: text("status").default("pending").notNull(), competence: text("competence").notNull(), paidAt: timestamp("paid_at"), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => [uniqueIndex("commission_entries_appointment_unique").on(table.appointmentId), index("commission_entries_org_competence_idx").on(table.organizationId, table.competence)]);
+  id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), ruleId: uuid("rule_id").references(() => commissionRules.id, { onDelete: "set null" }),
+  professionalId: uuid("professional_id").references(() => professionals.id, { onDelete: "restrict" }), beneficiaryUserId: text("beneficiary_user_id").references(() => users.id, { onDelete: "restrict" }),
+  appointmentId: uuid("appointment_id").references(() => appointments.id, { onDelete: "set null" }),
+  saleId: uuid("sale_id").references(() => retailSales.id, { onDelete: "restrict" }),
+  saleItemId: uuid("sale_item_id").references(() => retailSaleItems.id, { onDelete: "restrict" }),
+  sourceKey: text("source_key"), sourceType: text("source_type").default("appointment").notNull(), description: text("description").default("Comissão de atendimento").notNull(),
+  calculationType: text("calculation_type"), calculationValue: integer("calculation_value"),
+  paymentId: uuid("payment_id").references(() => commissionPayments.id, { onDelete: "restrict" }),
+  originalEntryId: uuid("original_entry_id"),
+  baseAmountInCents: integer("base_amount_in_cents").notNull(), amountInCents: integer("amount_in_cents").notNull(), status: text("status").default("pending").notNull(), competence: text("competence").notNull(), paidAt: timestamp("paid_at"), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, table => [uniqueIndex("commission_entries_appointment_unique").on(table.appointmentId), uniqueIndex("commission_entries_source_unique").on(table.organizationId, table.sourceKey), index("commission_entries_org_competence_idx").on(table.organizationId, table.competence), check("commission_entry_beneficiary_check", sql`num_nonnulls(${table.professionalId}, ${table.beneficiaryUserId}) = 1`)]);
+
+export const commissionPaymentItems = pgTable("commission_payment_items", {
+  paymentId: uuid("payment_id").notNull().references(() => commissionPayments.id, { onDelete: "restrict" }), entryId: uuid("entry_id").notNull().references(() => commissionEntries.id, { onDelete: "restrict" }), amountInCents: integer("amount_in_cents").notNull(),
+}, table => [primaryKey({ columns: [table.paymentId, table.entryId] })]);
 
 export const cashClosings = pgTable("cash_closings", {
   id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), accountId: uuid("account_id").notNull().references(() => financialAccounts.id, { onDelete: "restrict" }), openedByUserId: text("opened_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }), closedByUserId: text("closed_by_user_id").references(() => users.id, { onDelete: "restrict" }), openedAt: timestamp("opened_at").defaultNow().notNull(), closedAt: timestamp("closed_at"), openingBalanceInCents: integer("opening_balance_in_cents").notNull(), expectedBalanceInCents: integer("expected_balance_in_cents"), countedBalanceInCents: integer("counted_balance_in_cents"), differenceInCents: integer("difference_in_cents"), notes: text("notes"),

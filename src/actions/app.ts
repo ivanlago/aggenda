@@ -1086,10 +1086,11 @@ export async function updateFinancialEntryStatus(formData: FormData) {
   assertOrganizationPermission(organization.role, "finance.manage");
   const id = textValue(formData, "id");
   const requestedStatus = textValue(formData, "status");
-  const [current] = await db.select({ type: financialEntries.type }).from(financialEntries).where(and(
+  const [current] = await db.select({ type: financialEntries.type, source: financialEntries.source }).from(financialEntries).where(and(
     eq(financialEntries.id, id), eq(financialEntries.organizationId, organization.id)
   )).limit(1);
   if (!current) throw new Error("Lançamento financeiro não encontrado.");
+  if (current.source === "commission_payment") throw new Error("Gerencie esta quitação pela tela de comissões para preservar o saldo e o histórico.");
   const status = requestedStatus === "realized"
     ? (current.type === "payable" ? "paid" : "received")
     : requestedStatus;

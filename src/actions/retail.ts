@@ -1,6 +1,8 @@
 "use server";
 import { attendancePendingItems } from "@/lib/attendance-pending-items";
 import { z } from "zod";
+import { parseBeneficiary } from "@/lib/commission-beneficiary";
+import { assertCommissionBeneficiary } from "@/lib/commission-beneficiaries";
 
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -281,11 +283,13 @@ export async function registerRetailSale(data: FormData) {
   const paymentMethod = normalizedPayments.length > 1 ? "mixed" : normalizedPayments[0].method;
   // Concluir a venda representa a confirmação de recebimento do valor total.
   const received = true;
+  const commissionBeneficiary = text(data, "commissionBeneficiary") ? parseBeneficiary(text(data, "commissionBeneficiary")) : null;
   const today = organizationDate(new Date(), organization.timezone);
 
   const pendingIds = z.array(z.uuid()).parse(JSON.parse(String(data.get("pendingAttendanceItemIds") || "[]")));
   if (pendingIds.length && !attendance) throw new Error("Atendimento obrigatório.");
   const createdSale = await db.transaction(async (tx) => {
+    if (commissionBeneficiary) await assertCommissionBeneficiary(tx, organization.id, commissionBeneficiary);
     if (attendance) {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`attendance-payment:${attendanceId}`}, 0))`);
       const [locked] = await tx.select().from(appointments).where(and(eq(appointments.id, attendance.appointment.id), eq(appointments.organizationId, organization.id))).for("update");
@@ -386,6 +390,7 @@ export async function registerRetailSale(data: FormData) {
         paymentMethod, clientId, notes: [text(data, "notes"), ...normalizedPayments.filter((payment) => payment.method === "other").map((payment) => `Outros: ${payment.otherPaymentMethod}`)].filter(Boolean).join("\n") || null, createdByUserId: session.user.id,
     }).returning({ id: financialEntries.id }) : [{ id: appointmentFinancialEntryId }];
     const [sale] = await tx.insert(retailSales).values({
+      commissionProfessionalId: commissionBeneficiary?.professionalId, commissionUserId: commissionBeneficiary?.beneficiaryUserId,
       organizationId: organization.id, clientId, attendanceId: sourceQuote?.attendanceId ?? attendanceId, financialEntryId: financialEntry.id, appointmentFinancialEntryId, paymentMethod,
       receiptEmail, receiptPhone: receiptPhoneDigits,
       subtotalInCents, discountInCents, totalInCents, notes: text(data, "notes") || null,

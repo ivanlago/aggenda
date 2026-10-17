@@ -29,3 +29,13 @@ Migration **0075_portal_booking_safety**: tabela de vínculos com chaves por cl�
 Execute npm run test:public-booking. O teste percorre as rotas reais de solicitação/validação de código, criação e reagendamento, com banco isolado e envios/pagamentos externos substituídos por doubles. Inclui sessão ausente, cadastro não autorizado, vínculo de outra clínica, remoção de vínculo, clique repetido, conflito entre profissionais, confirmação de sessão repetida, política de bloqueio e requisições simultâneas.
 
 Conferência no navegador: primeiro acesso, ausência de rolagem horizontal em 744 px úteis, opções de repetição no procedimento e formulário interno de autorização de dependentes. Nenhum formulário foi enviado. O envio real do e-mail e o percurso autenticado com uma conta de paciente precisam ser conferidos no piloto; o teste automatizado valida esse percurso com entrega simulada.
+
+## Complemento de conferência autenticada — 17/10/2026
+
+O usuário confirmou o recebimento real do código por e-mail e realizou o login. A sessão autenticada exibiu o cadastro correspondente, seletor de paciente, histórico e estado sem reservas futuras ativas. Não havia dependentes vinculados para testar a alternância entre pessoas.
+
+Foi selecionado um procedimento, um profissional e uma data dentro da janela permitida. A consulta retornou horários e a escolha de um deles exibiu a revisão com procedimento, profissional, data e horário. A largura útil e a largura do documento permaneceram iguais (744 px). A consulta de erros de console não retornou erros. O botão Confirmar agendamento não foi acionado. As escolhas de teste foram limpas e a sessão permaneceu aberta.
+
+Os avisos de repetição e sobreposição não puderam ser reproduzidos nesta conta sem criar reservas, pois não existiam reservas futuras. Esses cenários seguem cobertos pelo teste integrado isolado; não foram validados visualmente com dados ativos nesta sessão. Nenhum agendamento foi criado, reagendado ou cancelado.
+
+Evidência: [revisão antes da confirmação, sem reserva criada](./qa-visual-2026-10-17/portal-revisao-autenticada.png). A captura não inclui nome ou contato do paciente.

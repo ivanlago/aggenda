@@ -1,3 +1,4 @@
+import { commissionBeneficiaries } from "@/lib/commission-beneficiaries";
 import { attendancePendingItems } from "@/lib/attendance-pending-items";
 import { getPosOfferings } from "@/lib/pos-catalog";
 import { getPosPackageBalances } from "@/lib/pos-package-balances";
@@ -18,6 +19,7 @@ const currency = (amount: number) => (amount / 100).toLocaleString("pt-BR", { st
 export async function AttendancePos({ appointmentId }: { appointmentId: string }) {
   const { appointment, organization } = await requireAttendance(appointmentId);
   const canPay = hasOrganizationPermission(organization.role, "finance.manage");
+  const commissionChoices = await commissionBeneficiaries(db, organization.id);
   const canSell = organization.role === "professional" || canPay || hasOrganizationPermission(organization.role, "sales.sell") || hasOrganizationPermission(organization.role, "inventory.manage");
   const canReadFinance = canSell || hasOrganizationPermission(organization.role, "finance.read");
   if (!canSell && !canReadFinance) return <section id="pdv" className="panel mt-5"><p className="text-sm text-muted">Seu perfil não possui acesso a vendas ou pagamentos.</p></section>;
@@ -51,7 +53,7 @@ export async function AttendancePos({ appointmentId }: { appointmentId: string }
   }
   return <section id="pdv" className="mt-5 scroll-mt-6">
     {paymentState === "blocked" && <p className="mb-4 text-sm text-muted">Revise a situação do atendimento antes de cobrar o procedimento.</p>}
-    {canSell && <SalesWorkspace sale={<RetailSaleForm key={`${appointment.id}:${paymentState}:${prefillProcedure}:${pending.map((item) => item.id).join(",")}`} offerings={offerings} attendanceId={appointment.id} initialClientId={client.id} initialCart={initialCart} pendingAttendanceItems={pending} clients={[client]} variants={variants} canDiscount={hasOrganizationPermission(organization.role, "sales.discount")} />} quote={<AttendanceQuote appointmentId={appointmentId} />} />}
+    {canSell && <SalesWorkspace sale={<RetailSaleForm commissionChoices={commissionChoices} key={`${appointment.id}:${paymentState}:${prefillProcedure}:${pending.map((item) => item.id).join(",")}`} offerings={offerings} attendanceId={appointment.id} initialClientId={client.id} initialCart={initialCart} pendingAttendanceItems={pending} clients={[client]} variants={variants} canDiscount={hasOrganizationPermission(organization.role, "sales.discount")} />} quote={<AttendanceQuote appointmentId={appointmentId} />} />}
     <section className="panel mt-4"><h3 className="font-extrabold">Vendas e adicionais deste atendimento</h3>
       {sales.map((sale) => <div key={sale.id} className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t pt-3"><div><p className="font-bold">Venda · {currency(sale.total)}</p><p className="text-xs text-muted">{formatOrganizationDateTime(sale.soldAt, organization.timezone)} · {sale.status !== "completed" ? "Cancelada / estornada" : sale.paymentStatus === "received" ? "Pagamento recebido" : "Pagamento pendente"}</p></div><Link className="secondary-button" href={`/recibo/${sale.receiptToken}`} target="_blank">Abrir recibo</Link></div>)}
       {extras.map((extra) => <div key={extra.id} className="mt-3 border-t pt-3"><p className="font-bold">{extra.description} · {currency(extra.amountInCents)}</p><p className="text-xs text-muted">{formatOrganizationDateTime(extra.createdAt, organization.timezone)} · {extra.status === "received" ? "Pagamento recebido" : extra.status}</p></div>)}

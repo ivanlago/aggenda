@@ -1,9 +1,9 @@
 "use server";
 
-import { and, eq, gte, isNull, lt } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { appointments, auditLogs, bankImportTransactions, cashClosings, commissionEntries, commissionRules, financialEntries, fiscalDocuments, organizationFinancialIntegrations } from "@/db/schema";
+import { auditLogs, bankImportTransactions, cashClosings, financialEntries, fiscalDocuments, organizationFinancialIntegrations } from "@/db/schema";
 import { organizationDate } from "@/lib/appointment-safety";
 import { writeAuditLog } from "@/lib/audit";
 import { encryptFinancialCredential } from "@/lib/financial-secret";
@@ -17,21 +17,6 @@ import { requireOrganization } from "@/lib/session";
 
 const value = (data: FormData, key: string) => String(data.get(key) ?? "").trim();
 const cents = (data: FormData, key: string) => { const raw = value(data, key).replace(/\./g, "").replace(",", "."); const number = Number(raw); if (!Number.isFinite(number) || number < 0) throw new Error("Informe um valor válido."); return Math.round(number * 100); };
-
-export async function createCommissionRule(data: FormData) {
-  const { organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage"); const professionalId = value(data, "professionalId") || null; const serviceId = value(data, "serviceId") || null; const calculationType = value(data, "calculationType"); const raw = Number(value(data, "value").replace(",", "."));
-  if (!professionalId || !["percentage", "fixed"].includes(calculationType) || !Number.isFinite(raw) || raw < 0) throw new Error("Informe profissional, cálculo e valor.");
-  await db.insert(commissionRules).values({ organizationId: organization.id, professionalId, serviceId, calculationType, value: calculationType === "percentage" ? Math.round(raw * 100) : Math.round(raw * 100) }); revalidatePath("/financeiro/comissoes");
-}
-
-export async function generateCommissions(data: FormData) {
-  const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage"); const competence = value(data, "competence"); if (!/^\d{4}-\d{2}$/.test(competence)) throw new Error("Competência inválida."); const [year, month] = competence.split("-").map(Number); const start = new Date(Date.UTC(year, month - 1, 1)); const end = new Date(Date.UTC(year, month, 1));
-  const [rules, items] = await Promise.all([db.select().from(commissionRules).where(and(eq(commissionRules.organizationId, organization.id), eq(commissionRules.isActive, true))), db.select({ id: appointments.id, professionalId: appointments.professionalId, serviceId: appointments.serviceId, amount: appointments.priceInCents }).from(appointments).where(and(eq(appointments.organizationId, organization.id), eq(appointments.status, "completed"), gte(appointments.startsAt, start), lt(appointments.startsAt, end)))]);
-  let generated = 0; for (const item of items) { if (!item.professionalId || !item.amount) continue; const rule = rules.filter((candidate) => candidate.professionalId === item.professionalId && (!candidate.serviceId || candidate.serviceId === item.serviceId)).sort((a, b) => Number(Boolean(b.serviceId)) - Number(Boolean(a.serviceId)))[0]; if (!rule) continue; const amount = rule.calculationType === "percentage" ? Math.round(item.amount * rule.value / 10000) : rule.value; const inserted = await db.insert(commissionEntries).values({ organizationId: organization.id, ruleId: rule.id, professionalId: item.professionalId, appointmentId: item.id, baseAmountInCents: item.amount, amountInCents: amount, competence }).onConflictDoNothing().returning({ id: commissionEntries.id }); generated += inserted.length; }
-  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "generate", entityType: "commission_entries", details: { competence, generated } }); revalidatePath("/financeiro/comissoes");
-}
-
-export async function markCommissionPaid(data: FormData) { const { organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage"); const id = value(data, "id"); await db.update(commissionEntries).set({ status: "paid", paidAt: new Date(), updatedAt: new Date() }).where(and(eq(commissionEntries.id, id), eq(commissionEntries.organizationId, organization.id))); revalidatePath("/financeiro/comissoes"); }
 
 export async function openCash(data: FormData) { const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage"); const accountId = value(data, "accountId"); const open = await db.select({ id: cashClosings.id }).from(cashClosings).where(and(eq(cashClosings.organizationId, organization.id), eq(cashClosings.accountId, accountId), isNull(cashClosings.closedAt))).limit(1); if (open.length) throw new Error("Esta conta já possui caixa aberto."); await db.insert(cashClosings).values({ organizationId: organization.id, accountId, openedByUserId: session.user.id, openingBalanceInCents: cents(data, "openingBalance") }); revalidatePath("/financeiro/fechamento-caixa"); }
 

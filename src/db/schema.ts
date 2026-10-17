@@ -1999,6 +1999,7 @@ export const chatConversations = pgTable(
     contactName: text("contact_name"),
     handoffStatus: text("handoff_status").default("bot").notNull(),
     handoffReason: text("handoff_reason"),
+    needsHumanAttention: boolean("needs_human_attention").default(false).notNull(),
     automationPaused: boolean("automation_paused").default(false).notNull(),
     handoffRequestedAt: timestamp("handoff_requested_at"),
     handoffResolvedAt: timestamp("handoff_resolved_at"),

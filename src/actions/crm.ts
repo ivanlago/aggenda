@@ -7,6 +7,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import {
   clients,
+  auditLogs,
   chatConversations,
   chatMessages,
   crmAiInsights,
@@ -22,6 +23,7 @@ import {
   crmTags,
   crmTasks,
   financialEntries,
+  organizationMembers,
 } from "@/db/schema";
 import { writeAuditLog } from "@/lib/audit";
 import { generateAiJson } from "@/lib/ai/provider";
@@ -256,22 +258,28 @@ export async function updateCrmHandoff(formData: FormData) {
   const conversationId = text(formData, "conversationId");
   const status = text(formData, "status");
   if (!["bot", "requested", "human", "resolved"].includes(status)) throw new Error("Situação de atendimento inválida.");
-  const [conversation] = await db.select({ id: chatConversations.id }).from(chatConversations).where(and(
-    eq(chatConversations.id, conversationId), eq(chatConversations.organizationId, organization.id)
-  )).limit(1);
-  if (!conversation) throw new Error("Conversa não encontrada.");
-  const now = new Date();
-  await db.update(chatConversations).set({
-    handoffStatus: status,
-    handoffReason: optional(formData, "reason"),
-    assignedUserId: optional(formData, "assignedUserId") || session.user.id,
-    automationPaused: status === "requested" || status === "human",
-    handoffRequestedAt: status === "requested" || status === "human" ? now : undefined,
-    handoffResolvedAt: status === "resolved" || status === "bot" ? now : null,
-    updatedAt: now,
-  }).where(eq(chatConversations.id, conversationId));
-  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: `crm.handoff.${status}`, entityType: "chat_conversation", entityId: conversationId });
-  revalidatePath("/crm/inbox"); revalidatePath("/crescimento");
+  const assignee = optional(formData, "assignedUserId");
+  if (assignee) {
+    const [member] = await db.select({ id: organizationMembers.userId }).from(organizationMembers).where(and(eq(organizationMembers.organizationId, organization.id), eq(organizationMembers.userId, assignee))).limit(1);
+    if (!member) throw new Error("Responsável não pertence à clínica.");
+  }
+  await db.transaction(async (tx) => {
+    const [conversation] = await tx.select().from(chatConversations).where(and(eq(chatConversations.id, conversationId), eq(chatConversations.organizationId, organization.id))).limit(1).for("update");
+    if (!conversation) throw new Error("Conversa não encontrada.");
+    const now = new Date();
+    await tx.update(chatConversations).set({
+      handoffStatus: status,
+      handoffReason: optional(formData, "reason")?.slice(0, 1000) ?? null,
+      assignedUserId: status === "human" ? assignee || session.user.id : conversation.assignedUserId,
+      needsHumanAttention: (status === "requested" || status === "human") && conversation.needsHumanAttention,
+      automationPaused: status === "requested" || status === "human",
+      handoffRequestedAt: status === "requested" || status === "human" ? conversation.handoffRequestedAt ?? now : conversation.handoffRequestedAt,
+      handoffResolvedAt: status === "resolved" || status === "bot" ? now : conversation.handoffResolvedAt,
+      updatedAt: now,
+    }).where(eq(chatConversations.id, conversationId));
+    await tx.insert(auditLogs).values({ organizationId: organization.id, userId: session.user.id, action: `crm.handoff.${status}`, entityType: "chat_conversation", entityId: conversationId, details: { previousStatus: conversation.handoffStatus, reason: optional(formData, "reason")?.slice(0, 1000) ?? null } });
+  });
+  revalidatePath("/crm/inbox"); revalidatePath("/crescimento"); revalidatePath("/", "layout");
 }
 
 export async function createCrmProposal(formData: FormData) {

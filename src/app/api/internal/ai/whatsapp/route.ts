@@ -1,5 +1,5 @@
 import { roomBookingError } from "@/lib/room-errors";
-import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, sql } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -150,11 +150,14 @@ async function send(input: Input, conversation: Conversation, data: { reply: str
   const now = new Date(); let inserted = false;
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.conversationId}))`);
+    const [current] = await tx.select().from(chatConversations).where(and(eq(chatConversations.id, input.conversationId), eq(chatConversations.organizationId, input.organizationId))).limit(1).for("update");
+    if (!current || current.handoffStatus !== "bot" || current.automationPaused) return;
+    if (current.handoffResolvedAt && current.handoffResolvedAt.getTime() !== conversation.handoffResolvedAt?.getTime()) return;
     const [message] = await tx.insert(chatMessages).values({ organizationId: input.organizationId, conversationId: input.conversationId, externalMessageId: `aggenda-ai:${input.messageId}`, direction: "outbound", status: "queued", messageType: "text", body: data.reply, rawPayload: { source: "aggenda_ai", model: data.model, intent: data.intent, confidence: data.confidence, ...(data.pending ? { pendingAction: data.pending } : {}), ...(data.flowState ? { flowState: data.flowState } : {}) }, occurredAt: now })
       .onConflictDoNothing({ target: chatMessages.externalMessageId }).returning({ id: chatMessages.id });
     if (!message) return; inserted = true;
     await tx.insert(outboxEvents).values({ organizationId: input.organizationId, eventKey: `whatsapp:ai-reply:${input.messageId}`, eventType: "whatsapp.message.send", aggregateType: "chat_message", aggregateId: message.id, payload: { organizationId: input.organizationId, channelId: conversation.channelId, conversationId: input.conversationId, messageId: message.id, phoneNumberId: input.phoneNumberId, to: input.from, text: data.reply } }).onConflictDoNothing({ target: outboxEvents.eventKey });
-    await tx.update(chatConversations).set({ handoffStatus: data.handoff ? "requested" : conversation.handoffStatus, handoffReason: data.handoff ? `IA: ${data.intent}` : conversation.handoffReason, automationPaused: Boolean(data.handoff), handoffRequestedAt: data.handoff ? now : conversation.handoffRequestedAt, updatedAt: now }).where(eq(chatConversations.id, input.conversationId));
+    await tx.update(chatConversations).set({ handoffStatus: data.handoff ? "requested" : current.handoffStatus, needsHumanAttention: Boolean(data.handoff), handoffReason: data.handoff ? `IA: ${data.intent}` : current.handoffReason, automationPaused: Boolean(data.handoff), handoffRequestedAt: data.handoff ? now : current.handoffRequestedAt, updatedAt: now }).where(eq(chatConversations.id, input.conversationId));
     if (data.ai) { const periodStart = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`; await tx.insert(organizationUsageCounters).values({ organizationId: input.organizationId, periodStart, metric: "ai.calls", quantity: 1 }).onConflictDoUpdate({ target: [organizationUsageCounters.organizationId, organizationUsageCounters.periodStart, organizationUsageCounters.metric], set: { quantity: sql`${organizationUsageCounters.quantity} + 1`, updatedAt: now } }); }
   });
   if (inserted) await triggerOutboxWorker();
@@ -224,13 +227,17 @@ export async function POST(request: NextRequest) {
   if ((await db.select({ id: chatMessages.id }).from(chatMessages).where(eq(chatMessages.externalMessageId, `aggenda-ai:${input.messageId}`)).limit(1))[0]) return NextResponse.json({ accepted: true, duplicate: true });
   const [loadedConversation] = await db.select().from(chatConversations).where(and(eq(chatConversations.id, input.conversationId), eq(chatConversations.organizationId, input.organizationId))).limit(1);
   if (!loadedConversation) return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+  if (loadedConversation.handoffResolvedAt) {
+    const [source] = await db.select({ createdAt: chatMessages.createdAt }).from(chatMessages).where(and(eq(chatMessages.id, input.messageId), eq(chatMessages.conversationId, input.conversationId), eq(chatMessages.organizationId, input.organizationId))).limit(1);
+    if (!source || source.createdAt <= loadedConversation.handoffResolvedAt) return NextResponse.json({ accepted: true, skipped: "resolved_issue" });
+  }
   const legacySchedulingPause = input.whatsappServiceCode === "core_ai" && loadedConversation.handoffStatus === "requested" && /^IA: (schedule|appointment)/i.test(loadedConversation.handoffReason ?? "");
   const conversation = legacySchedulingPause ? { ...loadedConversation, handoffStatus: "bot", handoffReason: null, automationPaused: false, handoffResolvedAt: new Date() } : loadedConversation;
   if (legacySchedulingPause) {
-    await db.update(chatConversations).set({ handoffStatus: "bot", handoffReason: null, automationPaused: false, handoffResolvedAt: conversation.handoffResolvedAt, updatedAt: new Date() }).where(eq(chatConversations.id, input.conversationId));
+    await db.update(chatConversations).set({ handoffStatus: "bot", handoffReason: null, needsHumanAttention: false, automationPaused: false, handoffResolvedAt: conversation.handoffResolvedAt, updatedAt: new Date() }).where(eq(chatConversations.id, input.conversationId));
     console.info("[whatsapp-agent] pausa legada de agendamento removida", { conversationId: input.conversationId });
   }
-  if (conversation.automationPaused || conversation.handoffStatus === "human") {
+  if (conversation.automationPaused || conversation.handoffStatus === "human" || conversation.handoffStatus === "resolved") {
     console.info("[whatsapp-agent] conversa sob atendimento humano", { conversationId: input.conversationId, handoffStatus: conversation.handoffStatus });
     return NextResponse.json({ accepted: true, skipped: "human_handoff" });
   }
@@ -246,7 +253,7 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({ accepted: true, action: "reply" });
   }
-  const [latest] = await db.select({ rawPayload: chatMessages.rawPayload }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), eq(chatMessages.direction, "outbound"))).orderBy(desc(chatMessages.occurredAt)).limit(1);
+  const [latest] = await db.select({ rawPayload: chatMessages.rawPayload }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), eq(chatMessages.direction, "outbound"), conversation.handoffResolvedAt ? gt(chatMessages.createdAt, conversation.handoffResolvedAt) : undefined)).orderBy(desc(chatMessages.occurredAt)).limit(1);
   const pending = parsePending(latest?.rawPayload); const flowState = parseFlowState(latest?.rawPayload); const clientId = await getClient(input, conversation);
   if (pending && (isAffirmativeWhatsAppCommand(input.text) || isNegativeWhatsAppCommand(input.text))) {
     if (isNegativeWhatsAppCommand(input.text)) { await send(input, conversation, { reply: "Tudo bem. A operação não foi realizada. Como mais posso ajudar?", model: "aggenda-transactional-v1", intent: "operation_declined", confidence: 1 }); return NextResponse.json({ accepted: true, action: "declined" }); }
@@ -256,7 +263,7 @@ export async function POST(request: NextRequest) {
   const [catalog, professionalRows, future, history] = await Promise.all([
     db.select({ id: services.id, name: services.name, description: services.description, durationMinutes: services.durationMinutes, priceInCents: services.priceInCents }).from(services).where(and(eq(services.organizationId, input.organizationId), eq(services.isActive, true))).limit(50),
     db.select({ id: professionals.id, name: professionals.name, serviceId: servicesToProfessionals.serviceId }).from(professionals).leftJoin(servicesToProfessionals, and(eq(servicesToProfessionals.professionalId, professionals.id), eq(servicesToProfessionals.organizationId, input.organizationId))).where(and(eq(professionals.organizationId, input.organizationId), eq(professionals.isActive, true), eq(professionals.isBookable, true))),
-    upcoming(input.organizationId, clientId), db.select({ direction: chatMessages.direction, body: chatMessages.body }).from(chatMessages).where(eq(chatMessages.conversationId, input.conversationId)).orderBy(desc(chatMessages.occurredAt)).limit(12),
+    upcoming(input.organizationId, clientId), db.select({ direction: chatMessages.direction, body: chatMessages.body }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), conversation.handoffResolvedAt ? gt(chatMessages.createdAt, conversation.handoffResolvedAt) : undefined)).orderBy(desc(chatMessages.occurredAt)).limit(12),
   ]);
   if (flowState) {
     const candidates = future.filter((appointment) => "appointmentIds" in flowState ? flowState.appointmentIds.includes(appointment.id) : appointment.id === flowState.appointmentId);

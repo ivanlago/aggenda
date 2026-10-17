@@ -1,4 +1,4 @@
-import { and, count, eq, ne } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { chatConversations, professionalRegistrations, professionals, professions } from "@/db/schema";
 import { hasOrganizationPermission } from "@/lib/permissions";
@@ -8,7 +8,7 @@ export async function getOpenCommercialConversationCount(organizationId: string,
   if (!hasOrganizationPermission(role, "crm.read")) return null;
   const plan = await getOrganizationServicePlan(organizationId);
   if (plan.isLegacyFallback || !["menu", "chat", "chat_ai", "core_ai"].includes(plan.whatsappServiceCode)) return null;
-  const [result] = await db.select({ total: count() }).from(chatConversations).where(and(eq(chatConversations.organizationId, organizationId), ne(chatConversations.handoffStatus, "resolved")));
+  const [result] = await db.select({ total: count() }).from(chatConversations).where(and(eq(chatConversations.organizationId, organizationId), eq(chatConversations.needsHumanAttention, true), inArray(chatConversations.handoffStatus, ["requested", "human"])));
   return result.total;
 }
 

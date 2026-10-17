@@ -185,11 +185,11 @@ export async function POST(request: NextRequest) {
               ],
               set: {
                 contactName: contact?.profile?.name,
-                lastMessageAt: occurredAt,
+                lastMessageAt: sql`greatest(${chatConversations.lastMessageAt}, ${occurredAt})`,
                 updatedAt: new Date(),
               },
             })
-            .returning({ id: chatConversations.id });
+            .returning({ id: chatConversations.id, handoffStatus: chatConversations.handoffStatus, handoffResolvedAt: chatConversations.handoffResolvedAt });
 
           const [storedMessage] = await tx
             .insert(chatMessages)
@@ -208,6 +208,10 @@ export async function POST(request: NextRequest) {
             .returning({ id: chatMessages.id });
 
           if (!storedMessage) return false;
+          // Meta timestamps have second precision. Retries never reopen a conversation.
+          if (conversation.handoffStatus === "resolved" && (!conversation.handoffResolvedAt || occurredAt.getTime() >= Math.floor(conversation.handoffResolvedAt.getTime() / 1000) * 1000)) {
+            await tx.update(chatConversations).set({ handoffStatus: "bot", needsHumanAttention: false, automationPaused: false, handoffReason: null, assignedUserId: null, updatedAt: new Date() }).where(eq(chatConversations.id, conversation.id));
+          }
 
           const periodStart = `${occurredAt.getUTCFullYear()}-${String(occurredAt.getUTCMonth() + 1).padStart(2, "0")}-01`;
           await tx.insert(organizationUsageCounters).values({

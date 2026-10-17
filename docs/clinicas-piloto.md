@@ -56,3 +56,6 @@ Formulários internos mantêm os campos quando uma ação falha e mostram o erro
 ## Dependências — auditoria de 15/10/2026
 
 A consulta autorizada ao registro npm encontrou 20 alertas agregados (7 moderados, 12 altos e 1 crítico). Os caminhos apontados já existiam no lockfile anterior; não houve alerta nos pacotes adicionados para os testes DOM. Há alerta crítico no Next.js 16.2.12 e alertas altos, incluindo node-forge. O registro sugere Next.js 16.4.2, mas essa atualização não foi aplicada: exige revisão dos avisos e regressão dos fluxos, inclusive agendamento externo, documentos e autenticação. Algumas sugestões do npm envolvem downgrade/incompatibilidade e node-forge não tem correção automática indicada; não executar `npm audit fix --force` sem análise. Contagens agregadas não equivalem a 20 falhas comprovadamente exploráveis neste produto.
+
+
+Atualização de 16/10/2026: as correções e limitações atuais da auditoria estão em [manutencao-dependencias.md](./manutencao-dependencias.md). O resultado passou de 20 para 6 alertas visíveis, com mitigações temporárias para os dois avisos ainda sem versão oficial corrigida.

@@ -20,7 +20,12 @@
     "test:whatsapp-agent": "tsx --test tests/whatsapp-command.test.ts",
     "test:permissions": "tsx --test tests/permissions.test.ts",
     "test:signatures": "tsx --test tests/document-signatures.test.ts tests/signature-security.test.ts tests/signature-postgres.test.ts tests/signature-pades.test.ts tests/signature-cms.test.ts",
-    "signature:pilot": "tsx scripts/signature-pilot.ts"
+    "signature:pilot": "tsx scripts/signature-pilot.ts",
+    "postinstall": "node scripts/patch-dependency-security.mjs",
+    "prebuild": "node scripts/patch-dependency-security.mjs",
+    "predev": "node scripts/patch-dependency-security.mjs",
+    "test:security": "tsx --test tests/dependency-security.test.ts tests/auth-security.test.ts",
+    "prestart": "node scripts/patch-dependency-security.mjs"
   },
   "dependencies": {
     "@signpdf/placeholder-pdf-lib": "^3.3.0",
@@ -37,9 +42,9 @@
     "jszip": "^3.10.1",
     "konva": "^10.3.3",
     "lucide-react": "^1.27.0",
-    "next": "16.2.12",
+    "next": "16.4.2",
     "next-safe-action": "^8.6.0",
-    "node-forge": "^1.4.0",
+    "node-forge": "1.4.0",
     "papaparse": "^5.5.4",
     "pdf-lib": "^1.17.1",
     "pg": "^8.22.0",
@@ -65,10 +70,19 @@
     "@types/react-dom": "^19",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
-    "eslint-config-next": "16.2.12",
+    "eslint-config-next": "16.4.2",
     "jsdom": "^29.1.1",
     "tailwindcss": "^4",
     "tsx": "^4.23.1",
     "typescript": "^5"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "11.1.1"
+    },
+    "brace-expansion@^1.1.7": "1.1.21",
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.12"
+    }
   }
 }

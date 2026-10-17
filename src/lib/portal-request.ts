@@ -2,8 +2,9 @@ import { and, eq, gt } from "drizzle-orm";
 import { db } from "@/db";
 import { clientPortalSessions, clients } from "@/db/schema";
 import { CLIENT_PORTAL_COOKIE, portalHash } from "@/lib/client-portal";
+import { PortalPatients } from "@/lib/portal-patients";
 
-export async function portalRequestClient(request: Request, organizationId: string) {
+export async function portalRequestClient(request: Request, organizationId: string, patientId?: string) {
   const token = request.headers.get("cookie")?.match(new RegExp(`(?:^|; )${CLIENT_PORTAL_COOKIE}=([^;]+)`))?.[1];
   if (!token) return undefined;
   let decoded: string;
@@ -11,5 +12,6 @@ export async function portalRequestClient(request: Request, organizationId: stri
   const [client] = await db.select({ id: clients.id, name: clients.name, phone: clients.phone, email: clients.email }).from(clientPortalSessions)
     .innerJoin(clients, eq(clients.id, clientPortalSessions.clientId))
     .where(and(eq(clientPortalSessions.organizationId, organizationId), eq(clients.organizationId, organizationId), eq(clientPortalSessions.tokenHash, portalHash(decoded)), gt(clientPortalSessions.expiresAt, new Date()))).limit(1);
-  return client;
+  if (!client) return undefined;
+  return patientId ? new PortalPatients(db).resolve(organizationId, client.id, patientId) : client;
 }

@@ -1,3 +1,4 @@
+import { inspectPublicBooking, lockBookingPatient, PublicBookingConflict } from "@/lib/public-booking-guard";
 import { roomBookingError } from "@/lib/room-errors";
 import { and, eq } from "drizzle-orm";
 
@@ -45,6 +46,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     }
     const updatedAt = new Date();
     const rescheduled = await withAppointmentLock(item.organizationId, item.professionalId, async (tx) => {
+      await lockBookingPatient(tx, item.organizationId, item.clientId);
+      await inspectPublicBooking(tx, { organizationId: item.organizationId, clientId: item.clientId, serviceId: item.serviceId, professionalId: item.professionalId!, startsAt, endsAt: new Date(startsAt.getTime() + item.duration * 60_000), repeatPolicy: "warn", acknowledgedIds: [], excludeId: item.id });
       const available = await isTimeAvailable({
         organizationId: item.organizationId, timezone: item.timezone, date: targetDate,
         serviceId: item.serviceId, professionalId: item.professionalId,
@@ -60,8 +63,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
         updatedAt,
       }).where(and(eq(appointments.id, item.id), eq(appointments.organizationId, item.organizationId)));
       return true;
-    }).catch(error => { if (roomBookingError(error)) return false; throw error; });
-    if (!rescheduled) return Response.json({ error: "Este horário não está mais disponível. Escolha outro." }, { status: 409 });
+    }).catch(error => { if (roomBookingError(error) || error instanceof PublicBookingConflict) return false; throw error; });
+    if (!rescheduled) return Response.json({ error: "Este horário está indisponível ou coincide com outro agendamento seu. Escolha outro." }, { status: 409 });
 
     const followUps: Promise<unknown>[] = [
       writeAuditLog({ organizationId: item.organizationId, action: "reschedule", entityType: "appointment", entityId: item.id, details: { from: item.startsAt.toISOString(), to: startsAt.toISOString(), source: "public_self_service" } }),

@@ -5,7 +5,7 @@ import { useState } from "react";
 export type VoucherQuote = { code: string; originalPriceInCents: number; discountInCents: number; finalPriceInCents: number };
 const money = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export function BookingVoucher({ slug, serviceId, initialCode, onChange, onPendingChange }: { slug: string; serviceId: string; initialCode: string; onChange: (value: VoucherQuote | null) => void; onPendingChange: (value: boolean) => void }) {
+export function BookingVoucher({ slug, serviceId, initialCode, patientId, onChange, onPendingChange }: { slug: string; serviceId: string; initialCode: string; patientId?: string; onChange: (value: VoucherQuote | null) => void; onPendingChange: (value: boolean) => void }) {
   const [code, setCode] = useState(initialCode);
   const [quote, setQuote] = useState<VoucherQuote | null>(null);
   const [message, setMessage] = useState("");
@@ -13,7 +13,7 @@ export function BookingVoucher({ slug, serviceId, initialCode, onChange, onPendi
   async function apply() {
     setPending(true); onPendingChange(true); setMessage(""); setQuote(null); onChange(null);
     try {
-      const response = await fetch(`/api/public/booking/${encodeURIComponent(slug)}/voucher`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ serviceId, code }) });
+      const response = await fetch(`/api/public/booking/${encodeURIComponent(slug)}/voucher`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ serviceId, code, patientId }) });
       const result = await response.json().catch(() => null);
       if (!response.ok || !result) throw new Error(result?.error || "Não foi possível consultar o voucher.");
       setQuote(result); onChange(result); setMessage("Voucher aplicado. O benefício será conferido novamente ao confirmar.");

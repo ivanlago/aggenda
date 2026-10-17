@@ -1,3 +1,4 @@
+import { PortalDependents } from "@/components/portal-dependents";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { consumedPackageQuantity } from "@/lib/package-remaining";
 import Link from "next/link";
@@ -235,6 +236,7 @@ export default async function ClientHistoryPage({
                     </ActionForm>
                   </details>}
       </section>
+      {canManage && <PortalDependents organizationId={organization.id} guardianId={client.id} />}
       {canReadClinical && <ClinicalWorkspace clientId={client.id} />}
       {canReadClinical && <CollapsiblePanel title="Fotografias clínicas" id="fotografias-clinicas" open={section === "photos"}>
         <p className="text-sm text-muted">Crie sessões de antes, evolução e depois para qualquer região corporal. Registros com a mesma sessão, região e vista são pareados automaticamente.</p>

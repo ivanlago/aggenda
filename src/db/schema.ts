@@ -1133,6 +1133,19 @@ export const clientPortalSessions = pgTable(
   ]
 );
 
+export const clientPortalDependents = pgTable("client_portal_dependents", {
+  organizationId: uuid("organization_id").notNull(),
+  guardianId: uuid("guardian_id").notNull(),
+  clientId: uuid("client_id").notNull(),
+  createdBy: text("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => [
+  primaryKey({ columns: [table.organizationId, table.guardianId, table.clientId] }),
+  foreignKey({ columns: [table.organizationId, table.guardianId], foreignColumns: [clients.organizationId, clients.id], name: "portal_guardian_tenant_fk" }).onDelete("cascade"),
+  foreignKey({ columns: [table.organizationId, table.clientId], foreignColumns: [clients.organizationId, clients.id], name: "portal_dependent_tenant_fk" }).onDelete("cascade"),
+  check("portal_dependent_not_self", sql`${table.guardianId} <> ${table.clientId}`),
+]);
+
 export const services = pgTable(
   "services",
   {
@@ -1148,6 +1161,7 @@ export const services = pgTable(
     shortName: text("short_name"),
     preparation: text("preparation"),
     returnInterval: integer("return_interval"),
+    publicRepeatPolicy: text("public_repeat_policy").default("warn").notNull(),
     returnIntervalUnit: text("return_interval_unit").default("days").notNull(),
     returnReminderDays: integer("return_reminder_days").default(7).notNull(),
     imageUrl: text("image_url"),

@@ -9,7 +9,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
   const body = await request.json().catch(() => ({}));
   const [organization] = await db.select({ id: organizations.id }).from(organizations).where(and(eq(organizations.slug, slug), eq(organizations.bookingEnabled, true))).limit(1);
   if (!organization) return Response.json({ error: "Agenda indisponível." }, { status: 404 });
-  const client = await portalRequestClient(request, organization.id);
+  const client = await portalRequestClient(request, organization.id, typeof body.patientId === "string" ? body.patientId : undefined);
   if (!client) return Response.json({ error: "Identifique-se antes de aplicar o voucher." }, { status: 401 });
   const code = voucherCode(String(body.code ?? ""));
   if (!/^[0-9a-f-]{36}$/i.test(String(body.serviceId ?? ""))) return Response.json({ error: "Selecione um procedimento válido." }, { status: 400 });

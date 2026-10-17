@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:public-booking": "tsx --test tests/public-booking.test.ts",
     "test:clinical": "tsx --test tests/clinical-workspace.test.ts tests/permissions.test.ts tests/attendance-ui.test.tsx",
     "test:nfse": "tsx --test tests/nfse.test.ts tests/nfse-custody.test.ts",
     "dev": "next dev",

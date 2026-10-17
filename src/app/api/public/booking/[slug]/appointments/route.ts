@@ -1,12 +1,11 @@
 import { roomBookingError } from "@/lib/room-errors";
-import { and, eq, gt, inArray, lt } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 import { db } from "@/db";
 import {
   appointments,
   auditLogs,
-  clients,
   financialEntries,
   organizations,
   paymentChargeEvents,
@@ -26,6 +25,7 @@ import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
 import { sendAppointmentManagementEmail } from "@/lib/email";
 import { portalRequestClient } from "@/lib/portal-request";
 import { reserveBookingVoucher } from "@/lib/voucher-booking";
+import { inspectPublicBooking, lockBookingPatient, PublicBookingConflict } from "@/lib/public-booking-guard";
 import { normalizeBrazilianPhone } from "@/lib/phone";
 
 export async function POST(
@@ -33,7 +33,8 @@ export async function POST(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
-  const body = (await request.json()) as Record<string, unknown>;
+  const payload = await request.json().catch(() => null);
+  const body = (payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {}) as Record<string, unknown>;
   let name = String(body.name ?? "").trim();
   let phone = normalizeBrazilianPhone(String(body.phone ?? ""));
   let email = String(body.email ?? "").trim() || null;
@@ -42,6 +43,7 @@ export async function POST(
   const serviceId = String(body.serviceId ?? "");
   const professionalId = String(body.professionalId ?? "");
   const startsAt = new Date(String(body.startsAt ?? ""));
+  if (![serviceId, professionalId].every(id => /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id))) return Response.json({ error: "Selecione um procedimento e um profissional válidos." }, { status: 400 });
   if (Number.isNaN(startsAt.getTime())) return Response.json({ error: "Selecione um horário válido." }, { status: 400 });
   const [organization] = await db
     .select()
@@ -53,7 +55,7 @@ export async function POST(
   if (!organization) {
     return Response.json({ error: "Agenda indisponível." }, { status: 404 });
   }
-  const portalClient = await portalRequestClient(request, organization.id);
+  const portalClient = await portalRequestClient(request, organization.id, String(body.patientId || "") || undefined);
   if (portalClient) {
     name = portalClient.name; phone = portalClient.phone ? normalizeBrazilianPhone(portalClient.phone) : ""; email = portalClient.email;
   } else {
@@ -61,7 +63,7 @@ export async function POST(
   }
   const [[service], [professional]] = await Promise.all([
     db
-      .select({ duration: services.durationMinutes, price: services.priceInCents, name: services.name, depositType: services.depositType, depositValue: services.depositValue, expiration: services.depositExpirationMinutes })
+      .select({ duration: services.durationMinutes, price: services.priceInCents, name: services.name, depositType: services.depositType, depositValue: services.depositValue, expiration: services.depositExpirationMinutes, repeatPolicy: services.publicRepeatPolicy })
       .from(services)
       .where(
         and(
@@ -87,9 +89,22 @@ export async function POST(
   if (!service || !professional) {
     return Response.json({ error: "Serviço ou profissional inválido." }, { status: 400 });
   }
+  const targetDate = organizationDate(startsAt, organization.timezone);
+  const today = organizationDate(new Date(), organization.timezone);
+  const maximum = new Date(`${today}T12:00:00Z`);
+  maximum.setUTCDate(maximum.getUTCDate() + organization.bookingHorizonDays);
+  if (targetDate < today || targetDate > maximum.toISOString().slice(0, 10)) return Response.json({ error: "Data fora da janela de agendamento." }, { status: 400 });
+  const acknowledgedIds = Array.isArray(body.acknowledgedAppointmentIds) ? body.acknowledgedAppointmentIds.filter((id): id is string => typeof id === "string").slice(0, 100) : [];
   try {
     const manageToken = randomUUID();
     const appointment = await withAppointmentLock(organization.id, professionalId, async (tx) => {
+      await lockBookingPatient(tx, organization.id, portalClient.id);
+      const replay = await inspectPublicBooking(tx, {
+        organizationId: organization.id, clientId: portalClient.id, serviceId, professionalId, startsAt,
+        endsAt: new Date(startsAt.getTime() + service.duration * 60_000),
+        repeatPolicy: service.repeatPolicy, acknowledgedIds,
+      });
+      if (replay) return { ...replay, replay: true as const };
       const pricing = await reserveBookingVoucher(tx, organization.id, portalClient.id, voucherCode, service.price);
       const { voucher } = pricing;
       const finalPrice = pricing.finalPriceInCents;
@@ -102,30 +117,8 @@ export async function POST(
         noticeHours: organization.bookingNoticeHours, startsAt,
       });
       if (!available) throw new Error("APPOINTMENT_CONFLICT");
-      const [existing] = portalClient ? [{ id: portalClient.id }] : await tx
-        .select({ id: clients.id })
-        .from(clients)
-        .where(
-          and(
-            eq(clients.organizationId, organization.id),
-            eq(clients.phone, phone)
-          )
-        )
-        .limit(1);
-      let clientId = existing?.id;
-      if (!clientId) {
-        const [created] = await tx
-          .insert(clients)
-          .values({ organizationId: organization.id, name, phone, email })
-          .returning({ id: clients.id });
-        clientId = created.id;
-      }
+      const clientId = portalClient.id;
       const appointmentEnd = new Date(startsAt.getTime() + service.duration * 60_000);
-      const [overlapping] = await tx.select({ id: appointments.id }).from(appointments).where(and(
-        eq(appointments.organizationId, organization.id), eq(appointments.clientId, clientId),
-        inArray(appointments.status, ["scheduled", "confirmed"]), lt(appointments.startsAt, appointmentEnd), gt(appointments.endsAt, startsAt)
-      )).limit(1);
-      if (overlapping) throw new Error("CLIENT_APPOINTMENT_CONFLICT");
       const [created] = await tx
         .insert(appointments)
         .values({
@@ -159,9 +152,14 @@ export async function POST(
         await tx.update(vouchers).set({ usedCount: voucher.usedCount + 1 }).where(eq(vouchers.id, voucher.id));
         await tx.insert(voucherRedemptions).values({ organizationId: organization.id, voucherId: voucher.id, clientId, appointmentId: created.id, discountInCents: pricing.discountInCents });
       }
-      return { ...created, finalPrice, depositAmount };
+      return { ...created, finalPrice, depositAmount, replay: false as const };
 
     });
+    if (appointment.replay) {
+      const [charge] = await db.select({ url: paymentCharges.invoiceUrl }).from(paymentCharges)
+        .where(and(eq(paymentCharges.organizationId, organization.id), eq(paymentCharges.originId, appointment.id), eq(paymentCharges.originType, "appointment"))).limit(1);
+      return Response.json({ id: appointment.id, existing: true, paymentUrl: charge?.url || undefined, depositPending: appointment.depositStatus === "pending", manageUrl: appointment.publicManageToken ? `/agendamento/${appointment.publicManageToken}` : undefined }, { headers: { "Cache-Control": "no-store" } });
+    }
     const { finalPrice, depositAmount } = appointment;
     await syncAppointmentFinancialEntry(appointment.id);
     if (depositAmount > 0) {
@@ -204,6 +202,10 @@ export async function POST(
     }
     return Response.json({ id: appointment.id, manageToken, paymentUrl, manageUrl: `/agendamento/${manageToken}` }, { status: 201 });
   } catch (error) {
+    if (error instanceof PublicBookingConflict) {
+      const messages = { CLIENT_APPOINTMENT_CONFLICT: "Este paciente já possui outro agendamento neste horário. Reagende o existente ou escolha um horário sem sobreposição.", SERVICE_REPEAT_BLOCKED: "Já existe uma reserva futura deste procedimento. Gerencie a reserva existente ou fale com a clínica.", SERVICE_REPEAT_CONFIRMATION: "Este paciente já possui reserva futura deste procedimento. Confira e confirme se deseja outra sessão." };
+      return Response.json({ error: messages[error.code], code: error.code, existingAppointments: error.existing.map(item => ({ id: item.id, startsAt: item.startsAt, manageUrl: item.publicManageToken ? `/agendamento/${item.publicManageToken}` : undefined })) }, { status: 409, headers: { "Cache-Control": "no-store" } });
+    }
     const roomError = roomBookingError(error);
     if (roomError) return Response.json({ error: roomError }, { status: 409 });
     if (error instanceof Error && error.message === "VOUCHER_INVALID") return Response.json({ error: "Voucher inválido, expirado, esgotado ou indisponível para este cliente." }, { status: 400 });

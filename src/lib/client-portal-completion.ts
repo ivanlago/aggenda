@@ -19,6 +19,7 @@ export async function completeClientPortalAccess(request: {
       .where(and(eq(clientPortalAccessRequests.id, request.id), isNull(clientPortalAccessRequests.usedAt)))
       .returning({ id: clientPortalAccessRequests.id });
     if (!claimed) return null;
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`portal-registration:${request.organizationId}`}, 0))`);
     let clientId = request.clientId;
     if (!clientId) {
       if (!request.pendingName || !request.pendingPhone) throw new Error("INCOMPLETE_REGISTRATION");

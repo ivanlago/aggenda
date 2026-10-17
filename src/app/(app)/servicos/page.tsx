@@ -1,3 +1,4 @@
+import { ServiceRepeatPolicy } from "@/components/service-repeat-policy";
 import { eq } from "drizzle-orm";
 import { Calculator, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -50,7 +51,7 @@ export default async function ServicesPage() {
               <label className="grid min-w-0 content-start gap-2 text-sm font-bold"><span className="self-end">Custo estimado em reais</span><input className="field" name="estimatedCost" inputMode="decimal" placeholder="Produtos, taxas etc." /></label>
             <ServiceDepositFields /></div>
             <div className="grid min-w-0 items-start gap-5 sm:col-span-2 lg:grid-cols-[2fr_1fr]"><ServiceReturnFields /><div className="min-w-0"><EntityImageField label={`Imagem do ${organization.serviceLabel.toLowerCase()}`} /></div></div>
-            <div className="border-t pt-4 sm:col-span-2"><button className="primary-button">Adicionar {organization.serviceLabel.toLowerCase()}</button></div>
+            <ServiceRepeatPolicy /><div className="border-t pt-4 sm:col-span-2"><button className="primary-button">Adicionar {organization.serviceLabel.toLowerCase()}</button></div>
           </form>
         </ServiceCreateToggle>}
         <section className="panel">
@@ -90,7 +91,7 @@ export default async function ServicesPage() {
                       <label className="grid min-w-0 content-start gap-2 text-sm font-bold"><span className="self-end">Custo estimado em reais</span><input className="field" name="estimatedCost" inputMode="decimal" defaultValue={(item.estimatedCostInCents / 100).toFixed(2).replace(".", ",")} /></label>
                     <ServiceDepositFields type={item.depositType} value={item.depositValue} /></div>
                     <div className="grid min-w-0 items-start gap-5 sm:col-span-2 lg:grid-cols-[2fr_1fr]"><ServiceReturnFields settings={item} /><div className="min-w-0"><EntityImageField currentUrl={item.imageUrl} label={`Imagem do ${organization.serviceLabel.toLowerCase()}`} /></div></div>
-                    <label className="flex items-center gap-2 text-sm font-bold sm:col-span-2"><input type="checkbox" name="isActive" defaultChecked={item.isActive} /> Ativo</label>
+                    <ServiceRepeatPolicy value={item.publicRepeatPolicy} /><label className="flex items-center gap-2 text-sm font-bold sm:col-span-2"><input type="checkbox" name="isActive" defaultChecked={item.isActive} /> Ativo</label>
                     <div className="border-t pt-4 sm:col-span-2"><button className="primary-button">Salvar alterações</button></div>
                   </form>
                 </ModalShell>}

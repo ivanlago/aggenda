@@ -1,0 +1,3 @@
+export function ServiceRepeatPolicy({ value = "warn" }: { value?: string }) {
+  return <label className="grid gap-2 text-sm font-bold sm:col-span-2">Reservas repetidas no portal do cliente<select className="field" name="publicRepeatPolicy" defaultValue={value}><option value="warn">Alertar e pedir confirmação para outra sessão</option><option value="block">Bloquear se já houver reserva futura do mesmo procedimento</option></select><span className="text-xs font-normal text-muted">Horários sobrepostos do mesmo paciente são sempre bloqueados. A regra não altera reservas existentes.</span></label>;
+}

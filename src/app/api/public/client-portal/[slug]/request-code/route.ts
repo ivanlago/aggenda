@@ -3,10 +3,18 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/db";
 import { clientPortalAccessRequests, clients, organizations } from "@/db/schema";
-import { CLIENT_CHALLENGE_COOKIE, CLIENT_CODE_TTL_MINUTES, createPortalCredentials, secureCookie } from "@/lib/client-portal";
+import { CLIENT_CHALLENGE_COOKIE, CLIENT_CODE_TTL_MINUTES, createPortalCredentials, portalHash, secureCookie } from "@/lib/client-portal";
+import { normalizeBrazilianPhone } from "@/lib/phone";
 import { sendClientPortalAccessEmail } from "@/lib/email";
 
 const genericMessage = "Se os dados puderem ser validados, enviaremos um link e um código de acesso por e-mail.";
+// Mesmo corpo e cookie para cadastros existentes, ausentes ou ambíguos.
+function genericResponse(token = createPortalCredentials().token) {
+  const response = NextResponse.json({ message: genericMessage });
+  response.cookies.set(CLIENT_CHALLENGE_COOKIE, token, { httpOnly: true, secure: secureCookie(), sameSite: "lax", path: "/", maxAge: CLIENT_CODE_TTL_MINUTES * 60 });
+  return response;
+}
+
 
 export async function POST(request: Request, context: { params: Promise<{ slug: string }> }) {
   try {
@@ -24,9 +32,9 @@ async function requestAccessCode(request: Request, { params }: { params: Promise
   const identifier = typeof body.identifier === "string" ? body.identifier.trim().toLowerCase() : "";
   const pendingName = typeof body.name === "string" ? body.name.trim() : "";
   const registrationEmail = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-  const registrationPhone = typeof body.phone === "string" ? body.phone.replace(/\D/g, "") : "";
+  const registrationPhone = typeof body.phone === "string" ? normalizeBrazilianPhone(body.phone) : "";
   const isEmail = /^\S+@\S+\.\S+$/.test(identifier);
-  const phone = identifier.replace(/\D/g, "");
+  const phone = normalizeBrazilianPhone(identifier);
   if (intent === "login" && !isEmail && phone.length < 10) return NextResponse.json({ error: "Informe um e-mail ou celular com DDD." }, { status: 400 });
   if (intent === "register" && (pendingName.length < 2 || !/^\S+@\S+\.\S+$/.test(registrationEmail) || registrationPhone.length < 10)) return NextResponse.json({ error: "Informe nome, e-mail válido e celular com DDD." }, { status: 400 });
 
@@ -40,22 +48,27 @@ async function requestAccessCode(request: Request, { params }: { params: Promise
   const lookupEmail = intent === "register" ? registrationEmail : isEmail ? identifier : "";
   const lookupPhone = intent === "register" ? registrationPhone : phone;
   const matches = await db.select({ clientId: clients.id, clientName: clients.name, clientEmail: clients.email, clientPhone: clients.phone }).from(clients)
-    .where(and(eq(clients.organizationId, organization.id), or(sql`lower(${clients.email}) = ${lookupEmail}`, eq(clients.phone, lookupPhone))));
+    .where(and(eq(clients.organizationId, organization.id), or(lookupEmail ? sql`lower(${clients.email}) = ${lookupEmail}` : undefined, lookupPhone ? eq(clients.phone, lookupPhone) : undefined)));
   // Um identificador compartilhado não deve selecionar um cadastro arbitrariamente.
-  if (intent === "login" && matches.length !== 1) return NextResponse.json({ message: genericMessage });
+  if (matches.length > 1 || (intent === "login" && matches.length !== 1)) return genericResponse();
   const emailMatch = matches.find((item) => item.clientEmail?.toLowerCase() === lookupEmail);
   const phoneMatch = matches.find((item) => item.clientPhone === lookupPhone);
-  if (intent === "register" && phoneMatch && phoneMatch.clientId !== emailMatch?.clientId) return NextResponse.json({ message: genericMessage });
+  if (intent === "register" && phoneMatch && phoneMatch.clientId !== emailMatch?.clientId) return genericResponse();
   const match = emailMatch || phoneMatch;
-  if (intent === "login" && !match?.clientEmail) return NextResponse.json({ message: genericMessage });
+  if (intent === "login" && !match?.clientEmail) return genericResponse();
   const email = match?.clientEmail?.trim().toLowerCase() || registrationEmail;
   const clientName = match?.clientName || pendingName;
 
   const recentSince = new Date(Date.now() - 60_000);
-  const [recent] = await db.select({ id: clientPortalAccessRequests.id }).from(clientPortalAccessRequests)
+  const [recent] = await db.select({ id: clientPortalAccessRequests.id, tokenHash: clientPortalAccessRequests.tokenHash }).from(clientPortalAccessRequests)
     .where(and(eq(clientPortalAccessRequests.organizationId, organization.id), eq(clientPortalAccessRequests.email, email), isNull(clientPortalAccessRequests.usedAt), gt(clientPortalAccessRequests.createdAt, recentSince)))
     .orderBy(desc(clientPortalAccessRequests.createdAt)).limit(1);
-  if (recent) return NextResponse.json({ message: genericMessage });
+  if (recent) {
+    const challenge = request.headers.get("cookie")?.match(new RegExp(`(?:^|; )${CLIENT_CHALLENGE_COOKIE}=([^;]+)`))?.[1];
+    let token: string | undefined;
+    try { if (challenge && portalHash(decodeURIComponent(challenge)) === recent.tokenHash) token = decodeURIComponent(challenge); } catch {}
+    return genericResponse(token);
+  }
 
   const credentials = createPortalCredentials();
   const [created] = await db.insert(clientPortalAccessRequests).values({
@@ -77,7 +90,5 @@ async function requestAccessCode(request: Request, { params }: { params: Promise
     await db.update(clientPortalAccessRequests).set({ usedAt: new Date() }).where(eq(clientPortalAccessRequests.id, created.id));
     throw error;
   }
-  const response = NextResponse.json({ message: genericMessage, codeRequested: true });
-  response.cookies.set(CLIENT_CHALLENGE_COOKIE, credentials.token, { httpOnly: true, secure: secureCookie(), sameSite: "lax", path: "/", maxAge: CLIENT_CODE_TTL_MINUTES * 60 });
-  return response;
+  return genericResponse(credentials.token);
 }

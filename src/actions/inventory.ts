@@ -32,7 +32,7 @@ export async function moveInventory(data: FormData) {
 
     const [lot] = await tx.select({ id: inventoryLots.id }).from(inventoryLots).where(and(eq(inventoryLots.organizationId, organization.id), eq(inventoryLots.productId, productId))).limit(1);
     const [tracked] = await tx.select({ tracked: inventoryProducts.lotTracking }).from(inventoryProducts).where(eq(inventoryProducts.id, productId));
-    if (lot || tracked.tracked) throw new Error("Este produto usa controle por lote. Registre a movimentação em Estoque → Lotes e recolhimentos.");
+    if (lot || tracked.tracked) throw new Error("Este produto usa controle por lote. Selecione o lote no formulário de Movimentação.");
     let saleBalance = product.saleBalance;
     let consumptionBalance = product.consumptionBalance;
     let balanceAfter = saleBalance;
@@ -44,13 +44,13 @@ export async function moveInventory(data: FormData) {
       saleBalance -= entered;
       consumptionBalance += entered;
       balanceAfter = consumptionBalance;
-      movementNotes = "Transferido do estoque de venda para consumo";
+      movementNotes = ["Transferido do estoque de venda para consumo", notes].filter(Boolean).join(" · ");
       if (saleBalance === 0) await tx.update(retailProductVariants).set({ isForSale: false, updatedAt: new Date() }).where(eq(retailProductVariants.id, product.variantId));
     } else if (type === "usage") {
       if (consumptionBalance < entered) throw new Error("Saldo insuficiente no estoque de consumo.");
       consumptionBalance -= entered;
       balanceAfter = consumptionBalance;
-      movementNotes = "Retirada para uso interno";
+      movementNotes = ["Retirada para uso interno", notes].filter(Boolean).join(" · ");
     } else if (type === "entry" && !product.isForSale) {
       consumptionBalance += entered;
       balanceAfter = consumptionBalance;

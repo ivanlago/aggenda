@@ -332,7 +332,7 @@ export function StockProductList({
               <th className="p-3 text-right">Venda unit.</th>
               <th className="p-3 text-right">Venda total</th>
               {canManage && (
-                <th className="p-3">
+                <th className="relative p-3">
                   <span className="sr-only">Ações</span>
                 </th>
               )}

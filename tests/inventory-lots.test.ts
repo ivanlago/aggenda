@@ -42,7 +42,7 @@ test("real migration, lot actions, clinical use, FEFO, expiry blocking, reversal
     await pg.query("INSERT INTO clients(id,organization_id,name) VALUES ($1,$2,'Test patient')", [client, org]);
     await pg.query("INSERT INTO inventory_products(id,organization_id,name,unit,current_quantity_millis,consumption_quantity_millis) VALUES ($1,$2,'Serum','mL',5000,2000)", [product, org]);
     await pg.exec(await readFile("drizzle/0078_inventory_lot_control.sql", "utf8"));
-    const output = await build({ entryPoints: ["src/actions/inventory-lots.ts", "src/actions/inventory.ts", "src/lib/inventory.ts", "src/actions/retail.ts"], outdir: "unused", bundle: true, write: false, format: "cjs", platform: "node", packages: "external", plugins: [{ name: key, setup(builder) {
+    const output = await build({ entryPoints: ["src/actions/inventory-lots.ts", "src/actions/inventory.ts", "src/lib/inventory.ts", "src/actions/retail.ts", "src/actions/stock-movement.ts"], outdir: "unused", bundle: true, write: false, format: "cjs", platform: "node", packages: "external", plugins: [{ name: key, setup(builder) {
       const mocks: Record<string, string> = { "@/db": `export const db=globalThis.${key}.db;`, "@/lib/session": `export async function requireOrganization(){const c=globalThis.${key};return {session:{user:{id:c.userId}},organization:{id:c.organizationId,role:c.role,timezone:'America/Bahia'}}} export async function requireProfessionalScope(){return 'unused'}`, "next/cache": "export function revalidatePath(){}" };
       builder.onResolve({ filter: /./ }, args => mocks[args.path] ? { path: args.path, namespace: key } : undefined);
       builder.onLoad({ filter: /./, namespace: key }, args => ({ contents: mocks[args.path], loader: "js" }));
@@ -56,9 +56,14 @@ test("real migration, lot actions, clinical use, FEFO, expiry blocking, reversal
     const old = modules.find(module => module.moveInventory)!;
     const inventory = modules.find(module => module.updateAppointmentAndInventory)!;
     const retail = modules.find(module => module.registerRetailSale)!;
+    const movement = modules.find(module => module.saveInventoryMovement)!;
+    const unified = (fields: Record<string, string>) => {
+      const form = new FormData(); for (const [name, value] of Object.entries({ productId: product, notes: "Unified stock movement", ...fields })) form.set(name, value);
+      return (movement.saveInventoryMovement as (form: FormData) => Promise<unknown>)(form);
+    };
     const call = (action: string, fields: Record<string, string>) => { const form = new FormData(); for (const [name, value] of Object.entries(fields)) form.set(name, value); return (actions[action] as (form: FormData) => Promise<unknown>)(form); };
     const register = (code: string, quantity: string, pool: string, expiresOn = "2098-01-01", mode = "existing") => call("registerInventoryLot", { productId: product, code, quantity, pool, expiresOn, mode });
-    await register("EXPIRED", "2", "sale", "2000-01-01");
+    await unified({ type: "entry", useLots: "on", mode: "existing", code: "EXPIRED", quantity: "2", pool: "sale", expiresOn: "2000-01-01" });
     await register("LATER", "3", "sale", "2099-01-01");
     await assert.rejects(call("activateInventoryLots", { productId: product }), /Distribua/);
     await register("FIRST", "2", "consumption");
@@ -67,6 +72,12 @@ test("real migration, lot actions, clinical use, FEFO, expiry blocking, reversal
     await assert.rejects(register("FIRST", "1", "sale", "2097-01-01", "entry"), /validade/);
     const lots = await database.select().from(schema.inventoryLots).where(eq(schema.inventoryLots.productId, product));
     const first = lots.find(lot => lot.code === "FIRST")!, expired = lots.find(lot => lot.code === "EXPIRED")!;
+    await assert.rejects(unified({ type: "usage", quantity: "1", useLots: "off" }), /Selecione o lote/);
+    await assert.rejects(unified({ type: "usage", quantity: "1", lotId: expired.id }), /Lote indisponível/);
+    await assert.rejects(unified({ type: "entry", quantity: "1", lotId: randomUUID(), pool: "sale" }), /não pertence/);
+    await unified({ type: "consumption", quantity: "0.25", lotId: first.id });
+    await unified({ type: "usage", quantity: "0.25", lotId: first.id });
+    await unified({ type: "entry", quantity: "0.25", lotId: first.id, pool: "sale", code: "IGNORED-CLIENT-CODE", expiresOn: "2000-01-01" });
     context.organizationId = outside;
     await assert.rejects(register("OUTSIDE", "1", "sale", "2099-01-01", "entry"), /não encontrado/);
     context.organizationId = org;
@@ -111,8 +122,8 @@ test("real migration, lot actions, clinical use, FEFO, expiry blocking, reversal
     assert.equal((await database.select().from(schema.inventoryLots).where(eq(schema.inventoryLots.id, first.id)))[0].status, "recalled");
     await assert.rejects(call("moveInventoryLot", { lotId: first.id, type: "usage", pool: "consumption", quantity: "1", reason: "Try blocked use" }), /Lote indisponível/);
     for (const item of follow) await call("updateRecallFollowUp", { followUpId: item.id, status: "resolved", notes: "Contact and follow-up completed" });
-    await call("moveInventoryLot", { lotId: first.id, type: "discard", pool: "sale", quantity: "1", reason: "Returned to supplier" });
-    await call("moveInventoryLot", { lotId: first.id, type: "discard", pool: "consumption", quantity: "1", reason: "Returned to supplier" });
+    await unified({ lotId: first.id, type: "exit", pool: "sale", quantity: "1" });
+    await unified({ lotId: first.id, type: "exit", pool: "consumption", quantity: "1" });
     await call("closeInventoryRecall", { recallId: recall.id });
     assert.equal((await database.select().from(schema.inventoryLotRecalls).where(eq(schema.inventoryLotRecalls.id, recall.id)))[0].status, "closed");
     // The real POS action must roll back financial and sale rows when valid lot stock is insufficient.
@@ -138,8 +149,19 @@ test("real migration, lot actions, clinical use, FEFO, expiry blocking, reversal
     assert.ok(sold);
     const reverse = new FormData(); reverse.set("saleId", actualSale.id); reverse.set("operation", "refund"); reverse.set("reason", "Customer return");
     await (retail.reverseRetailSale as (form: FormData) => Promise<unknown>)(reverse);
+    const ordinary = randomUUID();
+    await pg.query("INSERT INTO inventory_products(id,organization_id,name,current_quantity_millis,consumption_quantity_millis) VALUES ($1,$2,'Ordinary product',5000,0)", [ordinary, org]);
+    await pg.query("INSERT INTO retail_product_variants(id,organization_id,inventory_product_id,is_for_sale) VALUES ($1,$2,$3,true)", [randomUUID(), org, ordinary]);
+    await unified({ productId: ordinary, type: "entry", quantity: "1" });
+    await unified({ productId: ordinary, type: "consumption", quantity: "2" });
+    await unified({ productId: ordinary, type: "usage", quantity: "1" });
+    await unified({ productId: ordinary, type: "exit", quantity: "1" });
+    const [ordinaryStock] = await database.select().from(schema.inventoryProducts).where(eq(schema.inventoryProducts.id, ordinary));
+    assert.equal(ordinaryStock.currentQuantityMillis, 3000);
+    assert.equal(ordinaryStock.consumptionQuantityMillis, 1000);
     context.role = "receptionist";
     await assert.rejects(call("registerInventoryLot", { productId: product }));
+    await assert.rejects(unified({ productId: ordinary, type: "entry", quantity: "1" }));
     await assert.rejects(call("updateRecallFollowUp", { followUpId: follow[0].id, status: "resolved", notes: "Unauthorized access" }));
     const final = (await database.select().from(schema.inventoryProducts).where(eq(schema.inventoryProducts.id, product)))[0];
     const finalLots = await database.select().from(schema.inventoryLots).where(and(eq(schema.inventoryLots.productId, product), eq(schema.inventoryLots.organizationId, org)));

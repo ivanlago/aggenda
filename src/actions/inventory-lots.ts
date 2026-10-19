@@ -31,9 +31,9 @@ export async function registerInventoryLot(form: FormData) {
     if (mode === "entry") {
       const aggregate = pool === "sale" ? "currentQuantityMillis" : "consumptionQuantityMillis";
       await tx.update(inventoryProducts).set({ [aggregate]: total + amount, updatedAt: new Date() }).where(eq(inventoryProducts.id, productId));
-      await tx.insert(inventoryMovements).values({ organizationId: organization.id, productId, type: "entry", quantityMillis: amount, balanceAfterMillis: total + amount, notes: `Lote ${code} · ${pool === "sale" ? "venda" : "consumo"}`, createdByUserId: session.user.id });
+      await tx.insert(inventoryMovements).values({ organizationId: organization.id, productId, type: "entry", quantityMillis: amount, balanceAfterMillis: total + amount, notes: [`Lote ${code} · ${pool === "sale" ? "venda" : "consumo"}`, text(form, "notes").slice(0, 1000)].filter(Boolean).join(" · "), createdByUserId: session.user.id });
     }
-    await lotAudit(tx, organization.id, session.user.id, `inventory.lot.${mode}`, lot.id, { amount, pool });
+    await lotAudit(tx, organization.id, session.user.id, `inventory.lot.${mode}`, lot.id, { amount, pool, notes: text(form, "notes").slice(0, 1000) || null });
   }); refresh();
 }
 

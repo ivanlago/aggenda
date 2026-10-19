@@ -20,6 +20,7 @@ export const clinicalConsultationSchema = z.object({
     heartRate: number(1, 400), temperature: number(20, 50), oxygenSaturation: number(1, 100),
   }).refine(data => (data.systolic == null) === (data.diastolic == null), "Informe os dois valores de pressão arterial."),
   applications: z.array(z.object({
+    lotId: z.string().uuid().optional(),
     product: z.string().trim().min(1).max(200), lot: z.string().trim().min(1).max(100),
     expiresOn: date.refine(value => Boolean(value), "Informe a validade."),
     quantity: number(0.001, 100000).refine(value => value != null, "Informe a quantidade."),

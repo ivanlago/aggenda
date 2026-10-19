@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { db } from "../db";
 import { appointments, auditLogs, clients, clinicalConsultationRecords, clinicalSummaryVersions } from "../db/schema";
 import { clinicalConsultationSchema, clinicalSummarySchema, type ClinicalConsultationData, type ClinicalSummaryData } from "./clinical-record";
+import { consumeClinicalLots } from "./clinical-lot-consumption";
 
 /** Internal persistence: callers must authorize session, role and professional scope. */
 export class ClinicalRepository {
@@ -39,6 +40,7 @@ export class ClinicalRepository {
         if (parent?.kind !== "evolution") throw new Error("Registro original não encontrado neste atendimento.");
       }
       const [row] = await tx.insert(clinicalConsultationRecords).values({ organizationId: input.organizationId, clientId: input.clientId, appointmentId: input.appointmentId, authorUserId: input.userId, requestKey: input.requestKey, kind: input.parentRecordId ? "addendum" : "evolution", parentRecordId: input.parentRecordId, data }).returning({ id: clinicalConsultationRecords.id });
+      if (!("addendum" in data)) await consumeClinicalLots(tx, { ...input, recordId: row.id, appointmentStatus: appointment.status, data });
       await tx.insert(auditLogs).values({ organizationId: input.organizationId, userId: input.userId, action: "create", entityType: "clinical_record", entityId: row.id, details: { appointmentId: input.appointmentId, kind: input.parentRecordId ? "addendum" : "evolution" } });
       return row;
     });

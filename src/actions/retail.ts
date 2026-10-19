@@ -1,4 +1,5 @@
 "use server";
+import { allocateLots, restoreLots } from "@/lib/inventory-lots";
 import { attendancePendingItems } from "@/lib/attendance-pending-items";
 import { z } from "zod";
 import { parseBeneficiary } from "@/lib/commission-beneficiary";
@@ -18,6 +19,7 @@ import {
   clients,
   services, servicePackages, servicePackageItems, clientPackages, clientPackageBalances,
   financialEntries,
+  inventoryLots,
   inventoryCategories,
   inventoryMovements,
   inventoryProducts,
@@ -163,9 +165,13 @@ export async function updateRetailVariant(data: FormData) {
       commissionRateBasisPoints: Math.min(10_000, Math.round(Number(text(data, "commissionRate").replace(",", ".") || 0) * 100)),
       isActive: data.get("isActive") === "on", updatedAt: new Date(),
     }).where(eq(retailProductVariants.id, variantId));
+    const [stockProduct] = await tx.select().from(inventoryProducts).where(and(eq(inventoryProducts.id, variant.inventoryProductId), eq(inventoryProducts.organizationId, organization.id))).for("update");
+    if (text(data, "unit") && text(data, "unit") !== stockProduct.unit) {
+      if (stockProduct.lotTracking || stockProduct.currentQuantityMillis || stockProduct.consumptionQuantityMillis) throw new Error("Não altere a unidade de um produto com saldo ou controle por lote. Cadastre outra apresentação com a unidade correta.");
+    }
     await tx.update(inventoryProducts).set({
       name: variantName === "Padrão" ? name : `${name} — ${variantName}`,
-      sku: text(data, "sku") || null, unit: text(data, "unit") || "unit", costInCents: money(data, "cost", false),
+      sku: text(data, "sku") || null, unit: text(data, "unit") || undefined, costInCents: money(data, "cost", false),
       minimumQuantityMillis: quantity(data, "minimumQuantity"),
       isActive: data.get("isActive") === "on", updatedAt: new Date(),
     }).where(and(eq(inventoryProducts.id, variant.inventoryProductId), eq(inventoryProducts.organizationId, organization.id)));
@@ -198,6 +204,8 @@ export async function deleteRetailProduct(data: FormData) {
       eq(appointmentInventoryConsumptions.productId, variant.inventoryProductId),
     )).limit(1),
   ]);
+  const [lotReference] = await db.select({ id: inventoryLots.id }).from(inventoryLots).where(and(eq(inventoryLots.organizationId, organization.id), eq(inventoryLots.productId, variant.inventoryProductId))).limit(1);
+  if (lotReference) return { error: "Este produto possui lotes e rastreabilidade. Desative-o para preservar o histórico." };
   if (saleReference.length || consumptionReference.length) {
     return { error: "Este produto possui histórico de venda ou procedimento. Desative-o para preservar os registros." };
   }
@@ -336,7 +344,7 @@ export async function registerRetailSale(data: FormData) {
     ));
     if (variants.length !== variantIds.length) throw new Error("Um ou mais produtos não estão disponíveis.");
     const stockIds = variants.map((item) => item.inventoryProductId).sort();
-    if (stockIds.length) await tx.execute(sql`select id from inventory_products where id in (${sql.join(stockIds.map((id) => sql`${id}`), sql`, `)}) for update`);
+    if (stockIds.length) await tx.execute(sql`select id from inventory_products where id in (${sql.join(stockIds.map((id) => sql`${id}`), sql`, `)}) order by id for update`);
     const stock = await tx.select({ id: inventoryProducts.id, balance: inventoryProducts.currentQuantityMillis, cost: inventoryProducts.costInCents }).from(inventoryProducts).where(and(
       eq(inventoryProducts.organizationId, organization.id), inArray(inventoryProducts.id, stockIds), eq(inventoryProducts.isActive, true),
     ));
@@ -404,7 +412,8 @@ export async function registerRetailSale(data: FormData) {
       discountInCents: item.discount, unitCostInCents: item.cost, commissionInCents: item.commission,
     })));
     await tx.insert(retailSalePayments).values(normalizedPayments.map((payment) => ({ organizationId: organization.id, saleId: sale.id, ...payment, status: received ? "received" : "pending" })));
-    for (const item of productLines) {
+    for (const item of productLines.sort((a, b) => a.inventoryProductId.localeCompare(b.inventoryProductId))) {
+      await allocateLots(tx, { organizationId: organization.id, productId: item.inventoryProductId, referenceType: "sale", referenceId: sale.id, clientId, userId: session.user.id, quantityMillis: item.quantity * 1000, pool: "sale" });
       const newBalance = item.balance - item.quantity * 1000;
       await tx.update(inventoryProducts).set({ currentQuantityMillis: newBalance, updatedAt: new Date() }).where(eq(inventoryProducts.id, item.inventoryProductId));
       await tx.insert(inventoryMovements).values({
@@ -471,7 +480,7 @@ export async function reverseRetailSale(data: FormData) {
     if (sale.status !== "completed") throw new Error("Esta venda já foi cancelada ou estornada.");
     const items = await tx.select({ productId: retailSaleItems.inventoryProductId, quantity: retailSaleItems.quantity }).from(retailSaleItems).where(and(eq(retailSaleItems.saleId, saleId), eq(retailSaleItems.organizationId, organization.id)));
     const productIds = [...new Set(items.map((item) => item.productId).filter((id): id is string => Boolean(id)))].sort();
-    if (productIds.length) await tx.execute(sql`select id from inventory_products where id in (${sql.join(productIds.map((id) => sql`${id}`), sql`, `)}) for update`);
+    if (productIds.length) await tx.execute(sql`select id from inventory_products where id in (${sql.join(productIds.map((id) => sql`${id}`), sql`, `)}) order by id for update`);
     const assignedPackages = await tx.select({ id: clientPackages.id }).from(clientPackages).where(and(eq(clientPackages.organizationId, organization.id), eq(clientPackages.retailSaleId, saleId))).for("update");
     for (const assigned of assignedPackages) {
       const balances = await tx.select().from(clientPackageBalances).where(eq(clientPackageBalances.clientPackageId, assigned.id)).for("update");
@@ -483,7 +492,8 @@ export async function reverseRetailSale(data: FormData) {
       const [product] = await tx.select({ balance: inventoryProducts.currentQuantityMillis }).from(inventoryProducts).where(and(eq(inventoryProducts.id, item.productId), eq(inventoryProducts.organizationId, organization.id))).limit(1);
       if (!product) throw new Error("Produto da venda não encontrado no estoque.");
       const quantityMillis = item.quantity * 1000;
-      const newBalance = product.balance + quantityMillis;
+      const restored = await restoreLots(tx, { organizationId: organization.id, productId: item.productId, referenceType: "sale", referenceId: saleId, userId: session.user.id, legacyQuantityMillis: quantityMillis });
+      const newBalance = product.balance + restored.sale;
       await tx.update(inventoryProducts).set({ currentQuantityMillis: newBalance, updatedAt: new Date() }).where(eq(inventoryProducts.id, item.productId));
       await tx.insert(inventoryMovements).values({ organizationId: organization.id, productId: item.productId, retailSaleId: saleId, type: operation === "refunded" ? "sale_refund" : "sale_cancellation", quantityMillis, balanceAfterMillis: newBalance, notes: reason, createdByUserId: session.user.id });
     }

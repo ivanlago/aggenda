@@ -74,6 +74,7 @@ export default async function InventoryPage() {
     subcategory: item.subcategory ?? "", hasConsumption: item.consumptionQuantity > 0, isForSale: item.isForSale,
   }));
   const movementLabels: Record<string, string> = {
+    clinical_application: "Aplicação clínica por lote", procedure_consumption: "Consumo do procedimento",
     entry: "Entrada", initial: "Estoque inicial", exit: "Saída / ajuste", consumption: "Transferido p/ consumo", usage: "Retirada p/ uso",
     sale: "Venda", sale_cancellation: "Cancelamento de venda", sale_refund: "Estorno de venda",
   };
@@ -90,7 +91,7 @@ export default async function InventoryPage() {
 
   return <div className="page-wrap">
     <PageHeader eyebrow="Operação" title="Estoque" description="Cadastre produtos, registre entradas e saídas e acompanhe os valores do estoque." />
-    <div className="mb-5"><Link className="secondary-button" href="/calculadora-retorno/produtos" target="_blank" rel="noopener noreferrer"><Calculator className="mr-2 size-4" />Calculadora de retorno de produtos</Link></div>
+    <div className="mb-5 flex flex-wrap gap-2"><Link className="primary-button" href="/estoque/lotes">Lotes e recolhimentos</Link><Link className="secondary-button" href="/calculadora-retorno/produtos" target="_blank" rel="noopener noreferrer"><Calculator className="mr-2 size-4" />Calculadora de retorno de produtos</Link></div>
     <section className="grid gap-4 sm:grid-cols-3">
       <article className="panel"><Boxes className="size-5 text-brand" /><p className="mt-4 text-3xl font-extrabold">{items.length}</p><p className="text-sm text-muted">produtos cadastrados</p></article>
       <article className="panel"><WalletCards className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{currency(costValue)}</p><p className="text-sm text-muted">valor de custo</p></article>

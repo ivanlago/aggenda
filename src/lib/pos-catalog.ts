@@ -1,9 +1,9 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { services, servicePackages, retailProductVariants, retailProducts, inventoryProducts } from "@/db/schema";
 
 export async function getPosProducts(organizationId: string) {
-  const rows = await db.select({ id: retailProductVariants.id, product: retailProducts.name, variant: retailProductVariants.name, barcode: retailProductVariants.barcode, priceInCents: retailProductVariants.salePriceInCents, stock: inventoryProducts.currentQuantityMillis })
+  const rows = await db.select({ id: retailProductVariants.id, product: retailProducts.name, variant: retailProductVariants.name, barcode: retailProductVariants.barcode, priceInCents: retailProductVariants.salePriceInCents, stock: sql<number>`case when ${inventoryProducts.lotTracking} then (select coalesce(sum(l.sale_quantity_millis),0)::integer from inventory_lots l join organizations o on o.id=l.organization_id where l.organization_id=${organizationId} and l.product_id=${inventoryProducts.id} and l.status='active' and l.expires_on >= (now() at time zone o.timezone)::date) when exists (select 1 from inventory_lots l where l.organization_id=${organizationId} and l.product_id=${inventoryProducts.id}) then 0 else ${inventoryProducts.currentQuantityMillis} end` })
     .from(retailProductVariants).innerJoin(retailProducts, eq(retailProducts.id, retailProductVariants.productId)).innerJoin(inventoryProducts, eq(inventoryProducts.id, retailProductVariants.inventoryProductId))
     .where(and(eq(retailProductVariants.organizationId, organizationId), eq(retailProductVariants.isForSale, true), eq(retailProductVariants.isActive, true), eq(retailProducts.isActive, true), eq(inventoryProducts.isActive, true))).orderBy(retailProducts.name, retailProductVariants.name);
   return rows.map((item) => ({ id: item.id, label: `${item.product} · ${item.variant}`, barcode: item.barcode, priceInCents: item.priceInCents, stock: Math.floor(item.stock / 1000), kind: "product" as const }));

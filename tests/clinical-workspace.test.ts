@@ -44,6 +44,9 @@ test("clinical persistence and actual authorization against isolated PostgreSQL"
     await client.exec(`CREATE TABLE document_signature_blobs (organization_id uuid NOT NULL, storage_key text NOT NULL, encrypted_content text NOT NULL, created_at timestamp DEFAULT now(), PRIMARY KEY (organization_id, storage_key));`);
     await client.exec(await readFile(new URL("../drizzle/0073_clinical_attachments.sql", import.meta.url), "utf8"));
     await client.exec(await readFile(new URL("../drizzle/0074_clinical_drafts.sql", import.meta.url), "utf8"));
+    // The clinical editor now lists eligible stock lots; this fixture has none configured.
+    await client.exec(`CREATE TABLE inventory_products (id uuid PRIMARY KEY, organization_id uuid, name text, unit text, lot_tracking boolean, is_active boolean);
+      CREATE TABLE inventory_lots (id uuid PRIMARY KEY, organization_id uuid, product_id uuid, code text, expires_on date, status text, sale_quantity_millis integer, consumption_quantity_millis integer);`);
     for (const column of Object.values(getTableColumns(schema.appointments))) {
       if (["id", "organization_id", "client_id", "professional_id", "status"].includes(column.name)) continue;
       await client.exec(`ALTER TABLE appointments ADD COLUMN "${column.name}" ${column.name === "source" ? "text" : column.getSQLType()};`);

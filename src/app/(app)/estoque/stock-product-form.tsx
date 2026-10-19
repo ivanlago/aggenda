@@ -32,6 +32,7 @@ export function StockProductForm({ categories, subcategories }: { categories: Ca
         <label className="grid gap-1 text-sm font-bold">Subcategoria<select className="field" name="subcategoryId" disabled={!categoryId} defaultValue=""><option value="">Sem subcategoria</option>{filteredSubcategories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label className="grid gap-1 text-sm font-bold">Custo unitário<input className="field" name="cost" inputMode="decimal" placeholder="0,00" /></label>
         <label className="grid gap-1 text-sm font-bold">Preço de venda unitário<input className="field" name="salePrice" inputMode="decimal" placeholder="0,00" /></label>
+        <label className="grid gap-1 text-sm font-bold">Unidade do saldo<select className="field" name="unit" defaultValue="unit"><option value="unit">Unidade</option><option value="mL">mL</option><option value="mg">mg</option><option value="g">g</option><option value="UI">UI</option></select></label>
         <label className="grid gap-1 text-sm font-bold">Quantidade inicial<input className="field" name="initialQuantity" inputMode="decimal" required defaultValue="0" /></label>
         <label className="grid gap-1 text-sm font-bold">Quantidade mínima<input className="field" name="minimumQuantity" inputMode="decimal" required defaultValue="0" /></label>
         <label className="grid gap-1 text-sm font-bold">SKU<input className="field" name="sku" /></label>

@@ -1,3 +1,4 @@
+import { allocateLots, restoreLots } from "@/lib/inventory-lots";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { sumProcedureMaterials } from "@/lib/attendance-materials";
 import { attendancePendingItems } from "@/lib/attendance-pending-items";
@@ -7,7 +8,7 @@ import { organizationDate } from "@/lib/appointment-safety";
 import { returnDate, type ReturnOverride } from "@/lib/procedure-return-rules";
 import { organizations, procedureReturns } from "@/db/schema";
 import { reconcilePackageUsage } from "@/lib/package-balance";
-import { appointmentInventoryConsumptions, appointments, attendancePackageItems, clientPackageBalances, inventoryMovements, inventoryProducts, serviceInventoryItems, retailSaleItems, retailSales, financialEntries, packageUsages, services } from "@/db/schema";
+import { inventoryLotAllocations, appointmentInventoryConsumptions, appointments, attendancePackageItems, clientPackageBalances, inventoryMovements, inventoryProducts, serviceInventoryItems, retailSaleItems, retailSales, financialEntries, packageUsages, services } from "@/db/schema";
 
 export async function updateAppointmentAndInventory(input: { organizationId: string; appointmentId: string; status: "scheduled" | "confirmed" | "cancelled" | "completed" | "no_show"; cancellationReason: string | null; userId: string; returnOverrides?: Record<string, ReturnOverride> }, database = db) {
   return database.transaction(async (tx) => {
@@ -40,15 +41,37 @@ export async function updateAppointmentAndInventory(input: { organizationId: str
       const materials = await tx.select({ serviceId: serviceInventoryItems.serviceId, productId: serviceInventoryItems.productId, quantity: serviceInventoryItems.quantityMillis }).from(serviceInventoryItems).where(and(eq(serviceInventoryItems.organizationId, input.organizationId), inArray(serviceInventoryItems.serviceId, procedures.map((item) => item.serviceId))));
       const recipe = sumProcedureMaterials(materials, procedures);
       if (recipe.length) {
-        await tx.execute(sql`select id from inventory_products where id in (${sql.join(recipe.map((item) => sql`${item.productId}`), sql`, `)}) for update`);
-        const products = await tx.select({ id: inventoryProducts.id, name: inventoryProducts.name, quantity: inventoryProducts.currentQuantityMillis }).from(inventoryProducts).where(eq(inventoryProducts.organizationId, input.organizationId));
-        for (const item of recipe) { const product = products.find((candidate) => candidate.id === item.productId); if (!product || product.quantity < item.quantity) throw new Error(`Estoque insuficiente de ${product?.name ?? "produto da ficha técnica"}. Registre uma entrada antes de concluir.`); }
-        for (const item of recipe) { const product = products.find((candidate) => candidate.id === item.productId)!; const balance = product.quantity - item.quantity; await tx.update(inventoryProducts).set({ currentQuantityMillis: balance, updatedAt: new Date() }).where(eq(inventoryProducts.id, item.productId)); await tx.insert(appointmentInventoryConsumptions).values({ organizationId: input.organizationId, appointmentId: input.appointmentId, productId: item.productId, quantityMillis: item.quantity }).onConflictDoUpdate({ target: [appointmentInventoryConsumptions.appointmentId, appointmentInventoryConsumptions.productId], set: { quantityMillis: item.quantity, consumedAt: new Date(), reversedAt: null } }); await tx.insert(inventoryMovements).values({ organizationId: input.organizationId, productId: item.productId, appointmentId: input.appointmentId, type: "consumption", quantityMillis: -item.quantity, balanceAfterMillis: balance, createdByUserId: input.userId }); }
+        await tx.execute(sql`select id from inventory_products where id in (${sql.join(recipe.map((item) => sql`${item.productId}`), sql`, `)}) order by id for update`);
+        const products = await tx.select().from(inventoryProducts).where(and(eq(inventoryProducts.organizationId, input.organizationId), inArray(inventoryProducts.id, recipe.map(item => item.productId))));
+        const applied = await tx.select().from(inventoryLotAllocations).where(and(eq(inventoryLotAllocations.organizationId, input.organizationId), eq(inventoryLotAllocations.appointmentId, input.appointmentId), eq(inventoryLotAllocations.referenceType, "clinical"), isNull(inventoryLotAllocations.reversedAt)));
+        for (const item of recipe.sort((a, b) => a.productId.localeCompare(b.productId))) {
+          const product = products.find(candidate => candidate.id === item.productId);
+          if (!product) throw new Error("Produto da ficha técnica não encontrado.");
+          const alreadyApplied = product.lotTracking ? applied.filter(use => use.productId === product.id).reduce((sum, use) => sum + use.quantityMillis, 0) : 0;
+          const quantity = Math.max(0, item.quantity - alreadyApplied);
+          if (!quantity) continue;
+          const portions = await allocateLots(tx, { organizationId: input.organizationId, productId: product.id, referenceType: "appointment", referenceId: input.appointmentId, appointmentId: input.appointmentId, clientId: appointment.clientId, userId: input.userId, quantityMillis: quantity, pool: "procedure" });
+          const saleUsed = product.lotTracking ? portions.filter(part => part.pool === "sale").reduce((sum, part) => sum + part.quantityMillis, 0) : quantity;
+          const consumptionUsed = portions.filter(part => part.pool === "consumption").reduce((sum, part) => sum + part.quantityMillis, 0);
+          const balance = product.currentQuantityMillis - saleUsed;
+          if (balance < 0) throw new Error(`Estoque insuficiente de ${product.name}. Registre uma entrada antes de concluir.`);
+          await tx.update(inventoryProducts).set({ currentQuantityMillis: balance, consumptionQuantityMillis: product.consumptionQuantityMillis - consumptionUsed, updatedAt: new Date() }).where(eq(inventoryProducts.id, product.id));
+          await tx.insert(appointmentInventoryConsumptions).values({ organizationId: input.organizationId, appointmentId: input.appointmentId, productId: product.id, quantityMillis: quantity }).onConflictDoUpdate({ target: [appointmentInventoryConsumptions.appointmentId, appointmentInventoryConsumptions.productId], set: { quantityMillis: quantity, consumedAt: new Date(), reversedAt: null } });
+          await tx.insert(inventoryMovements).values({ organizationId: input.organizationId, productId: product.id, appointmentId: input.appointmentId, type: "procedure_consumption", quantityMillis: -quantity, balanceAfterMillis: product.lotTracking ? balance + product.consumptionQuantityMillis - consumptionUsed : balance, createdByUserId: input.userId });
+        }
       }
     } else if (input.status !== "completed" && appointment.status === "completed") {
       await tx.delete(procedureReturns).where(and(eq(procedureReturns.organizationId, input.organizationId), eq(procedureReturns.appointmentId, appointment.id)));
       const consumed = await tx.select().from(appointmentInventoryConsumptions).where(and(eq(appointmentInventoryConsumptions.organizationId, input.organizationId), eq(appointmentInventoryConsumptions.appointmentId, input.appointmentId), isNull(appointmentInventoryConsumptions.reversedAt)));
-      for (const item of consumed) { await tx.execute(sql`select id from inventory_products where id = ${item.productId} for update`); const [product] = await tx.select({ quantity: inventoryProducts.currentQuantityMillis }).from(inventoryProducts).where(eq(inventoryProducts.id, item.productId)).limit(1); if (!product) continue; const balance = product.quantity + item.quantityMillis; await tx.update(inventoryProducts).set({ currentQuantityMillis: balance, updatedAt: new Date() }).where(eq(inventoryProducts.id, item.productId)); await tx.update(appointmentInventoryConsumptions).set({ reversedAt: new Date() }).where(and(eq(appointmentInventoryConsumptions.appointmentId, input.appointmentId), eq(appointmentInventoryConsumptions.productId, item.productId))); await tx.insert(inventoryMovements).values({ organizationId: input.organizationId, productId: item.productId, appointmentId: input.appointmentId, type: "reversal", quantityMillis: item.quantityMillis, balanceAfterMillis: balance, createdByUserId: input.userId }); }
+      for (const item of consumed.sort((a, b) => a.productId.localeCompare(b.productId))) {
+        const [product] = await tx.select().from(inventoryProducts).where(and(eq(inventoryProducts.id, item.productId), eq(inventoryProducts.organizationId, input.organizationId))).for("update");
+        if (!product) throw new Error("Produto consumido não encontrado.");
+        const restored = await restoreLots(tx, { organizationId: input.organizationId, productId: item.productId, referenceType: "appointment", referenceId: input.appointmentId, userId: input.userId, legacyQuantityMillis: item.quantityMillis });
+        const balance = product.currentQuantityMillis + restored.sale;
+        await tx.update(inventoryProducts).set({ currentQuantityMillis: balance, consumptionQuantityMillis: product.consumptionQuantityMillis + restored.consumption, updatedAt: new Date() }).where(eq(inventoryProducts.id, item.productId));
+        await tx.update(appointmentInventoryConsumptions).set({ reversedAt: new Date() }).where(and(eq(appointmentInventoryConsumptions.appointmentId, input.appointmentId), eq(appointmentInventoryConsumptions.productId, item.productId)));
+        await tx.insert(inventoryMovements).values({ organizationId: input.organizationId, productId: item.productId, appointmentId: input.appointmentId, type: "reversal", quantityMillis: item.quantityMillis, balanceAfterMillis: balance + product.consumptionQuantityMillis + restored.consumption, createdByUserId: input.userId });
+      }
     }
     if (input.status === "completed" && appointment.status === "completed") {
       const [organization] = await tx.select({ timezone: organizations.timezone }).from(organizations).where(eq(organizations.id, input.organizationId));

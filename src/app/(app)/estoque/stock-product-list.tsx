@@ -97,7 +97,7 @@ function EditProductButton({
             >
               <input type="hidden" name="variantId" value={product.variantId} />
               <input type="hidden" name="isActive" value="on" />
-              <input type="hidden" name="unit" value="unit" />
+              <input type="hidden" name="unit" value={product.unit} />
               <label className="grid gap-1 text-sm font-bold">
                 Nome
                 <input

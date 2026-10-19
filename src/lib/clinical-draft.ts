@@ -7,7 +7,7 @@ export const clinicalDraftSchema = z.object({
   mode: z.enum(["medical", "aesthetic"]), subjective: text, objective: text, assessment: text, plan: text,
   procedure: text, intercurrences: text, instructions: text, followUpDate: z.string().max(10).default(""),
   vitals: z.object({ weight: measure, height: measure, systolic: measure, diastolic: measure, heartRate: measure, temperature: measure, oxygenSaturation: measure }),
-  applications: z.array(z.object({ product: z.string().max(200), lot: z.string().max(100), expiresOn: z.string().max(10), quantity: measure, unit: z.enum(["mL", "mg", "g", "UI", "unidade"]), region: z.string().max(200) })).max(20),
+  applications: z.array(z.object({ lotId: z.string().uuid().optional(), product: z.string().max(200), lot: z.string().max(100), expiresOn: z.string().max(10), quantity: measure, unit: z.enum(["mL", "mg", "g", "UI", "unidade"]), region: z.string().max(200) })).max(20),
 });
 export type ClinicalDraftData = z.infer<typeof clinicalDraftSchema>;
 export function blankClinicalDraft(mode: ClinicalDraftData["mode"]): ClinicalDraftData {

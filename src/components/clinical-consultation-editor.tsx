@@ -4,14 +4,14 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { useRouter } from "next/navigation";
 import { saveClinicalDraft, finalizeClinicalDraft } from "@/actions/clinical-draft";
 import { blankClinicalDraft, validateClinicalDraft, clinicalFieldErrors, type ClinicalDraftData } from "@/lib/clinical-draft";
-import { ClinicalApplications } from "./clinical-applications";
+import { ClinicalApplications, type ClinicalLotOption } from "./clinical-applications";
 
 const medicalLabels = { subjective: "Queixa e história atual", objective: "Exame e achados objetivos", assessment: "Avaliação profissional", plan: "Conduta e plano", procedure: "Procedimento / técnica", intercurrences: "Intercorrências e providências", instructions: "Orientações ao paciente" };
 const aestheticLabels = { subjective: "Objetivo e expectativas", objective: "Avaliação da região e achados", assessment: "Avaliação profissional", plan: "Plano do atendimento e acompanhamento", procedure: "Procedimento e técnica utilizados", intercurrences: "Intercorrências e providências", instructions: "Orientações e cuidados posteriores" };
 const vitals = { weight: "Peso (kg)", height: "Altura (cm)", systolic: "Pressão sistólica (mmHg)", diastolic: "Pressão diastólica (mmHg)", heartRate: "Frequência cardíaca (bpm)", temperature: "Temperatura (°C)", oxygenSaturation: "Saturação de O₂ (%)" };
 
-export function ClinicalConsultationEditor({ appointmentId, initialId, initialVersion = 0, initialData, initialSavedAt, timezone = "America/Bahia" }: {
-  appointmentId: string; initialId: string; initialVersion?: number; initialData: ClinicalDraftData; initialSavedAt?: string; timezone?: string;
+export function ClinicalConsultationEditor({ appointmentId, initialId, initialVersion = 0, initialData, initialSavedAt, timezone = "America/Bahia", lots = [] }: {
+  appointmentId: string; initialId: string; initialVersion?: number; initialData: ClinicalDraftData; initialSavedAt?: string; timezone?: string; lots?: ClinicalLotOption[];
 }) {
   const router = useRouter();
   const [data, setData] = useState(initialData);
@@ -106,7 +106,7 @@ export function ClinicalConsultationEditor({ appointmentId, initialId, initialVe
     <form ref={formRef} onSubmit={finish} className="mt-4" noValidate><fieldset disabled={finalizing} className="grid gap-4">
       <label className="grid gap-1 text-sm font-bold">Perfil do registro<select className="field" value={data.mode} onChange={event => change(current => ({ ...current, mode: event.target.value as ClinicalDraftData["mode"] }))}><option value="medical">Consulta médica particular</option><option value="aesthetic">Atendimento de estética</option></select></label>
       <div className="grid gap-4 lg:grid-cols-2">{textarea("subjective")}{textarea("objective")}{textarea("assessment")}{textarea("plan")}</div>
-      <details open={data.mode === "aesthetic"}><summary className="cursor-pointer font-bold">Procedimento, produtos e intercorrências</summary><div className="mt-4 grid gap-4 md:grid-cols-2">{textarea("procedure")}{textarea("intercurrences")}<ClinicalApplications value={data.applications} onChange={applications => change(current => ({ ...current, applications }))} /></div></details>
+      <details open={data.mode === "aesthetic"}><summary className="cursor-pointer font-bold">Procedimento, produtos e intercorrências</summary><div className="mt-4 grid gap-4 md:grid-cols-2">{textarea("procedure")}{textarea("intercurrences")}<ClinicalApplications lots={lots} value={data.applications} onChange={applications => change(current => ({ ...current, applications }))} /></div></details>
       <details open={data.mode === "medical"}><summary className="cursor-pointer font-bold">Medidas e sinais vitais — opcionais</summary><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{Object.entries(vitals).map(([key, label]) => <label className="grid gap-1 text-sm" key={key}>{label}<input className="field" inputMode="decimal" value={data.vitals[key as keyof typeof vitals]} aria-invalid={Boolean(errors[`vitals.${key}`])} aria-describedby={errors[`vitals.${key}`] ? `${prefix}-${key}-error` : undefined} onChange={event => change(current => ({ ...current, vitals: { ...current.vitals, [key]: event.target.value } }))} />{errors[`vitals.${key}`] && <span className="text-red-700" id={`${prefix}-${key}-error`}>{errors[`vitals.${key}`]}</span>}</label>)}</div></details>
       {textarea("instructions")}<label className="grid max-w-sm gap-1 text-sm font-bold">Data de retorno sugerida<input className="field" type="date" value={data.followUpDate} onChange={event => change(current => ({ ...current, followUpDate: event.target.value }))} /><span className="text-xs font-normal text-muted">Não cria agendamento ou lembrete automaticamente.</span></label>
       <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={reviewed} onChange={event => setReviewed(event.target.checked)} />Revisei o conteúdo, as medidas e os produtos e confirmo a finalização deste registro.</label>

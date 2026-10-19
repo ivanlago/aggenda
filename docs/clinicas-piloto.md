@@ -1,5 +1,7 @@
 # Preparação para estética de pequeno porte e consultório particular
 
+Atualização de 18/10/2026: o controle integrado de estoque por lote, bloqueio de vencidos e recolhimento está descrito em [estoque-por-lote.md](./estoque-por-lote.md). As limitações antigas sobre rastreabilidade apenas declarada, abaixo, foram substituídas para produtos configurados no novo controle.
+
 Implementação de 15/10/2026. Alterações locais, sem migrações ou operações executadas no banco conectado.
 
 ## Implantação

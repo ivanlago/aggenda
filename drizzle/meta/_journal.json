@@ -547,6 +547,13 @@
       "when": 1792259612032,
       "tag": "0077_conversation_attention",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1792367913339,
+      "tag": "0078_inventory_lot_control",
+      "breakpoints": true
     }
   ]
 }

@@ -1181,8 +1181,55 @@ export const services = pgTable(
 );
 
 export const inventoryProducts = pgTable("inventory_products", {
+  lotTracking: boolean("lot_tracking").default(false).notNull(),
   id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), name: text("name").notNull(), sku: text("sku"), unit: text("unit").default("unit").notNull(), currentQuantityMillis: integer("current_quantity_millis").default(0).notNull(), consumptionQuantityMillis: integer("consumption_quantity_millis").default(0).notNull(), minimumQuantityMillis: integer("minimum_quantity_millis").default(0).notNull(), costInCents: integer("cost_in_cents"), isActive: boolean("is_active").default(true).notNull(), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [uniqueIndex("inventory_products_org_sku_unique").on(table.organizationId, table.sku), index("inventory_products_org_idx").on(table.organizationId)]);
+
+export const inventoryLots = pgTable("inventory_lots", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "restrict" }),
+  productId: uuid("product_id").notNull().references(() => inventoryProducts.id, { onDelete: "restrict" }),
+  code: text("code").notNull(), expiresOn: date("expires_on"),
+  status: text("status").default("active").notNull(),
+  saleQuantityMillis: integer("sale_quantity_millis").default(0).notNull(),
+  consumptionQuantityMillis: integer("consumption_quantity_millis").default(0).notNull(),
+  supplier: text("supplier"), notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, table => [uniqueIndex("inventory_lots_product_code_unique").on(table.productId, table.code), index("inventory_lots_org_expiry_idx").on(table.organizationId, table.expiresOn), check("inventory_lots_nonnegative", sql`${table.saleQuantityMillis} >= 0 AND ${table.consumptionQuantityMillis} >= 0`), check("inventory_lots_status", sql`${table.status} IN ('active','quarantine','recalled')`)]);
+
+export const inventoryLotAllocations = pgTable("inventory_lot_allocations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "restrict" }),
+  productId: uuid("product_id").notNull().references(() => inventoryProducts.id, { onDelete: "restrict" }),
+  lotId: uuid("lot_id").notNull().references(() => inventoryLots.id, { onDelete: "restrict" }),
+  referenceType: text("reference_type").notNull(), referenceId: uuid("reference_id").notNull(),
+  pool: text("pool").notNull(), quantityMillis: integer("quantity_millis").notNull(),
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "restrict" }),
+  appointmentId: uuid("appointment_id").references(() => appointments.id, { onDelete: "restrict" }),
+  userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+  reversedAt: timestamp("reversed_at"), createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => [index("inventory_lot_allocations_reference_idx").on(table.organizationId, table.referenceType, table.referenceId), index("inventory_lot_allocations_lot_idx").on(table.organizationId, table.lotId), check("inventory_lot_allocation_positive", sql`${table.quantityMillis} > 0`), check("inventory_lot_allocation_pool", sql`${table.pool} IN ('sale','consumption')`)]);
+
+export const inventoryLotRecalls = pgTable("inventory_lot_recalls", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "restrict" }),
+  lotId: uuid("lot_id").notNull().references(() => inventoryLots.id, { onDelete: "restrict" }),
+  reason: text("reason").notNull(), status: text("status").default("open").notNull(),
+  createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(), closedAt: timestamp("closed_at"),
+}, table => [uniqueIndex("inventory_lot_recalls_lot_unique").on(table.lotId), index("inventory_lot_recalls_org_idx").on(table.organizationId)]);
+
+export const inventoryRecallFollowUps = pgTable("inventory_recall_follow_ups", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "restrict" }),
+  recallId: uuid("recall_id").notNull().references(() => inventoryLotRecalls.id, { onDelete: "restrict" }),
+  sourceKey: text("source_key").notNull(), clientId: uuid("client_id").references(() => clients.id, { onDelete: "restrict" }),
+  appointmentId: uuid("appointment_id").references(() => appointments.id, { onDelete: "restrict" }),
+  saleId: uuid("sale_id").references(() => retailSales.id, { onDelete: "restrict" }),
+  status: text("status").default("pending").notNull(), notes: text("notes"),
+  updatedByUserId: text("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, table => [uniqueIndex("inventory_recall_source_unique").on(table.recallId, table.sourceKey), index("inventory_recall_followups_org_idx").on(table.organizationId, table.recallId)]);
 
 export const inventoryCategories = pgTable("inventory_categories", {
   id: uuid("id").defaultRandom().primaryKey(),

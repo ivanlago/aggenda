@@ -2,7 +2,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { inventoryCategories, inventoryMovements, inventoryProducts, inventorySubcategories, retailProductVariants, serviceInventoryItems, services } from "@/db/schema";
+import { inventoryLots, inventoryCategories, inventoryMovements, inventoryProducts, inventorySubcategories, retailProductVariants, serviceInventoryItems, services } from "@/db/schema";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 const text = (data: FormData, key: string) => String(data.get(key) ?? "").trim();
@@ -30,6 +30,9 @@ export async function moveInventory(data: FormData) {
       .limit(1);
     if (!product) throw new Error("Produto não encontrado.");
 
+    const [lot] = await tx.select({ id: inventoryLots.id }).from(inventoryLots).where(and(eq(inventoryLots.organizationId, organization.id), eq(inventoryLots.productId, productId))).limit(1);
+    const [tracked] = await tx.select({ tracked: inventoryProducts.lotTracking }).from(inventoryProducts).where(eq(inventoryProducts.id, productId));
+    if (lot || tracked.tracked) throw new Error("Este produto usa controle por lote. Registre a movimentação em Estoque → Lotes e recolhimentos.");
     let saleBalance = product.saleBalance;
     let consumptionBalance = product.consumptionBalance;
     let balanceAfter = saleBalance;

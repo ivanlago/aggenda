@@ -1,6 +1,6 @@
 "use server";
 
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, gt, ilike, lt, or } from "drizzle-orm";
 import { db } from "@/db";
 import { inventoryLots, inventoryProducts } from "@/db/schema";
 import { assertOrganizationPermission } from "@/lib/permissions";
@@ -50,4 +50,21 @@ export async function saveInventoryMovement(form: FormData) {
   mapped.set("pool", type === "usage" ? "consumption" : type === "consumption" ? "sale" : String(form.get("pool") ?? ""));
   mapped.set("reason", String(form.get("notes") ?? ""));
   return moveInventoryLot(mapped);
+}
+
+/** Read-only, organization-scoped stock lookup; zero balances never appear. */
+export async function searchInventoryLots(input: { kind: "expired" | "code"; query?: string; page?: number }) {
+  const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "inventory.manage");
+  if (input.kind !== "expired" && input.kind !== "code") throw new Error("Consulta inválida.");
+  const query = String(input.query ?? "").trim().slice(0, 100);
+  const page = Number.isSafeInteger(input.page) ? Math.max(1, Math.min(10000, input.page!)) : 1;
+  if (input.kind === "code" && !query) throw new Error("Informe o número do lote.");
+  const today = new Intl.DateTimeFormat("sv-SE", { timeZone: organization.timezone }).format(new Date());
+  const pattern = `%${query.replace(/[\\%_]/g, char => `\\${char}`)}%`;
+  const rows = await db.select({ id: inventoryLots.id, productId: inventoryLots.productId, name: inventoryProducts.name, unit: inventoryProducts.unit, code: inventoryLots.code, expiresOn: inventoryLots.expiresOn, status: inventoryLots.status, sale: inventoryLots.saleQuantityMillis, consumption: inventoryLots.consumptionQuantityMillis, createdAt: inventoryLots.createdAt })
+    .from(inventoryLots).innerJoin(inventoryProducts, and(eq(inventoryProducts.id, inventoryLots.productId), eq(inventoryProducts.organizationId, organization.id)))
+    .where(and(eq(inventoryLots.organizationId, organization.id), or(gt(inventoryLots.saleQuantityMillis, 0), gt(inventoryLots.consumptionQuantityMillis, 0)), input.kind === "expired" ? lt(inventoryLots.expiresOn, today) : ilike(inventoryLots.code, pattern), input.kind === "expired" && query ? ilike(inventoryProducts.name, pattern) : undefined))
+    .orderBy(asc(inventoryLots.expiresOn), asc(inventoryLots.id)).limit(21).offset((page - 1) * 20);
+  return { rows: rows.slice(0, 20).map(row => ({ ...row, enteredOn: new Intl.DateTimeFormat("pt-BR", { timeZone: organization.timezone }).format(row.createdAt), createdAt: undefined })), hasMore: rows.length > 20, page };
 }

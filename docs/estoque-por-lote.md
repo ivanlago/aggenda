@@ -76,3 +76,12 @@ As telas têm paginação de 50 lotes/destinações/acompanhamentos; a implanta�
 - Produto vencido por lote permite retirar unidades vencidas ou sem vencimento comprovado. Se a data cadastrada ainda não venceu, exige conferir a operação.
 - Recall por lote retira somente a quantidade informada do destino escolhido, bloqueia o restante do lote e abre o acompanhamento, na mesma transação. Falta de saldo desfaz inclusive a abertura do caso. Não envia mensagens automaticamente.
 - Não houve nova migração ou movimentação em estoque real. Os testes isolados incluem todas as combinações de identificação ausente, preenchimento posterior, tentativa de liberação incompleta, vencidos, recall com saldo remanescente e rollback.
+
+
+### Consulta integrada em Entrada/Saída
+
+A antiga listagem `/estoque/lotes` redireciona ao estoque. Em **Entrada/Saída → Consultar lotes**, há duas buscas independentes: vencidos (com filtro opcional por produto) e número de lote (trecho literal, sem distinguir maiúsculas). Ambas consideram somente lotes com saldo positivo da clínica, incluindo venda e consumo, e paginam 20 resultados. O nome do produto é truncado visualmente, preservando o nome completo no atributo de título. A data de entrada exibida é a data do primeiro cadastro do lote no fuso da clínica, não a última reposição; o histórico preserva reposições e movimentações.
+
+**Registrar saída** seleciona produto e lote e abre o formulário com operação Produto vencido ou Recall/recolhimento. O usuário confere quantidade, origem e motivo antes de salvar. A consulta não altera estoque nem bloqueia lotes. A operação Recall continua bloqueando o restante do lote e abrindo acompanhamento. Detalhes, identificação incompleta, liberação e rastreabilidade permanecem acessíveis por resultado. A preparação/ativação do controle do produto fica em uma seção recolhida na consulta.
+
+Validade ausente não permite concluir que um lote venceu e, portanto, não aparece na busca de vencidos. O controle depende da identificação de lotes e datas corretas; permanecem os bloqueios de vencidos e recolhidos em vendas e aplicações. Nenhuma migração nova.

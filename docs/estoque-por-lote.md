@@ -4,7 +4,7 @@
 
 1. Acesse **Estoque → Movimentação**. O mesmo formulário registra operações comuns e por lote. A opção **Lotes e recolhimentos**, dentro dele, concentra a identificação do saldo e a ativação; os links de cada lote abrem rastreabilidade e acompanhamento. A migração não inventa lotes nem modifica saldos existentes.
 2. No cadastro de produto, use a unidade física na qual o saldo e as aplicações serão registrados: unidade, mL, mg, g ou UI. Não há conversão automática de frascos para mL, diluições ou unidades de potência. Com saldo ou controle ativo, a unidade não pode ser alterada; cadastre outra apresentação quando necessário.
-3. Em **Entrada/Saída → Entrada**, marque **Identificar esta entrada por lote e validade** quando o produto ainda não tiver lotes. Em **Origem da quantidade**, use **Identificar saldo já existente — não aumenta o estoque** para informar os lotes reais do saldo de venda e de consumo. Essa opção não aumenta o estoque. Use **Nova entrada — aumenta o estoque** para um novo recebimento. Para produtos já controlados por lote, os campos necessários aparecem automaticamente.
+3. Em **Entrada/Saída → Entrada**, informe **Número do lote** e **Vencimento** quando disponíveis; ambos são opcionais. Em **Origem da quantidade**, use **Identificar saldo já existente — não aumenta o estoque** para informar os lotes reais do saldo de venda e de consumo. Essa opção não aumenta o estoque. Use **Nova entrada — aumenta o estoque** para um novo recebimento. Para produtos já controlados por lote, os campos necessários aparecem automaticamente.
 4. Confira fornecedor, código, validade e quantidade. O código é normalizado para maiúsculas; um mesmo lote não pode receber outra validade nem ser reabastecido enquanto bloqueado.
 5. Na opção **Lotes e recolhimentos**, selecione o produto e use **Ativar controle por lote após conferência** somente depois que os saldos de venda e consumo estiverem totalmente distribuídos. O servidor confere os totais e não permite ativação incompleta. A ativação pode começar com saldo zero.
 
@@ -64,3 +64,15 @@ As telas têm paginação de 50 lotes/destinações/acompanhamentos; a implanta�
 - Não há alteração de schema nem nova migração nesta unificação. Testes PostgreSQL incluem as quatro operações comuns e por lote, identificação sem aumento de saldo, vencidos, lote incompatível, motivo e autorização.
 - Conferência no navegador sem registros reais: abertura do diálogo, consulta de saldo, campos condicionais, identificação de saldo existente e ativação bloqueada enquanto a distribuição está incompleta.
 - [Movimentação com lotes integrada](./qa-visual-2026-10-19/movimentacao-lotes.png).
+
+
+## Dados opcionais da entrada e motivos de saída — 19/10/2026
+
+- O formulário mostra **Operação** e **Quantidade** na primeira linha e, na entrada, **Número do lote** e **Vencimento** na linha seguinte. Os dois dados de identificação não são obrigatórios, inclusive no servidor.
+- Produto sem controle por lote, sem código e sem vencimento informado: permanece a entrada comum. Ao informar apenas código ou apenas vencimento, o saldo é registrado por lote em quarentena; sem código, há uma identificação provisória distinta para cada entrada.
+- Produto com controle por lote: aceita entrada sem dados completos, mantém os totais por lote consistentes e deixa a quantidade incompleta em quarentena. Não libera produto sem rastreabilidade para venda/uso. Os detalhes do lote oferecem **Completar identificação do lote**, que só preenche dados ausentes e gera auditoria. A liberação continua sendo uma ação explícita, e um dado já comprovado não pode ser substituído por esse formulário.
+- Entrada em lote já conhecido pode aproveitar o vencimento previamente cadastrado; uma data divergente ou lote bloqueado continua impedindo reabastecimento.
+- **Produto vencido** e **Recall / recolhimento** são operações de saída com identificação própria no histórico e nos filtros. Sem lotes cadastrados, registram motivo e baixa; não inventam vínculo com pacientes.
+- Produto vencido por lote permite retirar unidades vencidas ou sem vencimento comprovado. Se a data cadastrada ainda não venceu, exige conferir a operação.
+- Recall por lote retira somente a quantidade informada do destino escolhido, bloqueia o restante do lote e abre o acompanhamento, na mesma transação. Falta de saldo desfaz inclusive a abertura do caso. Não envia mensagens automaticamente.
+- Não houve nova migração ou movimentação em estoque real. Os testes isolados incluem todas as combinações de identificação ausente, preenchimento posterior, tentativa de liberação incompleta, vencidos, recall com saldo remanescente e rollback.

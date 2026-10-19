@@ -24,10 +24,11 @@ export async function saveInventoryMovement(form: FormData) {
   const productId = String(form.get("productId") ?? "");
   const context = await getInventoryMovementContext(productId);
   const type = String(form.get("type") ?? "");
-  if (!["entry", "exit", "consumption", "usage"].includes(type)) throw new Error("Selecione uma operação válida.");
-  const usesLots = context.product.tracked || context.lots.length > 0 || form.get("useLots") === "on";
+  if (!["entry", "exit", "consumption", "usage", "expired", "recall"].includes(type)) throw new Error("Selecione uma operação válida.");
+  const entryIdentification = type === "entry" && Boolean(String(form.get("code") ?? "").trim() || String(form.get("expiresOn") ?? "").trim());
+  const usesLots = context.product.tracked || context.lots.length > 0 || entryIdentification || form.get("useLots") === "on" || form.get("mode") === "existing";
   const notes = String(form.get("notes") ?? "").trim();
-  if ((usesLots || type === "entry" || type === "exit") && (notes.length < 3 || notes.length > 1000)) throw new Error("Informe o motivo da entrada/saída, com 3 a 1.000 caracteres.");
+  if ((usesLots || ["entry", "exit", "expired", "recall"].includes(type)) && (notes.length < 3 || notes.length > 1000)) throw new Error("Informe o motivo da entrada/saída, com 3 a 1.000 caracteres.");
   if (!usesLots) return moveInventory(form);
   const mapped = new FormData();
   for (const [key, value] of form.entries()) mapped.set(key, value);
@@ -45,7 +46,7 @@ export async function saveInventoryMovement(form: FormData) {
   }
   if (!context.product.tracked) throw new Error("Conclua a distribuição e ative o controle na aba Lotes e recolhimentos antes de registrar saídas.");
   if (!lotId) throw new Error("Selecione o lote da entrada/saída.");
-  mapped.set("type", type === "exit" ? "discard" : type === "consumption" ? "transfer" : "usage");
+  mapped.set("type", ["expired", "recall"].includes(type) ? type : type === "exit" ? "discard" : type === "consumption" ? "transfer" : "usage");
   mapped.set("pool", type === "usage" ? "consumption" : type === "consumption" ? "sale" : String(form.get("pool") ?? ""));
   mapped.set("reason", String(form.get("notes") ?? ""));
   return moveInventoryLot(mapped);

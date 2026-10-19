@@ -64,6 +64,8 @@ export function StockMovementList({ movements }: { movements: StockMovementRow[]
           <option value="entry">Entrada</option>
           <option value="initial">Estoque inicial</option>
           <option value="exit">Saída / ajuste</option>
+          <option value="expired">Produto vencido</option>
+          <option value="recall">Recall / recolhimento</option>
           <option value="consumption">Transferido p/ consumo</option>
           <option value="usage">Retirada p/ uso</option>
           <option value="sale">Venda</option>

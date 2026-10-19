@@ -14,7 +14,7 @@ export async function moveInventory(data: FormData) {
   const type = text(data, "type");
   const entered = quantity(data, "quantity");
   const notes = text(data, "notes");
-  if (!entered || !["entry", "exit", "consumption", "usage"].includes(type)) throw new Error("Informe tipo e quantidade.");
+  if (!entered || !["entry", "exit", "consumption", "usage", "expired", "recall"].includes(type)) throw new Error("Informe tipo e quantidade.");
   if (!["consumption", "usage"].includes(type) && notes.length < 3) throw new Error("Informe o motivo da entrada/saída.");
   await db.transaction(async (tx) => {
     await tx.execute(sql`select id from inventory_products where id = ${productId} for update`);
@@ -54,7 +54,7 @@ export async function moveInventory(data: FormData) {
     } else if (type === "entry" && !product.isForSale) {
       consumptionBalance += entered;
       balanceAfter = consumptionBalance;
-    } else if (type === "exit" && !product.isForSale) {
+    } else if (["exit", "expired", "recall"].includes(type) && !product.isForSale) {
       consumptionBalance -= entered;
       balanceAfter = consumptionBalance;
       if (consumptionBalance < 0) throw new Error("A entrada/saída deixaria o estoque de consumo negativo.");

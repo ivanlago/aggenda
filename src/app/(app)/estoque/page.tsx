@@ -75,7 +75,7 @@ export default async function InventoryPage() {
   }));
   const movementLabels: Record<string, string> = {
     clinical_application: "Aplicação clínica por lote", procedure_consumption: "Consumo do procedimento",
-    entry: "Entrada", initial: "Estoque inicial", exit: "Saída / ajuste", consumption: "Transferido p/ consumo", usage: "Retirada p/ uso",
+    expired: "Produto vencido", recall: "Recall / recolhimento", entry: "Entrada", initial: "Estoque inicial", exit: "Saída / ajuste", consumption: "Transferido p/ consumo", usage: "Retirada p/ uso",
     sale: "Venda", sale_cancellation: "Cancelamento de venda", sale_refund: "Estorno de venda",
   };
   const movementRows: StockMovementRow[] = movements.map((item) => ({

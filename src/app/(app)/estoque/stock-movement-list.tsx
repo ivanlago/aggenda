@@ -42,7 +42,7 @@ export function StockMovementList({ movements }: { movements: StockMovementRow[]
   return <section className="panel">
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h2 className="text-lg font-extrabold">Movimentações</h2>
+        <h2 className="text-lg font-extrabold">Entradas/Saídas</h2>
         <p className="text-sm text-muted">Histórico de entradas, saídas, transferências para consumo, retiradas para uso, vendas e estornos.</p>
       </div>
       <label className="relative w-full sm:max-w-sm">
@@ -60,7 +60,7 @@ export function StockMovementList({ movements }: { movements: StockMovementRow[]
       </label>
       <label className="grid gap-1 text-sm font-bold">Tipo
         <select className="field" value={type} onChange={(event) => setType(event.target.value)}>
-          <option value="all">Todas as movimentações</option>
+          <option value="all">Todas as entradas/saídas</option>
           <option value="entry">Entrada</option>
           <option value="initial">Estoque inicial</option>
           <option value="exit">Saída / ajuste</option>
@@ -88,7 +88,7 @@ export function StockMovementList({ movements }: { movements: StockMovementRow[]
           <td className="p-3 text-muted">{item.notes || "—"}</td>
         </tr>)}</tbody>
       </table>
-      {!filtered.length && <p className="py-8 text-center text-sm text-muted">Nenhuma movimentação encontrada para os filtros selecionados.</p>}
+      {!filtered.length && <p className="py-8 text-center text-sm text-muted">Nenhuma entrada/saída encontrada para os filtros selecionados.</p>}
     </div>
   </section>;
 }

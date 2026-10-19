@@ -15,7 +15,7 @@ export async function moveInventory(data: FormData) {
   const entered = quantity(data, "quantity");
   const notes = text(data, "notes");
   if (!entered || !["entry", "exit", "consumption", "usage"].includes(type)) throw new Error("Informe tipo e quantidade.");
-  if (!["consumption", "usage"].includes(type) && notes.length < 3) throw new Error("Informe o motivo da movimentação.");
+  if (!["consumption", "usage"].includes(type) && notes.length < 3) throw new Error("Informe o motivo da entrada/saída.");
   await db.transaction(async (tx) => {
     await tx.execute(sql`select id from inventory_products where id = ${productId} for update`);
     const [product] = await tx.select({
@@ -32,7 +32,7 @@ export async function moveInventory(data: FormData) {
 
     const [lot] = await tx.select({ id: inventoryLots.id }).from(inventoryLots).where(and(eq(inventoryLots.organizationId, organization.id), eq(inventoryLots.productId, productId))).limit(1);
     const [tracked] = await tx.select({ tracked: inventoryProducts.lotTracking }).from(inventoryProducts).where(eq(inventoryProducts.id, productId));
-    if (lot || tracked.tracked) throw new Error("Este produto usa controle por lote. Selecione o lote no formulário de Movimentação.");
+    if (lot || tracked.tracked) throw new Error("Este produto usa controle por lote. Selecione o lote no formulário de Entrada/Saída.");
     let saleBalance = product.saleBalance;
     let consumptionBalance = product.consumptionBalance;
     let balanceAfter = saleBalance;
@@ -57,11 +57,11 @@ export async function moveInventory(data: FormData) {
     } else if (type === "exit" && !product.isForSale) {
       consumptionBalance -= entered;
       balanceAfter = consumptionBalance;
-      if (consumptionBalance < 0) throw new Error("A movimentação deixaria o estoque de consumo negativo.");
+      if (consumptionBalance < 0) throw new Error("A entrada/saída deixaria o estoque de consumo negativo.");
     } else {
       saleBalance += delta;
       balanceAfter = saleBalance;
-      if (saleBalance < 0) throw new Error("A movimentação deixaria o estoque de venda negativo.");
+      if (saleBalance < 0) throw new Error("A entrada/saída deixaria o estoque de venda negativo.");
     }
 
     await tx.update(inventoryProducts).set({ currentQuantityMillis: saleBalance, consumptionQuantityMillis: consumptionBalance, updatedAt: new Date() }).where(eq(inventoryProducts.id, productId));

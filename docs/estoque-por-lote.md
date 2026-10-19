@@ -4,7 +4,7 @@
 
 1. Acesse **Estoque → Movimentação**. O mesmo formulário registra operações comuns e por lote. A opção **Lotes e recolhimentos**, dentro dele, concentra a identificação do saldo e a ativação; os links de cada lote abrem rastreabilidade e acompanhamento. A migração não inventa lotes nem modifica saldos existentes.
 2. No cadastro de produto, use a unidade física na qual o saldo e as aplicações serão registrados: unidade, mL, mg, g ou UI. Não há conversão automática de frascos para mL, diluições ou unidades de potência. Com saldo ou controle ativo, a unidade não pode ser alterada; cadastre outra apresentação quando necessário.
-3. Em **Movimentação → Entrada**, marque **Identificar esta entrada por lote e validade** quando o produto ainda não tiver lotes. Em **Origem da quantidade**, use **Identificar saldo já existente — não aumenta o estoque** para informar os lotes reais do saldo de venda e de consumo. Essa opção não aumenta o estoque. Use **Nova entrada — aumenta o estoque** para um novo recebimento. Para produtos já controlados por lote, os campos necessários aparecem automaticamente.
+3. Em **Entrada/Saída → Entrada**, marque **Identificar esta entrada por lote e validade** quando o produto ainda não tiver lotes. Em **Origem da quantidade**, use **Identificar saldo já existente — não aumenta o estoque** para informar os lotes reais do saldo de venda e de consumo. Essa opção não aumenta o estoque. Use **Nova entrada — aumenta o estoque** para um novo recebimento. Para produtos já controlados por lote, os campos necessários aparecem automaticamente.
 4. Confira fornecedor, código, validade e quantidade. O código é normalizado para maiúsculas; um mesmo lote não pode receber outra validade nem ser reabastecido enquanto bloqueado.
 5. Na opção **Lotes e recolhimentos**, selecione o produto e use **Ativar controle por lote após conferência** somente depois que os saldos de venda e consumo estiverem totalmente distribuídos. O servidor confere os totais e não permite ativação incompleta. A ativação pode começar com saldo zero.
 
@@ -12,8 +12,8 @@ Produtos que nunca tiveram lotes cadastrados continuam com o controle anterior. 
 
 ## Operação
 
-- Entrada: use **Movimentação → Entrada**, selecione destino (venda ou consumo) e registre quantidade na unidade do produto.
-- Transferência: em **Movimentação → Transferir para consumo**, selecione o lote; a operação preserva lote e validade. Lotes vencidos ou bloqueados não são transferidos para utilização.
+- Entrada: use **Entrada/Saída → Entrada**, selecione destino (venda ou consumo) e registre quantidade na unidade do produto.
+- Transferência: em **Entrada/Saída → Transferir para consumo**, selecione o lote; a operação preserva lote e validade. Lotes vencidos ou bloqueados não são transferidos para utilização.
 - Venda e ficha técnica: alocação automática FEFO (primeiro vencimento, primeira saída). Só considera lotes ativos com validade igual ou posterior ao dia atual no fuso da clínica. No PDV, o saldo disponível exclui vencidos e bloqueados; a validação final é transacional no servidor.
 - Aplicação clínica: escolha o lote realmente utilizado na consulta. Produto, código, validade e unidade são conferidos no servidor. Ao finalizar o registro clínico, há baixa e vínculo com paciente, atendimento e autoria; salvar rascunho não baixa estoque. Finalize antes de concluir o atendimento.
 - Conclusão do atendimento: desconta apenas a diferença entre a ficha técnica e o que já foi aplicado para o mesmo produto. Aplicações acima da ficha técnica mantêm o consumo real, sem gerar créditos artificiais.
@@ -57,9 +57,9 @@ As telas têm paginação de 50 lotes/destinações/acompanhamentos; a implanta�
 
 ## Unificação da movimentação — 19/10/2026
 
-- O botão principal **Movimentação** reúne Entrada, Saída / ajuste / descarte, Transferir para consumo e Retirada para uso interno. Não há botão paralelo de movimentação por lote no topo do estoque.
+- O botão principal **Entrada/Saída** reúne Entrada, Saída / ajuste / descarte, Transferir para consumo e Retirada para uso interno. Não há botão paralelo de movimentação por lote no topo do estoque.
 - Produto e saldos são consultados no servidor ao selecionar. O cliente carrega até 1.000 lotes do produto, em vez de carregar todos os lotes da clínica ao abrir a página. Produtos com controle ativo ou em preparação exigem lote no servidor, mesmo que um cliente altere os campos do formulário.
-- A página de consulta de lotes e a página individual reutilizam o mesmo componente de movimentação; os formulários antigos duplicados de entrada e saída foram removidos. Rastreabilidade, bloqueios e acompanhamento de recolhimento continuam nos detalhes do lote, acessíveis a partir da opção dentro da movimentação.
+- A página de consulta de lotes e a página individual reutilizam o mesmo componente de movimentação; os formulários antigos duplicados de entrada e saída foram removidos. Rastreabilidade, bloqueios e acompanhamento de recolhimento continuam nos detalhes do lote, acessíveis a partir da opção dentro de Entrada/Saída.
 - O diálogo usa foco e Escape nativos. Trocar entre as opções internas preserva os campos do formulário. Notas de entrada por lote, transferência e retirada são preservadas no histórico.
 - Não há alteração de schema nem nova migração nesta unificação. Testes PostgreSQL incluem as quatro operações comuns e por lote, identificação sem aumento de saldo, vencidos, lote incompatível, motivo e autorização.
 - Conferência no navegador sem registros reais: abertura do diálogo, consulta de saldo, campos condicionais, identificação de saldo existente e ativação bloqueada enquanto a distribuição está incompleta.

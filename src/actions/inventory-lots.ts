@@ -53,7 +53,7 @@ export async function moveInventoryLot(form: FormData) {
   const { organization, session } = await requireOrganization();
   assertOrganizationPermission(organization.role, "inventory.manage");
   const type = text(form, "type"), pool = text(form, "pool"), lotId = text(form, "lotId"), reason = text(form, "reason");
-  if (!["transfer", "usage", "discard"].includes(type) || !["sale", "consumption"].includes(pool) || reason.length < 3 || reason.length > 1000) throw new Error("Informe operação, destino e motivo da movimentação.");
+  if (!["transfer", "usage", "discard"].includes(type) || !["sale", "consumption"].includes(pool) || reason.length < 3 || reason.length > 1000) throw new Error("Informe operação, destino e motivo da entrada/saída.");
   const amount = stockMillis(text(form, "quantity"));
   await db.transaction(async tx => {
     const [lot] = await tx.select().from(inventoryLots).where(and(eq(inventoryLots.id, lotId), eq(inventoryLots.organizationId, organization.id)));

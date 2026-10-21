@@ -1148,6 +1148,16 @@ export const clientPortalDependents = pgTable("client_portal_dependents", {
   check("portal_dependent_not_self", sql`${table.guardianId} <> ${table.clientId}`),
 ]);
 
+export const serviceCategories = pgTable("service_categories", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+}, table => [
+  uniqueIndex("service_categories_org_id_unique").on(table.organizationId, table.id),
+  uniqueIndex("service_categories_org_name_unique").on(table.organizationId, sql`lower(trim(${table.name}))`),
+  check("service_categories_name_check", sql`length(trim(${table.name})) BETWEEN 2 AND 80`),
+]);
+
 export const services = pgTable(
   "services",
   {
@@ -1156,6 +1166,7 @@ export const services = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    categoryId: uuid("category_id"),
     description: text("description"),
     tussCode: text("tuss_code"),
     tussTable: text("tuss_table"),
@@ -1180,7 +1191,7 @@ export const services = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [index("services_organization_idx").on(table.organizationId), check("services_return_settings_check", sql`(${table.returnInterval} IS NULL OR ${table.returnInterval} BETWEEN 1 AND 3650) AND ${table.returnIntervalUnit} IN ('days', 'months') AND ${table.returnReminderDays} BETWEEN 0 AND 365`)]
+  (table) => [foreignKey({ columns: [table.organizationId, table.categoryId], foreignColumns: [serviceCategories.organizationId, serviceCategories.id], name: "services_category_tenant_fk" }), index("services_category_idx").on(table.organizationId, table.categoryId), index("services_organization_idx").on(table.organizationId), check("services_return_settings_check", sql`(${table.returnInterval} IS NULL OR ${table.returnInterval} BETWEEN 1 AND 3650) AND ${table.returnIntervalUnit} IN ('days', 'months') AND ${table.returnReminderDays} BETWEEN 0 AND 365`)]
 );
 
 export const inventoryProducts = pgTable("inventory_products", {

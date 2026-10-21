@@ -36,6 +36,7 @@ import {
   servicePackageItems,
   servicePackages,
   services,
+  serviceCategories,
   specialties,
   users,
 } from "@/db/schema";
@@ -773,6 +774,15 @@ export async function deleteClientClinicalMedia(formData: FormData) {
   revalidatePath(`/clientes/${media.clientId}`);
 }
 
+async function selectedServiceCategory(formData: FormData, organizationId: string) {
+  const id = optionalText(formData, "categoryId");
+  if (!id) return null;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw new Error("Categoria inválida.");
+  const [category] = await db.select({ id: serviceCategories.id }).from(serviceCategories).where(and(eq(serviceCategories.id, id), eq(serviceCategories.organizationId, organizationId))).limit(1);
+  if (!category) throw new Error("Categoria não encontrada nesta empresa.");
+  return category.id;
+}
+
 export async function createService(formData: FormData) {
   const { organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "services.manage");
@@ -782,9 +792,11 @@ export async function createService(formData: FormData) {
     throw new Error("Informe nome e duração válidos.");
   }
 
+  const categoryId = await selectedServiceCategory(formData, organization.id);
   const tussReference = await serviceCatalogReference(db, formData);
   await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "services", persist: (image) => db.insert(services).values({
     organizationId: organization.id,
+    categoryId,
     name,
     description: optionalText(formData, "description"),
     tussCode: optionalText(formData, "tussCode") || optionalText(formData, "manualTussCode"),
@@ -834,9 +846,10 @@ export async function updateService(formData: FormData) {
   }
   const [current] = await db.select({ imagePublicId: services.imagePublicId, tussCode: services.tussCode, tussReference: services.tussReference }).from(services).where(and(eq(services.id, id), eq(services.organizationId, organization.id))).limit(1);
   if (!current) throw new Error("Atendimento não encontrado.");
+  const categoryId = await selectedServiceCategory(formData, organization.id);
   const tussReference = await serviceCatalogReference(db, formData) ?? (current.tussCode === (optionalText(formData, "tussCode") || optionalText(formData, "manualTussCode")) ? current.tussReference : null);
   await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "services", currentPublicId: current.imagePublicId, persist: (image) => db.update(services).set({
-    name, description: optionalText(formData, "description"), durationMinutes,
+    categoryId, name, description: optionalText(formData, "description"), durationMinutes,
     tussCode: optionalText(formData, "tussCode") || optionalText(formData, "manualTussCode"),
     tussName: optionalText(formData, "tussName"),
     tussReference,

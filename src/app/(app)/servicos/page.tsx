@@ -1,3 +1,4 @@
+import { ActionForm } from "@/components/action-form";
 import { ServiceRepeatPolicy } from "@/components/service-repeat-policy";
 import { eq } from "drizzle-orm";
 import { Calculator, Trash2 } from "lucide-react";
@@ -39,10 +40,10 @@ export default async function ServicesPage() {
       <div className="mb-5"><Link className="secondary-button" href="/calculadora-retorno" target="_blank" rel="noopener noreferrer"><Calculator className="mr-2 size-4" />Calculadora de retorno</Link></div>
       <div className="mb-6 grid gap-6">
         {canManage && <ServiceCreateToggle label="categoria" buttonLabel="+ Nova categoria">
-          <form action={saveServiceCategory} className="grid min-w-0 gap-5 sm:grid-cols-2">
+          <ActionForm action={saveServiceCategory} successMessage="Categoria salva com sucesso." className="grid min-w-0 gap-5 sm:grid-cols-2">
             <label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Nome da categoria<input name="name" className="field" required minLength={2} maxLength={80} placeholder="Ex.: Consultas" /></label>
             <div className="border-t pt-4 sm:col-span-2"><button className="primary-button">Adicionar categoria</button></div>
-          </form>
+          </ActionForm>
         </ServiceCreateToggle>}
         <section className="panel">
           <h2 className="text-lg font-extrabold">{categories.length} {categories.length === 1 ? "categoria cadastrada" : "categorias cadastradas"}</h2>
@@ -51,11 +52,11 @@ export default async function ServicesPage() {
               <div key={category.id} className="flex items-center gap-4 py-4">
                 <p className="min-w-0 flex-1 font-bold">{category.name}</p>
                 {canManage && <ModalShell title={`Editar categoria: ${category.name}`} variant="edit">
-                  <form action={saveServiceCategory} className="grid min-w-0 gap-5">
+                  <ActionForm action={saveServiceCategory} successMessage="Categoria salva com sucesso." className="grid min-w-0 gap-5">
                     <input type="hidden" name="id" value={category.id} />
                     <label className="grid min-w-0 gap-2 text-sm font-bold">Nome da categoria<input className="field" name="name" defaultValue={category.name} required minLength={2} maxLength={80} /></label>
                     <div className="border-t pt-4"><button className="primary-button">Salvar alterações</button></div>
-                  </form>
+                  </ActionForm>
                 </ModalShell>}
                 {canManage && <form action={deleteServiceCategory}>
                   <input type="hidden" name="id" value={category.id} />
@@ -70,13 +71,14 @@ export default async function ServicesPage() {
       </div>
       <div className="grid gap-6">
         {canManage && <ServiceCreateToggle label={organization.serviceLabel}>
-          <form action={createService} className="grid min-w-0 gap-5 sm:grid-cols-2">
+          <ActionForm action={createService} successMessage="Procedimento cadastrado com sucesso." className="grid min-w-0 gap-5 sm:grid-cols-2">
             <div className="min-w-0 sm:col-span-2"><TussAutocomplete table="22" label="Guia TUSS 22 (opcional)" onSelectNameField="name" onSelectCodeField="manualTussCode" /></div>
             <label className="grid min-w-0 content-start gap-2 text-sm font-bold sm:col-span-2">Nome completo do procedimento<input className="field" name="name" required /></label>
-            <div className="grid min-w-0 gap-5 sm:col-span-2 lg:grid-cols-3">
+            <div className="grid min-w-0 gap-5 sm:col-span-2 sm:grid-cols-2 lg:grid-cols-4">
               <label className="grid min-w-0 content-start gap-2 text-sm font-bold">Código TUSS (opcional)<input className="field" name="manualTussCode" /></label>
             <label className="grid min-w-0 content-start gap-2 text-sm font-bold">Nome reduzido<input className="field" name="shortName" maxLength={80} placeholder="Ex.: RM, USG" /></label>
               <label className="grid min-w-0 content-start gap-2 text-sm font-bold">Duração em minutos<input className="field" name="durationMinutes" type="number" min="5" step="5" required /></label>
+              <label className="grid min-w-0 content-start gap-2 text-sm font-bold">Categoria<select className="field" name="categoryId" defaultValue={""}><option value="">Sem categoria</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
             </div>
             <label className="grid min-w-0 content-start gap-2 text-sm font-bold sm:col-span-2">Descrição<textarea className="field min-h-24" name="description" /></label>
             <label className="grid min-w-0 content-start gap-2 text-sm font-bold sm:col-span-2">Preparação necessária<textarea className="field min-h-24" name="preparation" /></label>
@@ -86,9 +88,8 @@ export default async function ServicesPage() {
               <label className="grid min-w-0 content-start gap-2 text-sm font-bold"><span className="self-end">Custo estimado em reais</span><input className="field" name="estimatedCost" inputMode="decimal" placeholder="Produtos, taxas etc." /></label>
             <ServiceDepositFields /></div>
             <div className="grid min-w-0 items-start gap-5 sm:col-span-2 lg:grid-cols-[2fr_1fr]"><ServiceReturnFields /><div className="min-w-0"><EntityImageField label={`Imagem do ${organization.serviceLabel.toLowerCase()}`} /></div></div>
-<label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Categoria<select className="field" name="categoryId" defaultValue={""}><option value="">Sem categoria</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
             <ServiceRepeatPolicy /><div className="border-t pt-4 sm:col-span-2"><button className="primary-button">Adicionar {organization.serviceLabel.toLowerCase()}</button></div>
-          </form>
+          </ActionForm>
         </ServiceCreateToggle>}
         <section className="panel">
           <h2 className="text-lg font-extrabold">
@@ -110,14 +111,15 @@ export default async function ServicesPage() {
                   </p>
                 </div>
                 {canManage && <ModalShell title={`Editar ${organization.serviceLabel.toLowerCase()}: ${item.name}`} variant="edit" wide>
-                  <form action={updateService} className="grid min-w-0 gap-5 sm:grid-cols-2">
+                  <ActionForm action={updateService} successMessage="Procedimento atualizado com sucesso." resetOnSuccess={false} className="grid min-w-0 gap-5 sm:grid-cols-2">
                     <input type="hidden" name="id" value={item.id} />
                     <div className="min-w-0 sm:col-span-2"><TussAutocomplete table="22" label="Guia TUSS 22" defaultCode={item.tussCode ?? ""} defaultName={item.tussName ?? ""} onSelectNameField="name" onSelectCodeField="manualTussCode" /></div>
                     <label className="grid min-w-0 content-start gap-2 text-sm font-bold sm:col-span-2">Nome completo do procedimento<input className="field" name="name" defaultValue={item.name} required /></label>
-            <div className="grid min-w-0 gap-5 sm:col-span-2 lg:grid-cols-3">
+            <div className="grid min-w-0 gap-5 sm:col-span-2 sm:grid-cols-2 lg:grid-cols-4">
                       <label className="grid min-w-0 content-start gap-2 text-sm font-bold">Código TUSS (opcional)<input className="field" name="manualTussCode" defaultValue={item.tussCode ?? ""} /></label>
                     <label className="grid min-w-0 content-start gap-2 text-sm font-bold">Nome reduzido<input className="field" name="shortName" maxLength={80} defaultValue={item.shortName ?? ""} /></label>
               <label className="grid min-w-0 content-start gap-2 text-sm font-bold">Duração em minutos<input className="field" name="durationMinutes" type="number" min="5" step="5" defaultValue={item.durationMinutes} required /></label>
+              <label className="grid min-w-0 content-start gap-2 text-sm font-bold">Categoria<select className="field" name="categoryId" defaultValue={item.categoryId ?? ""}><option value="">Sem categoria</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
             </div>
                     <label className="grid min-w-0 content-start gap-2 text-sm font-bold sm:col-span-2">Descrição<textarea className="field min-h-24" name="description" defaultValue={item.description ?? ""} /></label>
                     <label className="grid min-w-0 content-start gap-2 text-sm font-bold sm:col-span-2">Preparação necessária<textarea className="field min-h-24" name="preparation" defaultValue={item.preparation ?? ""} /></label>
@@ -127,10 +129,9 @@ export default async function ServicesPage() {
                       <label className="grid min-w-0 content-start gap-2 text-sm font-bold"><span className="self-end">Custo estimado em reais</span><input className="field" name="estimatedCost" inputMode="decimal" defaultValue={(item.estimatedCostInCents / 100).toFixed(2).replace(".", ",")} /></label>
                     <ServiceDepositFields type={item.depositType} value={item.depositValue} /></div>
                     <div className="grid min-w-0 items-start gap-5 sm:col-span-2 lg:grid-cols-[2fr_1fr]"><ServiceReturnFields settings={item} /><div className="min-w-0"><EntityImageField currentUrl={item.imageUrl} label={`Imagem do ${organization.serviceLabel.toLowerCase()}`} /></div></div>
-<label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Categoria<select className="field" name="categoryId" defaultValue={item.categoryId ?? ""}><option value="">Sem categoria</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
                     <ServiceRepeatPolicy value={item.publicRepeatPolicy} /><label className="flex items-center gap-2 text-sm font-bold sm:col-span-2"><input type="checkbox" name="isActive" defaultChecked={item.isActive} /> Ativo</label>
                     <div className="border-t pt-4 sm:col-span-2"><button className="primary-button">Salvar alterações</button></div>
-                  </form>
+                  </ActionForm>
                 </ModalShell>}
                 {canManage && <form action={deleteService}>
                   <input type="hidden" name="id" value={item.id} />

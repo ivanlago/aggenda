@@ -92,6 +92,33 @@ test("internal attendance preserves drafts, tab state and failed form submission
     dom.window.confirm = () => true;
     await click(container.querySelector('[aria-label="Fechar"]'));
     assert.equal(container.querySelector("dialog"), null); assert.equal(dom.window.document.activeElement, trigger);
+
+    // A category edit must notify the modal only after persistence succeeds.
+    let savedCategory = "", rejectCategory = true;
+    confirms = 0; dom.window.confirm = () => { confirms++; return false; };
+    await render(<ModalShell title="Editar Avaliação" variant="edit"><ActionForm
+      action={async (form: FormData) => { if (rejectCategory) return { error: "Falha ao salvar categoria" }; savedCategory = String(form.get("categoryId")); }}
+      successMessage="Procedimento atualizado com sucesso." resetOnSuccess={false}>
+      <select name="categoryId" defaultValue=""><option value="">Sem categoria</option><option value="consultas">Consultas</option></select>
+      <button type="submit">Salvar alterações</button>
+    </ActionForm></ModalShell>);
+    await click(container.querySelector('[aria-label="Editar Avaliação"]'));
+    const category = container.querySelector("select")!;
+    await act(async () => { category.value = "consultas"; category.dispatchEvent(new dom.window.Event("change", { bubbles: true })); });
+    await click(button("Salvar alterações"));
+    assert.match(container.textContent!, /Falha ao salvar categoria/);
+    assert.equal(category.value, "consultas");
+    await click(container.querySelector('[aria-label="Fechar"]'));
+    assert.equal(confirms, 1, "failed saves preserve the unsaved warning");
+    rejectCategory = false;
+    await click(button("Salvar alterações"));
+    assert.equal(savedCategory, "consultas");
+    assert.equal(category.value, "consultas", "editing does not reset to the old category");
+    assert.match(container.textContent!, /Procedimento atualizado com sucesso/);
+    await click(container.querySelector('[aria-label="Fechar"]'));
+    assert.equal(confirms, 1, "successful saves clear the dirty state");
+    assert.equal(container.querySelector("dialog"), null);
+
   } finally {
     await act(async () => { root.unmount(); }); dom.window.close();
     for (const [key, descriptor] of original) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globals[key]; }

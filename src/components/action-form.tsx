@@ -45,12 +45,14 @@ export function ActionForm({
   className,
   children,
   onSuccess,
+  resetOnSuccess = true,
 }: {
   action: (formData: FormData) => Promise<void | { error?: string; warning?: string; openUrl?: string }>;
   successMessage: string;
   className?: string;
   children: React.ReactNode;
   onSuccess?: () => void;
+  resetOnSuccess?: boolean;
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
@@ -64,7 +66,7 @@ export function ActionForm({
           return { id: Date.now(), status: "error", message: result.error };
         }
         if (result?.openUrl) window.open(result.openUrl, "_blank", "noopener,noreferrer");
-        formRef.current?.reset();
+        if (resetOnSuccess) formRef.current?.reset();
         formRef.current?.dispatchEvent(new CustomEvent("aggenda:form-saved", { bubbles: true }));
         onSuccess?.();
         return { id: Date.now(), status: "success", message: result?.warning ?? successMessage };

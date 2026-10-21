@@ -17,8 +17,10 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+export { referenceEntries, referenceReleases, referenceSyncRuns } from "./reference-schema";
 import type { QuoteLine } from "@/lib/retail-quote-items";
 import type { SocialLinks } from "@/lib/social-links";
+import type { CatalogReference } from "@/lib/reference-types";
 import type { ClinicalSummaryData, ClinicalConsultationData } from "@/lib/clinical-record";
 import type { ClinicalDraftData } from "@/lib/clinical-draft";
 
@@ -1158,6 +1160,7 @@ export const services = pgTable(
     tussCode: text("tuss_code"),
     tussTable: text("tuss_table"),
     tussName: text("tuss_name"),
+    tussReference: jsonb("tuss_reference").$type<CatalogReference>(),
     shortName: text("short_name"),
     preparation: text("preparation"),
     returnInterval: integer("return_interval"),

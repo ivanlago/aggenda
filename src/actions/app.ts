@@ -1,5 +1,6 @@
 "use server";
 
+import { serviceCatalogReference } from "@/lib/reference-snapshots";
 import { roomBookingError } from "@/lib/room-errors";
 
 import { and, eq, ilike, inArray, isNull } from "drizzle-orm";
@@ -781,12 +782,14 @@ export async function createService(formData: FormData) {
     throw new Error("Informe nome e duração válidos.");
   }
 
+  const tussReference = await serviceCatalogReference(db, formData);
   await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "services", persist: (image) => db.insert(services).values({
     organizationId: organization.id,
     name,
     description: optionalText(formData, "description"),
     tussCode: optionalText(formData, "tussCode") || optionalText(formData, "manualTussCode"),
     tussName: optionalText(formData, "tussName"),
+    tussReference,
     tussTable: optionalText(formData, "tussTable"),
     shortName: optionalText(formData, "shortName"),
     preparation: optionalText(formData, "preparation"),
@@ -829,12 +832,14 @@ export async function updateService(formData: FormData) {
   if (!id || name.length < 2 || !Number.isFinite(durationMinutes) || durationMinutes <= 0) {
     throw new Error("Informe nome e duração válidos.");
   }
-  const [current] = await db.select({ imagePublicId: services.imagePublicId }).from(services).where(and(eq(services.id, id), eq(services.organizationId, organization.id))).limit(1);
+  const [current] = await db.select({ imagePublicId: services.imagePublicId, tussCode: services.tussCode, tussReference: services.tussReference }).from(services).where(and(eq(services.id, id), eq(services.organizationId, organization.id))).limit(1);
   if (!current) throw new Error("Atendimento não encontrado.");
+  const tussReference = await serviceCatalogReference(db, formData) ?? (current.tussCode === (optionalText(formData, "tussCode") || optionalText(formData, "manualTussCode")) ? current.tussReference : null);
   await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "services", currentPublicId: current.imagePublicId, persist: (image) => db.update(services).set({
     name, description: optionalText(formData, "description"), durationMinutes,
     tussCode: optionalText(formData, "tussCode") || optionalText(formData, "manualTussCode"),
     tussName: optionalText(formData, "tussName"),
+    tussReference,
     tussTable: optionalText(formData, "tussTable"),
     shortName: optionalText(formData, "shortName"),
     preparation: optionalText(formData, "preparation"),

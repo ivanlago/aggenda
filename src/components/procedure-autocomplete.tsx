@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { CatalogReference } from "@/lib/reference-types";
 
-export type RegisteredProcedure = { id: string; name: string; shortName: string | null; tussCode: string | null; preparation: string | null };
+export type RegisteredProcedure = { id: string; name: string; shortName: string | null; tussCode: string | null; preparation: string | null; tussReference?: CatalogReference | null };
 
 const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 

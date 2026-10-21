@@ -45,6 +45,7 @@ next-env.d.ts
 /tmp/nfse-dps-fixture.xml
 /tmp/nfse-rules.xlsx
 /tmp/nfse-danfse/
+/tmp/reference-catalogs/
 
 /Aggenda.txt
 .vercel

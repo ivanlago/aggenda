@@ -1,0 +1,24 @@
+name: Atualizar catálogos oficiais
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 0'
+permissions:
+  contents: read
+concurrency:
+  group: reference-catalogs
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run reference:sync
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

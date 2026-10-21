@@ -2,6 +2,7 @@
 
 import { Download, Mail, MessageCircle, ShieldCheck, X } from "lucide-react";
 import { useState } from "react";
+import type { CatalogReference } from "@/lib/reference-types";
 
 import { CidAutocomplete, type CidItem } from "@/components/cid-autocomplete";
 import { TussAutocomplete, type TussItem } from "@/components/tuss-autocomplete";
@@ -22,6 +23,7 @@ export function ProfessionalDocumentComposer({ templates, organizationName, clie
   const [clientId, setClientId] = useState("");
   const [professionalId, setProfessionalId] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [references, setReferences] = useState<CatalogReference[]>([]);
   const client = clients.find((item) => item.id === clientId);
   const professional = professionals.find((item) => item.id === professionalId);
   const selectedTemplate = templates.find((item) => item.id === templateId);
@@ -29,21 +31,25 @@ export function ProfessionalDocumentComposer({ templates, organizationName, clie
 
   function chooseTemplate(id: string) {
     setTemplateId(id);
+    setReferences([]);
     const template = templates.find((item) => item.id === id);
     setTitle(template?.title ?? "");
     setContent(template?.content ?? "");
   }
 
   function addMedication(item: TussItem) {
+    if (item.reference) setReferences(current => [...current, item.reference!]);
     setContent((current) => `${current}${current.trim() ? "\n" : ""}${item.name}${item.presentation ? ` · ${item.presentation}` : ""} [TUSS ${item.code}] - `);
   }
 
   function addCid(item: CidItem) {
+    if (item.reference) setReferences(current => [...current, item.reference!]);
     const cidLine = `CID-10: ${item.code} — ${item.description}`;
     setContent((current) => `${current}${current.trim() ? "\n\n" : ""}${cidLine}`);
   }
 
   return <>
+    <input type="hidden" name="structuredDocumentData" value={JSON.stringify({ selections: references.map(catalogReference => ({ catalogReference })) })} />
     <select className="field" name="templateId" required value={templateId} onChange={(event) => chooseTemplate(event.target.value)}>
       <option value="" disabled>Modelo profissional</option>
       {templates.map((item) => <option key={item.id} value={item.id}>{item.name} · {typeLabels[item.documentType] ?? item.documentType}</option>)}

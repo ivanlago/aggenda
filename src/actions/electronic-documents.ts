@@ -1,4 +1,6 @@
 "use server";
+
+import { snapshotDocumentReferences } from "@/lib/reference-snapshots";
 import { requireClinicalClient, assertClinicalIssuer, assertMedicalRegistration } from "@/lib/clinical-access";
 
 import { and, eq } from "drizzle-orm";
@@ -181,9 +183,10 @@ export async function issueProfessionalDocument(data: FormData) {
     try { structuredData = JSON.parse(prescriptionData) as Record<string, unknown>; } catch { return { error: "Os dados estruturados da receita são inválidos." }; }
   }
   const genericStructuredData = text(data, "structuredDocumentData").slice(0, 30_000);
-  if (["exam_request", "quote"].includes(template.documentType) && genericStructuredData) {
+  if (!structuredData && genericStructuredData) {
     try { structuredData = JSON.parse(genericStructuredData) as Record<string, unknown>; } catch { return { error: "Os dados estruturados da solicitação são inválidos." }; }
   }
+  structuredData = await snapshotDocumentReferences(db, structuredData);
   const title = renderDocumentTemplate(text(data, "title") || template.title, values);
   if (appointmentId) structuredData = { ...structuredData, appointmentId };
   const credentials = createDocumentCredentials();

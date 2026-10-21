@@ -18,7 +18,7 @@ export async function ExamRequestsPage({ searchParams, embedded = false }: { sea
     db.select().from(documentTemplates).where(eq(documentTemplates.organizationId, organization.id)),
     db.select({ id: clients.id, name: clients.name, email: clients.email, phone: clients.phone }).from(clients).where(eq(clients.organizationId, organization.id)).orderBy(clients.name),
     db.select({ id: professionals.id, name: professionals.name }).from(professionals).where(eq(professionals.organizationId, organization.id)).orderBy(professionals.name),
-    db.select({ id: services.id, name: services.name, shortName: services.shortName, tussCode: services.tussCode, preparation: services.preparation }).from(services).where(and(eq(services.organizationId, organization.id), eq(services.isActive, true))).orderBy(services.name),
+    db.select({ id: services.id, name: services.name, shortName: services.shortName, tussCode: services.tussCode, tussReference: services.tussReference, preparation: services.preparation }).from(services).where(and(eq(services.organizationId, organization.id), eq(services.isActive, true))).orderBy(services.name),
     reuse && canManage ? db.select({ clientId: electronicDocuments.clientId, professionalId: electronicDocuments.issuerProfessionalId, structuredData: electronicDocuments.structuredData }).from(electronicDocuments).where(and(eq(electronicDocuments.id, reuse), eq(electronicDocuments.organizationId, organization.id), eq(electronicDocuments.documentType, "exam_request"))).limit(1) : Promise.resolve([]),
   ]);
   const template = templates.find((item) => item.isActive && item.documentType === "exam_request");

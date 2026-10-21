@@ -3,11 +3,12 @@
 import { Trash2, X } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 
+import type { CatalogReference } from "@/lib/reference-types";
 import { DocumentDeliveryControls } from "@/components/document-delivery-controls";
 import { ProcedureAutocomplete, type RegisteredProcedure } from "@/components/procedure-autocomplete";
 
 type Option = { id: string; name: string; email?: string | null; phone?: string | null };
-type Exam = { id: number; name: string; fullName: string; indication: string; tussCode: string; preparation: string };
+type Exam = { id: number; name: string; fullName: string; indication: string; tussCode: string; preparation: string; catalogReference?: CatalogReference | null };
 type InitialExamRequest = { clientId?: string; professionalId?: string; observations?: string; includeDate?: boolean; exams?: Omit<Exam, "id">[] };
 const emptyExam = (id: number): Exam => ({ id, name: "", fullName: "", indication: "", tussCode: "", preparation: "" });
 
@@ -27,7 +28,7 @@ export function ExamRequestComposer({ templateId, organizationName, clients, pro
   const professional = professionals.find((item) => item.id === professionalId);
   const content = useMemo(() => `Paciente: {{cliente}}\n\nExame(s) solicitado(s):\n${exams.map((item, index) => `${index + 1}. ${item.tussCode ? `${item.tussCode} - ` : ""}${item.name}${item.indication ? `\nIndicação clínica: ${item.indication}` : ""}`).join("\n")}${observations.trim() ? `\n\nObservações gerais:\n${observations.trim()}` : ""}${includeDate ? "\n\nData: {{data}}." : ""}`, [exams, includeDate, observations]);
 
-  function selectProcedure(item: RegisteredProcedure) { setDraftExam({ id: 0, name: item.shortName || item.name, fullName: item.name, tussCode: item.tussCode ?? "", preparation: item.preparation ?? "", indication: "" }); setExamError(""); }
+  function selectProcedure(item: RegisteredProcedure) { setDraftExam({ id: 0, name: item.shortName || item.name, fullName: item.name, tussCode: item.tussCode ?? "", catalogReference: item.tussReference, preparation: item.preparation ?? "", indication: "" }); setExamError(""); }
   function selectCustom(name: string) { setDraftExam({ ...emptyExam(0), name, fullName: name }); setExamError(""); }
   function insertExam() {
     if (!draftExam.name.trim()) { setExamError("Busque ou informe o nome do exame antes de inserir."); return; }
@@ -37,7 +38,7 @@ export function ExamRequestComposer({ templateId, organizationName, clients, pro
 
   return <>
     <input type="hidden" name="templateId" value={templateId} /><input type="hidden" name="title" value="Solicitação de exames" /><input type="hidden" name="content" value={content} />
-    <input type="hidden" name="structuredDocumentData" value={JSON.stringify({ observations, includeDate, exams: exams.map((item) => ({ name: item.name, fullName: item.fullName, indication: item.indication, tussCode: item.tussCode, preparation: item.preparation })) })} />
+    <input type="hidden" name="structuredDocumentData" value={JSON.stringify({ observations, includeDate, exams: exams.map((item) => ({ name: item.name, fullName: item.fullName, indication: item.indication, tussCode: item.tussCode, preparation: item.preparation, catalogReference: item.catalogReference })) })} />
     <div className="grid gap-3 md:grid-cols-2">{fixedParticipants ? <><label className="grid min-w-0 gap-1 text-sm font-bold">Paciente<input type="hidden" name="clientId" value={clientId} /><span className="field font-normal">{client?.name}</span></label><label className="grid min-w-0 gap-1 text-sm font-bold">Médico emissor<input type="hidden" name="professionalId" value={professionalId} /><span className="field font-normal">{professional?.name}</span></label></> : <><label className="grid gap-1 text-sm font-bold">Paciente<select className="field" name="clientId" required value={clientId} onChange={(event) => setClientId(event.target.value)}><option value="" disabled>Selecione o paciente</option>{clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="grid gap-1 text-sm font-bold">Médico emissor<select className="field" name="professionalId" required value={professionalId} onChange={(event) => setProfessionalId(event.target.value)}><option value="" disabled>Selecione o profissional</option>{professionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></>}</div>
     <div className="grid gap-3">
       <div className="divide-y rounded-2xl border">{exams.map((exam, index) => <div className="grid gap-2 p-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center" key={exam.id}><span className="text-sm font-extrabold text-muted">{index + 1}.</span><div className="min-w-0"><p className="truncate font-extrabold">{exam.tussCode ? `${exam.tussCode} - ` : ""}{exam.name}</p>{exam.indication ? <p className="truncate text-xs text-muted">Indicação: {exam.indication}</p> : null}</div><button type="button" className="rounded-lg p-2 text-red-700 hover:bg-red-50" onClick={() => setExams((current) => current.filter((item) => item.id !== exam.id))} aria-label={`Remover exame ${index + 1}`}><Trash2 className="size-4" /></button></div>)}{!exams.length ? <p className="p-4 text-sm text-muted">Nenhum exame adicionado.</p> : null}</div>

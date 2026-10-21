@@ -62,6 +62,7 @@ export function CertificateComposer({ templateId, clients, professionals, initia
     <input type="hidden" name="templateId" value={templateId} />
     <input type="hidden" name="title" value="ATESTADO MÉDICO" />
     <input type="hidden" name="content" value={content} />
+    <input type="hidden" name="structuredDocumentData" value={JSON.stringify({ cid: cidAuthorized && cid ? cid : null })} />
     <div className="grid gap-3 md:grid-cols-3">
       <label className="grid min-w-0 gap-1 text-sm font-bold">Médico emissor{fixedParticipants ? <><input type="hidden" name="professionalId" value={professionalId} /><span className="field font-normal">{professional?.name}</span></> : <select className="field" name="professionalId" required value={professionalId} onChange={(event) => { setProfessionalId(event.target.value); setValidationMessage(""); }}><option value="" disabled>Selecione o médico</option>{professionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}</label>
       <label className="grid min-w-0 gap-1 text-sm font-bold">Paciente{fixedParticipants ? <><input type="hidden" name="clientId" value={clientId} /><span className="field font-normal">{client?.name}</span></> : <select className="field" name="clientId" required value={clientId} onChange={(event) => { setClientId(event.target.value); setCpf(""); setValidationMessage(""); }}><option value="" disabled>Selecione o paciente</option>{clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}</label>

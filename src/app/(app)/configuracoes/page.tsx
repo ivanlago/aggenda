@@ -1,3 +1,4 @@
+import { ReferenceCatalogStatus } from "@/components/reference-catalog-status";
 import { RoomSettings } from "@/components/room-settings";
 import { updateDocumentTemplateLibrary } from "@/actions/electronic-documents";
 import { headers } from "next/headers";
@@ -121,6 +122,7 @@ export default async function SettingsPage() {
       { id: "identity", label: "Identidade", content: identity },
       { id: "reminders", label: "Lembretes", content: reminders },
       { id: "documents", label: "Documentos", content: documents },
+      { id: "catalogs", label: "Catálogos", content: <ReferenceCatalogStatus /> },
       { id: "policies", label: "Políticas", content: policies },
       { id: "whatsapp", label: "WhatsApp", content: <WhatsAppSettingsContent /> },
       { id: "automation", label: "Automações e IA", content: <AutomationAndAiSettingsContent /> },

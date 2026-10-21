@@ -27,7 +27,11 @@
     "prebuild": "node scripts/patch-dependency-security.mjs",
     "predev": "node scripts/patch-dependency-security.mjs",
     "test:security": "tsx --test tests/dependency-security.test.ts tests/auth-security.test.ts",
-    "prestart": "node scripts/patch-dependency-security.mjs"
+    "prestart": "node scripts/patch-dependency-security.mjs",
+    "reference:bootstrap": "tsx scripts/reference-catalogs.ts bootstrap",
+    "reference:sync": "tsx scripts/reference-catalogs.ts sync",
+    "reference:import": "tsx scripts/reference-catalogs.ts import",
+    "test:references": "tsx --test tests/reference-catalogs.test.ts"
   },
   "dependencies": {
     "@signpdf/placeholder-pdf-lib": "^3.3.0",

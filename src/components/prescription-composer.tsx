@@ -4,10 +4,12 @@ import { Trash2, X } from "lucide-react";
 import { DocumentDeliveryControls } from "@/components/document-delivery-controls";
 import { useId, useMemo, useState } from "react";
 
+import type { CatalogReference } from "@/lib/reference-types";
+
 import { TussAutocomplete, type TussItem } from "@/components/tuss-autocomplete";
 
 type Option = { id: string; name: string; email?: string | null; phone?: string | null };
-type Medication = { id: number; name: string; presentation: string; route: string; dosage: string; quantity: string; notes: string; tussCode: string };
+type Medication = { id: number; name: string; presentation: string; route: string; dosage: string; quantity: string; notes: string; tussCode: string; catalogReference?: CatalogReference };
 type InitialPrescription = { clientId?: string; professionalId?: string; kind?: string; observations?: string; includeDate?: boolean; medications?: Omit<Medication, "id">[] };
 
 const emptyMedication = (id: number): Medication => ({ id, name: "", presentation: "", route: "", dosage: "", quantity: "", notes: "", tussCode: "" });
@@ -36,7 +38,7 @@ export function PrescriptionComposer({ templateId, organizationName, clients, pr
   ].filter(Boolean).join("\n")).join("\n\n")}${observations.trim() ? `\n\nObservações gerais:\n${observations.trim()}` : ""}${includeDate ? "\n\nData: {{data}}." : ""}`, [includeDate, medications, observations]);
 
   function selectMedication(item: TussItem) {
-    setDraftMedication({ ...emptyMedication(0), name: item.name, presentation: item.presentation ?? "", tussCode: item.code });
+    setDraftMedication({ ...emptyMedication(0), name: item.name, presentation: item.presentation ?? "", tussCode: item.source === "anvisa" ? "" : item.code, catalogReference: item.reference });
     setMedicationError("");
   }
 
@@ -59,7 +61,7 @@ export function PrescriptionComposer({ templateId, organizationName, clients, pr
     <input type="hidden" name="templateId" value={templateId} />
     <input type="hidden" name="title" value={kind} />
     <input type="hidden" name="content" value={content} />
-    <input type="hidden" name="prescriptionData" value={JSON.stringify({ kind, medications: medications.map((item) => ({ name: item.name, presentation: item.presentation, route: item.route, dosage: item.dosage, quantity: item.quantity, notes: item.notes, tussCode: item.tussCode })), observations, includeDate })} />
+    <input type="hidden" name="prescriptionData" value={JSON.stringify({ kind, medications: medications.map((item) => ({ name: item.name, presentation: item.presentation, route: item.route, dosage: item.dosage, quantity: item.quantity, notes: item.notes, tussCode: item.tussCode, catalogReference: item.catalogReference })), observations, includeDate })} />
     <div className="grid gap-3 md:grid-cols-3">
       {fixedParticipants ? <><label className="grid min-w-0 gap-1 text-sm font-bold">Paciente<input type="hidden" name="clientId" value={clientId} /><span className="field font-normal">{selectedClient?.name}</span></label><label className="grid min-w-0 gap-1 text-sm font-bold">Médico emissor<input type="hidden" name="professionalId" value={professionalId} /><span className="field font-normal">{selectedProfessional?.name}</span></label></> : <><label className="grid gap-1 text-sm font-bold">Paciente<select className="field" name="clientId" required value={clientId} onChange={(event) => setClientId(event.target.value)}><option value="" disabled>Selecione o paciente</option>{clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
       <label className="grid gap-1 text-sm font-bold">Médico emissor<select className="field" name="professionalId" required value={professionalId} onChange={(event) => setProfessionalId(event.target.value)}><option value="" disabled>Selecione o profissional</option>{professionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></>}
@@ -75,7 +77,7 @@ export function PrescriptionComposer({ templateId, organizationName, clients, pr
       <button type="button" className="primary-button w-fit" aria-expanded={medicationFormOpen} aria-controls={medicationFormId} onClick={() => setMedicationFormOpen((open) => !open)}>{medicationFormOpen ? "Minimizar formulário" : "+ Adicionar medicamento"}</button>
       <div id={medicationFormId} hidden={!medicationFormOpen}>
       <div className="grid gap-3 rounded-2xl border bg-slate-50 p-4">
-        <TussAutocomplete key={medicationSearchKey} table="20" label="Buscar medicamento" nameField="medication-search" onSelect={selectMedication} onCustom={selectCustomMedication} />
+        <TussAutocomplete key={medicationSearchKey} table="20" medicationCatalog label="Buscar medicamento" nameField="medication-search" onSelect={selectMedication} onCustom={selectCustomMedication} />
         <div className="grid gap-3 md:grid-cols-2">
           <label className="grid gap-1 text-sm font-bold">Medicamento<input className="field" value={draftMedication.name} onChange={(event) => setDraftMedication((current) => ({ ...current, name: event.target.value }))} placeholder="Nome do medicamento" /></label>
           <label className="grid gap-1 text-sm font-bold">Apresentação<input className="field" value={draftMedication.presentation} onChange={(event) => setDraftMedication((current) => ({ ...current, presentation: event.target.value }))} placeholder="Ex.: 500 mg, caixa com 20" /></label>

@@ -19,16 +19,14 @@ import { EntityImageField, EntityThumbnail } from "@/components/entity-image-fie
 
 export const metadata = { title: "Serviços" };
 
-export default async function ServicesPage({ searchParams }: { searchParams: Promise<{ category?: string }> }) {
+export default async function ServicesPage() {
   const { organization } = await requireOrganization();
   const canManage = hasOrganizationPermission(organization.role, "services.manage");
-  const { category: selectedCategory = "" } = await searchParams;
   const categories = await db.select().from(serviceCategories).where(eq(serviceCategories.organizationId, organization.id)).orderBy(serviceCategories.name);
-  const allItems = await db.select().from(services)
+  const items = await db.select().from(services)
     .where(eq(services.organizationId, organization.id))
     .orderBy(services.name);
 
-  const items = allItems.filter(item => !selectedCategory || (selectedCategory === "none" ? !item.categoryId : item.categoryId === selectedCategory));
   const categoryNames = new Map(categories.map(category => [category.id, category.name]));
 
   return (
@@ -39,12 +37,37 @@ export default async function ServicesPage({ searchParams }: { searchParams: Pro
         description={`Defina duração e preço dos ${organization.serviceLabelPlural.toLowerCase()} oferecidos.`}
       />
       <div className="mb-5"><Link className="secondary-button" href="/calculadora-retorno" target="_blank" rel="noopener noreferrer"><Calculator className="mr-2 size-4" />Calculadora de retorno</Link></div>
-      {canManage && <details className="panel mb-5"><summary className="cursor-pointer font-extrabold">Categorias de {organization.serviceLabelPlural.toLowerCase()}</summary>
-        <form action={saveServiceCategory} className="mt-4 flex flex-wrap items-end gap-3"><label className="grid gap-2 text-sm font-bold">Nova categoria<input name="name" className="field" required minLength={2} maxLength={80} placeholder="Ex.: Consultas" /></label><button className="primary-button">Criar categoria</button></form>
-        <p className="mt-3 text-sm text-muted">Ao excluir uma categoria, seus serviços ficam sem categoria.</p>
-        <div className="mt-3 divide-y">{categories.map(category => <div key={category.id} className="flex flex-wrap items-center gap-3 py-3"><form action={saveServiceCategory} className="flex flex-wrap items-center gap-2"><input type="hidden" name="id" value={category.id} /><input aria-label="Nome da categoria" className="field" name="name" defaultValue={category.name} required minLength={2} maxLength={80} /><button className="secondary-button">Salvar categoria</button></form><form action={deleteServiceCategory}><input type="hidden" name="id" value={category.id} /><button className="icon-button" aria-label={`Excluir categoria ${category.name}`}><Trash2 className="size-4" /></button></form></div>)}</div>
-      </details>}
-      <form className="mb-5 flex flex-wrap items-end gap-3"><label className="grid gap-2 text-sm font-bold">Filtrar por categoria<select name="category" className="field" defaultValue={selectedCategory}><option value="">Todas as categorias</option><option value="none">Sem categoria</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><button className="secondary-button">Filtrar</button></form>
+      <div className="mb-6 grid gap-6">
+        {canManage && <ServiceCreateToggle label="categoria" buttonLabel="+ Nova categoria">
+          <form action={saveServiceCategory} className="grid min-w-0 gap-5 sm:grid-cols-2">
+            <label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Nome da categoria<input name="name" className="field" required minLength={2} maxLength={80} placeholder="Ex.: Consultas" /></label>
+            <div className="border-t pt-4 sm:col-span-2"><button className="primary-button">Adicionar categoria</button></div>
+          </form>
+        </ServiceCreateToggle>}
+        <section className="panel">
+          <h2 className="text-lg font-extrabold">{categories.length} {categories.length === 1 ? "categoria cadastrada" : "categorias cadastradas"}</h2>
+          <div className="mt-5 divide-y">
+            {categories.map(category => (
+              <div key={category.id} className="flex items-center gap-4 py-4">
+                <p className="min-w-0 flex-1 font-bold">{category.name}</p>
+                {canManage && <ModalShell title={`Editar categoria: ${category.name}`} variant="edit">
+                  <form action={saveServiceCategory} className="grid min-w-0 gap-5">
+                    <input type="hidden" name="id" value={category.id} />
+                    <label className="grid min-w-0 gap-2 text-sm font-bold">Nome da categoria<input className="field" name="name" defaultValue={category.name} required minLength={2} maxLength={80} /></label>
+                    <div className="border-t pt-4"><button className="primary-button">Salvar alterações</button></div>
+                  </form>
+                </ModalShell>}
+                {canManage && <form action={deleteServiceCategory}>
+                  <input type="hidden" name="id" value={category.id} />
+                  <button className="icon-button" aria-label={`Excluir categoria ${category.name}`}><Trash2 className="size-4" /></button>
+                </form>}
+              </div>
+            ))}
+            {!categories.length && <p className="empty-state">Nenhuma categoria cadastrada.</p>}
+          </div>
+          {canManage && <p className="mt-3 text-sm text-muted">Ao excluir uma categoria, seus serviços ficam sem categoria.</p>}
+        </section>
+      </div>
       <div className="grid gap-6">
         {canManage && <ServiceCreateToggle label={organization.serviceLabel}>
           <form action={createService} className="grid min-w-0 gap-5 sm:grid-cols-2">
@@ -117,7 +140,7 @@ export default async function ServicesPage({ searchParams }: { searchParams: Pro
             ))}
             {!items.length && (
               <p className="empty-state">
-                Nenhum {organization.serviceLabel.toLowerCase()} {selectedCategory ? "nesta categoria" : "cadastrado"}.
+                Nenhum {organization.serviceLabel.toLowerCase()} cadastrado.
               </p>
             )}
           </div>

@@ -2,8 +2,9 @@
 
 Em `/servicos`, usuários com `services.manage` podem criar, renomear e excluir
 categorias próprias da organização. Cada procedimento/serviço pode ter uma
-categoria opcional, escolhida tanto na criação quanto na edição. A lista mostra
-a categoria e permite filtrar todas, uma categoria específica ou sem categoria.
+categoria opcional, escolhida tanto na criação quanto na edição. O botão “+ Nova categoria” abre o formulário recolhido por padrão. A lista de
+categorias fica logo abaixo, com edição em modal e exclusão. A lista de serviços
+mostra a categoria de cada cadastro.
 
 Excluir uma categoria remove somente os vínculos; os serviços são preservados.
 Nomes repetidos na mesma organização são bloqueados, desconsiderando maiúsculas

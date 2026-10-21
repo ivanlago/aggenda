@@ -36,6 +36,7 @@ export async function importReferenceCatalog(database: ReferenceDatabase, input:
       const [known] = await tx.select().from(referenceReleases).where(and(eq(referenceReleases.kind, input.kind), eq(referenceReleases.checksum, checksum)));
       if (known && known.id === current?.id) return { release: known, unchanged: true };
       if (known) throw new Error("A fonte retornou uma versão antiga; restauração exige conferência explícita.");
+      if (/^ANS-TISS-\d{6}$/.test(current?.version ?? "") && /^ANS-TISS-\d{6}$/.test(input.version) && input.version < current!.version) throw new Error("A fonte retornou uma edição TISS anterior ao catálogo publicado.");
       if (current && input.version.startsWith("arquivo-legado-") && !current.version.startsWith("arquivo-legado-")) throw new Error("O bootstrap não pode substituir uma versão sincronizada da fonte oficial.");
       if (current?.sourceModifiedAt && input.sourceModifiedAt && Date.parse(input.sourceModifiedAt) < Date.parse(current.sourceModifiedAt)) throw new Error("A fonte retornou um arquivo anterior ao catálogo publicado.");
       if (current && entries.length < current.rowCount * .9) throw new Error("Redução superior a 10% do catálogo; publicação bloqueada para conferência.");

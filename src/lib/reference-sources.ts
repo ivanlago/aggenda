@@ -1,5 +1,6 @@
 import Papa from "papaparse";
 import { referenceDate, normalizeReference, type ReferenceEntry, type ReferenceKind } from "./reference-types";
+import { ReferenceCheckpoint, checkpointHash } from "./reference-checkpoint";
 
 export const oclBase = "https://consulta-ocl.apps.sa-1a.mendixcloud.com/rest/oclservice/ANS";
 export const anvisaUrl = "https://dados.anvisa.gov.br/dados/DADOS_ABERTOS_MEDICAMENTOS.csv";
@@ -59,7 +60,7 @@ async function officialJson<T>(url: string): Promise<T> {
   throw lastError;
 }
 
-export async function downloadReferenceCatalog(kind: Exclude<ReferenceKind, "cid-10">, onProgress?: (loaded: number, total: number) => void) {
+export async function downloadReferenceCatalog(kind: Exclude<ReferenceKind, "cid-10">, onProgress?: (loaded: number, total: number) => void, options: { checkpointDirectory?: string } = {}) {
   if (kind === "anvisa-medications") {
     const response = await officialResponse(anvisaUrl);
     const bytes = new Uint8Array(await response.arrayBuffer());
@@ -77,15 +78,29 @@ export async function downloadReferenceCatalog(kind: Exclude<ReferenceKind, "cid
   if (!Array.isArray(first) || !first.length) throw new Error("Catálogo TUSS vazio.");
   const pageCount = Math.ceil(expected / first.length);
   if (pageCount > 5000) throw new Error("Paginação TUSS acima do limite esperado.");
+  // OCL exposes no transactional edition ID. Recheck metadata and the first page
+  // on every attempt, expire scratch data after six hours, and validate the entire
+  // assembled catalog before publication. Never expose a partial checkpoint.
+  const checkpoint = options.checkpointDirectory ? new ReferenceCheckpoint(options.checkpointDirectory, checkpointHash({ kind, source: sources.find(source => source.Codigo === kind), first })) : undefined;
   for (let page = 1; page <= pageCount; page += 4) {
-    const pages = await Promise.all(Array.from({ length: Math.min(4, pageCount - page + 1) }, async (_, index) => {
+    const settled = await Promise.allSettled(Array.from({ length: Math.min(4, pageCount - page + 1) }, async (_, index) => {
       const number = page + index;
-      return number === 1 ? first : await officialJson<OclRow[]>(`${sourceUrl}?page=${number}`);
+      const cached = number === 1 ? undefined : await checkpoint?.read<OclRow[]>(number);
+      const rows = number === 1 ? first : cached ?? await officialJson<OclRow[]>(`${sourceUrl}?page=${number}`);
+      if (!Array.isArray(rows) || !rows.length || rows.length > first.length || rows.some(row => typeof row.id !== "string" || row.source !== kind || typeof row.display_name !== "string")) throw new Error("Página TUSS inválida durante a importação.");
+      if (!cached) await checkpoint?.write(number, rows);
+      return rows;
     }));
+    const failure = settled.find(result => result.status === "rejected");
+    if (failure?.status === "rejected") {
+      if (failure.reason instanceof Error && failure.reason.message.startsWith("Página TUSS inválida")) await checkpoint?.clear(pageCount);
+      throw failure.reason;
+    }
+    const pages = settled.map(result => (result as PromiseFulfilledResult<OclRow[]>).value);
     for (const rows of pages) {
       if (!Array.isArray(rows) || !rows.length) throw new Error("Página TUSS vazia durante a importação.");
       for (const row of rows) {
-        if (row.source !== kind || seen.has(row.id)) throw new Error("Paginação TUSS inconsistente; versão anterior preservada.");
+        if (row.source !== kind || seen.has(row.id)) { await checkpoint?.clear(pageCount); throw new Error("Paginação TUSS inconsistente; versão anterior preservada."); }
         seen.add(row.id);
         entries.push({ code: row.id, name: row.display_name, validFrom: referenceDate(row.extras?.inicio_vigencia), validUntil: referenceDate(row.extras?.fim_vigencia), laboratory: optional(row.extras?.laboratorio), presentation: optional(row.extras?.apresentacao), active: true });
       }
@@ -93,6 +108,7 @@ export async function downloadReferenceCatalog(kind: Exclude<ReferenceKind, "cid
     onProgress?.(entries.length, expected);
   }
   const finalSources = await officialJson<typeof sources>(`${oclBase}/source`);
-  if (entries.length !== expected || finalSources.find(source => source.Codigo === kind)?.Total_sources !== expected) throw new Error("Download incompleto ou fonte alterada durante a importação.");
+  if (entries.length !== expected || checkpointHash(finalSources.find(source => source.Codigo === kind)) !== checkpointHash(sources.find(source => source.Codigo === kind))) { await checkpoint?.clear(pageCount); throw new Error("Download incompleto ou fonte alterada durante a importação."); }
+  await checkpoint?.clear(pageCount);
   return { entries, sourceUrl, sourceModifiedAt: null, minimumRows: expected };
 }

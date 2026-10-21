@@ -65,7 +65,7 @@ test("real migration, atomic publication, indexed search, inclusive validity, pa
       { code: "103", name: "Crânio futuro", validFrom: "2026-10-22" },
       { code: "104", name: "Crânio inativo", active: false },
     ];
-    const input = { kind: "tuss-22" as const, sourceUrl: "https://official.test/tuss", version: "v1", entries };
+    const input = { kind: "tuss-22" as const, sourceUrl: "https://official.test/tuss", version: "ANS-TISS-202609", entries };
     const first = await importReferenceCatalog(database, input);
     assert.equal(first.unchanged, false);
     assert.equal((await importReferenceCatalog(database, { ...input, entries: [...entries].reverse() })).unchanged, true);
@@ -84,17 +84,18 @@ test("real migration, atomic publication, indexed search, inclusive validity, pa
     await assert.rejects(importReferenceCatalog(database, { ...input, entries: entries.slice(0, 2) }), /Redução/);
     assert.equal((await searchReferenceCatalog(database, "tuss-22", "100", options)).catalog.releaseId, first.release.id);
     const reference = matches.items.find(item => item.code === "100")!.reference;
-    const second = await importReferenceCatalog(database, { ...input, version: "v2", entries: entries.map(entry => entry.code === "100" ? { ...entry, name: "RM - Crânio revisada" } : entry) });
+    const second = await importReferenceCatalog(database, { ...input, version: "ANS-TISS-202610", entries: entries.map(entry => entry.code === "100" ? { ...entry, name: "RM - Crânio revisada" } : entry) });
     assert.notEqual(second.release.id, first.release.id);
     assert.equal((await resolveCatalogReference(database, reference)).name, "RM - Crânio");
     const snapshot = await snapshotDocumentReferences(database, { exams: [{ catalogReference: { ...reference, name: "forged" } }] }, options.today);
     assert.equal((snapshot?.exams as Array<{ catalogReference: { name: string } }>)[0].catalogReference.name, "RM - Crânio");
     await assert.rejects(snapshotDocumentReferences(database, { cid: { reference: history.items.find(item => item.code === "102")!.reference } }, options.today), /fora de vigência/);
     await assert.rejects(importReferenceCatalog(database, input), /antiga/);
+    await assert.rejects(importReferenceCatalog(database, { ...input, version: "ANS-TISS-202608", entries: entries.map(entry => ({ ...entry, name: `${entry.name} antiga` })) }), /edição TISS anterior/);
     const active = await database.select().from(schema.referenceReleases).where(eq(schema.referenceReleases.active, true));
     assert.equal(active.length, 1);
     const runs = await database.select().from(schema.referenceSyncRuns).where(eq(schema.referenceSyncRuns.status, "failed"));
-    assert.equal(runs.length, 4);
+    assert.equal(runs.length, 5);
     const meds = [{ code: "registro:123", name: "Exemplo", substance: "substância", laboratory: "Laboratório", registrationStatus: "Ativo", active: true }, { code: "registro:124", name: "Outro + Exemplo", active: true }];
     await importReferenceCatalog(database, { kind: "anvisa-medications", sourceUrl: "https://official.test/anvisa", version: "v1", entries: meds });
     assert.equal((await searchReferenceCatalog(database, "anvisa-medications", "substancia laboratorio", options)).items[0].code, "registro:123");

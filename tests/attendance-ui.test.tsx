@@ -108,6 +108,12 @@ test("internal attendance preserves drafts, tab state and failed form submission
     await click(button("Salvar alterações"));
     assert.match(container.textContent!, /Falha ao salvar categoria/);
     assert.equal(category.value, "consultas");
+    await click(container.querySelector('[aria-label="Fechar aviso de erro"]'));
+    assert.doesNotMatch(container.textContent!, /Falha ao salvar categoria/);
+    assert.equal(category.value, "consultas");
+    assert.equal(container.querySelector("form")?.hasAttribute("aria-describedby"), false);
+    await click(button("Salvar alterações"));
+    assert.match(container.textContent!, /Falha ao salvar categoria/, "another failed attempt shows the warning again");
     await click(container.querySelector('[aria-label="Fechar"]'));
     assert.equal(confirms, 1, "failed saves preserve the unsaved warning");
     rejectCategory = false;

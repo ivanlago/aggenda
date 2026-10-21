@@ -1,3 +1,4 @@
+import { usesInternalWhatsAppAgent } from "@/lib/whatsapp-message";
 import { and, eq } from "drizzle-orm";
 import { Bot, CheckCircle2, MessageCircleMore, Sparkles, Workflow } from "lucide-react";
 
@@ -23,9 +24,9 @@ async function loadAutomationSettings() {
   const activeChannel = channels.some((channel) => channel.isActive && channel.connectionStatus === "active");
   const templatesReady = [process.env.META_TEMPLATE_APPOINTMENT_CONFIRMATION, process.env.META_TEMPLATE_APPOINTMENT_RESCHEDULE, process.env.META_TEMPLATE_APPOINTMENT_CANCELLATION, process.env.META_TEMPLATE_APPOINTMENT_REMINDER].every(Boolean);
   const internalAgentReady = Boolean(process.env.AGGENDA_INTERNAL_API_URL && process.env.AGGENDA_INTERNAL_API_KEY);
-  const workflowUrls: Record<string, string | undefined> = { CHAT: process.env.N8N_CHAT_WEBHOOK_URL, CHAT_AI: process.env.N8N_CHAT_AI_WEBHOOK_URL, CORE: process.env.N8N_CORE_WEBHOOK_URL, CORE_AI: undefined };
+  const workflowUrls: Record<string, string | undefined> = { CHAT: process.env.N8N_CHAT_WEBHOOK_URL, CHAT_AI: undefined, CORE: process.env.N8N_CORE_WEBHOOK_URL, CORE_AI: undefined };
   const channelReady = !current.usesCloudApi || activeChannel;
-  const workflowReady = !current.workflowProduct || (current.workflowProduct === "CORE_AI" ? internalAgentReady : Boolean(workflowUrls[current.workflowProduct]));
+  const workflowReady = !current.workflowProduct || (usesInternalWhatsAppAgent(current.workflowProduct) ? internalAgentReady : Boolean(workflowUrls[current.workflowProduct]));
   return { plan, channels, current, received, sent, aiCalls, channelReady, templatesReady, workflowReady, serviceReady: channelReady && (!current.usesCloudApi || templatesReady) && workflowReady };
 }
 

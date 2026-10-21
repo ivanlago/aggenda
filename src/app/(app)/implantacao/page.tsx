@@ -1,3 +1,4 @@
+import { usesInternalWhatsAppAgent } from "@/lib/whatsapp-message";
 import { and, count, eq, isNotNull } from "drizzle-orm";
 import {
   Bot,
@@ -66,13 +67,13 @@ export default async function ImplantationPage() {
   ].every(Boolean);
   const workflowUrls = {
     CHAT: process.env.N8N_CHAT_WEBHOOK_URL,
-    CHAT_AI: process.env.N8N_CHAT_AI_WEBHOOK_URL,
+    CHAT_AI: undefined,
     CORE: process.env.N8N_CORE_WEBHOOK_URL,
     CORE_AI: undefined,
   };
   const internalAgentReady = Boolean(process.env.AGGENDA_INTERNAL_API_URL && process.env.AGGENDA_INTERNAL_API_KEY);
   const automationReady = !product.workflowProduct
-    || (product.workflowProduct === "CORE_AI" ? internalAgentReady : Boolean(workflowUrls[product.workflowProduct]));
+    || (usesInternalWhatsAppAgent(product.workflowProduct) ? internalAgentReady : Boolean(workflowUrls[product.workflowProduct]));
 
   const essentialSteps: Step[] = [
     {

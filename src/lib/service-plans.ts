@@ -94,14 +94,14 @@ export const whatsappServices: Record<WhatsAppServiceCode, {
   },
   chat_ai: {
     name: "WhatsApp Chat + AI",
-    description: "Linguagem natural, base aprovada e transferência humana.",
+    description: "Atendimento, catálogo e informações com IA; encaminha o agendamento para a área do cliente e oferece atendimento humano.",
     usesCloudApi: true,
     usesAi: true,
     workflowProduct: "CHAT_AI",
   },
   core_ai: {
     name: "WhatsApp Core + AI",
-    description: "Agente que consulta disponibilidade e opera agendamentos com confirmação.",
+    description: "Atendimento e catálogo com IA; consulta horários, agenda, reagenda, cancela e confirma presença pelo WhatsApp, com alterações controladas.",
     usesCloudApi: true,
     usesAi: true,
     workflowProduct: "CORE_AI",

@@ -10,9 +10,9 @@ type Service = { id: string; name: string; durationMinutes: number; priceInCents
 type Upcoming = { id: string; serviceId: string; startsAt: string; endsAt: string; service: string; manageUrl?: string };
 type Professional = { id: string; name: string };
 
-export function PortalBooking({ slug, services, professionals, timezone, horizonDays, hasUpcoming, patientId, patientName, upcoming, initialVoucherCode = "" }: { slug: string; services: Service[]; professionals: Professional[]; timezone: string; horizonDays: number; hasUpcoming: boolean; patientId: string; patientName: string; upcoming: Upcoming[]; initialVoucherCode?: string }) {
+export function PortalBooking({ slug, services, professionals, timezone, horizonDays, hasUpcoming, patientId, patientName, upcoming, initialVoucherCode = "", initialServiceId = "" }: { slug: string; services: Service[]; professionals: Professional[]; timezone: string; horizonDays: number; hasUpcoming: boolean; patientId: string; patientName: string; upcoming: Upcoming[]; initialVoucherCode?: string; initialServiceId?: string }) {
   const router = useRouter();
-  const [serviceId, setServiceId] = useState("");
+  const [serviceId, setServiceId] = useState(() => services.some(service => service.id === initialServiceId) ? initialServiceId : "");
   const [professionalId, setProfessionalId] = useState("");
   const [date, setDate] = useState("");
   const [startsAt, setStartsAt] = useState("");

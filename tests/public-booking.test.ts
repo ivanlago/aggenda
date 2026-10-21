@@ -13,7 +13,7 @@ import { PortalPatients } from "../src/lib/portal-patients";
 
 test("public portal: verified identity, authorized dependents, replay, overlapping times and repeated sessions", async () => {
   const pg = new PGlite();
-  const scope = globalThis as typeof globalThis & { bookingTestDb?: unknown; bookingEffects?: number; bookingEmail?: { code: string } };
+  const scope = globalThis as typeof globalThis & { bookingTestDb?: unknown; bookingEffects?: number; bookingEmail?: { code: string; accessUrl: string } };
   const previousSecret = process.env.BETTER_AUTH_SECRET, previousEmail = process.env.RESEND_API_KEY;
   try {
     process.env.BETTER_AUTH_SECRET = "isolated-public-portal-test-secret"; process.env.RESEND_API_KEY = "synthetic";
@@ -67,10 +67,11 @@ test("public portal: verified identity, authorized dependents, replay, overlappi
     const request = (body: unknown, cookie = "") => new Request("http://localhost:3456/api/public/test", { method: "POST", headers: { "Content-Type": "application/json", cookie }, body: JSON.stringify(body) });
     const context = { params: Promise.resolve({ slug: "test-clinic" }) };
     const unknown = await requestCode(request({ identifier: "unknown@example.invalid" }), context);
-    const known = await requestCode(request({ identifier: "patient@example.invalid" }), context);
+    const known = await requestCode(request({ identifier: "patient@example.invalid", serviceId: service }), context);
     assert.deepEqual(await unknown.json(), await known.json());
     assert.ok(unknown.headers.getSetCookie().some(value => value.startsWith("aggenda_client_challenge=")));
     assert.ok(scope.bookingEmail?.code);
+    assert.equal(new URL(scope.bookingEmail!.accessUrl).searchParams.get("servico"), service, "the email access link preserves the selected service");
     const challenge = known.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
     assert.equal((await verifyCode(request({ code: "wrong" }, challenge), context)).status, 400);
     const verified = await verifyCode(request({ code: scope.bookingEmail!.code }, challenge), context);

@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, LoaderCircle, XCircle } from "lucide-react";
+import { CheckCircle2, LoaderCircle, X, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { startTransition, useActionState, useEffect, useId, useRef, useState } from "react";
 
@@ -58,6 +58,7 @@ export function ActionForm({
   const formRef = useRef<HTMLFormElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const feedbackId = useId();
+  const [dismissedErrorId, setDismissedErrorId] = useState<number | null>(null);
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     async (_previousState, formData) => {
       try {
@@ -82,6 +83,8 @@ export function ActionForm({
     initialState,
   );
 
+  const errorVisible = state.status === "error" && dismissedErrorId !== state.id;
+
   useEffect(() => {
     if (state.status === "success") router.refresh();
     if (state.status === "error") errorRef.current?.focus();
@@ -91,11 +94,19 @@ export function ActionForm({
     <>
       <form ref={formRef} onSubmit={event => {
         event.preventDefault();
+        setDismissedErrorId(null);
         const submitter = (event.nativeEvent as SubmitEvent).submitter;
         const formData = new FormData(event.currentTarget, submitter);
         startTransition(() => formAction(formData));
-      }} className={className} aria-busy={pending} aria-describedby={state.status === "error" ? feedbackId : undefined}>
-        {state.status === "error" && <div ref={errorRef} id={feedbackId} tabIndex={-1} role="alert" className="col-span-full rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-800">{state.message}</div>}
+      }} className={className} aria-busy={pending} aria-describedby={errorVisible ? feedbackId : undefined}>
+        {errorVisible && <div ref={errorRef} id={feedbackId} tabIndex={-1} role="alert" className="col-span-full flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-800">
+          <span className="min-w-0 flex-1">{state.message}</span>
+          <button type="button" className="icon-button shrink-0" aria-label="Fechar aviso de erro" onClick={event => {
+            setDismissedErrorId(state.id);
+            const form = event.currentTarget.form;
+            form?.querySelector<HTMLElement>('button[type="submit"], button:not([type]), input, select, textarea')?.focus();
+          }}><X className="size-4" aria-hidden="true" /></button>
+        </div>}
         <fieldset className="contents" disabled={pending}>
           {children}
         </fieldset>

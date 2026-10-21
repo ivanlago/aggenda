@@ -20,13 +20,22 @@ import { EntityImageField, EntityThumbnail } from "@/components/entity-image-fie
 
 export const metadata = { title: "Serviços" };
 
-export default async function ServicesPage() {
+export default async function ServicesPage({ searchParams }: { searchParams: Promise<{ q?: string; category?: string }> }) {
   const { organization } = await requireOrganization();
   const canManage = hasOrganizationPermission(organization.role, "services.manage");
   const categories = await db.select().from(serviceCategories).where(eq(serviceCategories.organizationId, organization.id)).orderBy(serviceCategories.name);
-  const items = await db.select().from(services)
+  const params = await searchParams;
+  const query = typeof params.q === "string" ? params.q.trim() : "";
+  const category = typeof params.category === "string" ? params.category : "";
+  const normalizeName = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+  const allItems = await db.select().from(services)
     .where(eq(services.organizationId, organization.id))
     .orderBy(services.name);
+  const search = normalizeName(query);
+  const items = allItems.filter(item =>
+    (!search || normalizeName(item.name).includes(search) || normalizeName(item.shortName ?? "").includes(search)) &&
+    (!category || (category === "none" ? item.categoryId === null : item.categoryId === category))
+  );
 
   const categoryNames = new Map(categories.map(category => [category.id, category.name]));
 
@@ -92,6 +101,20 @@ export default async function ServicesPage() {
           </ActionForm>
         </ServiceCreateToggle>}
         <section className="panel">
+          <form action="/servicos" method="get" className="mb-5 flex flex-wrap items-end gap-3">
+            <label className="grid min-w-0 flex-1 gap-2 text-sm font-bold">Buscar por nome
+              <input className="field" type="search" name="q" defaultValue={query} placeholder="Nome completo ou reduzido" />
+            </label>
+            <label className="grid min-w-0 gap-2 text-sm font-bold">Categoria
+              <select className="field" name="category" defaultValue={category}>
+                <option value="">Todas as categorias</option>
+                <option value="none">Sem categoria</option>
+                {categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+            </label>
+            <button className="primary-button" type="submit">Buscar</button>
+            {(query || category) && <Link className="secondary-button" href="/servicos">Limpar filtros</Link>}
+          </form>
           <h2 className="text-lg font-extrabold">
             {items.length}{" "}
             {(items.length === 1
@@ -133,15 +156,15 @@ export default async function ServicesPage() {
                     <div className="border-t pt-4 sm:col-span-2"><button className="primary-button">Salvar alterações</button></div>
                   </ActionForm>
                 </ModalShell>}
-                {canManage && <form action={deleteService}>
+                {canManage && <ActionForm action={deleteService} successMessage="Procedimento excluído com sucesso." className="min-w-0 max-w-sm">
                   <input type="hidden" name="id" value={item.id} />
                   <button className="icon-button" aria-label={`Excluir ${item.name}`}><Trash2 className="size-4" /></button>
-                </form>}
+                </ActionForm>}
               </div>
             ))}
             {!items.length && (
               <p className="empty-state">
-                Nenhum {organization.serviceLabel.toLowerCase()} cadastrado.
+                {query || category ? "Nenhum resultado encontrado para os filtros informados." : `Nenhum ${organization.serviceLabel.toLowerCase()} cadastrado.`}
               </p>
             )}
           </div>

@@ -1,3 +1,4 @@
+import { incomingWhatsAppText, incomingWhatsAppDisplayText } from "@/lib/whatsapp-message";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
@@ -25,6 +26,7 @@ type MetaMessage = {
   timestamp?: string;
   type?: string;
   text?: { body?: string };
+  interactive?: { list_reply?: { id?: string; title?: string }; button_reply?: { id?: string; title?: string } };
 };
 
 type MetaChangeValue = {
@@ -200,7 +202,7 @@ export async function POST(request: NextRequest) {
               direction: "inbound",
               status: "received",
               messageType: message.type ?? "unknown",
-              body: message.text?.body,
+              body: incomingWhatsAppDisplayText(message),
               rawPayload: message as Record<string, unknown>,
               occurredAt,
             })
@@ -248,7 +250,7 @@ export async function POST(request: NextRequest) {
                 from: message.from,
                 contactName: contact?.profile?.name,
                 type: message.type ?? "unknown",
-                text: message.text?.body,
+                text: incomingWhatsAppText(message),
                 occurredAt: occurredAt.toISOString(),
                 whatsappServiceCode,
                 workflowProduct,
@@ -262,7 +264,7 @@ export async function POST(request: NextRequest) {
 
         if (inserted) {
           accepted += 1;
-          if (message.type === "text" && !workflowProduct) await applyAppointmentReply(channel.organizationId, message.from, message.text?.body);
+          if (message.type === "text" && !workflowProduct) await applyAppointmentReply(channel.organizationId, message.from, incomingWhatsAppText(message));
         }
       }
     }

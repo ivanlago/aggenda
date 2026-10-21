@@ -1,3 +1,4 @@
+import { usesInternalWhatsAppAgent } from "@/lib/whatsapp-message";
 import { and, eq } from "drizzle-orm";
 import { Bot, CheckCircle2, MessageCircleMore, Sparkles, Workflow } from "lucide-react";
 
@@ -42,7 +43,7 @@ export default async function AutomationsPage() {
   const activeChannel = channels.some((channel) => channel.isActive && channel.connectionStatus === "active");
   const workflowUrls = {
     CHAT: process.env.N8N_CHAT_WEBHOOK_URL,
-    CHAT_AI: process.env.N8N_CHAT_AI_WEBHOOK_URL,
+    CHAT_AI: undefined,
     CORE: process.env.N8N_CORE_WEBHOOK_URL,
     CORE_AI: undefined,
   };
@@ -55,7 +56,7 @@ export default async function AutomationsPage() {
   const channelReady = !current.usesCloudApi || activeChannel;
   const internalAgentReady = Boolean(process.env.AGGENDA_INTERNAL_API_URL && process.env.AGGENDA_INTERNAL_API_KEY);
   const workflowReady = !current.workflowProduct
-    || (current.workflowProduct === "CORE_AI" ? internalAgentReady : Boolean(workflowUrls[current.workflowProduct]));
+    || (usesInternalWhatsAppAgent(current.workflowProduct) ? internalAgentReady : Boolean(workflowUrls[current.workflowProduct]));
   const serviceReady = channelReady && (!current.usesCloudApi || templatesReady) && workflowReady;
 
   return (
@@ -80,7 +81,7 @@ export default async function AutomationsPage() {
             {serviceReady ? "Serviço pronto para homologação." : "Configuração incompleta: "}
             {!channelReady && "conecte um canal Meta ativo; "}
             {current.usesCloudApi && !templatesReady && "configure os quatro templates transacionais; "}
-            {!workflowReady && (current.workflowProduct === "CORE_AI" ? "configure o agente interno do Aggenda;" : `configure o webhook ${current.workflowProduct};`)}
+            {!workflowReady && (usesInternalWhatsAppAgent(current.workflowProduct) ? "configure o agente interno do Aggenda;" : `configure o webhook ${current.workflowProduct};`)}
           </div>
           {(whatsappLimitReached || aiLimitReached) && (
             <p className="mt-5 rounded-xl bg-amber-50 p-3 text-sm font-bold text-amber-800" role="alert">

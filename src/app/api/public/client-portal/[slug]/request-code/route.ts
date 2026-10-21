@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
@@ -78,11 +79,13 @@ async function requestAccessCode(request: Request, { params }: { params: Promise
     expiresAt: new Date(Date.now() + CLIENT_CODE_TTL_MINUTES * 60_000),
   }).returning({ id: clientPortalAccessRequests.id });
   const baseUrl = (organization.customDomain && organization.customDomainVerifiedAt ? `https://${organization.customDomain}` : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  const selectedService = z.uuid().safeParse(body.serviceId);
+  const serviceQuery = selectedService.success ? `&servico=${encodeURIComponent(selectedService.data)}` : "";
   const voucher = /^[A-Za-z0-9_-]{3,40}$/.test(String(body.voucherCode ?? "")) ? `&voucher=${encodeURIComponent(String(body.voucherCode))}` : "";
   try {
     await sendClientPortalAccessEmail({
     email, clientName, organizationName: organization.name,
-    accessUrl: `${baseUrl}/cliente/${slug}/verificar?token=${encodeURIComponent(credentials.token)}${voucher}`,
+    accessUrl: `${baseUrl}/cliente/${slug}/verificar?token=${encodeURIComponent(credentials.token)}${voucher}${serviceQuery}`,
     code: credentials.code, requestId: created.id,
     });
   } catch (error) {

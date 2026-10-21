@@ -1,6 +1,7 @@
 "use server";
 
 import { serviceCatalogReference } from "@/lib/reference-snapshots";
+import { serviceDeletionError } from "@/lib/service-deletion";
 import { roomBookingError } from "@/lib/room-errors";
 
 import { and, eq, ilike, inArray, isNull } from "drizzle-orm";
@@ -822,6 +823,8 @@ export async function deleteService(formData: FormData) {
   assertOrganizationPermission(organization.role, "services.manage");
   const id = textValue(formData, "id");
   const [current] = await db.select({ imagePublicId: services.imagePublicId }).from(services).where(and(eq(services.id, id), eq(services.organizationId, organization.id))).limit(1);
+  if (!current) return { error: "Procedimento não encontrado nesta empresa." };
+  try {
   await db
     .delete(services)
     .where(
@@ -830,6 +833,11 @@ export async function deleteService(formData: FormData) {
         eq(services.organizationId, organization.id)
       )
     );
+  } catch (error) {
+    const message = serviceDeletionError(error);
+    if (message) return { error: message };
+    throw error;
+  }
   if (current?.imagePublicId) await deleteCatalogImage(current.imagePublicId).catch((error) => console.error("Falha ao excluir imagem do atendimento", error));
   revalidatePath("/servicos");
   revalidatePath("/dashboard");

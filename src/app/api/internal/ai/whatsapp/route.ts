@@ -1,10 +1,12 @@
+import { navigateWhatsApp, parseNavigationState, type NavigationState } from "@/lib/whatsapp-navigation";
+import { catalogDocumentUrl, getWhatsAppProducts } from "@/lib/whatsapp-catalog";
 import { roomBookingError } from "@/lib/room-errors";
 import { and, asc, desc, eq, gt, gte, inArray, sql } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { appointments, auditLogs, chatConversations, chatMessages, clients, organizations, organizationUsageCounters, outboxEvents, professionals, services, servicesToProfessionals } from "@/db/schema";
+import { appointments, auditLogs, chatConversations, chatMessages, clients, organizations, organizationUsageCounters, outboxEvents, professionals, services, serviceCategories, servicesToProfessionals } from "@/db/schema";
 import { generateAiJson } from "@/lib/ai/provider";
 import { getAvailableTimes, isTimeAvailable } from "@/lib/availability";
 import { formatOrganizationDateTime, organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
@@ -21,6 +23,7 @@ const inputSchema = z.object({
   organizationId: z.string().uuid(), conversationId: z.string().uuid(), messageId: z.string().uuid(),
   phoneNumberId: z.string().min(1), from: z.string().min(5), contactName: z.string().optional(),
   text: z.string().max(4000).default(""), whatsappServiceCode: z.enum(["menu", "chat", "chat_ai", "core_ai"]),
+  workflowProduct: z.enum(["CHAT", "CHAT_AI", "CORE", "CORE_AI"]).optional(),
 });
 const coreActions = ["reply", "availability", "prepare_booking", "confirm_appointment", "prepare_reschedule", "prepare_cancel", "handoff"] as const;
 const coreAnswerSchema = z.object({
@@ -34,6 +37,7 @@ type Input = z.infer<typeof inputSchema>;
 type Conversation = typeof chatConversations.$inferSelect;
 type Pending = { kind: "book"; serviceId: string; professionalId: string; startsAt: string } | { kind: "reschedule"; appointmentId: string; startsAt: string } | { kind: "cancel"; appointmentId: string; reason: string };
 type FlowState =
+  | { kind: "select_confirm"; appointmentIds: string[] }
   | { kind: "select_cancel"; appointmentIds: string[] }
   | { kind: "select_reschedule"; appointmentIds: string[]; desiredDate?: string; desiredTime?: string }
   | { kind: "reschedule_destination"; appointmentId: string; desiredDate?: string; desiredTime?: string };
@@ -72,9 +76,13 @@ function approximatelyMentions(text: string, name: string) {
   return candidateWords.length >= 3 && matches.filter(Boolean).length >= Math.ceil(candidateWords.length * 0.66);
 }
 function mentionedByName<T extends { name: string }>(rows: T[], texts: string[]) {
-  return texts.flatMap((text) => {
-    return rows.filter((row) => approximatelyMentions(text, row.name));
-  })[0];
+  for (const text of texts) {
+    const exact = rows.filter(row => normalizedText(text).includes(normalizedText(row.name))).sort((left, right) => right.name.length - left.name.length);
+    if (exact.length) return exact[0];
+    const approximate = rows.filter(row => approximatelyMentions(text, row.name));
+    if (approximate.length === 1) return approximate[0];
+  }
+  return undefined;
 }
 function parseBrazilianDate(value: string) {
   const match = value.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
@@ -101,6 +109,7 @@ function asksToCancel(value: string) {
 }
 function asksToBook(value: string) {
   const normalized = normalizedText(value);
+  if (asksToCancel(value) || asksToReschedule(value)) return false;
   return /\b(agend|marcar|reserv)/.test(normalized)
     || /\b(quero|gostaria|preciso|desejo).*(consulta|atendimento|procedimento|exame|servico)/.test(normalized);
 }
@@ -125,6 +134,7 @@ function parsePending(payload?: Record<string, unknown> | null): Pending | null 
 
 function parseFlowState(payload?: Record<string, unknown> | null): FlowState | null {
   const result = z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("select_confirm"), appointmentIds: z.array(z.string().uuid()).min(1) }),
     z.object({ kind: z.literal("select_cancel"), appointmentIds: z.array(z.string().uuid()).min(1) }),
     z.object({ kind: z.literal("select_reschedule"), appointmentIds: z.array(z.string().uuid()).min(1), desiredDate: z.string().optional(), desiredTime: z.string().optional() }),
     z.object({ kind: z.literal("reschedule_destination"), appointmentId: z.string().uuid(), desiredDate: z.string().optional(), desiredTime: z.string().optional() }),
@@ -133,9 +143,14 @@ function parseFlowState(payload?: Record<string, unknown> | null): FlowState | n
 }
 
 async function getClient(input: Input, conversation: Conversation) {
-  if (conversation.clientId) return conversation.clientId;
+  if (conversation.clientId) {
+    const [linked] = await db.select({ id: clients.id }).from(clients).where(and(eq(clients.id, conversation.clientId), eq(clients.organizationId, input.organizationId))).limit(1);
+    if (linked) return linked.id;
+  }
   const all = input.from.replace(/\D/g, ""); const phone = normalizeBrazilianPhone(all.startsWith("55") && all.length > 11 ? all.slice(2) : all);
-  const [found] = await db.select({ id: clients.id }).from(clients).where(and(eq(clients.organizationId, input.organizationId), sql`right(regexp_replace(coalesce(${clients.phone}, ''), '\D', '', 'g'), 10) = right(${phone}, 10)`)).limit(1);
+  const matches = await db.select({ id: clients.id }).from(clients).where(and(eq(clients.organizationId, input.organizationId), sql`right(regexp_replace(coalesce(${clients.phone}, ''), '\D', '', 'g'), 10) = right(${phone}, 10)`)).limit(2);
+  if (matches.length > 1) return null;
+  const found = matches[0];
   let id = found?.id;
   if (!id) {
     const [created] = await db.insert(clients).values({ organizationId: input.organizationId, name: input.contactName?.trim() || conversation.contactName || `WhatsApp ${phone.slice(-4)}`, phone })
@@ -146,17 +161,28 @@ async function getClient(input: Input, conversation: Conversation) {
   return id;
 }
 
-async function send(input: Input, conversation: Conversation, data: { reply: string; model: string; intent: string; confidence: number; pending?: Pending; flowState?: FlowState; handoff?: boolean; ai?: boolean }) {
+async function send(input: Input, conversation: Conversation, data: { reply: string; model: string; intent: string; confidence: number; pending?: Pending; flowState?: FlowState; handoff?: boolean; ai?: boolean; navigationState?: NavigationState; document?: { link: string; filename: string } }) {
+  if (data.pending?.kind === "book") {
+    const [service] = await db.select({ price: services.priceInCents, deposit: services.depositType }).from(services).where(and(eq(services.id, data.pending.serviceId), eq(services.organizationId, input.organizationId))).limit(1);
+    const [company] = await db.select({ address: organizations.publicAddress, slug: organizations.slug, bookingEnabled: organizations.bookingEnabled }).from(organizations).where(eq(organizations.id, input.organizationId)).limit(1);
+    if (service?.deposit && service.deposit !== "none") {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.BETTER_AUTH_URL;
+      const link = baseUrl && company?.bookingEnabled ? new URL(`/cliente/${encodeURIComponent(company.slug)}?novo=1&servico=${data.pending.serviceId}`, baseUrl).toString() : null;
+      data = { ...data, pending: undefined, handoff: !link, intent: "deposit_booking", reply: link ? `Este procedimento exige sinal ou pagamento para confirmar a reserva. Conclua o agendamento e o pagamento na área do cliente:\n${link}\nNenhum horário foi reservado nesta conversa.` : "Este procedimento exige sinal ou pagamento. Encaminhei sua solicitação à equipe para concluir a reserva. Nenhum horário foi reservado nesta conversa." };
+    } else {
+      data.reply += `\n${company?.address ? `Unidade: ${company.address}.\n` : ""}${service?.price != null ? `Preço: ${(service.price / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.` : "Preço: consulte a equipe."}\nA confirmação acima realiza a reserva do horário; a confirmação de presença é uma etapa separada.`;
+    }
+  }
   const now = new Date(); let inserted = false;
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.conversationId}))`);
     const [current] = await tx.select().from(chatConversations).where(and(eq(chatConversations.id, input.conversationId), eq(chatConversations.organizationId, input.organizationId))).limit(1).for("update");
     if (!current || current.handoffStatus !== "bot" || current.automationPaused) return;
     if (current.handoffResolvedAt && current.handoffResolvedAt.getTime() !== conversation.handoffResolvedAt?.getTime()) return;
-    const [message] = await tx.insert(chatMessages).values({ organizationId: input.organizationId, conversationId: input.conversationId, externalMessageId: `aggenda-ai:${input.messageId}`, direction: "outbound", status: "queued", messageType: "text", body: data.reply, rawPayload: { source: "aggenda_ai", model: data.model, intent: data.intent, confidence: data.confidence, ...(data.pending ? { pendingAction: data.pending } : {}), ...(data.flowState ? { flowState: data.flowState } : {}) }, occurredAt: now })
+    const [message] = await tx.insert(chatMessages).values({ organizationId: input.organizationId, conversationId: input.conversationId, externalMessageId: `aggenda-ai:${input.messageId}`, direction: "outbound", status: "queued", messageType: data.document ? "document" : data.navigationState ? "interactive" : "text", body: data.reply, rawPayload: { source: "aggenda_ai", model: data.model, intent: data.intent, confidence: data.confidence, ...(data.navigationState ? { navigationState: data.navigationState } : {}), ...(data.pending ? { pendingAction: data.pending, pendingExpiresAt: new Date(now.getTime() + 15 * 60_000).toISOString() } : {}), ...(data.flowState ? { flowState: data.flowState } : {}) }, occurredAt: now })
       .onConflictDoNothing({ target: chatMessages.externalMessageId }).returning({ id: chatMessages.id });
     if (!message) return; inserted = true;
-    await tx.insert(outboxEvents).values({ organizationId: input.organizationId, eventKey: `whatsapp:ai-reply:${input.messageId}`, eventType: "whatsapp.message.send", aggregateType: "chat_message", aggregateId: message.id, payload: { organizationId: input.organizationId, channelId: conversation.channelId, conversationId: input.conversationId, messageId: message.id, phoneNumberId: input.phoneNumberId, to: input.from, text: data.reply } }).onConflictDoNothing({ target: outboxEvents.eventKey });
+    await tx.insert(outboxEvents).values({ organizationId: input.organizationId, eventKey: `whatsapp:ai-reply:${input.messageId}`, eventType: "whatsapp.message.send", aggregateType: "chat_message", aggregateId: message.id, payload: { organizationId: input.organizationId, channelId: conversation.channelId, conversationId: input.conversationId, messageId: message.id, phoneNumberId: input.phoneNumberId, to: input.from, text: data.reply, ...(data.navigationState ? { options: data.navigationState.options } : {}), ...(data.document ? { document: data.document } : {}) } }).onConflictDoNothing({ target: outboxEvents.eventKey });
     await tx.update(chatConversations).set({ handoffStatus: data.handoff ? "requested" : current.handoffStatus, needsHumanAttention: Boolean(data.handoff), handoffReason: data.handoff ? `IA: ${data.intent}` : current.handoffReason, automationPaused: Boolean(data.handoff), handoffRequestedAt: data.handoff ? now : current.handoffRequestedAt, updatedAt: now }).where(eq(chatConversations.id, input.conversationId));
     if (data.ai) { const periodStart = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`; await tx.insert(organizationUsageCounters).values({ organizationId: input.organizationId, periodStart, metric: "ai.calls", quantity: 1 }).onConflictDoUpdate({ target: [organizationUsageCounters.organizationId, organizationUsageCounters.periodStart, organizationUsageCounters.metric], set: { quantity: sql`${organizationUsageCounters.quantity} + 1`, updatedAt: now } }); }
   });
@@ -172,6 +198,10 @@ async function upcoming(organizationId: string, clientId: string) {
 type UpcomingAppointment = Awaited<ReturnType<typeof upcoming>>[number];
 
 function filterMentionedAppointments(rows: UpcomingAppointment[], value: string, timezone: string) {
+  if (/^\d+$/.test(value.trim())) {
+    const selected = rows[Number(value.trim()) - 1];
+    return selected ? [selected] : [];
+  }
   const date = parseBrazilianDate(value);
   const time = parseBrazilianTime(value);
   const serviceMatches = rows.filter((row) => approximatelyMentions(value, row.serviceName));
@@ -182,17 +212,18 @@ function filterMentionedAppointments(rows: UpcomingAppointment[], value: string,
 }
 
 function appointmentChoices(rows: UpcomingAppointment[], timezone: string) {
-  return rows.map((row) => `• ${row.serviceName}, ${formatOrganizationDateTime(row.startsAt, timezone)}, com ${row.professionalName ?? "profissional a definir"}`).join("\n");
+  return rows.map((row, index) => `${index + 1} - ${row.serviceName}, ${formatOrganizationDateTime(row.startsAt, timezone)}, com ${row.professionalName ?? "profissional a definir"}`).join("\n");
 }
 
 async function execute(input: Input, pending: Pending, clientId: string, timezone: string) {
   if (pending.kind === "book") {
     const startsAt = new Date(pending.startsAt);
     const [[service], [professional]] = await Promise.all([
-      db.select({ name: services.name, duration: services.durationMinutes, price: services.priceInCents }).from(services).where(and(eq(services.id, pending.serviceId), eq(services.organizationId, input.organizationId), eq(services.isActive, true))).limit(1),
+      db.select({ name: services.name, duration: services.durationMinutes, price: services.priceInCents, deposit: services.depositType }).from(services).where(and(eq(services.id, pending.serviceId), eq(services.organizationId, input.organizationId), eq(services.isActive, true))).limit(1),
       db.select({ name: professionals.name }).from(professionals).where(and(eq(professionals.id, pending.professionalId), eq(professionals.organizationId, input.organizationId), eq(professionals.isActive, true), eq(professionals.isBookable, true))).limit(1),
     ]);
     if (!service || !professional) throw new Error("O serviço ou profissional não está mais disponível.");
+    if (service.deposit !== "none") throw new Error("Este procedimento exige pagamento. Digite MENU e selecione o procedimento novamente para receber as orientações atualizadas.");
     const item = await withAppointmentLock(input.organizationId, pending.professionalId, async (tx) => {
       const [repeat] = await tx.select().from(appointments).where(and(eq(appointments.organizationId, input.organizationId), sql`${appointments.metadata}->>'whatsappCommandMessageId' = ${input.messageId}`)).limit(1); if (repeat) return repeat;
       if (!await isTimeAvailable({ organizationId: input.organizationId, timezone, date: organizationDate(startsAt, timezone), serviceId: pending.serviceId, professionalId: pending.professionalId, startsAt })) throw new Error("Esse horário acabou de ficar indisponível. Escolha outro horário.");
@@ -200,7 +231,7 @@ async function execute(input: Input, pending: Pending, clientId: string, timezon
       await tx.insert(auditLogs).values({ organizationId: input.organizationId, action: "create", entityType: "appointment", entityId: created.id, details: { clientId, source: "whatsapp", startsAt: startsAt.toISOString(), status: "scheduled", messageId: input.messageId } }); return created;
     });
     await Promise.allSettled([syncAppointmentFinancialEntry(item.id), syncAppointmentToGoogleCalendar(item.id)]);
-    return `Agendamento confirmado: ${service.name} com ${professional.name}, em ${formatOrganizationDateTime(item.startsAt, timezone)}.`;
+    return `Agendamento realizado: ${service.name} com ${professional.name}, em ${formatOrganizationDateTime(item.startsAt, timezone)}. Seu horário está reservado; a confirmação de presença é uma etapa separada.`;
   }
   const [current] = await db.select({ id: appointments.id, startsAt: appointments.startsAt, status: appointments.status, metadata: appointments.metadata, serviceId: appointments.serviceId, serviceName: services.name, professionalId: appointments.professionalId, professionalName: professionals.name })
     .from(appointments).innerJoin(services, eq(services.id, appointments.serviceId)).leftJoin(professionals, eq(professionals.id, appointments.professionalId))
@@ -241,30 +272,71 @@ export async function POST(request: NextRequest) {
     console.info("[whatsapp-agent] conversa sob atendimento humano", { conversationId: input.conversationId, handoffStatus: conversation.handoffStatus });
     return NextResponse.json({ accepted: true, skipped: "human_handoff" });
   }
-  const [organization] = await db.select({ name: organizations.name, description: organizations.publicDescription, timezone: organizations.timezone, slotIntervalMinutes: organizations.slotIntervalMinutes }).from(organizations).where(eq(organizations.id, input.organizationId)).limit(1);
+  const [organization] = await db.select({ name: organizations.name, description: organizations.publicDescription, timezone: organizations.timezone, slotIntervalMinutes: organizations.slotIntervalMinutes, slug: organizations.slug, bookingEnabled: organizations.bookingEnabled, publicAddress: organizations.publicAddress, publicWhatsapp: organizations.publicWhatsapp, publicEmail: organizations.publicEmail }).from(organizations).where(eq(organizations.id, input.organizationId)).limit(1);
   if (!organization) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
-  const normalizedMessage = input.text.trim().toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[!.?,;:]+$/g, "").trim();
-  if (/^(oi|ola|bom dia|boa tarde|boa noite|hey|hello)$/.test(normalizedMessage)) {
-    await send(input, conversation, {
-      reply: `Olá! Você está falando com ${organization.name}. Posso ajudar a consultar horários, agendar, confirmar, reagendar ou cancelar um atendimento. O que deseja fazer?`,
-      model: "aggenda-transactional-v1",
-      intent: "greeting",
-      confidence: 1,
-    });
+  const [latest] = await db.select({ rawPayload: chatMessages.rawPayload, createdAt: chatMessages.createdAt }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), eq(chatMessages.direction, "outbound"), conversation.handoffResolvedAt ? gt(chatMessages.createdAt, conversation.handoffResolvedAt) : undefined)).orderBy(desc(chatMessages.occurredAt)).limit(1);
+  const [navigationCatalog, categories, products] = await Promise.all([
+    db.select({ id: services.id, name: services.name, shortName: services.shortName, categoryId: services.categoryId, description: services.description, preparation: services.preparation, durationMinutes: services.durationMinutes, priceInCents: services.priceInCents }).from(services).where(and(eq(services.organizationId, input.organizationId), eq(services.isActive, true))).orderBy(services.name),
+    db.select({ id: serviceCategories.id, name: serviceCategories.name }).from(serviceCategories).where(eq(serviceCategories.organizationId, input.organizationId)).orderBy(serviceCategories.name),
+    getWhatsAppProducts(input.organizationId),
+  ]);
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.BETTER_AUTH_URL ?? new URL(request.url).origin;
+  const bookingUrl = organization.bookingEnabled ? new URL(`/cliente/${encodeURIComponent(organization.slug)}`, baseUrl).toString() : null;
+  const navigation = navigateWhatsApp({ name: organization.name, core: input.whatsappServiceCode === "core_ai", bookingUrl, address: organization.publicAddress, phone: organization.publicWhatsapp, email: organization.publicEmail, services: navigationCatalog, categories, products }, input.text, parseNavigationState(latest?.rawPayload?.navigationState));
+  if (navigation) {
+    if (navigation.continueText) input.text = navigation.continueText;
+    else {
+      await send(input, conversation, { reply: navigation.reply, model: "aggenda-navigation-v1", intent: navigation.handoff ? "support" : "navigation", confidence: 1, navigationState: navigation.navigationState, handoff: navigation.handoff,
+        ...(navigation.document ? { document: { link: catalogDocumentUrl(baseUrl, input.organizationId), filename: "catalogo-produtos.pdf" } } : {}),
+      });
+      return NextResponse.json({ accepted: true, action: navigation.handoff ? "handoff" : "navigation" });
+    }
+  }
+  const aiAllowed = !["CHAT", "CORE"].includes(input.workflowProduct ?? "");
+  if (input.whatsappServiceCode !== "core_ai") {
+    const history = await db.select({ direction: chatMessages.direction, body: chatMessages.body }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), conversation.handoffResolvedAt ? gt(chatMessages.createdAt, conversation.handoffResolvedAt) : undefined)).orderBy(desc(chatMessages.occurredAt)).limit(12);
+    try {
+      const result = input.whatsappServiceCode === "chat_ai" && aiAllowed ? await generateAiJson({ schema: chatAnswerSchema, messages: [{ role: "system", content: "Atenda em português usando somente o contexto público aprovado. Não execute operações nem afirme ter feito reservas. Para agendar ou gerenciar agendamentos, informe bookingUrl; se indisponível, ofereça equipe. Não invente horários de atendimento nem dados. Use handoff em baixa confiança. Responda JSON com action, reply, intent e confidence." }, { role: "user", content: JSON.stringify({ organization, catalog: navigationCatalog, bookingUrl, products, recentMessages: history.reverse(), currentMessage: input.text }) }] }) : { data: { action: "reply" as const, reply: "Digite MENU para consultar procedimentos, produtos e informações ou EQUIPE para solicitar atendimento.", intent: "menu_help", confidence: 1 }, model: "aggenda-deterministic-v1" };
+      await send(input, conversation, { reply: result.data.reply, model: result.model, intent: result.data.intent, confidence: result.data.confidence, handoff: result.data.action === "handoff" || result.data.confidence < 0.65, ai: input.whatsappServiceCode === "chat_ai" && aiAllowed });
+    } catch {
+      await send(input, conversation, { reply: "Não consegui responder essa pergunta agora. Digite MENU para consultar as opções ou EQUIPE para solicitar atendimento.", model: "aggenda-navigation-v1", intent: "interpretation_failed", confidence: 1 });
+    }
     return NextResponse.json({ accepted: true, action: "reply" });
   }
-  const [latest] = await db.select({ rawPayload: chatMessages.rawPayload }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), eq(chatMessages.direction, "outbound"), conversation.handoffResolvedAt ? gt(chatMessages.createdAt, conversation.handoffResolvedAt) : undefined)).orderBy(desc(chatMessages.occurredAt)).limit(1);
   const pending = parsePending(latest?.rawPayload); const flowState = parseFlowState(latest?.rawPayload); const clientId = await getClient(input, conversation);
-  if (pending && (isAffirmativeWhatsAppCommand(input.text) || isNegativeWhatsAppCommand(input.text))) {
+  if (pending && isAffirmativeWhatsAppCommand(input.text) && (!latest?.rawPayload?.pendingExpiresAt || !Number.isFinite(Date.parse(String(latest.rawPayload.pendingExpiresAt))) || Date.now() > Date.parse(String(latest.rawPayload.pendingExpiresAt)))) {
+    await send(input, conversation, { reply: "Esta solicitação de alteração expirou. Nenhuma alteração foi feita. Digite MENU para consultar os dados e escolher novamente.", model: "aggenda-transactional-v1", intent: "confirmation_expired", confidence: 1 });
+    return NextResponse.json({ accepted: true, action: "confirmation_expired" });
+  }
+  if (!clientId) {
+    await send(input, conversation, { reply: "Preciso da ajuda da equipe para identificar seu cadastro com segurança. Sua solicitação foi encaminhada; o retorno será no horário de atendimento.", model: "aggenda-transactional-v1", intent: "ambiguous_identity", confidence: 1, handoff: true });
+    return NextResponse.json({ accepted: true, action: "handoff" });
+  }
+  if (input.whatsappServiceCode === "core_ai" && pending && (isAffirmativeWhatsAppCommand(input.text) || isNegativeWhatsAppCommand(input.text))) {
     if (isNegativeWhatsAppCommand(input.text)) { await send(input, conversation, { reply: "Tudo bem. A operação não foi realizada. Como mais posso ajudar?", model: "aggenda-transactional-v1", intent: "operation_declined", confidence: 1 }); return NextResponse.json({ accepted: true, action: "declined" }); }
     try { const reply = await execute(input, pending, clientId, organization.timezone); await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: pending.kind, confidence: 1 }); return NextResponse.json({ accepted: true, action: pending.kind }); }
     catch (error) { const reply = roomBookingError(error) || (error instanceof Error ? error.message : "Não foi possível concluir a operação."); await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: `${pending.kind}_failed`, confidence: 1 }); return NextResponse.json({ accepted: true, action: `${pending.kind}_failed` }); }
   }
   const [catalog, professionalRows, future, history] = await Promise.all([
-    db.select({ id: services.id, name: services.name, description: services.description, durationMinutes: services.durationMinutes, priceInCents: services.priceInCents }).from(services).where(and(eq(services.organizationId, input.organizationId), eq(services.isActive, true))).limit(50),
+    Promise.resolve(navigationCatalog),
     db.select({ id: professionals.id, name: professionals.name, serviceId: servicesToProfessionals.serviceId }).from(professionals).leftJoin(servicesToProfessionals, and(eq(servicesToProfessionals.professionalId, professionals.id), eq(servicesToProfessionals.organizationId, input.organizationId))).where(and(eq(professionals.organizationId, input.organizationId), eq(professionals.isActive, true), eq(professionals.isBookable, true))),
     upcoming(input.organizationId, clientId), db.select({ direction: chatMessages.direction, body: chatMessages.body }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), conversation.handoffResolvedAt ? gt(chatMessages.createdAt, conversation.handoffResolvedAt) : undefined)).orderBy(desc(chatMessages.occurredAt)).limit(12),
   ]);
+  if (flowState?.kind === "select_confirm" || /\bconfirmar (presenca|meu agendamento|o agendamento)/.test(normalizedText(input.text))) {
+    const candidates = flowState?.kind === "select_confirm" ? future.filter(item => flowState.appointmentIds.includes(item.id)) : future;
+    const matches = filterMentionedAppointments(candidates, input.text, organization.timezone);
+    if (matches.length === 1) {
+      const appointment = matches[0];
+      await db.transaction(async tx => {
+        await tx.update(appointments).set({ status: "confirmed", confirmedAt: new Date(), updatedAt: new Date() }).where(and(eq(appointments.id, appointment.id), eq(appointments.organizationId, input.organizationId), eq(appointments.clientId, clientId), inArray(appointments.status, ["scheduled", "confirmed"])));
+        await tx.insert(auditLogs).values({ organizationId: input.organizationId, action: "status:confirmed", entityType: "appointment", entityId: appointment.id, details: { source: "whatsapp", messageId: input.messageId, previousStatus: appointment.status, status: "confirmed" } });
+      });
+      await send(input, conversation, { reply: `Presença confirmada para ${appointment.serviceName}, em ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)}.`, model: "aggenda-transactional-v1", intent: "confirm_appointment", confidence: 1 });
+    } else {
+      await send(input, conversation, { reply: candidates.length ? `Qual agendamento deseja confirmar? Responda com o número ou informe a data e horário:\n${appointmentChoices(candidates, organization.timezone)}` : "Não encontrei agendamentos futuros ativos.", model: "aggenda-transactional-v1", intent: "select_confirm", confidence: 1, ...(candidates.length ? { flowState: { kind: "select_confirm", appointmentIds: candidates.map(item => item.id) } as FlowState } : {}) });
+    }
+    return NextResponse.json({ accepted: true, action: "confirm_appointment" });
+  }
   if (flowState) {
     const candidates = future.filter((appointment) => "appointmentIds" in flowState ? flowState.appointmentIds.includes(appointment.id) : appointment.id === flowState.appointmentId);
     if (flowState.kind === "select_cancel") {
@@ -319,12 +391,7 @@ export async function POST(request: NextRequest) {
     await send(input, conversation, { reply: `Confirma reagendar ${appointment.serviceName} de ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)} para ${formatOrganizationDateTime(new Date(selected), organization.timezone)}? Responda CONFIRMAR.`, model: "aggenda-transactional-v1", intent: "prepare_reschedule", confidence: 1, pending: nextPending });
     return NextResponse.json({ accepted: true, action: "prepare_reschedule" });
   }
-  const ai = input.whatsappServiceCode === "chat_ai" || input.whatsappServiceCode === "core_ai";
-  if (input.whatsappServiceCode !== "core_ai") {
-    const result = ai ? await generateAiJson({ schema: chatAnswerSchema, messages: [{ role: "system", content: "Atenda em português usando somente o contexto. Não execute operações; transfira ações operacionais ou casos ambíguos para humano. Responda JSON com action, reply, intent e confidence." }, { role: "user", content: JSON.stringify({ organization, catalog, recentMessages: history.reverse(), currentMessage: input.text }) }] }) : { data: { action: "reply" as const, reply: `Olá! Você está falando com ${organization.name}. Como podemos ajudar?`, intent: "greeting", confidence: 1 }, model: "aggenda-deterministic-v1" };
-    await send(input, conversation, { reply: result.data.reply, model: result.model, intent: result.data.intent, confidence: result.data.confidence, handoff: result.data.action === "handoff", ai }); return NextResponse.json({ accepted: true, action: result.data.action });
-  }
-  if (asksForUpcomingAppointments(input.text)) {
+  if (asksForUpcomingAppointments(input.text) && !asksToCancel(input.text) && !asksToReschedule(input.text)) {
     const reply = future.length
       ? `Seus próximos agendamentos:\n${future.map((appointment) => `• ${appointment.serviceName} com ${appointment.professionalName ?? "profissional a definir"}, em ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)} (${appointment.status === "confirmed" ? "confirmado" : "agendado"})`).join("\n")}`
       : "Você não possui agendamentos futuros ativos.";
@@ -457,6 +524,10 @@ export async function POST(request: NextRequest) {
     await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "availability", confidence: 1 });
     return NextResponse.json({ accepted: true, action: "availability" });
   }
+  if (!aiAllowed) {
+    await send(input, conversation, { reply: "A interpretação por IA está indisponível neste período. Digite MENU para usar as opções ou EQUIPE para solicitar atendimento.", model: "aggenda-navigation-v1", intent: "ai_limit", confidence: 1 });
+    return NextResponse.json({ accepted: true, action: "reply" });
+  }
   let result: { data: z.infer<typeof coreAnswerSchema>; model: string };
   try {
     result = await generateAiJson({ schema: coreAnswerSchema, messages: [{ role: "system", content: "Você é o agente de agendamentos do Aggenda. Nunca invente IDs ou dados. Use availability para horários, prepare_booking para agendar, prepare_reschedule para reagendar, prepare_cancel para cancelar e confirm_appointment para confirmar. A aplicação fará validações e pedirá confirmação antes de alterações. Se faltar dado, use reply e pergunte somente o próximo. Use handoff em ambiguidade relevante ou confiança abaixo de 0,65. Datas YYYY-MM-DD, horas HH:mm. Responda somente JSON." }, { role: "user", content: JSON.stringify({ today: organizationDate(new Date(), organization.timezone), timezone: organization.timezone, organization, catalog, professionals: professionalRows, upcomingAppointments: future.map(x => ({ ...x, startsAtLocal: formatOrganizationDateTime(x.startsAt, organization.timezone) })), recentMessages: history.reverse(), currentMessage: input.text }) }] });
@@ -465,7 +536,9 @@ export async function POST(request: NextRequest) {
     await send(input, conversation, { reply: "Não consegui interpretar essa solicitação. Pode reformular em uma frase?", model: "aggenda-transactional-v1", intent: "interpretation_failed", confidence: 1 });
     return NextResponse.json({ accepted: true, action: "reply_fallback" });
   }
-  const answer = result.data; let reply = answer.reply; let nextPending: Pending | undefined;
+  const answer = result.data;
+  if (answer.confidence < 0.65) { answer.action = "handoff"; answer.reply = "Preciso da ajuda da equipe para responder com segurança. Sua solicitação foi encaminhada; o retorno será no horário de atendimento."; }
+  let reply = answer.reply; let nextPending: Pending | undefined;
   const service = answer.serviceId ? catalog.find(x => x.id === answer.serviceId) : undefined; const professional = answer.professionalId ? professionalRows.find(x => x.id === answer.professionalId) : undefined; const appointment = answer.appointmentId ? future.find(x => x.id === answer.appointmentId) : future.length === 1 ? future[0] : undefined;
   if (answer.action === "availability" || answer.action === "prepare_booking") {
     if (!service || !professional || !answer.date) reply = !service ? `Qual serviço você deseja? ${catalog.map(x => x.name).join(", ")}` : !professional ? `Com qual profissional? ${professionalRows.map(x => x.name).join(", ")}` : "Para qual data deseja consultar?";

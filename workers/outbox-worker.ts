@@ -1,3 +1,4 @@
+import { whatsappMessageContent, usesInternalWhatsAppAgent } from "../src/lib/whatsapp-message";
 import "dotenv/config";
 
 import { timingSafeEqual } from "node:crypto";
@@ -251,8 +252,8 @@ async function processInboundWithAggenda(event: OutboxEvent) {
 
 async function forwardInboundToN8n(connection: Client, event: OutboxEvent) {
   const workflowProduct = String(event.payload.workflowProduct ?? "");
-  if (workflowProduct === "CORE_AI") {
-    throw new Error("CORE_AI deve ser processado exclusivamente pelo agente interno do Aggenda");
+  if (usesInternalWhatsAppAgent(workflowProduct)) {
+    throw new Error("Produto de IA deve ser processado exclusivamente pelo agente interno do Aggenda");
   }
   const urls: Record<string, string | undefined> = {
     CHAT: process.env.N8N_CHAT_WEBHOOK_URL,
@@ -345,8 +346,7 @@ async function sendWhatsAppText(connection: Client, event: OutboxEvent) {
           messaging_product: "whatsapp",
           recipient_type: "individual",
           to: recipient,
-          type: "text",
-          text: { preview_url: false, body: text },
+          ...whatsappMessageContent(event.payload),
         }),
         signal: AbortSignal.timeout(30_000),
       }
@@ -463,7 +463,7 @@ async function recordOutboundUsage(connection: Client, event: OutboxEvent) {
 async function handleEvent(connection: Client, event: OutboxEvent) {
   switch (event.event_type) {
     case "whatsapp.message.received":
-      if (String(event.payload.workflowProduct ?? "") === "CORE_AI") await processInboundWithAggenda(event);
+      if (usesInternalWhatsAppAgent(String(event.payload.workflowProduct ?? ""))) await processInboundWithAggenda(event);
       else await forwardInboundToN8n(connection, event);
       return;
     case "commercial.automation.requested":

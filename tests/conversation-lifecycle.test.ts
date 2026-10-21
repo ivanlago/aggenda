@@ -17,7 +17,7 @@ test("migration and actual CRM actions preserve history and count only unresolve
   const previousSecret = process.env.META_WHATSAPP_APP_SECRET;
   const previousKey = process.env.AGGENDA_INTERNAL_API_KEY;
   try {
-    for (const [name, table] of Object.entries({ chat_conversations: schema.chatConversations, chat_messages: schema.chatMessages, organization_members: schema.organizationMembers, audit_logs: schema.auditLogs, organizations: schema.organizations, whatsapp_channels: schema.whatsappChannels, organization_service_plans: schema.organizationServicePlans, organization_usage_counters: schema.organizationUsageCounters, outbox_events: schema.outboxEvents })) {
+    for (const [name, table] of Object.entries({ services: schema.services, service_categories: schema.serviceCategories, retail_products: schema.retailProducts, retail_product_variants: schema.retailProductVariants, inventory_products: schema.inventoryProducts, inventory_lots: schema.inventoryLots, chat_conversations: schema.chatConversations, chat_messages: schema.chatMessages, organization_members: schema.organizationMembers, audit_logs: schema.auditLogs, organizations: schema.organizations, whatsapp_channels: schema.whatsappChannels, organization_service_plans: schema.organizationServicePlans, organization_usage_counters: schema.organizationUsageCounters, outbox_events: schema.outboxEvents })) {
       const columns = Object.values(getTableColumns(table)).filter(column => column.name !== "needs_human_attention").map(column => {
         const type = column.enumValues ? "text" : column.getSQLType();
         const fallback = column.primary && type === "uuid" ? " DEFAULT gen_random_uuid()" : ["created_at", "updated_at", "last_message_at"].includes(column.name) ? " DEFAULT now()" : typeof column.default === "string" ? ` DEFAULT '${column.default.replaceAll("'", "''")}'` : typeof column.default === "boolean" ? ` DEFAULT ${column.default}` : "";
@@ -77,8 +77,8 @@ test("migration and actual CRM actions preserve history and count only unresolve
     await pg.query("UPDATE chat_conversations SET channel_id=$1,external_contact_id='5511999999999' WHERE id=$2", [channel, ai]);
     const webhook = await load("src/app/api/webhooks/whatsapp/route.ts");
     const agent = await load("src/app/api/internal/ai/whatsapp/route.ts");
-    const inbound = async (externalId: string, timestamp: number) => {
-      const body = JSON.stringify({ object: "whatsapp_business_account", entry: [{ changes: [{ field: "messages", value: { metadata: { phone_number_id: "test-phone" }, messages: [{ id: externalId, from: "5511999999999", timestamp: String(timestamp), type: "text", text: { body: "oi" } }] } }] }] });
+    const inbound = async (externalId: string, timestamp: number, selection?: { id: string; title: string }) => {
+      const body = JSON.stringify({ object: "whatsapp_business_account", entry: [{ changes: [{ field: "messages", value: { metadata: { phone_number_id: "test-phone" }, messages: [{ id: externalId, from: "5511999999999", timestamp: String(timestamp), ...(selection ? { type: "interactive", interactive: { list_reply: selection } } : { type: "text", text: { body: "oi" } }) }] } }] }] });
       const signature = createHmac("sha256", process.env.META_WHATSAPP_APP_SECRET!).update(body).digest("hex");
       return (webhook.POST as (request: Request) => Promise<Response>)(new Request("http://localhost/api/webhooks/whatsapp", { method: "POST", body, headers: { "x-hub-signature-256": `sha256=${signature}` } }));
     };
@@ -100,6 +100,10 @@ test("migration and actual CRM actions preserve history and count only unresolve
     // A queued, unanswered inbound message from the previous issue must not create another alert.
     await pg.query("DELETE FROM chat_messages WHERE external_message_id=$1", [`aggenda-ai:${source.id}`]);
     assert.equal((await (await callAgent()).json()).skipped, "resolved_issue");
+    await inbound("interactive-selection", Math.floor(Date.now() / 1000) + 1, { id: "nav:products", title: "Produtos" });
+    assert.equal((await pg.query<{ body: string }>("SELECT body FROM chat_messages WHERE external_message_id='interactive-selection'")).rows[0].body, "Produtos");
+    assert.equal((await pg.query<{ payload: { text: string } }>("SELECT payload FROM outbox_events WHERE event_key='whatsapp:inbound:interactive-selection'")).rows[0].payload.text, "nav:products");
+
   } finally {
     if (previousSecret === undefined) delete process.env.META_WHATSAPP_APP_SECRET; else process.env.META_WHATSAPP_APP_SECRET = previousSecret;
     if (previousKey === undefined) delete process.env.AGGENDA_INTERNAL_API_KEY; else process.env.AGGENDA_INTERNAL_API_KEY = previousKey;

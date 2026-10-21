@@ -1,10 +1,10 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { Boxes, Calculator, CircleDollarSign, WalletCards } from "lucide-react";
 import Link from "next/link";
 
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
-import { inventoryCategories, inventoryMovements, inventoryProducts, inventorySubcategories, retailProductVariants, retailProducts } from "@/db/schema";
+import { inventoryCategories, inventoryLots, inventoryMovements, inventoryProducts, inventorySubcategories, retailProductVariants, retailProducts } from "@/db/schema";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
@@ -22,7 +22,8 @@ export const metadata = { title: "Estoque" };
 export default async function InventoryPage() {
   const { organization } = await requireOrganization();
   const canManage = hasOrganizationPermission(organization.role, "inventory.manage");
-  const [items, categories, subcategories, movements] = await Promise.all([
+  const today = new Intl.DateTimeFormat("sv-SE", { timeZone: organization.timezone }).format(new Date());
+  const [items, categories, subcategories, movements, lots] = await Promise.all([
     db.select({
       id: inventoryProducts.id, variantId: retailProductVariants.id, name: retailProducts.name, presentation: retailProductVariants.name,
       brand: retailProducts.brand, description: retailProducts.description, barcode: retailProductVariants.barcode,
@@ -53,6 +54,17 @@ export default async function InventoryPage() {
       .innerJoin(retailProducts, eq(retailProducts.id, retailProductVariants.productId))
       .where(eq(inventoryMovements.organizationId, organization.id))
       .orderBy(desc(inventoryMovements.createdAt)),
+    db.select({
+      id: inventoryLots.id, code: inventoryLots.code, expiresOn: inventoryLots.expiresOn, status: inventoryLots.status,
+      sale: inventoryLots.saleQuantityMillis, consumption: inventoryLots.consumptionQuantityMillis,
+      fallbackName: inventoryProducts.name, productName: retailProducts.name, presentation: retailProductVariants.name,
+      brand: retailProducts.brand, unit: inventoryProducts.unit,
+    }).from(inventoryLots)
+      .innerJoin(inventoryProducts, eq(inventoryProducts.id, inventoryLots.productId))
+      .leftJoin(retailProductVariants, eq(retailProductVariants.inventoryProductId, inventoryProducts.id))
+      .leftJoin(retailProducts, eq(retailProducts.id, retailProductVariants.productId))
+      .where(eq(inventoryLots.organizationId, organization.id))
+      .orderBy(sql`${inventoryLots.expiresOn} asc nulls last`, asc(inventoryLots.code)),
   ]);
   const costValue = items.reduce((sum, item) => sum + (item.cost ?? 0) * item.quantity / 1000, 0);
   const saleValue = items.reduce((sum, item) => sum + item.salePrice * item.quantity / 1000, 0);
@@ -98,6 +110,6 @@ export default async function InventoryPage() {
       <article className="panel"><CircleDollarSign className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{currency(saleValue)}</p><p className="text-sm text-muted">valor de venda</p></article>
     </section>
     {canManage && <div className="mt-5 flex flex-wrap gap-2"><StockProductForm categories={categories} subcategories={subcategories} /><StockMovementControl /></div>}
-    <InventoryTabs products={rows} movements={movementRows} categories={categories} subcategories={subcategories} canManage={canManage} />
+    <InventoryTabs products={rows} movements={movementRows} lots={lots} today={today} categories={categories} subcategories={subcategories} canManage={canManage} />
   </div>;
 }

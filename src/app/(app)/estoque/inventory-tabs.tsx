@@ -27,6 +27,6 @@ export function InventoryTabs({ products, movements, lots, today, categories, su
     {tab === "sale" && <StockProductList mode="sale" products={products} categories={categories} subcategories={subcategories} canManage={canManage} />}
     {tab === "consumption" && <StockProductList mode="consumption" products={products} categories={categories} subcategories={subcategories} canManage={canManage} />}
     {tab === "movements" && <StockMovementList movements={movements} />}
-    {tab === "lots" && <StockLotList lots={lots} today={today} canManage={canManage} />}
+    {tab === "lots" && <StockLotList lots={lots} today={today} />}
   </div>;
 }

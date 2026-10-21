@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { recallInventoryLot } from "@/actions/inventory-lots";
-import { ActionForm } from "@/components/action-form";
 
 export type StockLotRow = {
   id: string; code: string; expiresOn: string | null; status: string;
@@ -16,12 +14,11 @@ const quantity = (value: number) => (value / 1000).toLocaleString("pt-BR", { max
 const statusOf = (lot: StockLotRow, today: string) => lot.status === "recalled" ? "Recolhido" : lot.expiresOn && lot.expiresOn < today ? "Vencido" : lot.status === "quarantine" ? "Quarentena" : "Disponível";
 const colors: Record<string, string> = { Disponível: "bg-emerald-50 text-emerald-800", Vencido: "bg-red-50 text-red-800", Recolhido: "bg-slate-100 text-slate-700", Quarentena: "bg-amber-50 text-amber-800" };
 
-export function StockLotList({ lots, today, canManage }: { lots: StockLotRow[]; today: string; canManage: boolean }) {
+export function StockLotList({ lots, today }: { lots: StockLotRow[]; today: string }) {
   const [code, setCode] = useState("");
   const [product, setProduct] = useState("");
   const [from, setFrom] = useState("");
   const [until, setUntil] = useState("");
-  const [recalling, setRecalling] = useState<string | null>(null);
   const filtered = lots.filter(lot => normalize(lot.code).includes(normalize(code))
     && normalize(`${lot.productName ?? lot.fallbackName} ${lot.presentation ?? ""} ${lot.brand ?? ""}`).includes(normalize(product))
     && (!from || !!lot.expiresOn && lot.expiresOn >= from)
@@ -55,26 +52,11 @@ export function StockLotList({ lots, today, canManage }: { lots: StockLotRow[]; 
             <td className="whitespace-nowrap p-3">{lot.expiresOn?.split("-").reverse().join("/") ?? "Não informado"}</td>
             <td className="p-3"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${colors[status]}`}>{status}</span></td>
             <td className="p-3"><Link className="text-brand underline" href={`/estoque/lotes/${lot.id}`}>Detalhes</Link>
-              {canManage && lot.status !== "recalled" && <button className="secondary-button mt-2" type="button" onClick={() => setRecalling(lot.id)}>Recolher lote</button>}
             </td>
           </tr>;
         })}</tbody>
       </table>
       {!filtered.length && <p className="py-8 text-center text-sm text-muted">Nenhum lote encontrado para os filtros selecionados.</p>}
     </div>
-    {recalling && (() => {
-      const lot = lots.find(item => item.id === recalling);
-      if (!lot || lot.status === "recalled") return null;
-      return <section className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4" aria-label="Recolhimento do lote">
-        <h3 className="font-extrabold">Recolher lote {lot.code} · {lot.productName ?? lot.fallbackName}</h3>
-        <p className="mt-1 text-sm">O recolhimento bloqueia o lote para uso e venda e registra os acompanhamentos de rastreabilidade. O saldo permanece até registrar sua destinação.</p>
-        <ActionForm key={lot.id} action={recallInventoryLot} successMessage="Recolhimento iniciado. Lote bloqueado e acompanhamentos registrados." onSuccess={() => setRecalling(null)} className="mt-3 grid gap-3">
-          <input name="lotId" type="hidden" value={lot.id} />
-          <label className="grid gap-1 text-sm font-bold">Motivo do recolhimento<textarea className="field" name="reason" required minLength={3} maxLength={1000} /></label>
-          <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="confirmRecall" required />Confirmo o bloqueio permanente deste lote para uso e venda.</label>
-          <div className="flex flex-wrap gap-2"><button className="primary-button" type="submit">Confirmar recolhimento</button><button className="secondary-button" type="button" onClick={() => setRecalling(null)}>Cancelar</button></div>
-        </ActionForm>
-      </section>;
-    })()}
   </section>;
 }

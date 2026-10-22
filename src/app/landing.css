@@ -2599,6 +2599,77 @@
   }
 }
 
+/* Link and menu feedback complements the Motion entrance/selection animations. */
+.landing-desktop-nav a,
+.landing-login,
+.landing-text-link,
+.final-plans {
+  position: relative;
+}
+.landing-desktop-nav a::after,
+.landing-login::after,
+.landing-text-link::after,
+.final-plans::after {
+  content: "";
+  position: absolute;
+  height: 2px;
+  left: 0;
+  right: 0;
+  bottom: -5px;
+  border-radius: 2px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 220ms ease;
+}
+.aggenda-landing a,
+.demo-tabs button,
+.price-cycle button,
+.landing-mobile-nav button,
+.faq-list summary,
+.price-addons summary {
+  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease, box-shadow 220ms ease, transform 220ms ease;
+}
+.aggenda-landing a > svg,
+.landing-brand img,
+.feature-icon,
+.mode-icon {
+  transition: transform 240ms cubic-bezier(.22, 1, .36, 1);
+}
+.price-value strong { display: inline-block; }
+.landing-mobile-nav nav { transform-origin: top right; }
+.landing-mobile-nav nav a { border-radius: 7px; }
+.landing-desktop-nav a:focus-visible::after,
+.landing-login:focus-visible::after,
+.landing-text-link:focus-visible::after,
+.final-plans:focus-visible::after { transform: scaleX(1); }
+
+@media (hover: hover) and (pointer: fine) {
+  .landing-desktop-nav a:hover,
+  .landing-login:hover,
+  .landing-text-link:hover { color: var(--teal); }
+  .landing-desktop-nav a:hover::after,
+  .landing-login:hover::after,
+  .landing-text-link:hover::after,
+  .final-plans:hover::after { transform: scaleX(1); }
+  .landing-brand:hover img { transform: rotate(-6deg) scale(1.07); }
+  .landing-login:hover > svg { transform: translate(2px, -2px); }
+  .landing-button:hover > svg,
+  .landing-text-link:hover > svg { transform: translateX(4px); }
+  .hero-actions .landing-text-link:hover > svg { transform: translateY(4px); }
+  .landing-button:hover { box-shadow: 0 8px 22px #123c4626; }
+  .landing-mobile-nav nav a:hover { background-color: var(--soft); }
+  .landing-mobile-nav nav a.landing-button:hover { background-color: var(--ink); }
+  .demo-tabs button:hover:not([aria-selected="true"]),
+  .price-cycle button:hover:not([aria-pressed="true"]),
+  .landing-mobile-nav > button:hover { background-color: var(--soft); color: var(--ink); }
+  .footer-grid > div > a:not(.landing-brand):hover { color: var(--teal); text-decoration: underline; text-underline-offset: 4px; }
+  .features-grid article:hover .feature-icon { transform: rotate(-5deg) scale(1.08); }
+  .whatsapp-modes article:hover .mode-icon { transform: rotate(5deg) scale(1.08); }
+  .faq-list summary:hover,
+  .price-addons summary:hover { color: var(--teal); background-color: #00877f08; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -2607,6 +2678,11 @@
     transition: none !important;
     animation: none !important;
   }
+  .aggenda-landing *::after { transition: none !important; }
+  .aggenda-landing a:hover > svg,
+  .landing-brand:hover img,
+  .features-grid article:hover .feature-icon,
+  .whatsapp-modes article:hover .mode-icon { transform: none !important; }
   .landing-button:hover,
   .features-grid article:hover,
   .segment-card:hover img {

@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { useRef, useState, type KeyboardEvent } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   landingNav,
   landingOffer,
@@ -21,6 +22,7 @@ import { ProductPreview, type PreviewView } from "./product-preview";
 
 export function MobileNavigation() {
   const [open, setOpen] = useState(false);
+  const reducedMotion = useReducedMotion();
   const toggle = useRef<HTMLButtonElement>(null);
   function close() {
     setOpen(false);
@@ -43,8 +45,13 @@ export function MobileNavigation() {
       >
         {open ? <X size={22} /> : <Menu size={22} />}
       </button>
-      {open && (
-        <nav id="landing-mobile-menu" aria-label="Navegação móvel">
+      <AnimatePresence initial={false}>{open && (
+        <motion.nav id="landing-mobile-menu" aria-label="Navegação móvel"
+          initial={{ opacity: 0, y: reducedMotion ? 0 : -10, scale: reducedMotion ? 1 : 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: reducedMotion ? 0 : -8 }}
+          transition={{ duration: reducedMotion ? 0 : 0.18 }}
+        >
           {landingNav.map(([label, id]) => (
             <a href={`#${id}`} key={id} onClick={() => setOpen(false)}>
               {label}
@@ -54,14 +61,15 @@ export function MobileNavigation() {
           <Link className="landing-button" href={landingOffer.signupUrl}>
             Começar agora <ArrowRight size={16} />
           </Link>
-        </nav>
-      )}
+        </motion.nav>
+      )}</AnimatePresence>
     </div>
   );
 }
 
 export function SegmentSelector() {
   const [selected, setSelected] = useState(0);
+  const reducedMotion = useReducedMotion();
   const item = landingSegments[selected];
   return (
     <>
@@ -96,13 +104,15 @@ export function SegmentSelector() {
         ))}
       </div>
       <div id="segment-detail" className="segment-detail" aria-live="polite">
-        <div>
+        <motion.div key={item.name} initial={false}
+          animate={reducedMotion ? { opacity: 1 } : { opacity: [0.5, 1], x: [-10, 0] }}
+          transition={{ duration: 0.28 }}>
           <span className="landing-eyebrow">
             AGGENDA PARA {item.short.toLocaleUpperCase("pt-BR")}
           </span>
           <h3>Uma gestão que acompanha seu jeito de atender.</h3>
           <p>{item.detail}</p>
-        </div>
+        </motion.div>
         <ul>
           {item.benefits.map((benefit) => (
             <li key={benefit}>
@@ -155,6 +165,7 @@ const demoViews: { id: PreviewView; label: string; benefit: string }[] = [
 
 export function ProductDemo() {
   const [selected, setSelected] = useState(0);
+  const reducedMotion = useReducedMotion();
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
   function onKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     let next = index;
@@ -194,7 +205,11 @@ export function ProductDemo() {
           </button>
         ))}
       </div>
-      <div
+      <motion.div
+        key={demoViews[selected].id}
+        initial={false}
+        animate={reducedMotion ? { opacity: 1 } : { opacity: [0.5, 1], y: [10, 0] }}
+        transition={{ duration: 0.3 }}
         id={`demo-panel-${demoViews[selected].id}`}
         role="tabpanel"
         aria-labelledby={`demo-tab-${demoViews[selected].id}`}
@@ -205,7 +220,7 @@ export function ProductDemo() {
           <p>{demoViews[selected].benefit}</p>
           <span>Demonstração visual · dados ilustrativos</span>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
@@ -215,6 +230,7 @@ const formatMoney = (cents: number) =>
 
 export function LandingPricing() {
   const [cycle, setCycle] = useState<"monthly" | "annual">("annual");
+  const reducedMotion = useReducedMotion();
   return (
     <>
       <div
@@ -252,11 +268,13 @@ export function LandingPricing() {
             <h3>{card.name}</h3>
             <p className="price-subtitle">{card.subtitle}</p>
             <div className="price-value">
-              <strong>
+              <motion.strong key={cycle} initial={false}
+                animate={reducedMotion ? { opacity: 1 } : { opacity: [0.4, 1], y: [6, 0] }}
+                transition={{ duration: 0.25 }}>
                 {formatMoney(
                   cycle === "monthly" ? card.monthly : card.annual / 12,
                 )}
-              </strong>
+              </motion.strong>
               <span>/mês</span>
             </div>
             <p className="price-period">

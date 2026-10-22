@@ -2,7 +2,7 @@
 
 ## Escopo e arquivos
 
-Nova página `/`, sem mudanças em autenticação, checkout, dados de clientes ou permissões. Componentes em `src/components/landing`, conteúdo em `src/lib/landing-content.ts` e estilos isolados sob `.aggenda-landing` em `src/app/landing.css`. Reutiliza Next/React, Lucide, fonte e identidade existentes; CSS com movimento reduzido e controles nativos substituem dependências adicionais de animação/UI.
+Nova página `/`, sem mudanças em autenticação, checkout, dados de clientes ou permissões. Componentes em `src/components/landing`, conteúdo em `src/lib/landing-content.ts` e estilos isolados sob `.aggenda-landing` em `src/app/landing.css`. Reutiliza Next/React, Lucide, fonte e identidade existentes, com Motion (antes Framer Motion) para animações.
 
 São 13 áreas: cabeçalho, hero, dor/solução, funcionalidades, segmentos, etapas, demonstração, preços, WhatsApp/IA, segurança, FAQ, CTA e rodapé. Segmentos selecionáveis e abas são exemplos do produto, não interfaces operacionais. Todas as ilustrações SVG locais e demos são representativas; não usam registros reais de clientes. Imagem Open Graph local em `public/landing/og.png`.
 
@@ -20,7 +20,13 @@ São 13 áreas: cabeçalho, hero, dor/solução, funcionalidades, segmentos, eta
 
 ## SEO, acessibilidade e analytics
 
-Metadados específicos, canonical, Open Graph/Twitter e JSON-LD SoftwareApplication sem avaliações ou preços transacionais fictícios. Um h1, títulos e landmarks, skip link, menu móvel com Escape, abas com setas/Home/End, controles com estados e FAQ nativo. Imagens next/image com dimensões e SVGs locais; sem fotos externas ou bibliotecas pesadas adicionadas. CSS de animação respeita prefers-reduced-motion.
+Metadados específicos, canonical, Open Graph/Twitter e JSON-LD SoftwareApplication sem avaliações ou preços transacionais fictícios. Um h1, títulos e landmarks, skip link, menu móvel com Escape, abas com setas/Home/End, controles com estados e FAQ nativo. Imagens next/image com dimensões e SVGs locais; sem fotos externas. CSS e Motion respeitam prefers-reduced-motion.
+
+## Animações e interação
+
+Motion (`motion` / `motion/react`) anima a entrada sequencial do hero, revelações por viewport (fade, subida, deslocamento lateral e zoom), menu móvel e trocas de módulos, segmentos e valores dos planos. A página mantém seu conteúdo renderizado no servidor e visível sem JavaScript; apenas a camada de animação e os controles interativos são componentes cliente. Os observadores e animações são encerrados ao desmontar.
+
+Hover em links e menus: sublinhado animado, cores, deslocamento das setas, destaque de botões/abas e ícones dos cartões. Hover com deslocamento é limitado a ponteiros precisos; foco visível permanece disponível por teclado. Com movimento reduzido, as entradas e deslocamentos são removidos. Não há animações contínuas de fundo nem mudanças nas URLs de login/cadastro ou valores comerciais.
 
 CTAs possuem atributos `data-conversion` com identificadores sem dados pessoais, prontos para instrumentação futura. Não há SDK de analytics ou transmissão adicional instalada. Contato reutiliza endereço existente; redes sociais omitidas por não haver perfis institucionais confirmados.
 

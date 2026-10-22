@@ -32,6 +32,7 @@ import {
   SegmentSelector,
 } from "@/components/landing/landing-interactions";
 import { ProductPreview } from "@/components/landing/product-preview";
+import { LandingMotion } from "@/components/landing/landing-motion";
 import {
   landingFaqs,
   landingFeatures,
@@ -169,7 +170,7 @@ export default function Home() {
     featureList: landingFeatures.map(([name]) => name),
   };
   return (
-    <div className="aggenda-landing">
+    <LandingMotion>
       <a className="landing-skip" href="#conteudo">
         Pular para o conteúdo
       </a>
@@ -681,6 +682,6 @@ export default function Home() {
           __html: JSON.stringify(schema).replace(/</g, "\\u003c"),
         }}
       />
-    </div>
+    </LandingMotion>
   );
 }

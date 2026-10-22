@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import Link from "next/link";
+import { BookOpen } from "lucide-react";
 
 type ProviderTab = {
   id: string;
@@ -46,6 +48,9 @@ export function PaymentProviderTabs({ tabs, defaultTab }: { tabs: ProviderTab[];
         id={`provider-panel-${selectedTab.id}`}
         role="tabpanel"
       >
+        <Link className="secondary-button mb-5 inline-flex gap-2" href={`/financeiro/cobrancas/guias/${selectedTab.id.replace(/^reconciliation-/, "")}`} target="_blank" rel="noopener noreferrer">
+          <BookOpen className="size-4" aria-hidden="true" />Passo a passo: {selectedTab.label}<span className="sr-only"> (abre em nova aba)</span>
+        </Link>
         {selectedTab.content}
       </div>
     </section>

@@ -68,6 +68,9 @@ test("real migration, payment deduplication, pilot quotas and prepaid extras in 
     assert.equal((await database.select().from(schema.organizationUsageCounters))[0].quantity, 400);
     await database.update(schema.organizationUsageCounters).set({ quantity: 4_999_999 });
     await assert.rejects(reserveAgentAiBudget(org, "gemini-3.1-flash-lite", 2000, 2048, database), /Limite interno/);
+    const [responseCredit] = await database.insert(schema.commercialOrders).values({ organizationId: org, quote: extraQuote("responses"), checkoutId: "checkout_response_credit" }).returning();
+    await processCommercialPayment({ id: "response_credit_paid", event: "PAYMENT_CONFIRMED", payment: { id: "response_credit", value: 49.9, externalReference: `commercial:${responseCredit.id}` } }, database);
+    assert.ok(await reserveAgentAiBudget(org, "gemini-3.1-flash-lite", 2000, 2048, database), "A paid response bundle also funds additional AI processing");
     await database.insert(schema.commercialUsage).values(Array.from({ length: 29 }, (_, i) => ({ organizationId: org, metric: "documents", resourceId: `doc${i}`, periodStart })));
     const contenders = await Promise.allSettled(["last-doc", "racing-doc-1", "racing-doc-2"].map((id) => database.transaction((tx) => reserveCommercialUsage(tx, org, "documents", id))));
     assert.equal(contenders.filter((r) => r.status === "fulfilled").length, 1, "Only one concurrent request can use the final unit");

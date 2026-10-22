@@ -32,6 +32,8 @@ Implementação de 22/10/2026. O catálogo cobrado no servidor é `src/lib/comme
 
 ## Validação e liberação
 
+Pacotes de 500 respostas pagos também acrescentam US$ 2 ao teto interno de processamento enquanto o crédito estiver válido, para que o teto de IA não impeça o uso do saldo adicional adquirido.
+
 - Migration `0081_commercial_checkout.sql` adiciona somente tabelas novas e foi validada em PGlite e em branch Neon antes de aplicada à produção.
 - Testes cobrem preços, calendário, primeiro pagamento em ordens diferentes, duplicidade de eventos, mensal recorrente, valor divergente, concorrência na última unidade, créditos pré-pagos, estorno e expiração.
 - Não foi realizado pagamento real nem enviado convite a terceiros durante a implementação. Após a publicação, um participante deverá efetuar o pagamento para homologar a conexão real Asaas → webhook → acesso.

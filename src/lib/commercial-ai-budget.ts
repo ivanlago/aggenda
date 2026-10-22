@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db as defaultDb } from "@/db";
-import { commercialContracts, organizationUsageCounters } from "@/db/schema";
+import { commercialContracts, organizationUsageCounters, commercialOrders } from "@/db/schema";
 import { usagePeriod } from "./commercial-access";
 
 /** Reserve a conservative upper bound before the paid request, in millionths of USD. */
@@ -13,7 +13,9 @@ export async function reserveAgentAiBudget(organizationId: string | undefined, m
     const [contract] = await tx.select().from(commercialContracts).where(eq(commercialContracts.organizationId, organizationId)).for("update");
     if (!contract) return null;
     if (contract.endsAt <= new Date()) throw new Error("Período de acesso encerrado.");
-    const cap = contract.kind === "trial" ? 2_000_000 : 5_000_000;
+    const credits = await tx.select().from(commercialOrders).where(and(eq(commercialOrders.organizationId, organizationId), eq(commercialOrders.status, "active"), sql`${commercialOrders.periodEnd} > ${new Date()}`));
+    const prepaidBudget = credits.reduce((sum, order) => sum + (order.quote.kind === "extra" && order.quote.extraMetric === "responses" ? order.quote.extraQuantity / 500 * 2_000_000 : 0), 0);
+    const cap = (contract.kind === "trial" ? 2_000_000 : 5_000_000) + prepaidBudget;
     const periodStart = usagePeriod(contract.startedAt, new Date(), contract.kind === "trial");
     const metric = "commercial.ai_microusd";
     const [usage] = await tx.select().from(organizationUsageCounters).where(and(eq(organizationUsageCounters.organizationId, organizationId), eq(organizationUsageCounters.periodStart, periodStart), eq(organizationUsageCounters.metric, metric)));

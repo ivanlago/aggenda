@@ -1,5 +1,7 @@
 # Página comercial do Aggenda
 
+Atualização de 22/10/2026: as descrições históricas abaixo registram a criação original da landing. A contratação agora usa `/assinatura` com três composições e preços reais do catálogo comercial, transmite plano/período selecionados e separa o piloto anual de R$ 5 por convite. Os adicionais de profissionais e as franquias foram atualizados. Referência vigente: `checkout-comercial-piloto.md` e `precificacao-aprovada.md`.
+
 ## Escopo e arquivos
 
 Nova página `/`, sem mudanças em autenticação, checkout, dados de clientes ou permissões. Componentes em `src/components/landing`, conteúdo em `src/lib/landing-content.ts` e estilos isolados sob `.aggenda-landing` em `src/app/landing.css`. Reutiliza Next/React, Lucide, fonte e identidade existentes, com Motion (antes Framer Motion) para animações.

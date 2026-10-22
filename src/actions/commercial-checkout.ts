@@ -104,7 +104,7 @@ async function executeCommercialCheckout(data: FormData) {
     }
     const [created] = await tx.insert(commercialOrders).values({ organizationId: organization.id, invitationId, quote }).returning();
     await tx.insert(legalAcceptances).values(["terms", "privacy"].map((document) => ({
-      organizationId: organization.id, userId: session.user.id, document, version: "2026-10-22",
+      organizationId: organization.id, userId: session.user.id, document, version: document === "terms" ? "2026-10-22" : "2026-09-01",
       ipAddress: requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null, userAgent: requestHeaders.get("user-agent"),
     }))).onConflictDoNothing();
     return created;

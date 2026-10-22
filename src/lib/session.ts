@@ -7,6 +7,7 @@ import { db } from "@/db";
 import {
   organizationMembers,
   organizationSubscriptions,
+  commercialContracts,
   organizations,
   platformMembers,
   professionals,
@@ -75,6 +76,7 @@ export const getOrganizationMemberships = cache(async (userId: string) => {
       subscriptionPlan: organizationSubscriptions.plan,
       trialEndsAt: organizationSubscriptions.trialEndsAt,
       currentPeriodEnd: organizationSubscriptions.currentPeriodEnd,
+      commercialExpiresAt: commercialContracts.endsAt,
     })
     .from(organizationMembers)
     .innerJoin(
@@ -85,6 +87,7 @@ export const getOrganizationMemberships = cache(async (userId: string) => {
       organizationSubscriptions,
       eq(organizationSubscriptions.organizationId, organizations.id)
     )
+    .leftJoin(commercialContracts, eq(commercialContracts.organizationId, organizations.id))
     .where(eq(organizationMembers.userId, userId))
     .orderBy(asc(organizations.createdAt));
 });
@@ -165,8 +168,9 @@ export function hasActiveSubscription(organization: {
   subscriptionStatus: "trialing" | "active" | "past_due" | "canceled" | "incomplete" | null;
   trialEndsAt: Date | null;
   currentPeriodEnd: Date | null;
+  commercialExpiresAt?: Date | null;
 }) {
-  if (organization.subscriptionStatus === "active") return !organization.currentPeriodEnd || organization.currentPeriodEnd > new Date();
+  if (organization.subscriptionStatus === "active") return !organization.commercialExpiresAt || organization.commercialExpiresAt > new Date();
   if (
     organization.subscriptionStatus === "trialing" &&
     organization.trialEndsAt &&

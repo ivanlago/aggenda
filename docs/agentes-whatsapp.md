@@ -45,9 +45,9 @@ aparecem no catálogo. Estoque por lote segue a regra existente de validade e
 quarentena. Quantidades, códigos internos, custos e comissões não são expostos.
 O PDF e a identificação textual incluem produto, apresentação e marca cadastrados.
 Apresentação genérica "Padrão" e marca vazia são indicadas como não informadas no
-PDF; unidades e marcas não são inferidas. Produtos com lotes em preparação para
-ativação também permanecem bloqueados conforme a regra do PDV; o catálogo não
-ignora vencimento, quarentena ou recolhimento para completar a lista de cadastros.
+PDF; unidades e marcas não são inferidas. No estoque misto, lotes regulares e
+saldo sem lote permanecem disponíveis. Apenas a quantidade dos lotes restritos
+fica bloqueada, seguindo a mesma regra do PDV.
 
 PRODUTOS envia um documento pelo WhatsApp. O PDF é gerado com os dados atuais,
 data de atualização, apresentação, preço, descrição e fotos cadastradas no

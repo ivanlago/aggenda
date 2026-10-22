@@ -30,9 +30,13 @@ export async function moveInventory(data: FormData) {
       .limit(1);
     if (!product) throw new Error("Produto não encontrado.");
 
-    const [lot] = await tx.select({ id: inventoryLots.id }).from(inventoryLots).where(and(eq(inventoryLots.organizationId, organization.id), eq(inventoryLots.productId, productId))).limit(1);
+    const lots = await tx.select().from(inventoryLots).where(and(eq(inventoryLots.organizationId, organization.id), eq(inventoryLots.productId, productId)));
     const [tracked] = await tx.select({ tracked: inventoryProducts.lotTracking }).from(inventoryProducts).where(eq(inventoryProducts.id, productId));
-    if (lot || tracked.tracked) throw new Error("Este produto usa controle por lote. Selecione o lote no formulário de Entrada/Saída.");
+    if (tracked.tracked) throw new Error("Este produto usa controle por lote. Selecione o lote no formulário de Entrada/Saída.");
+    const sourcePool = type === "usage" || (type !== "consumption" && (text(data, "pool") === "consumption" || (!text(data, "pool") && !product.isForSale))) ? "consumption" : "sale";
+    const assigned = lots.reduce((sum, lot) => sum + (sourcePool === "sale" ? lot.saleQuantityMillis : lot.consumptionQuantityMillis), 0);
+    const sourceBalance = sourcePool === "sale" ? product.saleBalance : product.consumptionBalance;
+    if (type !== "entry" && entered > sourceBalance - assigned) throw new Error("Saldo sem lote insuficiente. Selecione um lote disponível.");
     let saleBalance = product.saleBalance;
     let consumptionBalance = product.consumptionBalance;
     let balanceAfter = saleBalance;
@@ -51,10 +55,10 @@ export async function moveInventory(data: FormData) {
       consumptionBalance -= entered;
       balanceAfter = consumptionBalance;
       movementNotes = ["Retirada para uso interno", notes].filter(Boolean).join(" · ");
-    } else if (type === "entry" && !product.isForSale) {
+    } else if (type === "entry" && sourcePool === "consumption") {
       consumptionBalance += entered;
       balanceAfter = consumptionBalance;
-    } else if (["exit", "expired", "recall"].includes(type) && !product.isForSale) {
+    } else if (["exit", "expired", "recall"].includes(type) && sourcePool === "consumption") {
       consumptionBalance -= entered;
       balanceAfter = consumptionBalance;
       if (consumptionBalance < 0) throw new Error("A entrada/saída deixaria o estoque de consumo negativo.");

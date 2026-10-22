@@ -42,7 +42,34 @@ test("real migration, lot actions, clinical use, FEFO, expiry blocking, reversal
     await pg.query("INSERT INTO clients(id,organization_id,name) VALUES ($1,$2,'Test patient')", [client, org]);
     await pg.query("INSERT INTO inventory_products(id,organization_id,name,unit,current_quantity_millis,consumption_quantity_millis) VALUES ($1,$2,'Serum','mL',5000,2000)", [product, org]);
     await pg.exec(await readFile("drizzle/0078_inventory_lot_control.sql", "utf8"));
-    const output = await build({ entryPoints: ["src/actions/inventory-lots.ts", "src/actions/inventory.ts", "src/lib/inventory.ts", "src/actions/retail.ts", "src/actions/stock-movement.ts"], outdir: "unused", bundle: true, write: false, format: "cjs", platform: "node", packages: "external", plugins: [{ name: key, setup(builder) {
+    // Mixed stock: quarantine only blocks its own 20 units; regular lots and unassigned stock remain usable.
+    const mixed = randomUUID();
+    await database.insert(schema.inventoryProducts).values({ id: mixed, organizationId: org, name: "Mixed conditioner", currentQuantityMillis: 64000, consumptionQuantityMillis: 0 });
+    const [blocked] = await database.insert(schema.inventoryLots).values({ organizationId: org, productId: mixed, code: "QUARANTINE", status: "quarantine", expiresOn: "2099-01-01", saleQuantityMillis: 20000 }).returning();
+    const [regular] = await database.insert(schema.inventoryLots).values({ organizationId: org, productId: mixed, code: "REGULAR", status: "active", expiresOn: "2099-01-01", saleQuantityMillis: 10000 }).returning();
+    const mixedReference = { organizationId: org, productId: mixed, referenceType: "sale" as const, referenceId: randomUUID(), userId: "owner" };
+    await assert.rejects(database.transaction(tx => allocateLots(tx, { ...mixedReference, quantityMillis: 45000, pool: "sale" })), /insuficiente/);
+    await assert.rejects(database.transaction(tx => allocateLots(tx, { ...mixedReference, quantityMillis: 1000, pool: "sale", lotId: blocked.id })), /indisponível/);
+    await database.transaction(async tx => {
+      const portions = await allocateLots(tx, { ...mixedReference, quantityMillis: 44000, pool: "sale" });
+      assert.deepEqual(portions.map(p => [p.lotId, p.quantityMillis]), [[regular.id, 10000], [null, 34000]]);
+      await tx.update(schema.inventoryProducts).set({ currentQuantityMillis: 20000 }).where(eq(schema.inventoryProducts.id, mixed));
+    });
+    await database.transaction(async tx => {
+      const restored = await restoreLots(tx, { ...mixedReference, legacyQuantityMillis: 44000 });
+      assert.deepEqual(restored, { sale: 44000, consumption: 0 });
+      await tx.update(schema.inventoryProducts).set({ currentQuantityMillis: 64000 }).where(eq(schema.inventoryProducts.id, mixed));
+    });
+    assert.equal((await database.select().from(schema.inventoryLots).where(eq(schema.inventoryLots.id, blocked.id)))[0].saleQuantityMillis, 20000);
+    const soap = randomUUID();
+    await database.insert(schema.inventoryProducts).values({ id: soap, organizationId: org, name: "Mixed soap", currentQuantityMillis: 86000, consumptionQuantityMillis: 0 });
+    await database.insert(schema.inventoryLots).values([{ organizationId: org, productId: soap, code: "EXPIRED", status: "active", expiresOn: "2000-01-01", saleQuantityMillis: 20000 }, { organizationId: org, productId: soap, code: "RECALLED", status: "recalled", expiresOn: "2099-01-01", saleQuantityMillis: 20000 }]);
+    await database.transaction(async tx => {
+      const portions = await allocateLots(tx, { ...mixedReference, productId: soap, quantityMillis: 46000, pool: "sale" });
+      assert.deepEqual(portions.map(p => [p.lotId, p.quantityMillis]), [[null, 46000]]);
+      throw new Error("Rollback availability check");
+    }).catch(error => { assert.match(error.message, /Rollback availability check/); });
+    const output = await build({ entryPoints: ["src/actions/inventory-lots.ts", "src/actions/inventory.ts", "src/lib/inventory.ts", "src/actions/retail.ts", "src/actions/stock-movement.ts", "src/lib/pos-catalog.ts"], outdir: "unused", bundle: true, write: false, format: "cjs", platform: "node", packages: "external", plugins: [{ name: key, setup(builder) {
       const mocks: Record<string, string> = { "@/db": `export const db=globalThis.${key}.db;`, "@/lib/session": `export async function requireOrganization(){const c=globalThis.${key};return {session:{user:{id:c.userId}},organization:{id:c.organizationId,role:c.role,timezone:'America/Bahia'}}} export async function requireProfessionalScope(){return 'unused'}`, "next/cache": "export function revalidatePath(){}" };
       builder.onResolve({ filter: /./ }, args => mocks[args.path] ? { path: args.path, namespace: key } : undefined);
       builder.onLoad({ filter: /./, namespace: key }, args => ({ contents: mocks[args.path], loader: "js" }));
@@ -57,12 +84,26 @@ test("real migration, lot actions, clinical use, FEFO, expiry blocking, reversal
     const inventory = modules.find(module => module.updateAppointmentAndInventory)!;
     const retail = modules.find(module => module.registerRetailSale)!;
     const movement = modules.find(module => module.saveInventoryMovement)!;
+    const catalog = modules.find(module => module.getPosProducts)!;
     const unified = (fields: Record<string, string>) => {
       const form = new FormData(); for (const [name, value] of Object.entries({ productId: product, notes: "Unified stock movement", ...fields })) form.set(name, value);
       return (movement.saveInventoryMovement as (form: FormData) => Promise<unknown>)(form);
     };
     const call = (action: string, fields: Record<string, string>) => { const form = new FormData(); for (const [name, value] of Object.entries(fields)) form.set(name, value); return (actions[action] as (form: FormData) => Promise<unknown>)(form); };
     const register = (code: string, quantity: string, pool: string, expiresOn = "2098-01-01", mode = "existing") => call("registerInventoryLot", { productId: product, code, quantity, pool, expiresOn, mode });
+    for (const id of [mixed, soap]) {
+      const parent = randomUUID();
+      await database.insert(schema.retailProducts).values({ id: parent, organizationId: org, name: id === mixed ? "Conditioner" : "Soap" });
+      await database.insert(schema.retailProductVariants).values({ organizationId: org, productId: parent, inventoryProductId: id, name: "Default", isForSale: true, salePriceInCents: 1000 });
+    }
+    const availableProducts = await (catalog.getPosProducts as (id: string) => Promise<Array<{ stock: number }>>)(org);
+    assert.deepEqual(availableProducts.map(p => p.stock), [44, 46]);
+    // Manual operations without a selected lot may touch only the unassigned balance.
+    await assert.rejects(unified({ productId: mixed, type: "exit", quantity: "35", pool: "sale" }), /Saldo sem lote insuficiente/);
+    await unified({ productId: mixed, type: "consumption", quantity: "1" });
+    await unified({ productId: mixed, type: "usage", quantity: "1" });
+    assert.equal((await database.select().from(schema.inventoryProducts).where(eq(schema.inventoryProducts.id, mixed)))[0].currentQuantityMillis, 63000);
+    assert.equal((await database.select().from(schema.inventoryLots).where(eq(schema.inventoryLots.id, blocked.id)))[0].saleQuantityMillis, 20000);
     await unified({ type: "entry", useLots: "on", mode: "existing", code: "EXPIRED", quantity: "2", pool: "sale", expiresOn: "2000-01-01" });
     await register("LATER", "3", "sale", "2099-01-01");
     await assert.rejects(call("activateInventoryLots", { productId: product }), /Distribua/);

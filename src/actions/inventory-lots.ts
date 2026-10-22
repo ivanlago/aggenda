@@ -86,7 +86,6 @@ export async function moveInventoryLot(form: FormData) {
     if (type === "recall") await startLotRecall(tx, { organizationId: organization.id, userId: session.user.id, lotId, reason });
     const sourcePool = type === "transfer" ? "sale" : pool as "sale" | "consumption";
     await allocateLots(tx, { organizationId: organization.id, productId: product.id, referenceType: "manual", referenceId: randomUUID(), userId: session.user.id, lotId, quantityMillis: amount, pool: sourcePool, allowBlocked: ["discard", "expired", "recall"].includes(type) });
-    if (!product.lotTracking) throw new Error("Ative o controle por lote antes de movimentar.");
     if (type === "transfer") await tx.update(inventoryLots).set({ consumptionQuantityMillis: sql`${inventoryLots.consumptionQuantityMillis} + ${amount}`, updatedAt: new Date() }).where(eq(inventoryLots.id, lotId));
     const sale = product.currentQuantityMillis - (sourcePool === "sale" ? amount : 0);
     const consumption = product.consumptionQuantityMillis - (sourcePool === "consumption" ? amount : 0) + (type === "transfer" ? amount : 0);

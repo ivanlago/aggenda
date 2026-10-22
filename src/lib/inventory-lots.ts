@@ -30,28 +30,34 @@ export async function allocateLots(tx: LotTransaction, input: LotReference & { q
   const product = await lockLotProduct(tx, input.organizationId, input.productId);
   if (!product.isActive && !input.allowBlocked) throw new Error("Produto inativo: não é permitido utilizar ou vender seu estoque.");
   const lots = await tx.select().from(inventoryLots).where(and(eq(inventoryLots.organizationId, input.organizationId), eq(inventoryLots.productId, input.productId))).orderBy(asc(inventoryLots.expiresOn), asc(inventoryLots.id)).for("update");
-  if (!product.lotTracking) {
-    if (lots.length) throw new Error(`Conclua a distribuição e ative o controle por lote de ${product.name} antes de movimentar.`);
-    return [];
-  }
   if (!Number.isSafeInteger(input.quantityMillis) || input.quantityMillis <= 0) throw new Error("Quantidade inválida.");
-  if (lots.reduce((n, lot) => n + lot.saleQuantityMillis, 0) !== product.currentQuantityMillis || lots.reduce((n, lot) => n + lot.consumptionQuantityMillis, 0) !== product.consumptionQuantityMillis) throw new Error(`Saldos por lote de ${product.name} divergentes. Solicite conferência do estoque.`);
+  const assignedSale = lots.reduce((n, lot) => n + lot.saleQuantityMillis, 0);
+  const assignedConsumption = lots.reduce((n, lot) => n + lot.consumptionQuantityMillis, 0);
+  if (assignedSale > product.currentQuantityMillis || assignedConsumption > product.consumptionQuantityMillis || (product.lotTracking && (assignedSale !== product.currentQuantityMillis || assignedConsumption !== product.consumptionQuantityMillis))) throw new Error(`Saldos por lote de ${product.name} divergentes. Solicite conferência do estoque.`);
   const today = await lotToday(tx, input.organizationId);
   const eligible = lots.filter(lot => (!input.lotId || lot.id === input.lotId) && (input.allowBlocked || (lot.status === "active" && lot.expiresOn && lot.expiresOn >= today)));
   const pools = input.pool === "procedure" ? ["consumption", "sale"] as const : [input.pool];
   let remaining = input.quantityMillis;
-  const portions: Array<{ lotId: string; pool: "sale" | "consumption"; quantityMillis: number }> = [];
+  const portions: Array<{ lotId: string | null; pool: "sale" | "consumption"; quantityMillis: number }> = [];
   // FEFO: earlier expiry first, using procedure stock before sale stock within the lot.
   for (const lot of eligible) for (const pool of pools) {
     const quantityMillis = Math.min(remaining, pool === "sale" ? lot.saleQuantityMillis : lot.consumptionQuantityMillis);
     if (!quantityMillis) continue;
     portions.push({ lotId: lot.id, pool, quantityMillis }); remaining -= quantityMillis;
   }
+  // Mixed stock: eligible lots first, then unassigned stock. Procedure fallback uses sale stock.
+  if (remaining && !product.lotTracking && !input.lotId) {
+    const pool = input.pool === "consumption" ? "consumption" : "sale";
+    const available = pool === "sale" ? product.currentQuantityMillis - assignedSale : product.consumptionQuantityMillis - assignedConsumption;
+    const quantityMillis = Math.min(remaining, available);
+    if (quantityMillis) { portions.push({ lotId: null, pool, quantityMillis }); remaining -= quantityMillis; }
+  }
   if (remaining) throw new Error(`Lote indisponível ou saldo válido insuficiente de ${product.name}. Lotes vencidos, sem validade ou bloqueados não podem ser utilizados.`);
   for (const portion of portions) {
+    if (!portion.lotId) continue;
     const field = portion.pool === "sale" ? inventoryLots.saleQuantityMillis : inventoryLots.consumptionQuantityMillis;
     await tx.update(inventoryLots).set({ [portion.pool === "sale" ? "saleQuantityMillis" : "consumptionQuantityMillis"]: sql`${field} - ${portion.quantityMillis}`, updatedAt: new Date() }).where(eq(inventoryLots.id, portion.lotId));
-    await tx.insert(inventoryLotAllocations).values({ ...input, ...portion });
+    await tx.insert(inventoryLotAllocations).values({ ...input, ...portion, lotId: portion.lotId });
   }
   return portions;
 }
@@ -69,10 +75,9 @@ export async function restoreLots(tx: LotTransaction, input: LotReference & { le
     totals[pool] += allocation.quantityMillis;
     await tx.update(inventoryLotAllocations).set({ reversedAt: new Date() }).where(eq(inventoryLotAllocations.id, allocation.id));
   }
-  if (!allocations.length) {
-    totals.sale = input.legacyQuantityMillis;
-    if (product.lotTracking) await tx.insert(inventoryLots).values({ organizationId: input.organizationId, productId: product.id, code: `DEVOLUCAO-${input.referenceType}-${input.referenceId}`, status: "quarantine", saleQuantityMillis: input.legacyQuantityMillis, notes: "Devolução de operação anterior ao controle por lote. Não liberada para uso ou venda." });
-  }
+  const unassignedReturn = Math.max(0, input.legacyQuantityMillis - totals.sale - totals.consumption);
+  totals.sale += unassignedReturn;
+  if (unassignedReturn && product.lotTracking) await tx.insert(inventoryLots).values({ organizationId: input.organizationId, productId: product.id, code: `DEVOLUCAO-${input.referenceType}-${input.referenceId}`, status: "quarantine", saleQuantityMillis: unassignedReturn, notes: "Devolução sem lote conhecido. Não liberada para uso ou venda." });
   return totals;
 }
 

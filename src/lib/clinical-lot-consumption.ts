@@ -21,7 +21,6 @@ export async function consumeClinicalLots(tx: LotTransaction, input: { organizat
     const amount = Math.round(Number(application.quantity) * 1000);
     if (Math.abs(Number(application.quantity) * 1000 - amount) > 0.00001) throw new Error("Use até três casas decimais na quantidade aplicada.");
     const portions = await allocateLots(tx, { organizationId: input.organizationId, productId: product.id, referenceType: "clinical", referenceId: input.recordId, clientId: input.clientId, appointmentId: input.appointmentId, userId: input.userId, quantityMillis: amount, pool: "procedure", lotId: lot.id });
-    if (!product.lotTracking || !portions.length) throw new Error("Ative o controle por lote do produto antes da aplicação.");
     const sale = product.currentQuantityMillis - portions.filter(part => part.pool === "sale").reduce((sum, part) => sum + part.quantityMillis, 0);
     const consumption = product.consumptionQuantityMillis - portions.filter(part => part.pool === "consumption").reduce((sum, part) => sum + part.quantityMillis, 0);
     await tx.update(inventoryProducts).set({ currentQuantityMillis: sale, consumptionQuantityMillis: consumption, updatedAt: new Date() }).where(eq(inventoryProducts.id, product.id));

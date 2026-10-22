@@ -11,7 +11,7 @@ export type StockLotRow = {
 
 const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
 const quantity = (value: number) => (value / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
-const statusOf = (lot: StockLotRow, today: string) => lot.status === "recalled" ? "Recolhido" : lot.expiresOn && lot.expiresOn < today ? "Vencido" : lot.status === "quarantine" ? "Quarentena" : "Disponível";
+const statusOf = (lot: StockLotRow, today: string) => lot.status === "recalled" ? "Recolhido" : lot.expiresOn && lot.expiresOn < today ? "Vencido" : lot.status === "quarantine" || !lot.expiresOn ? "Quarentena" : "Disponível";
 const colors: Record<string, string> = { Disponível: "bg-emerald-50 text-emerald-800", Vencido: "bg-red-50 text-red-800", Recolhido: "bg-slate-100 text-slate-700", Quarentena: "bg-amber-50 text-amber-800" };
 
 export function StockLotList({ lots, today }: { lots: StockLotRow[]; today: string }) {

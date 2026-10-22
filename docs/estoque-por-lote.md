@@ -8,7 +8,7 @@
 4. Confira fornecedor, código, validade e quantidade. O código é normalizado para maiúsculas; um mesmo lote não pode receber outra validade nem ser reabastecido enquanto bloqueado.
 5. Na opção **Lotes e recolhimentos**, selecione o produto e use **Ativar controle por lote após conferência** somente depois que os saldos de venda e consumo estiverem totalmente distribuídos. O servidor confere os totais e não permite ativação incompleta. A ativação pode começar com saldo zero.
 
-Produtos que nunca tiveram lotes cadastrados continuam com o controle anterior. Depois de cadastrar o primeiro lote, as movimentações comuns e vendas ficam bloqueadas até concluir a distribuição e ativação. Para bloquear por validade todos os produtos relevantes, configure e ative cada um deles. Não existe desativação de controle por lote na interface.
+Estoque misto: enquanto o controle integral por lote estiver desativado, lotes ativos e válidos e o saldo sem lote permanecem disponíveis. Apenas a quantidade dos lotes restritos fica bloqueada. Ativar o controle integral exige identificar todo o saldo; não existe desativação pela interface.
 
 ## Operação
 
@@ -85,3 +85,5 @@ A antiga listagem `/estoque/lotes` redireciona ao estoque. Em **Entrada/Saída �
 **Registrar saída** seleciona produto e lote e abre o formulário com operação Produto vencido ou Recall/recolhimento. O usuário confere quantidade, origem e motivo antes de salvar. A consulta não altera estoque nem bloqueia lotes. A operação Recall continua bloqueando o restante do lote e abrindo acompanhamento. Detalhes, identificação incompleta, liberação e rastreabilidade permanecem acessíveis por resultado. A preparação/ativação do controle do produto fica em uma seção recolhida na consulta.
 
 Validade ausente não permite concluir que um lote venceu e, portanto, não aparece na busca de vencidos. O controle depende da identificação de lotes e datas corretas; permanecem os bloqueios de vencidos e recolhidos em vendas e aplicações. Nenhuma migração nova.
+
+Entradas/Saídas apresenta os lotes restritos em separado. Bloqueio reduz disponibilidade, sem alterar o estoque físico. Apenas a saída registrada reduz o total e o lote, evitando baixa duplicada.

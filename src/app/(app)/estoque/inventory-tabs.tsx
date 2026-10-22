@@ -26,7 +26,14 @@ export function InventoryTabs({ products, movements, lots, today, categories, su
     </div>
     {tab === "sale" && <StockProductList mode="sale" products={products} categories={categories} subcategories={subcategories} canManage={canManage} />}
     {tab === "consumption" && <StockProductList mode="consumption" products={products} categories={categories} subcategories={subcategories} canManage={canManage} />}
-    {tab === "movements" && <StockMovementList movements={movements} />}
+    {tab === "movements" && <>
+      <section className="panel mb-4">
+        <h2 className="text-lg font-extrabold">Saldo indisponível por lote</h2>
+        <p className="text-sm text-muted">Estes saldos continuam no estoque físico, mas estão bloqueados para venda e uso. A saída física só aparece no histórico quando registrada; não há baixa duplicada pelo bloqueio.</p>
+        <StockLotList lots={lots.filter(lot => (lot.sale > 0 || lot.consumption > 0) && (lot.status !== "active" || !lot.expiresOn || lot.expiresOn < today))} today={today} />
+      </section>
+      <StockMovementList movements={movements} />
+    </>}
     {tab === "lots" && <StockLotList lots={lots} today={today} />}
   </div>;
 }

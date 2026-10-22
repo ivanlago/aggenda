@@ -47,11 +47,11 @@ export async function updateAppointmentAndInventory(input: { organizationId: str
         for (const item of recipe.sort((a, b) => a.productId.localeCompare(b.productId))) {
           const product = products.find(candidate => candidate.id === item.productId);
           if (!product) throw new Error("Produto da ficha técnica não encontrado.");
-          const alreadyApplied = product.lotTracking ? applied.filter(use => use.productId === product.id).reduce((sum, use) => sum + use.quantityMillis, 0) : 0;
+          const alreadyApplied = applied.filter(use => use.productId === product.id).reduce((sum, use) => sum + use.quantityMillis, 0);
           const quantity = Math.max(0, item.quantity - alreadyApplied);
           if (!quantity) continue;
           const portions = await allocateLots(tx, { organizationId: input.organizationId, productId: product.id, referenceType: "appointment", referenceId: input.appointmentId, appointmentId: input.appointmentId, clientId: appointment.clientId, userId: input.userId, quantityMillis: quantity, pool: "procedure" });
-          const saleUsed = product.lotTracking ? portions.filter(part => part.pool === "sale").reduce((sum, part) => sum + part.quantityMillis, 0) : quantity;
+          const saleUsed = portions.filter(part => part.pool === "sale").reduce((sum, part) => sum + part.quantityMillis, 0);
           const consumptionUsed = portions.filter(part => part.pool === "consumption").reduce((sum, part) => sum + part.quantityMillis, 0);
           const balance = product.currentQuantityMillis - saleUsed;
           if (balance < 0) throw new Error(`Estoque insuficiente de ${product.name}. Registre uma entrada antes de concluir.`);

@@ -30,6 +30,7 @@ export default async function InventoryPage() {
       imageUrl: retailProducts.imageUrl,
       sku: inventoryProducts.sku, unit: inventoryProducts.unit,
       quantity: inventoryProducts.currentQuantityMillis, consumptionQuantity: inventoryProducts.consumptionQuantityMillis,
+      tracked: inventoryProducts.lotTracking,
       minimum: inventoryProducts.minimumQuantityMillis,
       cost: inventoryProducts.costInCents, salePrice: retailProductVariants.salePriceInCents,
       isForSale: retailProductVariants.isForSale,
@@ -55,7 +56,7 @@ export default async function InventoryPage() {
       .where(eq(inventoryMovements.organizationId, organization.id))
       .orderBy(desc(inventoryMovements.createdAt)),
     db.select({
-      id: inventoryLots.id, code: inventoryLots.code, expiresOn: inventoryLots.expiresOn, status: inventoryLots.status,
+      id: inventoryLots.id, productId: inventoryLots.productId, code: inventoryLots.code, expiresOn: inventoryLots.expiresOn, status: inventoryLots.status,
       sale: inventoryLots.saleQuantityMillis, consumption: inventoryLots.consumptionQuantityMillis,
       fallbackName: inventoryProducts.name, productName: retailProducts.name, presentation: retailProductVariants.name,
       brand: retailProducts.brand, unit: inventoryProducts.unit,
@@ -68,6 +69,13 @@ export default async function InventoryPage() {
   ]);
   const costValue = items.reduce((sum, item) => sum + (item.cost ?? 0) * item.quantity / 1000, 0);
   const saleValue = items.reduce((sum, item) => sum + item.salePrice * item.quantity / 1000, 0);
+  const available = (item: typeof items[number], pool: "sale" | "consumption") => {
+    const productLots = lots.filter(lot => lot.productId === item.id);
+    const valid = productLots.filter(lot => lot.status === "active" && lot.expiresOn && lot.expiresOn >= today).reduce((sum, lot) => sum + lot[pool], 0);
+    const total = pool === "sale" ? item.quantity : item.consumptionQuantity;
+    const assigned = productLots.reduce((sum, lot) => sum + lot[pool], 0);
+    return Math.max(0, valid + (item.tracked ? 0 : total - assigned));
+  };
   const rows: StockProductRow[] = items.map((item) => ({
     id: item.id, variantId: item.variantId, name: item.name,
     imageUrl: item.imageUrl,
@@ -78,6 +86,9 @@ export default async function InventoryPage() {
     costValue: ((item.cost ?? 0) / 100).toFixed(2).replace(".", ","), saleValue: (item.salePrice / 100).toFixed(2).replace(".", ","),
     minimumValue: quantity(item.minimum),
     quantityLabel: quantity(item.quantity),
+    availableSaleLabel: quantity(available(item, "sale")),
+    availableConsumptionLabel: quantity(available(item, "consumption")),
+    availableSale: available(item, "sale"), availableConsumption: available(item, "consumption"),
     costUnit: currency(item.cost ?? 0), costTotal: currency((item.cost ?? 0) * item.quantity / 1000),
     saleUnit: currency(item.salePrice), saleTotal: currency(item.salePrice * item.quantity / 1000),
     consumptionCostTotal: currency((item.cost ?? 0) * item.consumptionQuantity / 1000),

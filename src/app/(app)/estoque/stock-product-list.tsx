@@ -25,6 +25,10 @@ export type StockProductRow = {
   minimumValue: string;
   quantity: number;
   quantityLabel: string;
+  availableSaleLabel: string;
+  availableConsumptionLabel: string;
+  availableSale: number;
+  availableConsumption: number;
   consumptionQuantity: number;
   consumptionQuantityLabel: string;
   costUnit: string;
@@ -249,7 +253,7 @@ export function StockProductList({
         );
         const matchesStatus =
           status === "all" ||
-          (status === "stock" && (isConsumption ? item.consumptionQuantity : item.quantity) > 0) ||
+          (status === "stock" && (isConsumption ? item.availableConsumption : item.availableSale) > 0) ||
           (status === "low" && (isConsumption ? item.consumptionQuantity : item.quantity) <= item.minimum);
         return (
           belongsToStock && matchesQuery &&
@@ -350,6 +354,7 @@ export function StockProductList({
                   className={`p-3 text-right font-bold ${(isConsumption ? item.consumptionQuantity : item.quantity) <= item.minimum ? "text-red-700" : ""}`}
                 >
                   {isConsumption ? item.consumptionQuantityLabel : item.quantityLabel}
+                  <p className="text-xs font-normal text-muted">Disponível: {isConsumption ? item.availableConsumptionLabel : item.availableSaleLabel}</p>
                 </td>
                 <td className="p-3 text-right">{item.costUnit}</td>
                 <td className="p-3 text-right">{isConsumption ? item.consumptionCostTotal : item.costTotal}</td>

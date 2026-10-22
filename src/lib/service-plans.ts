@@ -93,14 +93,14 @@ export const whatsappServices: Record<WhatsAppServiceCode, {
     workflowProduct: "CHAT",
   },
   chat_ai: {
-    name: "WhatsApp Chat + AI",
+    name: "Aggenda Atendimento",
     description: "Atendimento, catálogo e informações com IA; encaminha o agendamento para a área do cliente e oferece atendimento humano.",
     usesCloudApi: true,
     usesAi: true,
     workflowProduct: "CHAT_AI",
   },
   core_ai: {
-    name: "WhatsApp Core + AI",
+    name: "Aggenda Secretária",
     description: "Atendimento e catálogo com IA; consulta horários, agenda, reagenda, cancela e confirma presença pelo WhatsApp, com alterações controladas.",
     usesCloudApi: true,
     usesAi: true,

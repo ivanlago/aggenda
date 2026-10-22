@@ -15,7 +15,7 @@ test("both real agent routes share navigation; Chat only links, Core books after
   const previous = process.env.AGGENDA_INTERNAL_API_KEY;
   const origin = process.env.NEXT_PUBLIC_APP_URL;
   const tomorrow = new Date(); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1); tomorrow.setUTCHours(13, 0, 0, 0);
-  const state = { db: drizzle(pg), slot: tomorrow.toISOString() };
+  const state = { db: drizzle(pg), slot: tomorrow.toISOString(), availableSlots: undefined as string[] | undefined, availabilityRequests: [] as { date: string; serviceId: string; professionalId: string; excludeAppointmentId?: string; timezone: string }[] };
   Object.assign(globalThis, { [key]: state });
   process.env.AGGENDA_INTERNAL_API_KEY = "isolated-agent-test";
   process.env.NEXT_PUBLIC_APP_URL = "https://aggenda.example";
@@ -47,7 +47,7 @@ test("both real agent routes share navigation; Chat only links, Core books after
         "@/lib/finance": "export async function syncAppointmentFinancialEntry(){}",
         "@/lib/google-calendar": "export async function syncAppointmentToGoogleCalendar(){}; export async function deleteAppointmentFromGoogleCalendar(){}",
         "@/lib/package-balance": "export async function reconcilePackageUsage(){}",
-        "@/lib/availability": `export async function getAvailableTimes(){return [globalThis.${key}.slot]} export async function isTimeAvailable(){return true}`,
+        "@/lib/availability": `export async function getAvailableTimes(input){const state=globalThis.${key};state.availabilityRequests.push(input);return state.availableSlots ?? [state.slot]} export async function isTimeAvailable(){return true}`,
         "@/lib/ai/provider": "export async function generateAiJson(){throw new Error('No AI needed for menus')}" ,
       };
       const bundle = await build({ entryPoints: [path], bundle: true, write: false, format: "cjs", platform: "node", packages: "external", plugins: [{ name: key, setup(builder) {
@@ -68,7 +68,7 @@ test("both real agent routes share navigation; Chat only links, Core books after
       const input = { organizationId: organization, conversationId: conversation, messageId, phoneNumberId: "test-phone", from: "5571999999999", text, whatsappServiceCode: mode };
       const request = () => new NextRequest("https://aggenda.example/api/internal/ai/whatsapp", { method: "POST", headers: { authorization: "Bearer isolated-agent-test", "content-type": "application/json" }, body: JSON.stringify(input) });
       const response = await agent.POST(request()); assert.equal(response.status, 200);
-      const rows = await pg.query<{ body: string; raw_payload: { navigationState?: { options: { id: string; title: string }[] }; pendingAction?: unknown } }>("SELECT body,raw_payload FROM chat_messages WHERE external_message_id=$1", [`aggenda-ai:${messageId}`]);
+      const rows = await pg.query<{ body: string; raw_payload: { navigationState?: { options: { id: string; title: string }[] }; pendingAction?: { startsAt: string }; flowState?: { desiredDate?: string; offeredSlots?: string[] } } }>("SELECT body,raw_payload FROM chat_messages WHERE external_message_id=$1", [`aggenda-ai:${messageId}`]);
       return { output: rows.rows[0], messageId, replay: () => agent.POST(request()) };
     }
     const hello = await call(chat, "oi");
@@ -121,11 +121,45 @@ test("both real agent routes share navigation; Chat only links, Core books after
     await call(core, "Quero reagendar", "core_ai");
     await call(core, "1", "core_ai");
     state.slot = new Date(tomorrow.getTime() + 3 * 86400000).toISOString();
+    const newDate = new Date(state.slot).toLocaleDateString("pt-BR", { timeZone: "America/Bahia" });
+    const originalAppointments = (await pg.query<{ id: string; starts_at: Date }>("SELECT id,starts_at FROM appointments ORDER BY id")).rows;
+    const secondSlot = new Date(new Date(state.slot).getTime() + 3600000).toISOString();
+    state.availableSlots = [state.slot, secondSlot];
+    const availability = await call(core, `quais horários estão disponíveis no dia ${newDate}?`, "core_ai");
+    assert.match(availability.output.body, /Horários disponíveis/);
+    assert.match(availability.output.body, /1 - 10:00\n2 - 11:00/);
+    assert.equal(availability.output.raw_payload.pendingAction, undefined);
+    assert.deepEqual(availability.output.raw_payload.flowState?.offeredSlots, state.availableSlots);
+    assert.deepEqual((await pg.query("SELECT id,starts_at FROM appointments ORDER BY id")).rows, originalAppointments, "asking for times never changes the existing reservation");
+    const lastAvailabilityRequest = state.availabilityRequests.at(-1)!;
+    assert.equal(lastAvailabilityRequest.serviceId, service);
+    assert.equal(lastAvailabilityRequest.professionalId, professional);
+    assert.equal(lastAvailabilityRequest.timezone, "America/Bahia");
+    assert.ok(originalAppointments.some(item => item.id === lastAvailabilityRequest.excludeAppointmentId));
+    assert.match((await call(core, "99", "core_ai")).output.body, /Escolha um dos números/);
+    // A time that disappeared since the list must not be accepted by its old number.
+    state.availableSlots = [state.slot];
+    const lostSlot = await call(core, "2", "core_ai");
+    assert.match(lostSlot.output.body, /Esse horário não está disponível/);
+    assert.equal(lostSlot.output.raw_payload.pendingAction, undefined);
+    state.availableSlots = [];
+    assert.match((await call(core, `E no dia ${newDate}?`, "core_ai")).output.body, /Não há horários disponíveis/);
+    assert.deepEqual((await pg.query("SELECT id,starts_at FROM appointments ORDER BY id")).rows, originalAppointments);
+    state.availableSlots = [state.slot, secondSlot];
+    await call(core, newDate, "core_ai");
+    const numbered = await call(core, "1", "core_ai");
+    assert.equal(numbered.output.raw_payload.pendingAction?.startsAt, state.slot);
+    assert.deepEqual((await pg.query("SELECT id,starts_at FROM appointments ORDER BY id")).rows, originalAppointments, "selection still requires explicit confirmation");
+    await call(core, "NÃO", "core_ai");
+    await call(core, "Quero reagendar", "core_ai");
+    await call(core, "1", "core_ai");
+    await call(core, newDate, "core_ai");
     const desired = `${new Date(state.slot).toLocaleDateString("pt-BR", { timeZone: "America/Bahia" })} 10:00`;
     const reschedule = await call(core, desired, "core_ai");
     assert.ok(reschedule.output.raw_payload.pendingAction);
     await call(core, "CONFIRMAR", "core_ai");
     assert.equal((await pg.query("SELECT id FROM appointments WHERE starts_at=$1", [new Date(state.slot)])).rows.length, 1);
+    state.availableSlots = undefined;
     const cancelChoices = await call(core, "Quero cancelar meu agendamento", "core_ai");
     assert.match(cancelChoices.output.body, /cancelar/, JSON.stringify(cancelChoices.output));
     const cancelPrepare = await call(core, "1", "core_ai");

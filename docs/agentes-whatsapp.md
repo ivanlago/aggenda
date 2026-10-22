@@ -25,6 +25,12 @@ Não são dois bancos de dados nem duas cópias de workflow por cliente.
 - Procedimentos com sinal/pagamento seguem para o portal, que já implementa
   reserva e cobrança; o agente não deve contornar essa exigência.
 - Meus agendamentos oferece consulta, reagendamento, cancelamento e presença.
+  No reagendamento, informar somente a data já consulta horários do mesmo serviço
+  e profissional, excluindo o próprio agendamento do conflito. A resposta oferece
+  até dez opções numeradas, aceita número ou horário e mantém a data no contexto.
+  A disponibilidade é consultada novamente na escolha e revalidada na confirmação;
+  sem vagas, solicita outra data e preserva a reserva original. Nenhuma alteração
+  ocorre apenas ao consultar ou escolher uma opção.
   Escolhas de agendamento aceitam número, nome, data e horário. A modalidade Chat
   encaminha todas essas operações ao portal autenticado.
 - Identificação ambígua por telefone é encaminhada à equipe, sem selecionar um

@@ -40,7 +40,7 @@ type FlowState =
   | { kind: "select_confirm"; appointmentIds: string[] }
   | { kind: "select_cancel"; appointmentIds: string[] }
   | { kind: "select_reschedule"; appointmentIds: string[]; desiredDate?: string; desiredTime?: string }
-  | { kind: "reschedule_destination"; appointmentId: string; desiredDate?: string; desiredTime?: string };
+  | { kind: "reschedule_destination"; appointmentId: string; desiredDate?: string; desiredTime?: string; offeredSlots?: string[] };
 
 function authorized(request: NextRequest) { const key = process.env.AGGENDA_INTERNAL_API_KEY; return Boolean(key && request.headers.get("authorization") === `Bearer ${key}`); }
 function localTime(date: Date, timezone: string) { return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: timezone }).format(date); }
@@ -137,7 +137,7 @@ function parseFlowState(payload?: Record<string, unknown> | null): FlowState | n
     z.object({ kind: z.literal("select_confirm"), appointmentIds: z.array(z.string().uuid()).min(1) }),
     z.object({ kind: z.literal("select_cancel"), appointmentIds: z.array(z.string().uuid()).min(1) }),
     z.object({ kind: z.literal("select_reschedule"), appointmentIds: z.array(z.string().uuid()).min(1), desiredDate: z.string().optional(), desiredTime: z.string().optional() }),
-    z.object({ kind: z.literal("reschedule_destination"), appointmentId: z.string().uuid(), desiredDate: z.string().optional(), desiredTime: z.string().optional() }),
+    z.object({ kind: z.literal("reschedule_destination"), appointmentId: z.string().uuid(), desiredDate: z.string().optional(), desiredTime: z.string().optional(), offeredSlots: z.array(z.string().datetime()).max(10).optional() }),
   ]).safeParse(payload?.flowState);
   return result.success ? result.data : null;
 }
@@ -213,6 +213,33 @@ function filterMentionedAppointments(rows: UpcomingAppointment[], value: string,
 
 function appointmentChoices(rows: UpcomingAppointment[], timezone: string) {
   return rows.map((row, index) => `${index + 1} - ${row.serviceName}, ${formatOrganizationDateTime(row.startsAt, timezone)}, com ${row.professionalName ?? "profissional a definir"}`).join("\n");
+}
+
+async function respondRescheduleDestination(input: Input, conversation: Conversation, appointment: UpcomingAppointment, organization: { timezone: string; slotIntervalMinutes: number }, desiredDate?: string, desiredTime?: string, selectedStartsAt?: string) {
+  if (!appointment.professionalId) {
+    await send(input, conversation, { reply: "Esse agendamento não possui profissional definido. Digite EQUIPE para solicitar ajuda no reagendamento.", model: "aggenda-transactional-v1", intent: "reschedule_not_found", confidence: 1 });
+    return NextResponse.json({ accepted: true, action: "reply" });
+  }
+  if (!desiredDate) {
+    await send(input, conversation, { reply: `Para qual data deseja reagendar ${appointment.serviceName}, atualmente marcado para ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)}? Informe a data para consultar os horários disponíveis.`, model: "aggenda-transactional-v1", intent: "reschedule_destination", confidence: 1, flowState: { kind: "reschedule_destination", appointmentId: appointment.id, desiredTime } });
+    return NextResponse.json({ accepted: true, action: "reply" });
+  }
+  const slots = await getAvailableTimes({ organizationId: input.organizationId, timezone: organization.timezone, date: desiredDate, serviceId: appointment.serviceId, professionalId: appointment.professionalId, slotIntervalMinutes: organization.slotIntervalMinutes, excludeAppointmentId: appointment.id });
+  // A numbered choice is matched against fresh availability, not trusted as a reservation.
+  const selected = selectedStartsAt ? slots?.find(slot => slot === selectedStartsAt) : desiredTime ? slots?.find(slot => localTime(new Date(slot), organization.timezone) === desiredTime) : undefined;
+  if (selected) {
+    const pending: Pending = { kind: "reschedule", appointmentId: appointment.id, startsAt: selected };
+    await send(input, conversation, { reply: `Confirma reagendar ${appointment.serviceName} de ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)} para ${formatOrganizationDateTime(new Date(selected), organization.timezone)}? Responda CONFIRMAR.`, model: "aggenda-transactional-v1", intent: "prepare_reschedule", confidence: 1, pending });
+    return NextResponse.json({ accepted: true, action: "prepare_reschedule" });
+  }
+  const offeredSlots = (slots ?? []).slice(0, 10);
+  const dateLabel = desiredDate.split("-").reverse().join("/");
+  const unavailable = desiredTime || selectedStartsAt ? "Esse horário não está disponível.\n" : "";
+  const reply = offeredSlots.length
+    ? `${unavailable}Horários disponíveis para ${appointment.serviceName} com ${appointment.professionalName ?? "o profissional do seu agendamento"}, em ${dateLabel}:\n${offeredSlots.map((slot, index) => `${index + 1} - ${localTime(new Date(slot), organization.timezone)}`).join("\n")}\n${(slots?.length ?? 0) > offeredSlots.length ? "Estas são as primeiras opções. " : ""}Responda com o número ou o horário desejado, ou informe outra data. Seu agendamento atual permanece mantido até confirmar a alteração.`
+    : `${unavailable}Não há horários disponíveis para ${appointment.serviceName} com ${appointment.professionalName ?? "o profissional do seu agendamento"} em ${dateLabel}. Informe outra data. Seu agendamento atual permanece mantido.`;
+  await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "reschedule_destination", confidence: 1, flowState: { kind: "reschedule_destination", appointmentId: appointment.id, desiredDate, offeredSlots } });
+  return NextResponse.json({ accepted: true, action: "availability" });
 }
 
 async function execute(input: Input, pending: Pending, clientId: string, timezone: string) {
@@ -365,31 +392,24 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ accepted: true, action: "reply" });
       }
       const appointment = matches[0];
-      await send(input, conversation, { reply: `Para qual data e horário deseja alterar ${appointment.serviceName}, atualmente marcado para ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)}?`, model: "aggenda-transactional-v1", intent: "reschedule_destination", confidence: 1, flowState: { kind: "reschedule_destination", appointmentId: appointment.id } });
-      return NextResponse.json({ accepted: true, action: "reply" });
+      return respondRescheduleDestination(input, conversation, appointment, organization, flowState.desiredDate, flowState.desiredTime);
     }
     const appointment = candidates[0];
     if (!appointment || !appointment.professionalId) {
       await send(input, conversation, { reply: "Não encontrei mais esse agendamento entre seus horários futuros ativos.", model: "aggenda-transactional-v1", intent: "reschedule_not_found", confidence: 1 });
       return NextResponse.json({ accepted: true, action: "reply" });
     }
-    const desiredDate = parseBrazilianDate(input.text) ?? flowState.desiredDate ?? (parseBrazilianTime(input.text) ? organizationDate(appointment.startsAt, organization.timezone) : undefined);
-    const desiredTime = parseBrazilianTime(input.text) ?? flowState.desiredTime;
-    if (!desiredDate || !desiredTime) {
-      const missing = !desiredDate ? "a data e o horário" : "o horário";
-      await send(input, conversation, { reply: `Informe ${missing} desejado${!desiredDate ? "s" : ""}.`, model: "aggenda-transactional-v1", intent: "reschedule_destination", confidence: 1, flowState: { kind: "reschedule_destination", appointmentId: appointment.id, desiredDate, desiredTime } });
+    const enteredDate = parseBrazilianDate(input.text);
+    const enteredTime = parseBrazilianTime(input.text);
+    const asksAvailability = /\b(horarios?|vagas?|disponibilidade|disponiveis|livres)\b/.test(normalizedText(input.text));
+    const desiredDate = enteredDate ?? flowState.desiredDate ?? (enteredTime ? organizationDate(appointment.startsAt, organization.timezone) : undefined);
+    const desiredTime = asksAvailability ? undefined : enteredTime ?? (enteredDate && enteredDate !== flowState.desiredDate ? undefined : flowState.desiredTime);
+    const numberedChoice = /^\d+$/.test(input.text.trim()) && flowState.offeredSlots ? Number(input.text.trim()) - 1 : -1;
+    if (numberedChoice >= 0 && !flowState.offeredSlots?.[numberedChoice]) {
+      await send(input, conversation, { reply: "Escolha um dos números apresentados, informe o horário desejado ou outra data.", model: "aggenda-transactional-v1", intent: "reschedule_destination", confidence: 1, flowState });
       return NextResponse.json({ accepted: true, action: "reply" });
     }
-    const slots = await getAvailableTimes({ organizationId: input.organizationId, timezone: organization.timezone, date: desiredDate, serviceId: appointment.serviceId, professionalId: appointment.professionalId, slotIntervalMinutes: organization.slotIntervalMinutes, excludeAppointmentId: appointment.id });
-    const selected = slots?.find((slot) => localTime(new Date(slot), organization.timezone) === desiredTime);
-    if (!selected) {
-      const alternatives = slots?.length ? ` Horários livres nessa data: ${slots.slice(0, 10).map((slot) => localTime(new Date(slot), organization.timezone)).join(", ")}.` : " Não há horários livres nessa data.";
-      await send(input, conversation, { reply: `Esse horário não está disponível.${alternatives} Qual prefere?`, model: "aggenda-transactional-v1", intent: "reschedule_destination", confidence: 1, flowState: { kind: "reschedule_destination", appointmentId: appointment.id, desiredDate } });
-      return NextResponse.json({ accepted: true, action: "availability" });
-    }
-    const nextPending: Pending = { kind: "reschedule", appointmentId: appointment.id, startsAt: selected };
-    await send(input, conversation, { reply: `Confirma reagendar ${appointment.serviceName} de ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)} para ${formatOrganizationDateTime(new Date(selected), organization.timezone)}? Responda CONFIRMAR.`, model: "aggenda-transactional-v1", intent: "prepare_reschedule", confidence: 1, pending: nextPending });
-    return NextResponse.json({ accepted: true, action: "prepare_reschedule" });
+    return respondRescheduleDestination(input, conversation, appointment, organization, desiredDate, desiredTime, flowState.offeredSlots?.[numberedChoice]);
   }
   if (asksForUpcomingAppointments(input.text) && !asksToCancel(input.text) && !asksToReschedule(input.text)) {
     const reply = future.length
@@ -475,19 +495,7 @@ export async function POST(request: NextRequest) {
       await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "select_reschedule", confidence: 1, ...(candidates.length ? { flowState: { kind: "select_reschedule", appointmentIds: candidates.map((item) => item.id) } as FlowState } : {}) });
       return NextResponse.json({ accepted: true, action: "reply" });
     }
-    if (!directDate || !directTime || !appointment.professionalId) {
-      await send(input, conversation, { reply: `Para qual data e horário deseja reagendar ${appointment.serviceName}, atualmente marcado para ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)}?`, model: "aggenda-transactional-v1", intent: "reschedule_destination", confidence: 1, flowState: { kind: "reschedule_destination", appointmentId: appointment.id } });
-      return NextResponse.json({ accepted: true, action: "reply" });
-    }
-    const slots = await getAvailableTimes({ organizationId: input.organizationId, timezone: organization.timezone, date: directDate, serviceId: appointment.serviceId, professionalId: appointment.professionalId, slotIntervalMinutes: organization.slotIntervalMinutes, excludeAppointmentId: appointment.id });
-    const selected = slots?.find((slot) => localTime(new Date(slot), organization.timezone) === directTime);
-    if (!selected) {
-      await send(input, conversation, { reply: "Esse horário não está disponível. Escolha outro horário.", model: "aggenda-transactional-v1", intent: "prepare_reschedule", confidence: 1 });
-      return NextResponse.json({ accepted: true, action: "reply" });
-    }
-    const nextPending: Pending = { kind: "reschedule", appointmentId: appointment.id, startsAt: selected };
-    await send(input, conversation, { reply: `Confirma reagendar ${appointment.serviceName} de ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)} para ${formatOrganizationDateTime(new Date(selected), organization.timezone)}? Responda CONFIRMAR.`, model: "aggenda-transactional-v1", intent: "prepare_reschedule", confidence: 1, pending: nextPending });
-    return NextResponse.json({ accepted: true, action: "prepare_reschedule" });
+    return respondRescheduleDestination(input, conversation, appointment, organization, directDate ?? undefined, directTime ?? undefined);
   }
   if (asksToCancel(input.text)) {
     const matchingAppointments = filterMentionedAppointments(future, input.text, organization.timezone);

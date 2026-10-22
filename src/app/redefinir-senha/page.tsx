@@ -5,9 +5,9 @@ import { ResetPasswordForm } from "./reset-password-form";
 export default async function ResetPasswordPage({
   searchParams,
 }: {
-    searchParams: Promise<{ token?: string; error?: string; primeiroAcesso?: string; email?: string }>;
+    searchParams: Promise<{ token?: string; error?: string; primeiroAcesso?: string; email?: string; next?: string }>;
 }) {
-  const { token, error, primeiroAcesso, email } = await searchParams;
+  const { token, error, primeiroAcesso, email, next } = await searchParams;
 
   return (
     <main className="grid min-h-screen place-items-center bg-[#f4f7f3] px-4 py-10">
@@ -28,7 +28,7 @@ export default async function ResetPasswordPage({
             Este link é inválido ou expirou. Solicite uma nova redefinição na página de acesso.
           </div>
         ) : (
-          <ResetPasswordForm token={token} firstAccess={primeiroAcesso === "1"} email={email} />
+          <ResetPasswordForm token={token} firstAccess={primeiroAcesso === "1"} email={email} next={next} />
         )}
         <Link className="mt-6 inline-block text-sm font-bold text-brand" href={primeiroAcesso === "1" ? "/ativar-acesso" : "/entrar"}>
           {primeiroAcesso === "1" ? "Solicitar novo link" : "Voltar ao acesso"}

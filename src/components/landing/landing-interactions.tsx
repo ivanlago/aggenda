@@ -283,7 +283,7 @@ export function LandingPricing() {
                 : "Cobrança mensal"}
             </p>
             <Link
-              href={landingOffer.signupUrl}
+              href={`/entrar?callbackURL=${encodeURIComponent(`/onboarding?next=${encodeURIComponent(`/assinatura?product=${["essential", "professional", "complete"][index]}&cycle=${cycle}`)}`)}`}
               className={`landing-button ${index === 1 ? "button-light" : "button-outline"}`}
               data-conversion={`plan-${card.name.toLowerCase()}-${cycle}`}
             >
@@ -312,8 +312,11 @@ export function LandingPricing() {
           </p>
           <ul>
             <li>
-              Profissional adicional <strong>R$ 19,90/mês</strong>
+              Segundo e terceiro profissionais <strong>R$ 18,90/mês por profissional</strong>
             </li>
+            <li>App para até 3 profissionais <strong>R$ 87,70/mês</strong></li>
+            <li>App para até 5 profissionais <strong>R$ 106,70/mês</strong></li>
+            <li>App para até 10 profissionais <strong>R$ 134,20/mês</strong></li>
             <li>
               Assinatura eletrônica: 50 documentos <strong>R$ 19,90/mês</strong>
             </li>
@@ -334,11 +337,10 @@ export function LandingPricing() {
         </div>
       </details>
       <p className="price-pilot">
-        <strong>Contratação em fase piloto.</strong> Esta é a oferta comercial
-        de lançamento. O checkout mantém condições específicas de teste; confira
-        o valor e as condições exibidos antes de pagar. A seleção acima compara
-        ofertas e não altera sua contratação. Recursos externos dependem de
-        configuração e validação.
+        Teste por 30 dias sem cartão: até três profissionais, 1.000 respostas,
+        30 documentos enviados para assinatura e dez notas nacionais autorizadas,
+        após habilitação fiscal. NFS-e de produção aguarda homologação. Confira
+        o total e os adicionais no checkout. Recursos externos dependem de configuração.
       </p>
     </>
   );

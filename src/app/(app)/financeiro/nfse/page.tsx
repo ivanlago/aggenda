@@ -5,7 +5,7 @@ import { cancelNfse, consultNfse, revokeNfseCertificate, saveNfseDraft, submitNf
 import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
-import { clients, financialEntries, fiscalDocuments, nfseRequests, nfseRequestEvents, organizationFinancialIntegrations } from "@/db/schema";
+import { clients, financialEntries, fiscalDocuments, nfseRequests, nfseRequestEvents, organizationFinancialIntegrations, commercialContracts } from "@/db/schema";
 import { organizationDate } from "@/lib/appointment-safety";
 import { readStoredNfseValue } from "@/lib/nfse/vault";
 import { readNfseProfile } from "@/lib/nfse-routing";
@@ -25,6 +25,7 @@ export default async function NfsePage({ searchParams }: { searchParams: Promise
   const manage = hasOrganizationPermission(organization.role, "finance.manage");
   const configure = hasOrganizationPermission(organization.role, "integrations.manage");
   const query = await searchParams;
+  const [contract] = await db.select().from(commercialContracts).where(eq(commercialContracts.organizationId, organization.id));
   const [integrations, requests, entries, external, events] = await Promise.all([
     db.select({ status: organizationFinancialIntegrations.status, environment: organizationFinancialIntegrations.environment, metadata: organizationFinancialIntegrations.metadata }).from(organizationFinancialIntegrations).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "nfse"))).limit(1),
     db.select().from(nfseRequests).where(eq(nfseRequests.organizationId, organization.id)).orderBy(desc(nfseRequests.createdAt)).limit(50),
@@ -47,8 +48,9 @@ export default async function NfsePage({ searchParams }: { searchParams: Promise
       {!vaultConfigured && <p className="mb-4 rounded-xl border border-amber-200 p-3 text-sm">Cadastro de A1 indisponível: o responsável técnico precisa configurar a custódia fiscal no servidor. Depois da configuração, reabra esta página para habilitar o cadastro.</p>}
       {integration?.status === "revoked" && <p className="mb-4 rounded-xl border border-amber-200 p-3 text-sm">O A1 foi removido do cadastro ativo e novas operações foram interrompidas. Cadastre um certificado autorizado para retomar.</p>}
       <div className="flex flex-wrap justify-between gap-3"><h2 className="text-lg font-extrabold">Configuração fiscal</h2><span className="status-pill">{profile ? "Cadastro em homologação" : integration ? "Cadastro pendente" : "Não configurado"}</span></div>
-      {!integration && configure && <ActionForm action={requestNfseActivation} successMessage="Solicitação recebida. Complete o cadastro fiscal." className="mt-4 grid gap-3">
-        <p className="text-sm text-muted">Oferta prevista: {money(nfsePublicOffer.monthlyPriceInCents)}/mês, {nfsePublicOffer.monthlyLimit} notas e {money(nfsePublicOffer.overageInCents)} por excedente. Cobrança em produção será confirmada antes da ativação.</p>
+      {contract && <p className="mt-3 text-sm">{contract.noteLimit ? `${contract.noteLimit} notas autorizadas incluídas por período de franquia, após homologação fiscal. Sem mensalidade adicional ou cobrança automática de excedentes. Homologação não consome notas reais.` : "Módulo fiscal não incluído. Contratação disponível após homologação."}</p>}
+      {!integration && configure && (!contract || contract.noteLimit > 0) && <ActionForm action={requestNfseActivation} successMessage="Solicitação recebida. Complete o cadastro fiscal." className="mt-4 grid gap-3">
+        {!contract && <p className="text-sm text-muted">Oferta prevista: {money(nfsePublicOffer.monthlyPriceInCents)}/mês, {nfsePublicOffer.monthlyLimit} notas e {money(nfsePublicOffer.overageInCents)} por excedente. Cobrança em produção será confirmada antes da ativação.</p>}
         <label className="grid gap-2 text-sm font-bold">Configuração<select className="field" name="setupMode"><option value="self_service">Autoconfiguração gratuita</option><option value="assisted">Assistida — gratuita nesta fase inicial</option></select></label>
         <label className="flex gap-2 text-sm"><input type="checkbox" name="acceptNfseOffer" required />Li as condições comerciais e a disponibilidade sujeita à homologação.</label><button className="primary-button">Iniciar configuração</button>
       </ActionForm>}

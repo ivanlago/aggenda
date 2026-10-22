@@ -3,12 +3,12 @@
 import { snapshotDocumentReferences } from "@/lib/reference-snapshots";
 import { requireClinicalClient, assertClinicalIssuer, assertMedicalRegistration } from "@/lib/clinical-access";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, count } from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/db";
-import { clientHistoryEntries, clients, documentTemplates, electronicDocumentEvents, electronicDocuments, professionals, professionalRegistrations, services, organizations } from "@/db/schema";
+import { clientHistoryEntries, clients, documentTemplates, electronicDocumentEvents, electronicDocuments, professionals, professionalRegistrations, services, organizations, commercialUsage, commercialContracts } from "@/db/schema";
 import { writeAuditLog } from "@/lib/audit";
 import { createDocumentCredentials, matchesHash, renderDocumentTemplate, sha256 } from "@/lib/electronic-documents";
 import { legalDefinitions, legalKey, legalFieldValues, legalContextValues, renderLegalDocument, reusableLegalFields } from "@/lib/legal-documents";
@@ -19,6 +19,7 @@ import { sendElectronicDocumentEmail, sendProfessionalDocumentEmail } from "@/li
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 import { requireAttendance } from "@/lib/attendance";
+import { reserveCommercialUsage } from "@/lib/commercial-access";
 
 const text = (data: FormData, key: string) => String(data.get(key) ?? "").trim();
 const patientTypes = new Set(["consent", "contract", "anamnesis", "term"]);
@@ -292,7 +293,11 @@ export async function issueElectronicDocument(data: FormData) {
     contentSnapshot = renderDocumentTemplate(template.content, { cliente: client.name, clinica: organization.name, data: now.toLocaleDateString("pt-BR", { timeZone: organization.timezone }) });
     if (/\[PREENCHER|\[PERSONALIZAR/i.test(contentSnapshot)) return { error: "Personalize os campos pendentes do modelo antes de enviar." };
   }
-  const [created] = await db.insert(electronicDocuments).values({
+  const documentId = crypto.randomUUID();
+  const [created] = await db.transaction(async (tx) => {
+    await reserveCommercialUsage(tx, organization.id, "documents", documentId);
+    return tx.insert(electronicDocuments).values({
+    id: documentId,
     organizationId: organization.id,
     clientId: client.id,
     issuerProfessionalId,
@@ -309,7 +314,8 @@ export async function issueElectronicDocument(data: FormData) {
     verificationCodeHash: credentials.codeHash,
     verificationExpiresAt: new Date(now.getTime() + 30 * 60_000),
     tokenExpiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60_000),
-  }).returning({ id: electronicDocuments.id, title: electronicDocuments.title });
+    }).returning({ id: electronicDocuments.id, title: electronicDocuments.title });
+  });
   await db.insert(electronicDocumentEvents).values({ organizationId: organization.id, documentId: created.id, eventType: "created", details: { channel: "email" } });
   let deliveryWarning: string | undefined;
   try {
@@ -336,6 +342,17 @@ export async function resendElectronicDocument(data: FormData) {
   if (!document || !["pending", "viewed", "expired"].includes(document.status)) return { error: "Este documento não pode ser reenviado." };
   const credentials = createDocumentCredentials();
   const now = new Date();
+  const resendAllowed = await db.transaction(async (tx) => {
+    await tx.select({ id: electronicDocuments.id }).from(electronicDocuments).where(eq(electronicDocuments.id, document.id)).for("update");
+    const [attempts] = await tx.select({ total: count() }).from(electronicDocumentEvents).where(and(
+      eq(electronicDocumentEvents.documentId, document.id), eq(electronicDocumentEvents.eventType, "resend_requested"),
+      gte(electronicDocumentEvents.createdAt, new Date(now.getTime() - 86400000)),
+    ));
+    if (attempts.total >= 3) return false;
+    await tx.insert(electronicDocumentEvents).values({ organizationId: organization.id, documentId: document.id, eventType: "resend_requested" });
+    return true;
+  });
+  if (!resendAllowed) return { error: "Limite de três reenvios deste documento em 24 horas atingido. O link atual continua válido até sua expiração." };
   try {
     await sendElectronicDocumentEmail({
       email: document.signerEmail, signerName: document.signerName, organizationName: organization.name,
@@ -361,8 +378,15 @@ export async function cancelElectronicDocument(data: FormData) {
   assertOrganizationPermission(organization.role, "clinical.read");
   const id = text(data, "id");
   const now = new Date();
-  const result = await db.update(electronicDocuments).set({ status: "cancelled", cancelledAt: now, updatedAt: now }).where(and(eq(electronicDocuments.id, id), eq(electronicDocuments.organizationId, organization.id))).returning({ id: electronicDocuments.id });
-  if (!result.length) return { error: "Documento não encontrado." };
+  const result = await db.transaction(async (tx) => {
+    const [document] = await tx.select({ status: electronicDocuments.status }).from(electronicDocuments).where(and(eq(electronicDocuments.id, id), eq(electronicDocuments.organizationId, organization.id))).for("update");
+    if (!document) return false;
+    await tx.update(electronicDocuments).set({ status: "cancelled", cancelledAt: now, updatedAt: now }).where(eq(electronicDocuments.id, id));
+    const [contract] = await tx.select({ kind: commercialContracts.kind }).from(commercialContracts).where(eq(commercialContracts.organizationId, organization.id));
+    if (contract?.kind === "commercial" && ["pending", "viewed", "expired"].includes(document.status)) await tx.update(commercialUsage).set({ state: "released" }).where(and(eq(commercialUsage.organizationId, organization.id), eq(commercialUsage.metric, "documents"), eq(commercialUsage.resourceId, id)));
+    return true;
+  });
+  if (!result) return { error: "Documento não encontrado." };
   await db.insert(electronicDocumentEvents).values({ organizationId: organization.id, documentId: id, eventType: "cancelled", details: { userId: session.user.id } });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "cancel", entityType: "electronic_document", entityId: id });
   revalidatePath("/documentos", "layout");
@@ -401,6 +425,9 @@ export async function signElectronicDocument(_previous: { status: string; messag
   const evidenceHash = sha256(JSON.stringify({ documentId: document.id, contentHash: document.contentHash, signerName: document.signerName, signerEmail: document.signerEmail, signedAt: now.toISOString(), ipAddress, userAgent, acceptanceText, signatureHash: sha256(signatureData), responsesHash: signerResponses ? sha256(signerResponses) : null }));
   await db.transaction(async (tx) => {
     const structuredData = anamnesisAnswers ? { ...document.structuredData, answers: anamnesisAnswers, answeredAt: now.toISOString() } : document.structuredData;
+    const [current] = await tx.select({ status: electronicDocuments.status }).from(electronicDocuments).where(eq(electronicDocuments.id, document.id)).for("update");
+    if (!current || !["pending", "viewed"].includes(current.status)) throw new Error("Documento já finalizado ou cancelado.");
+    await tx.update(commercialUsage).set({ state: "committed" }).where(and(eq(commercialUsage.organizationId, document.organizationId), eq(commercialUsage.metric, "documents"), eq(commercialUsage.resourceId, document.id)));
     const storedResponses = anamnesisAnswers && isAnamnesisSchema(responseSchema) ? anamnesisAnswersToText(responseSchema, anamnesisAnswers) : signerResponses || null;
     await tx.update(electronicDocuments).set({ status: "signed", signedAt: now, signatureData, signerResponses: storedResponses, structuredData, acceptanceText, signerIpAddress: ipAddress, signerUserAgent: userAgent, evidenceHash, updatedAt: now }).where(and(eq(electronicDocuments.id, document.id), eq(electronicDocuments.status, document.status)));
     await tx.insert(electronicDocumentEvents).values({ organizationId: document.organizationId, documentId: document.id, eventType: "signed", ipAddress, userAgent, details: { evidenceHash, verification: "email_otp" } });

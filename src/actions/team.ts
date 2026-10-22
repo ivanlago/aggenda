@@ -1,4 +1,5 @@
 "use server";
+import { assertProfessionalCapacity } from "@/lib/commercial-access";
 
 import { and, eq, ilike, inArray, isNull, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -93,6 +94,7 @@ export async function createUnifiedTeamMember(formData: FormData) {
     }).where(eq(users.id, provisionedUser.id));
     await tx.insert(organizationMembers).values({ organizationId: organization.id, userId: provisionedUser.id, role });
     if (!isAttendant) return;
+    await assertProfessionalCapacity(tx, organization.id);
     const [professional] = await tx.insert(professionals).values({
       organizationId: organization.id,
       userId: provisionedUser.id,

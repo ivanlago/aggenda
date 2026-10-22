@@ -8,6 +8,21 @@ Na criação da landing page, o usuário escolheu ajustar o anual do app para **
 
 ## Prioridade atual: contratação da clínica de testes
 
+### Piloto especial anual aprovado — 22/10/2026
+
+Esta condição substitui a proposta de R$ 5,00 por 30 dias para os convites especiais. Não altera automaticamente assinaturas já existentes.
+
+- R$ 5,00 no total, em pagamento único, por um ano de Aggenda Completo (app + Aggenda Secretária), sem renovação automática.
+- Acesso anual começa após confirmação do pagamento pelo provedor; não somar automaticamente os 30 dias gratuitos ao ano do piloto.
+- Franquia do agente: 1.000 respostas mensais, conforme decisão geral dos planos pagos; mensagens recebidas não contam.
+- Assinatura eletrônica: 30 documentos enviados para assinatura por mês, mesma quantidade e critério do teste.
+- NFS-e nacional direta: dez notas autorizadas por mês, mesma quantidade do teste; rejeições não contam e cancelamento não restitui unidade.
+- Franquias mensais não acumulam. Extras exigem compra expressa antecipada; não há cobrança automática de excedentes.
+- Clínica participante será piloto das ferramentas atuais e futuras durante esse ano. Novas ferramentas serão disponibilizadas conforme lançamento, habilitação e homologação; não equivale a garantir antecipadamente integrações ainda indisponíveis ou consumo externo ilimitado.
+- Contratação por convite especial, separada da oferta pública e com condições explícitas antes do pagamento. Convites devem ter acesso controlado para evitar disseminação da oferta subsidiada.
+- Caminho público solicitado: teste de 30 dias com as franquias aprovadas e apresentação das composições Essencial, Profissional e Completo; caminho piloto com pagamento real de R$ 5,00 pelo ano.
+- Implementação ainda pendente: checkout atual não corresponde a essa condição anual (mensal no cartão é recorrente); é necessário adequar cobrança, confirmação, provisionamento, convites, franquias e interface antes de distribuir links.
+
 O usuário pediu preservar o valor atual de **R$ 5,00** para a clínica contratar e testar os fluxos necessários. Não substituir esse valor pela tabela comercial antes de concluir os testes e receber orientação para a mudança.
 
 Conferência local em 21/10/2026: `src/lib/billing-plans.ts` define fallback mensal de 5 reais. A variável `ASAAS_PLAN_MONTHLY_VALUE`, quando presente, prevalece sobre esse fallback. Esta conferência não confirma o valor efetivo da variável em produção. Não foram alteradas configurações de cobrança nem realizadas compras.
@@ -15,6 +30,20 @@ Conferência local em 21/10/2026: `src/lib/billing-plans.ts` define fallback men
 O checkout atual prevê recorrência para mensal no cartão e pagamento avulso para Pix. O valor de teste não implica gratuidade, cobrança única ou habilitação de recursos ainda não homologados. Preservar as condições visíveis no checkout.
 
 ## Tabela de lançamento aprovada
+
+### Revisão de profissionais — 22/10/2026
+
+Esta revisão prevalece sobre a linha histórica de profissional adicional abaixo. Registrar como proposta comercial aprovada; preservar o checkout piloto de R$ 5,00. A publicação na landing e a implantação da cobrança permanecem pendentes.
+
+- App para um profissional: R$ 49,90/mês.
+- Segundo e terceiro profissionais: R$ 18,90/mês por profissional adicional.
+- Até três profissionais: R$ 87,70/mês (49,90 + 2 × 18,90).
+- Até cinco profissionais: R$ 106,70/mês, acréscimo de R$ 19,00 sobre o pacote de três.
+- Até dez profissionais: R$ 134,20/mês, acréscimo de R$ 27,50 sobre o pacote de cinco.
+- Valores corrigidos explicitamente pelo usuário. Substituem a revisão anterior e não replicam exatamente os acréscimos do concorrente.
+- Referência mensal do Simples Agenda: R$ 89,90 / R$ 109,90 / R$ 139,90 para três, cinco e dez profissionais. Economias mensais do Aggenda: R$ 2,20 / R$ 3,20 / R$ 5,70, respectivamente.
+- R$ 18,90 não deve ser multiplicado linearmente para cinco ou dez profissionais: nesses casos aplicam-se os pacotes com desconto por volume. Faixas intermediárias, acima de dez e descontos por prazo para esses novos pacotes precisam ser detalhados antes de implantar a cobrança.
+- Os valores são do app, sem agentes ou módulos opcionais.
 
 Valores em reais. Semestral tem 10% de desconto; anual tem 20%. Colunas de equivalentes mensais não representam cobrança mensal sem compromisso.
 
@@ -40,15 +69,15 @@ App: uma agenda profissional, um acesso administrativo e um de recepção, além
 - Assinatura eletrônica: documento concluído, até três signatários; rascunho não consome. Pacote extra: 100 documentos por 19,90.
 - Aggenda Atendimento ou Aggenda Secretária: 1.000 respostas automatizadas/mês. Texto, lista ou documento enviados pelo agente contam como resposta; mensagens recebidas não contam. Pacote extra proposto: 500 respostas por 49,90, sujeito à validação de custos.
 - Franquias renovam mensalmente, inclusive em contratos semestrais/anuais; não acumulam.
-- Avisos em 80% e 100%; compra expressa de extras, sem cobrança surpresa. Não aplicar descontos de prazo aos excedentes/pacotes avulsos automaticamente.
+- Avisos em 80%, 95% e 100%; compra expressa antecipada de extras, sem cobrança surpresa. Não aplicar descontos de prazo aos excedentes/pacotes avulsos automaticamente.
 - Tarifas Meta, SMS, certificado e autenticações especiais devem ser informadas separadamente.
 
 ## Experiência gratuita aprovada
 
 - App: 30 dias corridos, sem cartão e sem cobrança automática ao final; até três profissionais durante o teste.
-- Assinatura eletrônica: até dez documentos concluídos.
-- Aggenda Atendimento ou Aggenda Secretária: até 100 respostas em um número conectado. Contar o período de teste do agente a partir da conexão do canal.
-- NFS-e: demonstração em homologação; até cinco notas reais somente após habilitação fiscal.
+- Assinatura eletrônica: até 30 documentos enviados para assinatura durante o teste. Reenvios não consomem nova unidade, mas têm controle de frequência.
+- Aggenda Atendimento ou Aggenda Secretária: até 1.000 respostas em um número conectado durante os 30 dias do teste; mensagens recebidas não contam.
+- NFS-e: até dez notas reais autorizadas somente após habilitação e homologação fiscal. Notas rejeitadas não contam, cancelamento não devolve unidade. Em produção, emissão permanece bloqueada enquanto a homologação não for concluída.
 - ICP-Brasil: teste somente após homologação e com certificado válido do profissional.
 - Apresentar custos externos antes da ativação. Ao final, cliente escolhe profissionais e módulos; não converter todos os recursos experimentados em cobranças.
 

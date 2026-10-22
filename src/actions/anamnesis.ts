@@ -1,4 +1,5 @@
 "use server";
+import { reserveCommercialUsage } from "@/lib/commercial-access";
 
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -77,13 +78,17 @@ export async function issueAnamnesis(data: FormData) {
   const credentials = createDocumentCredentials();
   const contentSnapshot = renderDocumentTemplate(template.content, { cliente: client.name, clinica: organization.name, data: now.toLocaleDateString("pt-BR", { timeZone: organization.timezone }) });
   const structuredData = { kind: "anamnesis", schemaVersion: template.schemaVersion, schema: template.responseSchema, answers: {}, responsibleProfessionalId: professionalId, reviewedAt: null };
-  const [created] = await db.insert(electronicDocuments).values({
+  const documentId = crypto.randomUUID();
+  const [created] = await db.transaction(async (tx) => {
+    await reserveCommercialUsage(tx, organization.id, "documents", documentId);
+    return tx.insert(electronicDocuments).values({ id: documentId,
     organizationId: organization.id, clientId: client.id, templateId: template.id, createdByUserId: session.user.id,
     issuerProfessionalId: professionalId, workflowType: "patient_signature", documentType: "anamnesis", title: template.title,
     contentSnapshot, contentHash: sha256(`${contentSnapshot}\n${JSON.stringify(template.responseSchema)}`), structuredData,
     signerName: client.name, signerEmail: client.email || "preenchimento.presencial@aggenda.local", accessTokenHash: credentials.tokenHash,
     verificationCodeHash: credentials.codeHash, verificationExpiresAt: new Date(now.getTime() + (delivery === "fill_now" ? 8 : 0.5) * 60 * 60_000), tokenExpiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60_000),
-  }).returning({ id: electronicDocuments.id });
+    }).returning({ id: electronicDocuments.id });
+  });
   await db.insert(electronicDocumentEvents).values({ organizationId: organization.id, documentId: created.id, eventType: "created", details: { delivery, schemaVersion: template.schemaVersion } });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "issue", entityType: "anamnesis", entityId: created.id, details: { clientId, professionalId, delivery } });
   revalidatePath("/documentos", "layout");

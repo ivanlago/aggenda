@@ -6,7 +6,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { appointments, auditLogs, chatConversations, chatMessages, clients, organizations, organizationUsageCounters, outboxEvents, professionals, services, serviceCategories, servicesToProfessionals } from "@/db/schema";
+import { appointments, auditLogs, chatConversations, chatMessages, clients, organizations, organizationUsageCounters, outboxEvents, professionals, services, serviceCategories, servicesToProfessionals, commercialContracts, commercialUsage } from "@/db/schema";
+import { reserveCommercialUsage } from "@/lib/commercial-access";
 import { generateAiJson } from "@/lib/ai/provider";
 import { getAvailableTimes, isTimeAvailable } from "@/lib/availability";
 import { formatOrganizationDateTime, organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
@@ -280,6 +281,19 @@ async function execute(input: Input, pending: Pending, clientId: string, timezon
 }
 
 export async function POST(request: NextRequest) {
+  const claim: { organizationId?: string; messageId?: string } = {};
+  try { return await processWhatsAppRequest(request, claim); }
+  finally {
+    if (claim.organizationId && claim.messageId) {
+      const [reply] = await db.select({ id: chatMessages.id }).from(chatMessages).where(eq(chatMessages.externalMessageId, `aggenda-ai:${claim.messageId}`)).limit(1);
+      await db.update(commercialUsage).set({ state: reply ? "committed" : "released" }).where(and(
+        eq(commercialUsage.organizationId, claim.organizationId), eq(commercialUsage.metric, "responses"), eq(commercialUsage.resourceId, claim.messageId),
+      ));
+    }
+  }
+}
+
+async function processWhatsAppRequest(request: NextRequest, claim: { organizationId?: string; messageId?: string }) {
   if (!authorized(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const parsed = inputSchema.safeParse(await request.json()); if (!parsed.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 }); const input = parsed.data;
   if ((await db.select({ id: chatMessages.id }).from(chatMessages).where(eq(chatMessages.externalMessageId, `aggenda-ai:${input.messageId}`)).limit(1))[0]) return NextResponse.json({ accepted: true, duplicate: true });
@@ -298,6 +312,19 @@ export async function POST(request: NextRequest) {
   if (conversation.automationPaused || conversation.handoffStatus === "human" || conversation.handoffStatus === "resolved") {
     console.info("[whatsapp-agent] conversa sob atendimento humano", { conversationId: input.conversationId, handoffStatus: conversation.handoffStatus });
     return NextResponse.json({ accepted: true, skipped: "human_handoff" });
+  }
+  const [commercial] = await db.select().from(commercialContracts).where(eq(commercialContracts.organizationId, input.organizationId));
+  if (commercial) {
+    if (!commercial.responseLimit || commercial.endsAt <= new Date()) return NextResponse.json({ accepted: true, skipped: "plan_or_access_limit" });
+    input.whatsappServiceCode = commercial.product === "professional" ? "chat_ai" : "core_ai";
+    try {
+      const claimed = await db.transaction((tx) => reserveCommercialUsage(tx, input.organizationId, "responses", input.messageId));
+      if (!claimed) return NextResponse.json({ accepted: true, skipped: "already_reserved" });
+      claim.organizationId = input.organizationId; claim.messageId = input.messageId;
+    } catch {
+      await db.update(chatConversations).set({ needsHumanAttention: true, handoffReason: "Franquia de respostas esgotada. Consulte Plano e cobrança.", updatedAt: new Date() }).where(eq(chatConversations.id, input.conversationId));
+      return NextResponse.json({ accepted: true, skipped: "response_limit" });
+    }
   }
   const [organization] = await db.select({ name: organizations.name, description: organizations.publicDescription, timezone: organizations.timezone, slotIntervalMinutes: organizations.slotIntervalMinutes, slug: organizations.slug, bookingEnabled: organizations.bookingEnabled, publicAddress: organizations.publicAddress, publicWhatsapp: organizations.publicWhatsapp, publicEmail: organizations.publicEmail }).from(organizations).where(eq(organizations.id, input.organizationId)).limit(1);
   if (!organization) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
@@ -323,10 +350,11 @@ export async function POST(request: NextRequest) {
   if (input.whatsappServiceCode !== "core_ai") {
     const history = await db.select({ direction: chatMessages.direction, body: chatMessages.body }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), conversation.handoffResolvedAt ? gt(chatMessages.createdAt, conversation.handoffResolvedAt) : undefined)).orderBy(desc(chatMessages.occurredAt)).limit(12);
     try {
-      const result = input.whatsappServiceCode === "chat_ai" && aiAllowed ? await generateAiJson({ schema: chatAnswerSchema, messages: [{ role: "system", content: "Atenda em português usando somente o contexto público aprovado. Não execute operações nem afirme ter feito reservas. Para agendar ou gerenciar agendamentos, informe bookingUrl; se indisponível, ofereça equipe. Não invente horários de atendimento nem dados. Use handoff em baixa confiança. Responda JSON com action, reply, intent e confidence." }, { role: "user", content: JSON.stringify({ organization, catalog: navigationCatalog, bookingUrl, products, recentMessages: history.reverse(), currentMessage: input.text }) }] }) : { data: { action: "reply" as const, reply: "Digite MENU para consultar procedimentos, produtos e informações ou EQUIPE para solicitar atendimento.", intent: "menu_help", confidence: 1 }, model: "aggenda-deterministic-v1" };
+      const result = input.whatsappServiceCode === "chat_ai" && aiAllowed ? await generateAiJson({ organizationId: input.organizationId, schema: chatAnswerSchema, messages: [{ role: "system", content: "Atenda em português usando somente o contexto público aprovado. Não execute operações nem afirme ter feito reservas. Para agendar ou gerenciar agendamentos, informe bookingUrl; se indisponível, ofereça equipe. Não invente horários de atendimento nem dados. Use handoff em baixa confiança. Responda JSON com action, reply, intent e confidence." }, { role: "user", content: JSON.stringify({ organization, catalog: navigationCatalog, bookingUrl, products, recentMessages: history.reverse(), currentMessage: input.text }) }] }) : { data: { action: "reply" as const, reply: "Digite MENU para consultar procedimentos, produtos e informações ou EQUIPE para solicitar atendimento.", intent: "menu_help", confidence: 1 }, model: "aggenda-deterministic-v1" };
       await send(input, conversation, { reply: result.data.reply, model: result.model, intent: result.data.intent, confidence: result.data.confidence, handoff: result.data.action === "handoff" || result.data.confidence < 0.65, ai: input.whatsappServiceCode === "chat_ai" && aiAllowed });
-    } catch {
-      await send(input, conversation, { reply: "Não consegui responder essa pergunta agora. Digite MENU para consultar as opções ou EQUIPE para solicitar atendimento.", model: "aggenda-navigation-v1", intent: "interpretation_failed", confidence: 1 });
+    } catch (error) {
+      const capped = error instanceof Error && error.message.includes("Limite interno");
+      await send(input, conversation, { reply: capped ? "Encaminhei sua solicitação à equipe para continuar o atendimento." : "Não consegui responder essa pergunta agora. Digite MENU para consultar as opções ou EQUIPE para solicitar atendimento.", model: "aggenda-navigation-v1", intent: capped ? "processing_limit" : "interpretation_failed", confidence: 1, handoff: capped });
     }
     return NextResponse.json({ accepted: true, action: "reply" });
   }
@@ -538,10 +566,11 @@ export async function POST(request: NextRequest) {
   }
   let result: { data: z.infer<typeof coreAnswerSchema>; model: string };
   try {
-    result = await generateAiJson({ schema: coreAnswerSchema, messages: [{ role: "system", content: "Você é o agente de agendamentos do Aggenda. Nunca invente IDs ou dados. Use availability para horários, prepare_booking para agendar, prepare_reschedule para reagendar, prepare_cancel para cancelar e confirm_appointment para confirmar. A aplicação fará validações e pedirá confirmação antes de alterações. Se faltar dado, use reply e pergunte somente o próximo. Use handoff em ambiguidade relevante ou confiança abaixo de 0,65. Datas YYYY-MM-DD, horas HH:mm. Responda somente JSON." }, { role: "user", content: JSON.stringify({ today: organizationDate(new Date(), organization.timezone), timezone: organization.timezone, organization, catalog, professionals: professionalRows, upcomingAppointments: future.map(x => ({ ...x, startsAtLocal: formatOrganizationDateTime(x.startsAt, organization.timezone) })), recentMessages: history.reverse(), currentMessage: input.text }) }] });
+    result = await generateAiJson({ organizationId: input.organizationId, schema: coreAnswerSchema, messages: [{ role: "system", content: "Você é o agente de agendamentos do Aggenda. Nunca invente IDs ou dados. Use availability para horários, prepare_booking para agendar, prepare_reschedule para reagendar, prepare_cancel para cancelar e confirm_appointment para confirmar. A aplicação fará validações e pedirá confirmação antes de alterações. Se faltar dado, use reply e pergunte somente o próximo. Use handoff em ambiguidade relevante ou confiança abaixo de 0,65. Datas YYYY-MM-DD, horas HH:mm. Responda somente JSON." }, { role: "user", content: JSON.stringify({ today: organizationDate(new Date(), organization.timezone), timezone: organization.timezone, organization, catalog, professionals: professionalRows, upcomingAppointments: future.map(x => ({ ...x, startsAtLocal: formatOrganizationDateTime(x.startsAt, organization.timezone) })), recentMessages: history.reverse(), currentMessage: input.text }) }] });
   } catch (error) {
     console.error("[whatsapp-agent] falha ao interpretar mensagem", { conversationId: input.conversationId, messageId: input.messageId, error: error instanceof Error ? error.message : String(error) });
-    await send(input, conversation, { reply: "Não consegui interpretar essa solicitação. Pode reformular em uma frase?", model: "aggenda-transactional-v1", intent: "interpretation_failed", confidence: 1 });
+    const capped = error instanceof Error && error.message.includes("Limite interno");
+    await send(input, conversation, { reply: capped ? "Encaminhei sua solicitação à equipe para continuar o atendimento." : "Não consegui interpretar essa solicitação. Pode reformular em uma frase?", model: "aggenda-transactional-v1", intent: capped ? "processing_limit" : "interpretation_failed", confidence: 1, handoff: capped });
     return NextResponse.json({ accepted: true, action: "reply_fallback" });
   }
   const answer = result.data;

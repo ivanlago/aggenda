@@ -28,6 +28,7 @@ import {
 import Link from "next/link";
 
 import { selectActiveOrganization } from "@/actions/access";
+import { commercialUsageSummary } from "@/lib/commercial-access";
 import { hasOrganizationPermission, type OrganizationPermission } from "@/lib/permissions";
 import {
   getOrganizationMemberships,
@@ -43,9 +44,10 @@ import { AppNavLink } from "./app-nav-link";
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
   const { session, organization } = await requireOrganization();
-  const [memberships, platformMembership] = await Promise.all([
+  const [memberships, platformMembership, usage] = await Promise.all([
     getOrganizationMemberships(session.user.id),
     getPlatformMembership(session.user.id),
+    commercialUsageSummary(organization.id),
   ]);
   type NavigationItem = {
     href: string;
@@ -180,7 +182,16 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           <div className="mt-4"><SignOutButton /></div>
         </div>
       </aside>
-      <main className="min-w-0"><AppHeader organizationId={organization.id} role={organization.role} timezone={organization.timezone} userId={session.user.id} userName={session.user.name} />{children}</main>
+      <main className="min-w-0"><AppHeader organizationId={organization.id} role={organization.role} timezone={organization.timezone} userId={session.user.id} userName={session.user.name} />
+        {usage && hasOrganizationPermission(organization.role, "billing.manage") && (["responses", "documents", "notes"] as const).map((metric) => {
+          const used = usage.quantities[metric] ?? 0; const limit = usage.available[metric];
+          if (!limit || used / limit < 0.8) return null;
+          const threshold = used >= limit ? 100 : used / limit >= 0.95 ? 95 : 80;
+          return <div key={metric} role="status" className="mx-6 mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+            <strong>{threshold}% da franquia de {metric === "responses" ? "respostas" : metric === "documents" ? "documentos" : "notas"} utilizada.</strong> {used}/{limit}. {threshold === 100 ? "Novas operações desse recurso estão pausadas." : "Acompanhe seu saldo."} <Link className="font-bold underline" href="/assinatura">Ver franquias e adicionais</Link>
+          </div>;
+        })}
+        {children}</main>
     </div>
   );
 }

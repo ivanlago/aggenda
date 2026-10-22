@@ -166,7 +166,7 @@ export function hasActiveSubscription(organization: {
   trialEndsAt: Date | null;
   currentPeriodEnd: Date | null;
 }) {
-  if (organization.subscriptionStatus === "active") return true;
+  if (organization.subscriptionStatus === "active") return !organization.currentPeriodEnd || organization.currentPeriodEnd > new Date();
   if (
     organization.subscriptionStatus === "trialing" &&
     organization.trialEndsAt &&

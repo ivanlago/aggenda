@@ -19,6 +19,7 @@ import {
 import { asaasRequest } from "@/lib/asaas";
 import { decodeOrganizationAsaasCredential } from "@/lib/organization-asaas";
 import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
+import { processCommercialPayment } from "@/lib/commercial-payment";
 
 type AsaasSubscription = {
   id: string;
@@ -319,6 +320,7 @@ export async function POST(request: Request) {
     return Response.json({ received: true, processed });
   }
 
+  if (await processCommercialPayment(event)) return Response.json({ received: true, processed: true });
   const organizationId = await findOrganizationId(event);
   const purchase = purchaseReference(
     event.subscription?.externalReference || event.payment?.externalReference || event.checkout?.externalReference

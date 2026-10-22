@@ -1,6 +1,7 @@
 "use server";
 
 import { serviceCatalogReference } from "@/lib/reference-snapshots";
+import { assertProfessionalCapacity } from "@/lib/commercial-access";
 import { serviceDeletionError } from "@/lib/service-deletion";
 import { roomBookingError } from "@/lib/room-errors";
 
@@ -31,6 +32,8 @@ import {
   professionalSpecialties,
   organizationMembers,
   organizationSubscriptions,
+  organizationServicePlans,
+  commercialContracts,
   organizations,
   documentTemplates,
   professionals,
@@ -142,6 +145,10 @@ export async function createOrganization(formData: FormData) {
           };
 
   await db.transaction(async (tx) => {
+    // Two concurrent onboarding submissions must not create two free trials.
+    await tx.select({ id: users.id }).from(users).where(eq(users.id, session.user.id)).for("update");
+    const [membership] = await tx.select({ id: organizationMembers.organizationId }).from(organizationMembers).where(eq(organizationMembers.userId, session.user.id)).limit(1);
+    if (membership) throw new Error("Seu espaço já foi criado. Reabra o aplicativo para continuar.");
     const [organization] = await tx
       .insert(organizations)
       .values({
@@ -170,6 +177,11 @@ export async function createOrganization(formData: FormData) {
       status: "trialing",
       trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
+    await tx.insert(commercialContracts).values({ organizationId: organization.id, kind: "trial", product: "complete",
+      professionalLimit: 3, responseLimit: 1000, documentLimit: 30, noteLimit: 10,
+      startedAt: new Date(), endsAt: new Date(Date.now() + 30 * 86400000) });
+    await tx.insert(organizationServicePlans).values({ organizationId: organization.id, corePlanCode: "core",
+      whatsappServiceCode: "core_ai", whatsappMonthlyLimit: 0, aiMonthlyLimit: 0, nfseServiceCode: "emitter", nfseMonthlyLimit: 10 });
 
     await tx.insert(documentTemplates).values([
       ...documentPresets.map((preset) => ({ ...preset, organizationId: organization.id, createdByUserId: session.user.id, isSystemPreset: true })),
@@ -205,7 +217,7 @@ export async function createOrganization(formData: FormData) {
     await auth.api.requestPasswordReset({
       body: {
         email: session.user.email,
-        redirectTo: `/redefinir-senha?primeiroAcesso=1&email=${encodeURIComponent(session.user.email)}`,
+        redirectTo: `/redefinir-senha?primeiroAcesso=1&email=${encodeURIComponent(session.user.email)}&next=${encodeURIComponent(textValue(formData, "next") || "/assinatura")}`,
       },
     });
   } catch (error) {
@@ -305,6 +317,7 @@ export async function createProfessional(formData: FormData) {
   })).user;
 
   await db.transaction(async (tx) => {
+    await assertProfessionalCapacity(tx, organization.id);
     const [professional] = await tx
       .insert(professionals)
       .values({
@@ -497,6 +510,7 @@ export async function updateProfessional(formData: FormData) {
     if (valid.length !== specialtyIds.length) throw new Error("Uma ou mais especialidades não pertencem à profissão.");
   }
   await db.transaction(async (tx) => {
+    if (formData.get("isActive") === "on") await assertProfessionalCapacity(tx, organization.id, id);
     const [updated] = await tx.update(professionals).set({
       name,
       professionId: professionId === "other" ? null : professionId,

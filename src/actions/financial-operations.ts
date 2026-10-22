@@ -3,7 +3,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { auditLogs, bankImportTransactions, cashClosings, financialEntries, fiscalDocuments, organizationFinancialIntegrations } from "@/db/schema";
+import { auditLogs, bankImportTransactions, cashClosings, financialEntries, fiscalDocuments, organizationFinancialIntegrations, commercialContracts } from "@/db/schema";
 import { organizationDate } from "@/lib/appointment-safety";
 import { writeAuditLog } from "@/lib/audit";
 import { encryptFinancialCredential } from "@/lib/financial-secret";
@@ -31,9 +31,11 @@ export async function requestNfseActivation(data: FormData) {
   assertOrganizationPermission(organization.role, "integrations.manage");
   if (data.get("acceptNfseOffer") !== "on") throw new Error("Aceite as condições comerciais da NFS-e.");
   const setupMode = value(data, "setupMode") === "assisted" ? "assisted" : "self_service";
+  const [contract] = await db.select().from(commercialContracts).where(eq(commercialContracts.organizationId, organization.id));
+  if (contract && !contract.noteLimit) throw new Error("NFS-e não incluída nesta contratação. A venda do módulo aguarda homologação.");
   const [existing] = await db.select({ status: organizationFinancialIntegrations.status }).from(organizationFinancialIntegrations).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "nfse"))).limit(1);
   if (existing?.status === "configured" || existing?.status === "active") throw new Error("A emissão de NFS-e já está configurada.");
-  const commercialAcceptance = { monthlyPriceInCents: nfsePublicOffer.monthlyPriceInCents, monthlyLimit: nfsePublicOffer.monthlyLimit, overageInCents: nfsePublicOffer.overageInCents, assistedSetupInCents: setupMode === "assisted" ? nfsePublicOffer.assistedSetupInCents : 0, setupMode, acceptedAt: new Date().toISOString(), acceptedByUserId: session.user.id };
+  const commercialAcceptance = { monthlyPriceInCents: contract ? 0 : nfsePublicOffer.monthlyPriceInCents, monthlyLimit: contract?.noteLimit ?? nfsePublicOffer.monthlyLimit, overageInCents: contract ? 0 : nfsePublicOffer.overageInCents, overageMode: contract ? "prepaid_required" : "legacy", assistedSetupInCents: setupMode === "assisted" ? nfsePublicOffer.assistedSetupInCents : 0, setupMode, acceptedAt: new Date().toISOString(), acceptedByUserId: session.user.id };
   await db.insert(organizationFinancialIntegrations).values({ organizationId: organization.id, provider: "nfse", environment: "sandbox", encryptedCredential: encryptFinancialCredential("activation-requested"), status: "requested", metadata: { billingOwner: "client", costsPaidBy: "client", requestedAt: new Date().toISOString(), requestedByUserId: session.user.id, commercialAcceptance } }).onConflictDoUpdate({ target: [organizationFinancialIntegrations.organizationId, organizationFinancialIntegrations.provider], set: { status: "requested", metadata: { billingOwner: "client", costsPaidBy: "client", requestedAt: new Date().toISOString(), requestedByUserId: session.user.id, commercialAcceptance }, updatedAt: new Date() } });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "request_activation", entityType: "financial_integration:nfse", details: commercialAcceptance });
   revalidatePath("/financeiro/nfse");

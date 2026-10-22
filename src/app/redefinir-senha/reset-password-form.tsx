@@ -9,10 +9,12 @@ export function ResetPasswordForm({
   token,
   firstAccess = false,
   email,
+  next,
 }: {
   token: string;
   firstAccess?: boolean;
   email?: string;
+  next?: string;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -41,7 +43,7 @@ export function ResetPasswordForm({
       await authClient.signOut();
       const signInResult = await authClient.signIn.email({ email, password: newPassword });
       if (!signInResult.error) {
-        router.push("/dashboard");
+        router.push(next?.startsWith("/") && !next.startsWith("//") ? next : "/dashboard");
         router.refresh();
         return;
       }

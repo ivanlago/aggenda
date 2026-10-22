@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { reserveAgentAiBudget, settleAgentAiBudget } from "@/lib/commercial-ai-budget";
 
 type AiRole = "system" | "user" | "assistant";
 
@@ -35,18 +36,23 @@ export async function generateAiJson<T>(options: {
   messages: AiMessage[];
   schema: z.ZodType<T>;
   timeoutMs?: number;
+  organizationId?: string;
 }): Promise<AiJsonResult<T>> {
   const { apiUrl, apiKey, model } = configuration();
   const jsonSchema = JSON.stringify(z.toJSONSchema(options.schema));
+  if (jsonSchema.length + options.messages.reduce((size, message) => size + message.content.length, 0) > 120000) {
+    throw new Error("Contexto acima do limite de processamento da IA. Reduza o histórico ou o catálogo enviado.");
+  }
   const schemaInstruction: AiMessage = {
     role: "system",
     content: `A resposta deve ser exclusivamente um objeto JSON válido que satisfaça exatamente este JSON Schema. Não crie ações, campos ou valores fora dele: ${jsonSchema}`,
   };
   const request = async (messages: AiMessage[]) => {
+    const reserved = await reserveAgentAiBudget(options.organizationId, model, Buffer.byteLength(JSON.stringify(messages), "utf8"), 2048);
     const response = await fetch(apiUrl, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, response_format: { type: "json_object" }, messages }),
+      body: JSON.stringify({ model, response_format: { type: "json_object" }, messages, max_tokens: 2048 }),
       signal: AbortSignal.timeout(options.timeoutMs ?? 30_000),
     });
     if (!response.ok) {
@@ -58,6 +64,7 @@ export async function generateAiJson<T>(options: {
       usage?: { prompt_tokens?: number; completion_tokens?: number };
     };
     const content = payload.choices?.[0]?.message?.content;
+    await settleAgentAiBudget(reserved, payload.usage?.prompt_tokens, payload.usage?.completion_tokens);
     if (!content) throw new Error("O provedor de IA retornou uma resposta vazia.");
     return { content, usage: payload.usage };
   };

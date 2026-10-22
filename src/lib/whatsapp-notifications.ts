@@ -10,6 +10,7 @@ import {
   professionals,
   services,
   whatsappChannels,
+  commercialContracts,
 } from "@/db/schema";
 import { formatOrganizationDateTime } from "@/lib/appointment-safety";
 import { isWhatsAppServiceCode, whatsappServices } from "@/lib/service-plans";
@@ -63,6 +64,8 @@ export async function enqueueAppointmentNotification(
   const serviceCode = item?.whatsappServiceCode && isWhatsAppServiceCode(item.whatsappServiceCode)
     ? item.whatsappServiceCode
     : "core_ai";
+  // Proactive templates have a separate budget; the agent's response bundle does not fund them.
+  if (item && (await db.select({ id: commercialContracts.organizationId }).from(commercialContracts).where(eq(commercialContracts.organizationId, item.organizationId)).limit(1))[0]) return false;
   const to = normalizedPhone(item?.clientPhone ?? null);
   if (!item?.channelId || !item.phoneNumberId || !to || !whatsappServices[serviceCode].usesCloudApi) {
     return false;

@@ -403,6 +403,53 @@ export const billingPayments = pgTable(
   ]
 );
 
+export const pilotInvitations = pgTable("pilot_invitations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tokenHash: text("token_hash").notNull().unique(),
+  email: text("email").notNull(),
+  createdBy: text("created_by").notNull().references(() => users.id),
+  expiresAt: timestamp("expires_at").notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id),
+  redeemedAt: timestamp("redeemed_at"),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const commercialOrders = pgTable("commercial_orders", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  invitationId: uuid("invitation_id").references(() => pilotInvitations.id),
+  quote: jsonb("quote").$type<import("../lib/commercial-catalog").CommercialQuote>().notNull(),
+  checkoutId: text("checkout_id").unique(),
+  providerPaymentId: text("provider_payment_id").unique(),
+  status: text("status").default("pending").notNull(),
+  activatedAt: timestamp("activated_at"),
+  periodEnd: timestamp("period_end"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const commercialContracts = pgTable("commercial_contracts", {
+  organizationId: uuid("organization_id").primaryKey().references(() => organizations.id),
+  orderId: uuid("order_id").references(() => commercialOrders.id),
+  kind: text("kind").notNull(),
+  product: text("product").notNull(),
+  professionalLimit: integer("professional_limit").notNull(),
+  responseLimit: integer("response_limit").notNull(),
+  documentLimit: integer("document_limit").notNull(),
+  noteLimit: integer("note_limit").notNull(),
+  startedAt: timestamp("started_at").notNull(),
+  endsAt: timestamp("ends_at").notNull(),
+});
+
+export const commercialUsage = pgTable("commercial_usage", {
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  metric: text("metric").notNull(),
+  resourceId: text("resource_id").notNull(),
+  periodStart: date("period_start").notNull(),
+  state: text("state").default("reserved").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [primaryKey({ columns: [t.organizationId, t.metric, t.resourceId] }), index("commercial_usage_period_idx").on(t.organizationId, t.periodStart, t.metric)]);
+
 export const dataImports = pgTable(
   "data_imports",
   {

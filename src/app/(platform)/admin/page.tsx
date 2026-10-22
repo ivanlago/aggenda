@@ -26,6 +26,7 @@ export default async function PlatformAdminPage() {
       <p className="text-xs font-extrabold uppercase tracking-widest text-brand">Plataforma</p>
       <h1 className="mt-2 text-3xl font-extrabold">Administração do SaaS</h1>
       <p className="mt-2 text-muted">Visão global separada das permissões de cada empresa.</p>
+      <Link href="/plataforma/convites-piloto" className="primary-button mt-5 inline-flex">Convites do piloto anual de R$ 5,00</Link>
       <div className="mt-8 grid gap-4 md:grid-cols-4">
         {cards.map(([label, value, href]) => (
           <Link className="panel" href={href} key={label}>

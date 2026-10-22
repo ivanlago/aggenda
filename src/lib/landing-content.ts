@@ -16,7 +16,7 @@ export const landingOffer = {
   monthlyInCents: 4990,
   annualMonthlyInCents: 3990,
   annualTotalInCents: 47880,
-  checkoutInPilot: true,
+  checkoutInPilot: false,
 } as const;
 
 export const landingFeatures = [
@@ -158,7 +158,7 @@ export const landingFaqs = [
   ],
   [
     "Quanto custa o Aggenda?",
-    "A oferta comercial do app para um profissional é de R$ 49,90 no mensal ou R$ 478,80 por ano, equivalente a R$ 39,90/mês. Profissionais extras e módulos são adicionais. A contratação está em fase piloto: confira as condições e o valor efetivamente apresentados no checkout antes de pagar.",
+    "O app para um profissional custa R$ 49,90 no mensal ou R$ 478,80 por ano, equivalente a R$ 39,90/mês. Há pacotes por equipe, agentes e assinatura eletrônica opcionais. Você pode testar por 30 dias sem cartão e sem cobrança automática. Confira o total antes de pagar.",
   ],
   [
     "Posso usar no celular?",
@@ -194,7 +194,7 @@ export const landingFaqs = [
   ],
   [
     "Como contratar um plano?",
-    "Clique em Começar agora, acesse ou crie sua conta e configure seu negócio. O fluxo segue para a área de assinatura. Durante o piloto, confira o valor e as condições exibidos antes de concluir qualquer pagamento.",
+    "Clique em Começar agora, acesse ou crie sua conta e configure seu negócio. Na área de assinatura, continue o teste gratuito de 30 dias ou escolha Essencial, Profissional ou Completo, equipe e período. A contratação paga é liberada após confirmação do pagamento. Convites especiais têm condições próprias.",
   ],
 ] as const;
 

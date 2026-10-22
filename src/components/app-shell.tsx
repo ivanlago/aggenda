@@ -107,10 +107,10 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="internal-app min-h-screen min-w-0 bg-background lg:grid lg:grid-cols-[264px_minmax(0,1fr)]">
-      <aside className="border-b border-slate-200 bg-white p-4 text-foreground shadow-[4px_0_24px_rgba(15,23,42,0.04)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:overflow-hidden lg:border-b-0 lg:border-r">
+      <aside className="app-sidebar border-b border-slate-200 p-4 shadow-[4px_0_24px_rgba(18,60,70,0.06)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:overflow-hidden lg:border-b-0 lg:border-r">
         <div className="flex items-center justify-between lg:block lg:shrink-0">
-          <Link href="/dashboard" className="flex items-center gap-3 text-xl font-extrabold">
-            <span className="grid size-10 place-items-center rounded-lg bg-brand text-white shadow-sm">
+          <Link href="/dashboard" className="app-logo flex items-center gap-3 text-xl font-extrabold">
+            <span className="app-logo-mark grid size-10 place-items-center rounded-lg bg-brand text-white shadow-sm">
               <CalendarCheck className="size-5" />
             </span>
             Aggenda
@@ -164,7 +164,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             </AppNavLink>
           )}
         </AppNavigation>
-        <div className="mt-4 hidden shrink-0 border-t border-slate-200 pt-4 lg:block">
+        <div className="app-sidebar-footer mt-4 hidden shrink-0 border-t border-slate-200 pt-4 lg:block">
           {memberships.length > 1 && (
             <form action={selectActiveOrganization} className="mb-4 grid gap-2">
               <select className="rounded-lg border border-slate-200 bg-surface-soft px-2 py-2 text-xs" name="organizationId" defaultValue={organization.id}>

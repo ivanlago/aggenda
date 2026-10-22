@@ -1,15 +1,16 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f7f7ff;
-  --foreground: #0f172a;
-  --brand: #0f766e;
-  --brand-dark: #115e59;
+  --background: #f7fafa;
+  --foreground: #172b35;
+  --brand: #007f78;
+  --brand-dark: #006b65;
+  --structure: #123c46;
   --secondary: #d97706;
   --secondary-dark: #a85505;
   --tertiary: #0d9488;
-  --accent: #ccfbf1;
-  --surface-soft: #f0f1ff;
+  --accent: #ddf5f1;
+  --surface-soft: #edf6f4;
   --muted: #64748b;
 }
 
@@ -18,6 +19,7 @@
   --color-foreground: var(--foreground);
   --color-brand: var(--brand);
   --color-brand-dark: var(--brand-dark);
+  --color-structure: var(--structure);
   --color-secondary: var(--secondary);
   --color-secondary-dark: var(--secondary-dark);
   --color-tertiary: var(--tertiary);
@@ -132,11 +134,11 @@ a[href]:focus-visible {
   }
 
   .primary-button {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:-translate-y-px hover:bg-brand-dark hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:-translate-y-px hover:bg-brand-dark hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .secondary-button {
-    @apply inline-flex items-center justify-center rounded-lg border border-brand px-4 py-2.5 text-sm font-bold text-brand transition hover:bg-brand hover:text-white;
+    @apply inline-flex items-center justify-center rounded-lg border border-brand px-4 py-2.5 text-sm font-bold text-brand transition hover:bg-brand hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand;
   }
 
   .icon-button {
@@ -156,3 +158,47 @@ a[href]:focus-visible {
 .internal-app .page-wrap,
 .internal-app .panel,
 .internal-app .field { min-width: 0; max-width: 100%; }
+
+/* Institutional colors stay separate from appointment, financial and alert states. */
+.internal-app .app-sidebar {
+  background: var(--structure);
+  color: #fff;
+  border-color: #ffffff24;
+}
+
+.app-sidebar .app-logo { color: #fff; }
+.app-sidebar .app-logo-mark { background: #007f78; color: #fff; }
+.app-sidebar nav a { color: #d0e2e1; }
+.app-sidebar nav a:hover { background: #ffffff12; color: #fff; }
+.app-sidebar nav a[aria-current="page"] {
+  background: var(--accent);
+  color: var(--structure);
+  box-shadow: inset 3px 0 0 #00a99d;
+}
+.app-sidebar nav summary { color: #b4d0d2; }
+.app-sidebar nav summary:hover { background: #ffffff12; color: #fff; }
+.app-sidebar nav .border-l,
+.app-sidebar .app-sidebar-footer { border-color: #ffffff24; }
+.app-sidebar .app-sidebar-footer .text-muted { color: #b4d0d2; }
+.app-sidebar button[aria-label="Sair"] { color: #d0e2e1; }
+.app-sidebar button[aria-label="Sair"]:hover { color: #fff; }
+.app-sidebar .secondary-button { border-color: #8dbdbd; color: #ddf5f1; }
+.app-sidebar .secondary-button:hover { background: #ffffff12; }
+.app-sidebar :is(a, button, summary, select):focus-visible {
+  outline: 2px solid #9de0d6;
+  outline-offset: 3px;
+}
+.internal-app .app-header { background: #ffffffed; border-color: #dce8e6; }
+.internal-app .page-heading h1 { color: var(--structure); }
+.internal-app input:is([type="checkbox"], [type="radio"]) { accent-color: var(--brand); }
+
+@media (max-width: 639px) {
+  .internal-app .app-header > div:first-child,
+  .internal-app .app-header > div:first-child > div:first-child { flex-basis: 100%; }
+  .internal-app .app-header > div:first-child > a { white-space: nowrap; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .internal-app .primary-button { transition: none; }
+  .internal-app .primary-button:hover { transform: none; }
+}

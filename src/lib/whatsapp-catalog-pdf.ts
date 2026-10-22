@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
-export async function buildWhatsAppCatalogPdf(data: { name: string; updatedAt: string; products: { label: string; priceInCents: number; description?: string | null; thumbnail?: Uint8Array }[] }) {
+export async function buildWhatsAppCatalogPdf(data: { name: string; updatedAt: string; products: { label: string; productName?: string; presentation?: string | null; brand?: string | null; priceInCents: number; description?: string | null; thumbnail?: Uint8Array }[] }) {
   const pdf = await PDFDocument.create();
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -32,7 +32,10 @@ export async function buildWhatsAppCatalogPdf(data: { name: string; updatedAt: s
   if (!data.products.length) line("Nenhum produto disponível para venda neste momento.");
   for (const [index, product] of data.products.entries()) {
     if (y < 135) addPage();
-    line(`${index + 1}. ${product.label}`, 12, true);
+    line(`${index + 1}. ${product.productName ?? product.label}`, 12, true);
+    if (product.productName) {
+      line(`Apresentação: ${product.presentation || "Não informada"} | Marca: ${product.brand || "Não informada"}`, 10);
+    }
     if (product.thumbnail) {
       try {
         const image = await pdf.embedJpg(product.thumbnail);

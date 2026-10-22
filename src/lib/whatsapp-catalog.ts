@@ -7,10 +7,16 @@ import { retailProducts, retailProductVariants } from "@/db/schema";
 export async function getWhatsAppProducts(organizationId: string) {
   const [rows, details] = await Promise.all([
     getPosProducts(organizationId),
-    db.select({ id: retailProductVariants.id, description: retailProducts.description, imageUrl: retailProducts.imageUrl }).from(retailProductVariants).innerJoin(retailProducts, and(eq(retailProducts.id, retailProductVariants.productId), eq(retailProducts.organizationId, organizationId))).where(eq(retailProductVariants.organizationId, organizationId)),
+    db.select({ id: retailProductVariants.id, productName: retailProducts.name, presentation: retailProductVariants.name, brand: retailProducts.brand, description: retailProducts.description, imageUrl: retailProducts.imageUrl }).from(retailProductVariants).innerJoin(retailProducts, and(eq(retailProducts.id, retailProductVariants.productId), eq(retailProducts.organizationId, organizationId))).where(eq(retailProductVariants.organizationId, organizationId)),
   ]);
   const byId = new Map(details.map(item => [item.id, item]));
-  return rows.filter(item => item.stock > 0).map(({ id, label, priceInCents }) => ({ id, label, priceInCents, description: byId.get(id)?.description ?? null, imageUrl: byId.get(id)?.imageUrl ?? null }));
+  return rows.filter(item => item.stock > 0).map(({ id, label, priceInCents }) => {
+    const detail = byId.get(id);
+    const productName = detail?.productName ?? label;
+    const presentation = detail?.presentation?.trim() && detail.presentation.trim().toLocaleLowerCase("pt-BR") !== "padrão" ? detail.presentation.trim() : null;
+    const brand = detail?.brand?.trim() || null;
+    return { id, productName, presentation, brand, label: [productName, presentation, brand].filter(Boolean).join(" · "), priceInCents, description: detail?.description ?? null, imageUrl: detail?.imageUrl ?? null };
+  });
 }
 
 export function catalogSignature(organizationId: string, expires: number) {

@@ -43,6 +43,11 @@ Não são dois bancos de dados nem duas cópias de workflow por cliente.
 Somente produtos/variações ativos, destinados à venda, com estoque vendável
 aparecem no catálogo. Estoque por lote segue a regra existente de validade e
 quarentena. Quantidades, códigos internos, custos e comissões não são expostos.
+O PDF e a identificação textual incluem produto, apresentação e marca cadastrados.
+Apresentação genérica "Padrão" e marca vazia são indicadas como não informadas no
+PDF; unidades e marcas não são inferidas. Produtos com lotes em preparação para
+ativação também permanecem bloqueados conforme a regra do PDV; o catálogo não
+ignora vencimento, quarentena ou recolhimento para completar a lista de cadastros.
 
 PRODUTOS envia um documento pelo WhatsApp. O PDF é gerado com os dados atuais,
 data de atualização, apresentação, preço, descrição e fotos cadastradas no

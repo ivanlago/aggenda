@@ -37,7 +37,7 @@ test("both real agent routes share navigation; Chat only links, Core books after
     await pg.query("INSERT INTO professionals(id,organization_id,name,is_active,is_bookable) VALUES ($1,$2,'Maria',true,true)", [professional, organization]);
     await pg.query("INSERT INTO services_to_professionals(service_id,professional_id,organization_id) VALUES ($1,$2,$3)", [service, professional, organization]);
     await pg.query("INSERT INTO clients(id,organization_id,name,phone) VALUES ($1,$2,'Cliente teste','71999999999')", [client, organization]);
-    await pg.query("INSERT INTO retail_products(id,organization_id,name) VALUES ($1,$2,'Creme')", [product, organization]);
+    await pg.query("INSERT INTO retail_products(id,organization_id,name,brand) VALUES ($1,$2,'Creme','Marca Teste')", [product, organization]);
     await pg.query("INSERT INTO inventory_products(id,organization_id,name,current_quantity_millis) VALUES ($1,$2,'Creme estoque',5000)", [inventory, organization]);
     await pg.query("INSERT INTO retail_product_variants(id,organization_id,product_id,inventory_product_id,name,sale_price_in_cents) VALUES ($1,$2,$3,$4,'50 ml',5900)", [variant, organization, product, inventory]);
     async function load(path: string) {
@@ -91,6 +91,8 @@ test("both real agent routes share navigation; Chat only links, Core books after
     assert.equal(other.status, 403);
     const expired = new URL(document.link); expired.searchParams.set("expires", String(Date.now() - 1));
     assert.equal((await catalog.GET(new NextRequest(expired), { params: Promise.resolve({ organizationId: organization }) })).status, 403);
+    const productDetails = await call(chat, "Creme");
+    assert.match(productDetails.output.body, /Creme · 50 ml · Marca Teste/);
     await pg.query("UPDATE inventory_products SET current_quantity_millis=0 WHERE id=$1", [inventory]);
     const withoutStock = await call(chat, "menu");
     assert.ok(!withoutStock.output.raw_payload.navigationState!.options.some(option => option.id === "nav:products"));

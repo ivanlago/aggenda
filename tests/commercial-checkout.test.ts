@@ -84,9 +84,12 @@ test("real migration, payment deduplication, pilot quotas and prepaid extras in 
     // A subsequent monthly commercial customer: first payment, duplicate checkout,
     // subsequent recurring payment and delayed cancellation of the old contract.
     const org2 = randomUUID(); await client.query("INSERT INTO organizations VALUES ($1)", [org2]);
-    const [monthly] = await database.insert(schema.commercialOrders).values({ organizationId: org2, quote: commercialQuote({ product: "complete", cycle: "monthly", professionals: 1, signatures: false, nfse: "none" }), checkoutId: "monthly_checkout" }).returning();
+    await database.insert(schema.organizationSubscriptions).values({ organizationId: org2, status: "trialing", plan: "trial", trialEndsAt: new Date(Date.now() + 86400000) });
+    const [monthly] = await database.insert(schema.commercialOrders).values({ organizationId: org2, quote: { ...commercialQuote({ product: "complete", cycle: "monthly", professionals: 1, signatures: false, nfse: "none" }), billing: { method: "CREDIT_CARD", recurring: true } }, checkoutId: "monthly_checkout" }).returning();
     const monthlyPayment = { id: "monthly_payment", value: 249.8, subscription: "monthly_subscription", externalReference: `commercial:${monthly.id}` };
-    await processCommercialPayment({ id: "monthly_first", event: "PAYMENT_CONFIRMED", payment: monthlyPayment }, database);
+    await processCommercialPayment({ id: "subscription_first", event: "SUBSCRIPTION_CREATED", subscription: { id: "monthly_subscription", externalReference: `commercial:${monthly.id}` } }, database);
+    assert.equal((await database.select().from(schema.organizationSubscriptions).where(eq(schema.organizationSubscriptions.organizationId, org2)))[0].status, "trialing");
+    await processCommercialPayment({ id: "monthly_first", event: "PAYMENT_CONFIRMED", payment: { ...monthlyPayment, externalReference: undefined } }, database);
     const [month1] = await database.select().from(schema.commercialContracts).where(eq(schema.commercialContracts.organizationId, org2));
     await processCommercialPayment({ id: "monthly_checkout_paid", event: "CHECKOUT_PAID", checkout: { id: "monthly_checkout" } }, database);
     assert.equal((await database.select().from(schema.commercialContracts).where(eq(schema.commercialContracts.organizationId, org2)))[0].endsAt.toISOString(), month1.endsAt.toISOString());

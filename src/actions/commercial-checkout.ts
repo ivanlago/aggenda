@@ -9,7 +9,7 @@ import { db } from "@/db";
 import { commercialOrders, pilotInvitations, commercialContracts, organizationSubscriptions, professionals, legalAcceptances } from "@/db/schema";
 import { count } from "drizzle-orm";
 import { requireOrganizationMembership, requirePlatformMember } from "@/lib/session";
-import { commercialQuote, pilotQuote, extraQuote } from "@/lib/commercial-catalog";
+import { commercialQuote, pilotQuote, extraQuote, type CommercialQuote } from "@/lib/commercial-catalog";
 import { asaasCheckoutLink, asaasRequest } from "@/lib/asaas";
 
 export async function createPilotInvitation(data: FormData) {
@@ -51,11 +51,12 @@ async function executeCommercialCheckout(data: FormData) {
   if (data.get("acceptTerms") !== "on") throw new Error("Aceite as condições antes de continuar.");
   const pilot = data.get("pilot") === "1";
   const extra = data.get("extra");
-  const quote = extra === "responses" || extra === "documents" ? extraQuote(extra) : pilot ? pilotQuote() : commercialQuote({ product: String(data.get("product")) as "essential",
+  const quote: CommercialQuote = extra === "responses" || extra === "documents" ? extraQuote(extra) : pilot ? pilotQuote() : commercialQuote({ product: String(data.get("product")) as "essential",
     cycle: String(data.get("cycle")) as "monthly", professionals: Number(data.get("professionals")), signatures: data.get("signatures") === "on", nfse: "none" });
   // Production NFS-e remains disabled pending fiscal homologation; cannot sell an unavailable module.
   const method = data.get("paymentMethod") === "pix" ? "PIX" : data.get("paymentMethod") === "credit_card" ? "CREDIT_CARD" : null;
   if (!method) throw new Error("Selecione Pix ou cartão.");
+  quote.billing = { method, recurring: quote.kind === "commercial" && quote.cycle === "monthly" && method === "CREDIT_CARD" };
   const required = (key: string) => { const value = String(data.get(key) ?? "").trim(); if (!value) throw new Error(`Preencha ${key}.`); return value; };
   const cpfCnpj = required("cpfCnpj").replace(/\D/g, "");
   const postalCode = required("postalCode").replace(/\D/g, "");
@@ -68,7 +69,7 @@ async function executeCommercialCheckout(data: FormData) {
   const requestHeaders = await headers();
   const order = await db.transaction(async (tx) => {
     const [existingSubscription] = await tx.select().from(organizationSubscriptions).where(eq(organizationSubscriptions.organizationId, organization.id)).for("update");
-    if (quote.kind !== "extra" && existingSubscription?.billingSubscriptionId && !existingSubscription.cancelAtPeriodEnd) throw new Error("Cancele a renovação da assinatura atual antes de iniciar outra contratação. O período já pago será preservado.");
+    if (quote.kind !== "extra" && existingSubscription?.billingSubscriptionId && existingSubscription.status !== "trialing" && !existingSubscription.cancelAtPeriodEnd) throw new Error("Cancele a renovação da assinatura atual antes de iniciar outra contratação. O período já pago será preservado.");
     if (quote.kind !== "extra") {
       const [activeProfessionals] = await tx.select({ total: count() }).from(professionals).where(and(eq(professionals.organizationId, organization.id), eq(professionals.isActive, true)));
       if (activeProfessionals.total > quote.professionals) throw new Error("Escolha um pacote que comporte os profissionais ativos ou desative as agendas excedentes antes de contratar.");
@@ -80,7 +81,9 @@ async function executeCommercialCheckout(data: FormData) {
     if (quote.kind === "commercial") {
       const [pending] = await tx.select().from(commercialOrders).where(and(eq(commercialOrders.organizationId, organization.id), eq(commercialOrders.status, "pending")));
       if (pending && pending.createdAt.getTime() + 86400000 > Date.now()) {
-        if (JSON.stringify(pending.quote) === JSON.stringify(quote) && pending.checkoutId) return pending;
+        if (pending.quote.product === quote.product && pending.quote.amountInCents === quote.amountInCents && pending.quote.cycle === quote.cycle
+          && pending.quote.professionals === quote.professionals && pending.quote.signatures === quote.signatures && pending.quote.nfse === quote.nfse
+          && pending.quote.billing?.method === method && pending.checkoutId) return pending;
         throw new Error("Há uma contratação aguardando pagamento. Conclua ou aguarde a expiração do checkout antes de iniciar outra.");
       }
     }
@@ -93,7 +96,10 @@ async function executeCommercialCheckout(data: FormData) {
       invitationId = invite.id;
       await tx.update(pilotInvitations).set({ organizationId: organization.id }).where(eq(pilotInvitations.id, invite.id));
       const [pending] = await tx.select().from(commercialOrders).where(and(eq(commercialOrders.invitationId, invite.id), eq(commercialOrders.status, "pending")));
-      if (pending?.checkoutId) return pending;
+      if (pending?.checkoutId) {
+        if (pending.quote.billing?.method && pending.quote.billing.method !== method) throw new Error("Há um checkout do convite aguardando pagamento por outra modalidade. Aguarde sua expiração para trocar.");
+        return pending;
+      }
       if (pending) throw new Error("Um checkout está sendo preparado. Aguarde e tente novamente.");
     }
     const [created] = await tx.insert(commercialOrders).values({ organizationId: organization.id, invitationId, quote }).returning();
@@ -105,7 +111,7 @@ async function executeCommercialCheckout(data: FormData) {
   });
   if (order.checkoutId) redirect(asaasCheckoutLink({ id: order.checkoutId }));
   const base = (process.env.NEXT_PUBLIC_APP_URL ?? "https://www.aggenda.app.br").replace(/\/$/, "");
-  const recurring = quote.kind === "commercial" && quote.cycle === "monthly" && method === "CREDIT_CARD";
+  const recurring = quote.billing.recurring;
   let checkout: { id: string; link?: string };
   try {
     checkout = await asaasRequest("/checkouts", { method: "POST", body: {

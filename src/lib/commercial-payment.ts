@@ -36,10 +36,22 @@ export async function processCommercialPayment(event: Event, db = defaultDb) {
     const now = new Date();
     if (event.event === "SUBSCRIPTION_CREATED" || event.event === "SUBSCRIPTION_UPDATED") {
       if (current.quote.kind !== "commercial") throw new Error("Esta oferta não permite recorrência.");
+      if (!current.activatedAt) {
+        const [active] = await tx.select().from(commercialContracts).where(eq(commercialContracts.organizationId, current.organizationId));
+        if (active?.kind !== "trial" && active?.endsAt && active.endsAt > now) throw new Error("Contrato já ativo; concilie a nova recorrência antes de alterar a cobrança.");
+        // Keep a pending billing association without granting paid entitlements.
+        await tx.update(organizationSubscriptions).set({ billingSubscriptionId: event.subscription?.id,
+          billingPlanCode: `commercial:${current.id}`, updatedAt: now }).where(eq(organizationSubscriptions.organizationId, current.organizationId));
+        return;
+      }
       await tx.update(organizationSubscriptions).set({ billingSubscriptionId: event.subscription?.id, updatedAt: now }).where(and(eq(organizationSubscriptions.organizationId, current.organizationId), eq(organizationSubscriptions.billingPlanCode, `commercial:${current.id}`)));
       return;
     }
     if (["SUBSCRIPTION_INACTIVATED", "SUBSCRIPTION_DELETED"].includes(event.event)) {
+      if (!current.activatedAt) {
+        await tx.update(organizationSubscriptions).set({ billingSubscriptionId: null, updatedAt: now }).where(and(eq(organizationSubscriptions.organizationId, current.organizationId), eq(organizationSubscriptions.billingPlanCode, `commercial:${current.id}`)));
+        return;
+      }
       await tx.update(organizationSubscriptions).set({ status: "canceled", cancelAtPeriodEnd: true, updatedAt: now }).where(and(eq(organizationSubscriptions.organizationId, current.organizationId), eq(organizationSubscriptions.billingPlanCode, `commercial:${current.id}`)));
       return;
     }
@@ -58,6 +70,7 @@ export async function processCommercialPayment(event: Event, db = defaultDb) {
       return;
     }
     if (current.status === "reversed") return;
+    if (current.quote.kind !== "commercial" && event.payment?.subscription) throw new Error("Oferta sem recorrência recebeu pagamento de assinatura; conciliação necessária.");
     const [activeContract] = await tx.select().from(commercialContracts).where(eq(commercialContracts.organizationId, current.organizationId)).for("update");
     if (current.quote.kind !== "extra" && activeContract?.orderId && activeContract.orderId !== current.id && activeContract.endsAt > now) {
       throw new Error("Pagamento de outro contrato requer conciliação; contratação ativa preservada.");
@@ -106,8 +119,8 @@ export async function processCommercialPayment(event: Event, db = defaultDb) {
     const subscription = { organizationId: current.organizationId, plan: "essential" as const, status: "active" as const,
       billingProvider: "asaas", billingPlanCode: `commercial:${current.id}`, billingCheckoutId: current.checkoutId,
       billingCustomerId: event.payment?.customer, billingSubscriptionId: event.payment?.subscription ?? undefined,
-      billingIntervalMonths: event.payment?.subscription ? 1 : null, currentPeriodEnd: endsAt, trialEndsAt: null,
-      lastPaymentId: event.payment?.id, cancelAtPeriodEnd: quote.kind === "pilot" || quote.cycle !== "monthly" || !event.payment?.subscription, updatedAt: now };
+      billingIntervalMonths: quote.billing?.recurring || event.payment?.subscription ? 1 : null, currentPeriodEnd: endsAt, trialEndsAt: null,
+      lastPaymentId: event.payment?.id, cancelAtPeriodEnd: !(quote.billing?.recurring || event.payment?.subscription), updatedAt: now };
     await tx.insert(organizationSubscriptions).values(subscription).onConflictDoUpdate({ target: organizationSubscriptions.organizationId, set: subscription });
     await tx.update(commercialOrders).set({ status: "active", activatedAt: current.activatedAt ?? now, periodEnd: endsAt,
       providerPaymentId: event.payment?.id ?? current.providerPaymentId }).where(eq(commercialOrders.id, current.id));

@@ -41,7 +41,9 @@ export function extraQuote(metric: "responses" | "documents") {
   return { ...pilotQuote(), kind: "extra" as const, name: metric === "responses" ? "500 respostas adicionais" : "100 documentos adicionais",
     months: 1, amountInCents: metric === "responses" ? 4990 : 1990, extraMetric: metric, extraQuantity: metric === "responses" ? 500 : 100 };
 }
-export type CommercialQuote = ReturnType<typeof commercialQuote> | ReturnType<typeof pilotQuote> | ReturnType<typeof extraQuote>;
+export type CommercialQuote = (ReturnType<typeof commercialQuote> | ReturnType<typeof pilotQuote> | ReturnType<typeof extraQuote>) & {
+  billing?: { method: "PIX" | "CREDIT_CARD"; recurring: boolean };
+};
 
 export function addCalendarMonths(date: Date, months: number) {
   const result = new Date(date);

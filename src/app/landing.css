@@ -1,3 +1,23 @@
+.migration-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 35px;
+  padding: 35px;
+  margin-bottom: 70px;
+  border: 1px solid #dcece2;
+  border-radius: 14px;
+  background: #edf7f2;
+}
+.migration-card > div { max-width: 730px; }
+.migration-card h2 { margin-top: 12px; font-size: 27px; line-height: 1.3; letter-spacing: -.8px; color: var(--ink); }
+.migration-card p { margin-top: 14px; font-size: 13px; line-height: 1.85; color: var(--muted); }
+.migration-card small { display: block; margin-top: 12px; font-size: 10px; color: #60747b; }
+.migration-card > a { flex-shrink: 0; }
+@media (max-width: 1000px) {
+  .migration-card { flex-direction: column; align-items: flex-start; padding: 26px; gap: 24px; margin-bottom: 50px; }
+  .migration-card h2 { font-size: 25px; }
+}
 .aggenda-landing {
   --ink: #123c46;
   --teal: #00877f;

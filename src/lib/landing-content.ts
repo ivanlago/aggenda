@@ -185,8 +185,8 @@ export const landingFaqs = [
     "Sim, como modalidades adicionais. Há atendimento assistido, notificações e agentes que informam ou operam a agenda. O funcionamento depende do plano, canal ativo, integração, configuração e franquias; tarifas externas podem se aplicar.",
   ],
   [
-    "Posso importar meus clientes?",
-    "Há recursos de importação e exportação. Confira os formatos e campos aceitos na área de dados e revise as informações antes de importar. A migração de qualquer sistema não é automática.",
+    "Posso trazer os dados de outro sistema gratuitamente?",
+    "Sim. A primeira importação dos cadastros de clientes e serviços é gratuita. Envie os arquivos exportados do sistema anterior em Excel ou CSV para nossa equipe conferir os campos e orientar a importação. A transferência depende dos dados disponíveis e da compatibilidade dos arquivos. Prontuários, fotos, documentos, histórico financeiro e outros registros não estão incluídos nessa oferta inicial; consulte a equipe para avaliar esses casos.",
   ],
   [
     "Como funcionam as integrações de pagamento?",

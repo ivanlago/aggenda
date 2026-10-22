@@ -8,6 +8,8 @@ São 13 áreas: cabeçalho, hero, dor/solução, funcionalidades, segmentos, eta
 
 ## Configuração comercial e acesso
 
+- Oferta de importação gratuita: primeira importação de cadastros de clientes e serviços, a partir de Excel/CSV exportados pelo cliente, com conferência de campos/compatibilidade e orientação da equipe. Destaque próprio antes das etapas de implantação e resposta no FAQ. Não inclui automaticamente prontuários, imagens, documentos ou histórico financeiro; esses casos precisam de avaliação. Contato pelo e-mail institucional existente, sem envio automático de dados.
+
 - `landingOffer`: URLs de login/cadastro, contato, teste e preço-base. O catálogo serve à apresentação, nunca ao cálculo da cobrança.
 - `landingPlans` em `landing-content.ts`: composições Essencial (app), Profissional (app + Aggenda Atendimento) e Completo (app + Aggenda Secretária). Não criam três planos novos no banco.
 - A pedido do usuário, app anual de R$ 478,80 (equivalente a R$ 39,90/mês). Mensal R$ 49,90; adicionais da proposta aprovada. Semestral continua documentado, mas não foi acrescentado ao seletor da landing neste momento.

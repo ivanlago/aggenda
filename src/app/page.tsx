@@ -405,7 +405,16 @@ export default function Home() {
           </SectionHeading>
           <SegmentSelector />
         </section>
-        <section id="como-funciona" className="steps-section landing-section">
+      <section className="landing-container migration-card" aria-labelledby="migration-title">
+        <div>
+          <span className="landing-eyebrow">JÁ USA OUTRO SISTEMA?</span>
+          <h2 id="migration-title">Sua primeira importação é por nossa conta.</h2>
+          <p>Traga seus cadastros de clientes e serviços para o Aggenda gratuitamente. Nossa equipe confere os arquivos exportados em Excel ou CSV e orienta a importação.</p>
+          <small>Sujeito à compatibilidade dos arquivos e dos campos disponíveis. Outros tipos de dados precisam de avaliação.</small>
+        </div>
+        <a className="landing-button" href={`mailto:${landingOffer.contactEmail}?subject=Importa%C3%A7%C3%A3o%20gratuita%20para%20o%20Aggenda`} data-conversion="free-import-contact">Quero trazer meus dados <ArrowRight size={17} /></a>
+      </section>
+      <section id="como-funciona" className="steps-section landing-section">
           <div className="landing-container">
             <SectionHeading eyebrow="UM NOVO CAPÍTULO PARA SUA ROTINA" centered>
               Comece a organizar seu negócio

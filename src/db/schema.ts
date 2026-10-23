@@ -910,6 +910,42 @@ export const documentSignatureEvents = pgTable("document_signature_events", {
   index("document_signature_events_request_idx").on(table.organizationId, table.requestId, table.createdAt),
 ]);
 
+export const professionalSigningIdentities = pgTable("professional_signing_identities", {
+  organizationId: uuid("organization_id").notNull(),
+  professionalId: uuid("professional_id").notNull(),
+  cpf: text("cpf").notNull(),
+  verifiedBy: text("verified_by").notNull().references(() => users.id, { onDelete: "restrict" }),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, table => [primaryKey({ columns: [table.organizationId, table.professionalId] }),
+  foreignKey({ name: "signing_identity_professional_fk", columns: [table.organizationId, table.professionalId], foreignColumns: [professionals.organizationId, professionals.id] }),
+  check("signing_identity_cpf_check", sql`${table.cpf} ~ '^[0-9]{11}$'`),
+]);
+
+export const professionalSigningCeremonies = pgTable("professional_signing_ceremonies", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull(),
+  documentId: uuid("document_id").notNull(),
+  professionalId: uuid("professional_id").notNull(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  sessionHash: text("session_hash").notNull(),
+  signerCpf: text("signer_cpf").notNull(),
+  originalKey: text("original_key").notNull(),
+  originalHash: text("original_hash").notNull(),
+  otpHash: text("otp_hash").notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  state: text("state").default("open").notNull(),
+  processingStartedAt: timestamp("processing_started_at"),
+  requestId: uuid("request_id"),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => [
+  foreignKey({ name: "signing_ceremony_document_fk", columns: [table.organizationId, table.documentId], foreignColumns: [electronicDocuments.organizationId, electronicDocuments.id] }),
+  foreignKey({ name: "signing_ceremony_professional_fk", columns: [table.organizationId, table.professionalId], foreignColumns: [professionals.organizationId, professionals.id] }),
+  foreignKey({ name: "signing_ceremony_request_fk", columns: [table.organizationId, table.requestId], foreignColumns: [documentSignatureRequests.organizationId, documentSignatureRequests.id] }),
+  index("signing_ceremony_user_idx").on(table.organizationId, table.userId, table.createdAt),
+  check("signing_ceremony_state_check", sql`${table.state} IN ('open', 'processing', 'consumed', 'cancelled')`),
+]);
+
 export const electronicDocumentEvents = pgTable("electronic_document_events", {
   id: uuid("id").defaultRandom().primaryKey(),
   documentId: uuid("document_id").notNull().references(() => electronicDocuments.id, { onDelete: "cascade" }),

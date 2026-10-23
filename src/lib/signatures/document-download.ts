@@ -1,5 +1,6 @@
-import { sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
+import { professionalSigningCeremonies } from "@/db/schema";
 import { SignatureDeliveryUnavailable, readValidatedSignaturePdf } from "./delivery";
 import { PostgresSignatureRepository } from "./postgres-repository";
 import { signatureStorage } from "./storage-config";
@@ -14,7 +15,14 @@ export async function storedSignaturePdf(organizationId: string, documentId: str
   if (!await signatureDatabaseReady()) return null;
   const repository = new PostgresSignatureRepository(db);
   const request = await repository.latest(organizationId, documentId);
-  if (!request) return null;
+  if (!request) {
+    if ((process.env.SIGNATURE_PILOT_ORGANIZATIONS ?? "").split(",").map(value => value.trim()).includes(organizationId)) {
+      const [prepared] = await db.select({ id: professionalSigningCeremonies.id }).from(professionalSigningCeremonies).where(and(
+        eq(professionalSigningCeremonies.organizationId, organizationId), eq(professionalSigningCeremonies.documentId, documentId))).limit(1);
+      if (prepared) throw new SignatureDeliveryUnavailable(409, "Conclua a assinatura profissional para baixar ou enviar o PDF final.");
+    }
+    return null;
+  }
   if (request.status !== "SIGNED") throw new SignatureDeliveryUnavailable(409, "O PDF assinado ainda não está disponível.");
   try {
     const artifact = request.signedArtifactId ? await repository.signedArtifact(organizationId, documentId, request.signedArtifactId) : null;

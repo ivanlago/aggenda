@@ -24,7 +24,7 @@ test("signature persistence against an isolated PostgreSQL engine", async (t) =>
       CREATE TABLE audit_logs (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid NOT NULL,
         user_id text, action text NOT NULL, entity_type text NOT NULL, entity_id text, details jsonb DEFAULT '{}', created_at timestamp DEFAULT now());
     `);
-    for (const file of ["0066_powerful_butterfly.sql", "0067_tearful_tiger_shark.sql"]) {
+    for (const file of ["0066_powerful_butterfly.sql", "0067_tearful_tiger_shark.sql", "0082_professional_signing.sql", "0083_signing_processing_lease.sql", "0084_signing_session_binding.sql"]) {
       await client.exec(await readFile(new URL(`../drizzle/${file}`, import.meta.url), "utf8"));
     }
     // Both drivers expose the same Drizzle PostgreSQL query/transaction operations
@@ -130,6 +130,7 @@ test("signature persistence against an isolated PostgreSQL engine", async (t) =>
       const latest = await repository.latest(organizationId, request.documentId);
       assert.equal(latest?.status, "SIGNED");
       assert.ok(latest?.validatedAt);
+      await assert.rejects(repository.createOrGet({ ...request, id: randomUUID(), idempotencyKey: randomUUID() }), /concluída/);
       const artifact = await repository.signedArtifact(organizationId, request.documentId, latest!.signedArtifactId!);
       assert.equal(artifact?.sha256, signedHash);
       assert.equal(await repository.signedArtifact(otherOrganization, request.documentId, latest!.signedArtifactId!), null);
@@ -144,6 +145,19 @@ test("signature persistence against an isolated PostgreSQL engine", async (t) =>
       await client.query("INSERT INTO professionals VALUES ($1, $2)", [anotherProfessional, otherOrganization]);
       await assert.rejects(repository.createOrGet({ ...request, professionalId: anotherProfessional }));
       assert.equal(await repository.find(organizationId, request.id), null);
+    });
+
+    await t.test("local ceremonies preserve tenant FKs and claim an authorization only once", async () => {
+      const request = await newRequest();
+      const id = randomUUID();
+      await client.query("INSERT INTO professional_signing_identities (organization_id,professional_id,cpf,verified_by) VALUES ($1,$2,'52998224725','user')", [organizationId, professionalId]);
+      await assert.rejects(client.query("INSERT INTO professional_signing_identities (organization_id,professional_id,cpf,verified_by) VALUES ($1,$2,'52998224725','user')", [otherOrganization, professionalId]));
+      await client.query(`INSERT INTO professional_signing_ceremonies (id,organization_id,document_id,professional_id,user_id,session_hash,signer_cpf,original_key,original_hash,otp_hash,expires_at)
+        VALUES ($1,$2,$3,$4,'user','test-session','52998224725','prepared',$5,$5,now()+interval '20 minutes')`, [id, organizationId, request.documentId, professionalId, request.inputHash]);
+      const claim = () => client.query("UPDATE professional_signing_ceremonies SET state='processing',processing_started_at=now() WHERE id=$1 AND state='open' RETURNING id", [id]);
+      const results = await Promise.all([claim(), claim()]);
+      assert.equal(results.reduce((sum, result) => sum + result.rows.length, 0), 1);
+      await assert.rejects(client.query("UPDATE professional_signing_ceremonies SET state='SIGNED' WHERE id=$1", [id]));
     });
 
     await t.test("database constraints reject a mock signature even through direct SQL", async () => {

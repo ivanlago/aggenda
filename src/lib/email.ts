@@ -35,6 +35,12 @@ async function sendEmail(input: {
   return data?.id;
 }
 
+export async function sendProfessionalSignatureCode(input: { email: string; code: string; title: string; ceremonyId: string; documentHash: string }) {
+  return sendEmail({ to: input.email, subject: "Autorize sua assinatura profissional — Aggenda",
+    html: emailLayout("Assinatura profissional", `<p>Você solicitou a assinatura de <strong>${escapeHtml(input.title)}</strong>.</p><p>Código: <strong>${escapeHtml(input.code)}</strong></p><p>Válido por 20 minutos. Use somente após conferir o documento no Aggenda.</p><p>SHA-256: ${escapeHtml(input.documentHash)}</p>`),
+    idempotencyKey: `professional-signature:${input.ceremonyId}` });
+}
+
 export async function sendVoucherEmail(input: { email: string; organizationName: string; message: string; bookingUrl: string; deliveryId: string }) {
   return sendEmail({
     to: input.email, subject: `Seu voucher — ${input.organizationName}`,

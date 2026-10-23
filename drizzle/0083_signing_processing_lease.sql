@@ -1,0 +1,1 @@
+ALTER TABLE "professional_signing_ceremonies" ADD COLUMN "processing_started_at" timestamp;

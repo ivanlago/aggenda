@@ -42,9 +42,9 @@ export class PostgresSignatureRepository implements SignatureRepository {
       if (existing) return existing;
       const [pending] = await tx.select({ id: documentSignatureRequests.id }).from(documentSignatureRequests).where(and(
         eq(documentSignatureRequests.organizationId, request.organizationId),
-        eq(documentSignatureRequests.documentId, request.documentId), eq(documentSignatureRequests.status, "PENDING"),
+        eq(documentSignatureRequests.documentId, request.documentId), or(eq(documentSignatureRequests.status, "PENDING"), eq(documentSignatureRequests.status, "SIGNED")),
       )).limit(1);
-      if (pending) throw new Error("Este documento já possui uma assinatura em andamento.");
+      if (pending) throw new Error("Este documento já possui uma assinatura em andamento ou concluída.");
       const artifactId = randomUUID();
       await tx.insert(documentArtifacts).values({ id: artifactId, organizationId: request.organizationId,
         documentId: request.documentId, kind: "original", storageKey: request.originalKey,

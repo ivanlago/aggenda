@@ -21,7 +21,7 @@
     "worker:outbox": "tsx workers/outbox-worker.ts",
     "test:whatsapp-agent": "tsx --test tests/whatsapp-command.test.ts",
     "test:permissions": "tsx --test tests/permissions.test.ts",
-    "test:signatures": "tsx --test tests/document-signatures.test.ts tests/signature-security.test.ts tests/signature-postgres.test.ts tests/signature-pades.test.ts tests/signature-cms.test.ts",
+    "test:signatures": "tsx --test tests/document-signatures.test.ts tests/signature-security.test.ts tests/signature-postgres.test.ts tests/signature-pades.test.ts tests/signature-cms.test.ts tests/signature-local.test.ts",
     "signature:pilot": "tsx scripts/signature-pilot.ts",
     "postinstall": "node scripts/patch-dependency-security.mjs",
     "prebuild": "node scripts/patch-dependency-security.mjs",

@@ -8,7 +8,7 @@ using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
 using System.Windows.Forms;
 
-// Manual pilot. Never opens a listening port, uploads a PFX, or accepts browser commands.
+// Authenticated file-exchange client. Never opens a listening port or uploads keys.
 internal static class SignPreparedPdf
 {
     const int Capacity = 65536;
@@ -18,8 +18,20 @@ internal static class SignPreparedPdf
         Application.EnableVisualStyles();
         try
         {
-            if (args.Length != 1) throw new Exception("Abra o agente passando um PDF preparado pelo Aggenda.");
-            string path = Path.GetFullPath(args[0]);
+            if (args.Length > 1) throw new Exception("Selecione apenas um PDF preparado pelo Aggenda.");
+            string selectedPath = args.Length == 1 ? args[0] : null;
+            if (selectedPath == null)
+            {
+                using (var dialog = new OpenFileDialog())
+                {
+                    dialog.Title = "Aggenda - selecione o PDF preparado para assinatura";
+                    dialog.Filter = "PDF preparado pelo Aggenda (*.pdf)|*.pdf";
+                    dialog.CheckFileExists = true;
+                    if (dialog.ShowDialog() != DialogResult.OK) return 2;
+                    selectedPath = dialog.FileName;
+                }
+            }
+            string path = Path.GetFullPath(selectedPath);
             if (new FileInfo(path).Length > 10 * 1024 * 1024) throw new Exception("PDF excede 10 MiB.");
             byte[] pdf = File.ReadAllBytes(path);
             string text = Encoding.GetEncoding(28591).GetString(pdf);
@@ -47,7 +59,7 @@ internal static class SignPreparedPdf
                 foreach (var certificate in store.Certificates)
                     if (certificate.HasPrivateKey && certificate.NotBefore <= DateTime.Now && certificate.NotAfter > DateTime.Now &&
                         certificate.PublicKey.Oid.Value == "1.2.840.113549.1.1.1") candidates.Add(certificate);
-                var selected = X509Certificate2UI.SelectFromCollection(candidates, "Aggenda - piloto local",
+                var selected = X509Certificate2UI.SelectFromCollection(candidates, "Aggenda - assinatura profissional",
                     "Escolha seu certificado pessoal. A chave privada permanece no Windows.", X509SelectionFlag.SingleSelection);
                 if (selected.Count != 1) return 2;
                 var cert = selected[0];
@@ -60,7 +72,7 @@ internal static class SignPreparedPdf
                 }
                 var consent = MessageBox.Show("Assinar este arquivo?\n\n" + path + "\n\nTitular: " + cert.Subject +
                     "\n\nSHA-256 do PDF preparado:\n" + hash +
-                    "\n\nPiloto: confira o conteudo do PDF antes de confirmar. A validacao ICP-Brasil no servidor ainda e obrigatoria.",
+                    "\n\nConfira o conteudo do PDF antes de confirmar. A validacao ICP-Brasil no Aggenda ainda e obrigatoria.",
                     "Aggenda - autorizar assinatura", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
                 if (consent != DialogResult.Yes) return 2;
                 var cms = new SignedCms(new ContentInfo(content), true);
@@ -80,7 +92,7 @@ internal static class SignPreparedPdf
                 string output = path + ".p7s";
                 using (var file = new FileStream(output, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                     file.Write(encoded, 0, encoded.Length);
-                MessageBox.Show("CMS salvo em:\n" + output + "\n\nAinda deve ser incorporado e validado pelo Aggenda.", "Aggenda");
+                MessageBox.Show("Assinatura salva em:\n" + output + "\n\nVolte ao Aggenda, anexe este arquivo .p7s e informe o codigo recebido por e-mail para concluir a validacao.", "Aggenda");
             }
             return 0;
         }

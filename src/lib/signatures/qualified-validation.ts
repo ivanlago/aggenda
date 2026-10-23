@@ -14,7 +14,8 @@ export type TrustResult = { outcome: "unavailable" } | { outcome: "invalid" } | 
 
 /** Must independently verify CPF in ICP otherName, trusted ICP anchors, certificate
  * path, policy and current revocation. Embedded certificates are untrusted inputs.
- * No production implementation is supplied until independently homologated. */
+ * The local pilot uses IcpBrasilTrustValidator; acceptance with a real certificate
+ * remains mandatory before releasing this profile for clinical production. */
 export interface CertificateTrustValidator {
   validate(input: { certificateDer: Uint8Array; untrustedChain: Uint8Array[]; at: Date }): Promise<TrustResult>;
 }

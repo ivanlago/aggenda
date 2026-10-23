@@ -1,0 +1,17 @@
+AGGENDA - ASSINADOR PROFISSIONAL PARA WINDOWS - PILOTO DE HOMOLOGACAO
+
+1. Instale seu certificado pessoal e-CPF no perfil do Windows, usando as instrucoes da sua certificadora.
+2. No Aggenda, abra Assinatura profissional, prepare o documento e baixe o PDF.
+3. Revise o PDF antes de assinar.
+4. Extraia este ZIP e abra Aggenda.SignPilot.exe. Selecione o PDF preparado.
+5. Escolha seu e-CPF e confira o titular, arquivo e hash antes de autorizar.
+6. O assinador grava um arquivo .p7s ao lado do PDF. O certificado e a chave privada permanecem no Windows.
+7. Volte ao Aggenda, anexe o .p7s, informe o codigo recebido por e-mail e confirme.
+8. Baixe o PDF assinado apenas apos o Aggenda concluir a validacao.
+
+Requer Windows com .NET Framework 4 e acesso a internet para consultas de revogacao.
+Perfil: RSA/SHA-256, uma assinatura, ate 10 MiB, sem carimbo de tempo/LTV.
+Piloto: pacote sem assinatura Authenticode. O Windows pode exibir aviso de editor desconhecido.
+Nao desative o antivirus nem as protecoes do Windows. Confira a origem do pacote com o suporte Aggenda.
+Nao envie arquivo PFX, senha ou chave privada ao Aggenda.
+Nao use documentos de teste para atendimento clinico antes da homologacao real.

@@ -1,0 +1,1 @@
+ALTER TABLE "professional_signing_ceremonies" ADD COLUMN "session_hash" text NOT NULL;

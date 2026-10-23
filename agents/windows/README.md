@@ -1,5 +1,7 @@
 # Agente Windows — piloto manual
 
+**Atualização de 22/10/2026:** este assinador está integrado ao canal autenticado de troca de arquivos do Aggenda. O fluxo atual, controles e limites estão em [assinatura-profissional-piloto.md](../../docs/assinatura-profissional-piloto.md). Compile e gere o ZIP com `./agents/windows/package.ps1`. As instruções abaixo preservam o exercício manual original; a homologação com certificado real continua pendente.
+
 Este executável é uma etapa de desenvolvimento, sem integração com a aplicação e sem instalador/atualização assinados. Não habilita assinatura ICP-Brasil em produção. Use documentos sintéticos no piloto. O CMS gerado precisa de validação independente de identidade, cadeia ICP, revogação, política e integridade antes de qualquer estado `SIGNED`.
 
 ## Compilar

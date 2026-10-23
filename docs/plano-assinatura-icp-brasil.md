@@ -1,6 +1,6 @@
 # Plano de assinatura qualificada ICP-Brasil
 
-Status: base e persistência próprias implementadas; execução criptográfica A1/nuvem e homologação pendentes.
+Status em 22/10/2026: caminho local Windows implementado, incluindo interface, autorização por sessão/código, validação concreta de cadeia ICP e revogação. Aceitação com certificado real ainda pendente. Consulte [o fluxo atual do piloto](assinatura-profissional-piloto.md); as seções abaixo preservam o histórico de desenvolvimento. Nuvem/mobile seguem como escopo separado.
 
 Atualização de 15/10/2026: controles operacionais compartilhados com a experiência da NFS-e implementados abaixo. Integração com a interface, canal do agente local, fornecedor de nuvem e validador real de confiança ICP continuam pendentes. Não há assinatura clínica qualificada liberada para produção.
 Origem: proposta prompt_codex_assinatura_icp_brasil.md fornecida pelo usuário.

@@ -16,6 +16,7 @@ import { syncDocumentPresets } from "@/lib/document-presets-sync";
 import { documentPresets } from "@/lib/document-presets";
 import { anamnesisAnswersToText, isAnamnesisSchema, visibleAnamnesisFields, type AnamnesisAnswers } from "@/lib/anamnesis";
 import { sendElectronicDocumentEmail, sendProfessionalDocumentEmail } from "@/lib/email";
+import { localSignatureReadiness } from "@/lib/signatures/local-config";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 import { requireAttendance } from "@/lib/attendance";
@@ -206,7 +207,9 @@ export async function issueProfessionalDocument(data: FormData) {
     await db.insert(clientHistoryEntries).values({ organizationId: organization.id, clientId: client.id, appointmentId: appointmentId || null, authorUserId: session.user.id, electronicDocumentId: created.id, entryType: template.documentType, title, content: contentSnapshot, occurredAt: now });
   }
   let deliveryWarning: string | undefined;
-  if (deliveryMethod === "email") {
+  const requiresProfessionalSignature = (template.documentType === "exam_request" || (template.documentType === "prescription" && structuredData?.kind === "Receituário simples")) &&
+    localSignatureReadiness(organization.id).ready;
+  if (deliveryMethod === "email" && !requiresProfessionalSignature) {
     try {
       await sendProfessionalDocumentEmail({ email: patientEmail, patientName: client.name, organizationName: organization.name, professionalName: professional.name, documentTitle: title, url: `${appUrl()}/api/public/documents/${credentials.token}/pdf`, documentId: created.id });
       await db.insert(electronicDocumentEvents).values({ organizationId: organization.id, documentId: created.id, eventType: "sent", details: { channel: "email", recipient: patientEmail } });
@@ -219,6 +222,7 @@ export async function issueProfessionalDocument(data: FormData) {
   revalidatePath("/documentos", "layout");
   revalidatePath(`/clientes/${clientId}`);
   if (appointmentId) revalidatePath(`/atendimento/${appointmentId}`);
+  if (requiresProfessionalSignature) return { openUrl: `/documentos/assinatura-profissional?documentId=${created.id}`, warning: "Documento preparado. Conclua sua assinatura antes de enviar ao paciente." };
   if (deliveryWarning) return { warning: deliveryWarning };
   if (deliveryMethod === "print") return { openUrl: `/api/documents/${created.id}/pdf?v=${created.id}` };
   if (deliveryMethod === "whatsapp") {

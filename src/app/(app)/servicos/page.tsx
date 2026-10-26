@@ -133,7 +133,7 @@ export default async function ServicesPage({ searchParams }: { searchParams: Pro
                     {item.priceInCents != null ? ` · ${(item.priceInCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}
                   </p>
                 </div>
-                {canManage && <ModalShell title={`Editar ${organization.serviceLabel.toLowerCase()}: ${item.name}`} variant="edit" wide>
+                {canManage && <ModalShell title={`Editar ${organization.serviceLabel.toLowerCase()}: ${item.name}`} variant="edit" wide closeOnSuccess>
                   <ActionForm action={updateService} successMessage="Procedimento atualizado com sucesso." resetOnSuccess={false} className="grid min-w-0 gap-5 sm:grid-cols-2">
                     <input type="hidden" name="id" value={item.id} />
                     <div className="min-w-0 sm:col-span-2"><TussAutocomplete table="22" label="Guia TUSS 22" defaultCode={item.tussCode ?? ""} defaultName={item.tussName ?? ""} onSelectNameField="name" onSelectCodeField="manualTussCode" /></div>

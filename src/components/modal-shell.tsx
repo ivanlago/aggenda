@@ -3,9 +3,9 @@
 import { CircleDollarSign, Pencil, Plus, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
-export function ModalShell({ title, variant, children, defaultOpen = false, completed = false, wide = false }: {
+export function ModalShell({ title, variant, children, defaultOpen = false, completed = false, wide = false, closeOnSuccess = false }: {
   title: string; variant: "new" | "payment" | "edit"; children: React.ReactNode;
-  defaultOpen?: boolean; completed?: boolean; wide?: boolean;
+  defaultOpen?: boolean; completed?: boolean; wide?: boolean; closeOnSuccess?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const dialogRef = useRef<HTMLDialogElement>(null), triggerRef = useRef<HTMLButtonElement>(null), headingRef = useRef<HTMLHeadingElement>(null);
@@ -22,11 +22,17 @@ export function ModalShell({ title, variant, children, defaultOpen = false, comp
     if (!dialog.open) dialog.showModal();
     headingRef.current?.focus({ preventScroll: true });
     const previousOverflow = document.body.style.overflow; document.body.style.overflow = "hidden";
-    const saved = (event: Event) => { if (event.target instanceof HTMLFormElement) dirtyForms.current.delete(event.target); };
+    const saved = (event: Event) => {
+      if (!(event.target instanceof HTMLFormElement)) return;
+      dirtyForms.current.delete(event.target);
+      if (closeOnSuccess && !dirtyForms.current.size) {
+        dialog.close(); setOpen(false); triggerRef.current?.focus();
+      }
+    };
     const unload = (event: BeforeUnloadEvent) => { if (dirtyForms.current.size) { event.preventDefault(); event.returnValue = ""; } };
     dialog.addEventListener("aggenda:form-saved", saved); window.addEventListener("beforeunload", unload);
     return () => { dialog.removeEventListener("aggenda:form-saved", saved); window.removeEventListener("beforeunload", unload); document.body.style.overflow = previousOverflow; };
-  }, [open]);
+  }, [open, closeOnSuccess]);
   return <>
     <button ref={triggerRef} type="button" onClick={() => setOpen(true)} className={variant === "new" ? "primary-button w-full" : variant === "payment" ? `icon-button relative border-emerald-200 bg-emerald-50 text-emerald-700 ${completed ? "ring-2 ring-emerald-500" : ""}` : "icon-button"} aria-label={completed ? `${title} — pagamento efetuado` : title}>
       <Icon className={variant === "payment" ? "size-5" : "size-4"} aria-hidden="true" />{completed && variant === "payment" && <span className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-emerald-600 text-[10px] font-black text-white">✓</span>}{variant === "new" && <span>{title}</span>}

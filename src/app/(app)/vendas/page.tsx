@@ -35,7 +35,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
   const showAllHistory = params.history === "all";
   const historyRange = organizationDayRange(new Date(), organization.timezone);
   const [variantRows, clientRows, sales, items, payments] = await Promise.all([
-    db.select({ id: retailProductVariants.id, productName: retailProducts.name, variantName: retailProductVariants.name, barcode: retailProductVariants.barcode, priceInCents: retailProductVariants.salePriceInCents, stockMillis: inventoryProducts.currentQuantityMillis })
+    db.select({ id: retailProductVariants.id, productName: retailProducts.name, imageUrl: retailProducts.imageUrl, variantName: retailProductVariants.name, barcode: retailProductVariants.barcode, priceInCents: retailProductVariants.salePriceInCents, stockMillis: inventoryProducts.currentQuantityMillis })
       .from(retailProductVariants).innerJoin(retailProducts, eq(retailProducts.id, retailProductVariants.productId)).innerJoin(inventoryProducts, eq(inventoryProducts.id, retailProductVariants.inventoryProductId))
       .where(and(eq(retailProductVariants.organizationId, organization.id), eq(retailProductVariants.isForSale, true), eq(retailProductVariants.isActive, true), eq(retailProducts.isActive, true), eq(inventoryProducts.isActive, true))).orderBy(asc(retailProducts.name), asc(retailProductVariants.name)),
     db.select({ id: clients.id, name: clients.name, email: clients.email, phone: clients.phone }).from(clients).where(eq(clients.organizationId, organization.id)).orderBy(asc(clients.name)),
@@ -49,8 +49,8 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
     getPosOfferings(organization.id),
     getPosPackageBalances(organization.id),
   ]) : [[], []];
-  const variants = variantRows.map((item) => ({ id: item.id, label: `${item.productName} · ${item.variantName}`, barcode: item.barcode, priceInCents: item.priceInCents, stock: Math.floor(item.stockMillis / 1000) })).filter((item) => item.stock > 0);
-  const quoteProducts = variantRows.map((item) => ({ id: item.id, label: `${item.productName} · ${item.variantName}`, barcode: item.barcode, priceInCents: item.priceInCents, stock: Math.floor(item.stockMillis / 1000), kind: "product" as const }));
+  const variants = variantRows.map((item) => ({ id: item.id, label: `${item.productName} · ${item.variantName}`, imageUrl: item.imageUrl, barcode: item.barcode, priceInCents: item.priceInCents, stock: Math.floor(item.stockMillis / 1000) })).filter((item) => item.stock > 0);
+  const quoteProducts = variantRows.map((item) => ({ id: item.id, label: `${item.productName} · ${item.variantName}`, imageUrl: item.imageUrl, barcode: item.barcode, priceInCents: item.priceInCents, stock: Math.floor(item.stockMillis / 1000), kind: "product" as const }));
   const sourceQuote = params.convert && canSell ? (await requireRetailQuote(params.convert)).quote : null;
   const today = organizationDate(new Date(), organization.timezone);
   const conversionBlocked = sourceQuote?.saleId ? "Este orçamento já foi convertido em venda." : sourceQuote && sourceQuote.validUntil < today ? "Este orçamento está vencido." : null;

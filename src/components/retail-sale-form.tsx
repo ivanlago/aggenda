@@ -4,7 +4,7 @@ import { pendingItemsInCart } from "@/lib/attendance-pending-items";
 import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { PosCatalog } from "@/components/pos-catalog";
+import { PosCatalog, type CatalogItem } from "@/components/pos-catalog";
 import { registerRetailSale } from "@/actions/retail";
 import { ActionForm } from "@/components/action-form";
 import { PhoneInput } from "@/components/phone-input";
@@ -16,7 +16,7 @@ import type { PosPackageBalance } from "@/lib/pos-package-balances";
 
 import type { CommissionBeneficiaryOption } from "@/lib/commission-beneficiary";
 
-type Variant = { id: string; label: string; barcode: string | null; priceInCents: number; stock: number; kind?: "product" | "service" | "package"; unavailableReason?: string };
+type Variant = CatalogItem;
 type Client = { id: string; name: string; email: string | null; phone: string | null };
 type CartItem = { variantId: string; quantity: number; discountInCents: number };
 type Payment = { id: number; method: "cash" | "credit_card" | "debit_card" | "pix" | "bank_transfer" | "boleto" | "other"; amount: string; otherPaymentMethod?: string };

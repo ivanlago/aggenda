@@ -1,9 +1,10 @@
 "use client";
 
-import { Plus, ScanBarcode, Search } from "lucide-react";
+import { ImageIcon, Plus, ScanBarcode, Search } from "lucide-react";
+import Image from "next/image";
 import { useDeferredValue, useMemo, useState } from "react";
 
-export type CatalogItem = { id: string; label: string; barcode: string | null; priceInCents: number; stock: number; kind?: "product" | "service" | "package"; unavailableReason?: string };
+export type CatalogItem = { id: string; label: string; barcode: string | null; priceInCents: number; stock: number; imageUrl?: string | null; kind?: "product" | "service" | "package"; unavailableReason?: string };
 const currency = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
 
@@ -31,7 +32,12 @@ export function PosCatalog({ variants, cart, addToCart, quoteMode = false }: { v
         <div className="grid max-h-[560px] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
           {visibleVariants.map((variant) => {
             const inCart = cart.find((item) => item.variantId === variant.id)?.quantity ?? 0;
-            return <article className="flex flex-col justify-between gap-3 rounded-2xl border bg-slate-50/60 p-4" key={variant.id}><div><p className="font-extrabold">{variant.label}</p><p className="mt-1 text-sm font-bold text-brand">{currency(variant.priceInCents)}</p><p className="text-xs text-muted">{variant.barcode ? `Código ${variant.barcode} · ` : "Sem código · "}{variant.kind === "service" ? "Procedimento" : variant.kind === "package" ? "Pacote" : `${variant.stock} em estoque`}{inCart ? ` · ${inCart} selecionados` : ""}</p>{variant.unavailableReason && <p className="mt-2 text-xs font-bold text-amber-700">{variant.unavailableReason}</p>}</div><button className="secondary-button justify-center" type="button" disabled={inCart >= (quoteMode ? (variant.kind === "package" ? 100 : 10000) : variant.stock) || Boolean(variant.unavailableReason)} title={variant.unavailableReason} onClick={() => addToCart(variant.id)}><Plus className="size-4" /> {inCart ? "Adicionar mais" : "Adicionar"}</button></article>;
+            return <article className="flex items-start gap-3 rounded-2xl border bg-slate-50/60 p-4" key={variant.id}>
+              {(variant.kind ?? "product") === "product" && <div className="relative grid size-20 shrink-0 place-items-center overflow-hidden rounded-xl border bg-white">
+                {variant.imageUrl ? <Image src={variant.imageUrl} alt={variant.label} fill sizes="80px" className="object-contain p-1" /> : <span role="img" aria-label="Produto sem foto"><ImageIcon className="size-7 text-slate-300" aria-hidden="true" /></span>}
+              </div>}
+              <div className="flex min-w-0 flex-1 flex-col justify-between gap-3 self-stretch"><div><p className="break-words font-extrabold">{variant.label}</p><p className="mt-1 text-sm font-bold text-brand">{currency(variant.priceInCents)}</p><p className="break-words text-xs text-muted">{variant.barcode ? `Código ${variant.barcode} · ` : "Sem código · "}{variant.kind === "service" ? "Procedimento" : variant.kind === "package" ? "Pacote" : `${variant.stock} em estoque`}{inCart ? ` · ${inCart} selecionados` : ""}</p>{variant.unavailableReason && <p className="mt-2 text-xs font-bold text-amber-700">{variant.unavailableReason}</p>}</div><button className="secondary-button justify-center" type="button" disabled={inCart >= (quoteMode ? (variant.kind === "package" ? 100 : 10000) : variant.stock) || Boolean(variant.unavailableReason)} title={variant.unavailableReason} onClick={() => addToCart(variant.id)}><Plus className="size-4" /> {inCart ? "Adicionar mais" : "Adicionar"}</button></div>
+            </article>;
           })}
           {visibleVariants.length === 0 && <p className="py-8 text-center text-sm text-muted sm:col-span-2">Nenhum item disponível.</p>}
         </div>

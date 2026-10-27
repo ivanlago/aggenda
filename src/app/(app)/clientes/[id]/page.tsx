@@ -242,20 +242,42 @@ export default async function ClientHistoryPage({
       {canReadClinical && <ClinicalWorkspace clientId={client.id} />}
       {canReadClinical && <CollapsiblePanel title="Fotografias clínicas" id="fotografias-clinicas" open={section === "photos"}>
         <p className="text-sm text-muted">Organize fotos por tratamento, data da visita e vista. Compare a evolução entre visitas do mesmo tratamento.</p>
-        {canManageClinicalMedia && <ActionForm action={createClientClinicalMedia} resetOnSuccess={false} successMessage="Fotografia salva. Você pode continuar com a próxima vista." className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {canManageClinicalMedia && <ActionForm action={createClientClinicalMedia} resetOnSuccess={false} successMessage="Fotografia salva. Você pode continuar com a próxima vista." className="mt-5">
+          <div className="space-y-5">
           <input type="hidden" name="clientId" value={client.id} />
-          <ClinicalPhotoTreatmentField treatments={[...new Set(clinicalMedia.map(item => item.captureSession).filter((value): value is string => Boolean(value)))]} />
-          <label className="text-xs font-bold">Data da visita<input className="field mt-1" type="date" name="visitDate" required defaultValue={new Intl.DateTimeFormat("en-CA", { timeZone: organization.timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())} /></label>
-          <select className="field" name="appointmentId" defaultValue=""><option value="">Atendimento relacionado (opcional)</option>{history.map((item) => <option key={item.id} value={item.id}>{item.service} · {formatOrganizationDateTime(item.startsAt, organization.timezone)}</option>)}</select>
-          <select className="field" name="phase"><option value="before">Antes</option><option value="during">Evolução</option><option value="after">Depois</option><option value="clinical">Registro clínico</option></select>
-          <ClinicalPhotoClassificationFields />
-          <input className="field lg:col-span-2" name="title" placeholder="Procedimento, área específica ou observação" />
-          <select className="field" name="consentPurpose" defaultValue="clinical"><option value="clinical">Uso interno / prontuário</option><option value="client_share">Compartilhar com o cliente</option><option value="marketing">Divulgação / publicidade</option></select>
-          <label className="text-xs font-bold">Termo de consentimento assinado (opcional)<select className="field mt-1" name="consentDocumentId" defaultValue=""><option value="">Sem termo vinculado</option>{documents.filter(doc => doc.signedAt && doc.documentType === "consent" && doc.workflowType === "patient_signature").map(doc => <option key={doc.id} value={doc.id}>{doc.title}</option>)}</select></label>
-          <GuidedClinicalPhotoInput references={clinicalMedia.filter((item) => item.mediaType === "photo" && item.phase === "before").map((item) => ({ id: item.id, src: item.storageProvider === "cloudinary" ? `/api/clinical-media/${item.id}?width=1200` : item.url, label: [item.captureSession, item.bodyRegion, item.viewCode].filter(Boolean).join(" · ") || item.title || "Fotografia Antes" }))} />
-          <p className="text-xs text-muted sm:col-span-2 lg:col-span-3">No celular, use a câmera na mesma distância, iluminação e posição. Ao registrar o Depois, consulte abaixo a foto Antes pareada como referência.</p>
-          <label className="flex items-start gap-2 text-sm font-bold sm:col-span-2 lg:col-span-3"><input className="mt-1" name="consentConfirmed" type="checkbox" required />Confirmo o consentimento para a finalidade selecionada.</label>
-          <button className="primary-button sm:w-fit">Salvar e continuar</button>
+          <fieldset className="min-w-0 rounded-2xl border border-slate-200 p-4 sm:p-5">
+            <legend className="px-2 text-sm font-extrabold">1. Tratamento e visita</legend>
+            <div className="grid items-start gap-4 md:grid-cols-2">
+              <ClinicalPhotoTreatmentField treatments={[...new Set(clinicalMedia.map(item => item.captureSession).filter((value): value is string => Boolean(value)))]} />
+              <div className="grid content-start gap-4">
+                <label className="grid gap-1.5 text-sm font-bold">Data da visita<input className="field h-12 font-normal" type="date" name="visitDate" required defaultValue={new Intl.DateTimeFormat("en-CA", { timeZone: organization.timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())} /></label>
+                <label className="grid gap-1.5 text-sm font-bold">Fase do tratamento<select className="field h-12 font-normal" name="phase"><option value="before">Antes</option><option value="during">Evolução</option><option value="after">Depois</option><option value="clinical">Registro clínico</option></select></label>
+              </div>
+            </div>
+          </fieldset>
+          <fieldset className="min-w-0 rounded-2xl border border-slate-200 p-4 sm:p-5">
+            <legend className="px-2 text-sm font-extrabold">2. Região e fotografia</legend>
+            <div className="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3"><ClinicalPhotoClassificationFields /></div>
+            <div className="mt-5 border-t border-slate-100 pt-4"><GuidedClinicalPhotoInput references={clinicalMedia.filter((item) => item.mediaType === "photo" && item.phase === "before").map((item) => ({ id: item.id, src: item.storageProvider === "cloudinary" ? `/api/clinical-media/${item.id}?width=1200` : item.url, label: [item.captureSession, item.bodyRegion, item.viewCode].filter(Boolean).join(" · ") || item.title || "Fotografia Antes" }))} /></div>
+            <p className="mt-3 text-xs leading-relaxed text-muted">Repita a distância, a iluminação e a posição da foto de referência. Após salvar, a próxima vista será selecionada.</p>
+          </fieldset>
+          <fieldset className="min-w-0 rounded-2xl border border-slate-200 p-4 sm:p-5">
+            <legend className="px-2 text-sm font-extrabold">3. Uso da imagem e consentimento</legend>
+            <div className="grid items-start gap-4 md:grid-cols-2">
+              <label className="grid gap-1.5 text-sm font-bold">Finalidade da imagem<select className="field h-12 font-normal" name="consentPurpose" defaultValue="clinical"><option value="clinical">Uso interno / prontuário</option><option value="client_share">Compartilhar com o cliente</option><option value="marketing">Divulgação / publicidade</option></select></label>
+              <label className="grid gap-1.5 text-sm font-bold">Termo assinado (opcional)<select className="field h-12 font-normal" name="consentDocumentId" defaultValue=""><option value="">Sem termo vinculado</option>{documents.filter(doc => doc.signedAt && doc.documentType === "consent" && doc.workflowType === "patient_signature").map(doc => <option key={doc.id} value={doc.id}>{doc.title}</option>)}</select></label>
+            </div>
+            <label className="mt-4 flex items-start gap-3 text-sm leading-relaxed"><input className="mt-1 shrink-0" name="consentConfirmed" type="checkbox" required />Confirmo o consentimento para a finalidade selecionada.</label>
+          </fieldset>
+          <details className="rounded-2xl border border-slate-200 p-4 sm:p-5">
+            <summary className="cursor-pointer text-sm font-bold">Informações adicionais (opcional)</summary>
+            <div className="mt-4 grid items-start gap-4 md:grid-cols-2">
+              <label className="grid gap-1.5 text-sm font-bold">Atendimento relacionado<select className="field h-12 font-normal" name="appointmentId" defaultValue=""><option value="">Sem atendimento vinculado</option>{history.map(item => <option key={item.id} value={item.id}>{item.service} · {formatOrganizationDateTime(item.startsAt, organization.timezone)}</option>)}</select></label>
+              <label className="grid gap-1.5 text-sm font-bold">Título ou observação<input className="field h-12 font-normal" name="title" placeholder="Ex.: avaliação facial inicial" /></label>
+            </div>
+          </details>
+          <div className="flex flex-col items-start gap-2 border-t border-slate-200 pt-4"><button className="primary-button w-full sm:w-auto">Salvar e continuar</button><p className="text-xs text-muted">Os dados do tratamento e da visita serão mantidos para a próxima foto.</p></div>
+          </div>
         </ActionForm>}
         <ClinicalMediaGallery clientId={client.id} canManage={canManageClinicalMedia} media={clinicalMedia.map((item) => ({
           id: item.id,

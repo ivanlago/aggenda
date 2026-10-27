@@ -86,12 +86,12 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       { href: "/documentos/assinatura-profissional", label: "Assinatura profissional", icon: FileSignature, permission: "documents.sign" },
     ] },
     { label: "Financeiro", items: [
-      { href: "/financeiro", label: "Contas e fluxo de caixa", icon: WalletCards, permission: "finance.read" },
-      { href: "/financeiro/relatorios", label: "DRE e indicadores", icon: ChartNoAxesCombined, permission: "finance.read" },
+      { href: "/financeiro/cobrancas", label: "Pagamentos", icon: BanknoteArrowDown, permission: "finance.read" },
       { href: "/financeiro/comissoes", label: "Comissões", icon: HandCoins, permission: "finance.read" },
+      { href: "/financeiro", label: "Contas e fluxo de caixa", icon: WalletCards, permission: "finance.read" },
       { href: "/financeiro/fechamento-caixa", label: "Fechamento de caixa", icon: CircleDollarSign, permission: "finance.read" },
       { href: "/financeiro/conciliacao-ofx", label: "Conciliação OFX", icon: Landmark, permission: "finance.read" },
-      { href: "/financeiro/cobrancas", label: "Pagamentos", icon: BanknoteArrowDown, permission: "finance.read" },
+      { href: "/financeiro/relatorios", label: "DRE e indicadores", icon: ChartNoAxesCombined, permission: "finance.read" },
       { href: "/financeiro/nfse", label: "Emissão de NFS-e", icon: ReceiptText, permission: "finance.read" },
     ] },
     { label: "Administração", items: [

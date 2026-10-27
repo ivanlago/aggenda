@@ -25,7 +25,7 @@ export async function AttendancePos({ appointmentId }: { appointmentId: string }
   if (!canSell && !canReadFinance) return <section id="pdv" className="panel mt-5"><p className="text-sm text-muted">Seu perfil não possui acesso a vendas ou pagamentos.</p></section>;
   const [[client], [service], paymentRows, usages, variantRows, sales, extras] = await Promise.all([
     db.select({ id: clients.id, name: clients.name, email: clients.email, phone: clients.phone }).from(clients).where(and(eq(clients.id, appointment.clientId), eq(clients.organizationId, organization.id))).limit(1),
-    db.select({ name: services.name, price: services.priceInCents }).from(services).where(and(eq(services.id, appointment.serviceId), eq(services.organizationId, organization.id))).limit(1),
+    db.select({ name: services.name, imageUrl: services.imageUrl, price: services.priceInCents }).from(services).where(and(eq(services.id, appointment.serviceId), eq(services.organizationId, organization.id))).limit(1),
     canReadFinance ? db.select().from(financialEntries).where(and(eq(financialEntries.appointmentId, appointment.id), eq(financialEntries.organizationId, organization.id))).limit(1) : Promise.resolve([]),
     canReadFinance ? db.select().from(packageUsages).where(and(eq(packageUsages.appointmentId, appointment.id), eq(packageUsages.organizationId, organization.id), inArray(packageUsages.status, ["reserved", "consumed"]))) : Promise.resolve([]),
     canSell ? db.select({ id: retailProductVariants.id, product: retailProducts.name, imageUrl: retailProducts.imageUrl, variant: retailProductVariants.name, barcode: retailProductVariants.barcode, priceInCents: retailProductVariants.salePriceInCents, stock: inventoryProducts.currentQuantityMillis }).from(retailProductVariants).innerJoin(retailProducts, eq(retailProducts.id, retailProductVariants.productId)).innerJoin(inventoryProducts, eq(inventoryProducts.id, retailProductVariants.inventoryProductId)).where(and(eq(retailProductVariants.organizationId, organization.id), eq(retailProductVariants.isForSale, true), eq(retailProductVariants.isActive, true), eq(retailProducts.isActive, true), eq(inventoryProducts.isActive, true))).orderBy(asc(retailProducts.name)) : Promise.resolve([]),
@@ -42,7 +42,7 @@ export async function AttendancePos({ appointmentId }: { appointmentId: string }
   const amount = payment?.amountInCents ?? appointment.priceInCents ?? service.price ?? 0;
   const prefillProcedure = appointment.metadata?.primaryProcedureRemoved !== true && shouldPrefillAttendanceCart(paymentState, appointment.serviceId, packageBalances);
   const initialCart = prefillProcedure ? [{ variantId: `appointment:${appointment.id}`, quantity: 1, discountInCents: 0 }] : [];
-  const offerings = [...catalog, ...(paymentState === "pending" && appointment.metadata?.primaryProcedureRemoved !== true ? [{ id: `appointment:${appointment.id}`, label: `${service.name} · Procedimento realizado`, barcode: null, priceInCents: amount, stock: 1, kind: "service" as const }] : [])];
+  const offerings = [...catalog, ...(paymentState === "pending" && appointment.metadata?.primaryProcedureRemoved !== true ? [{ id: `appointment:${appointment.id}`, label: `${service.name} · Procedimento realizado`, imageUrl: service.imageUrl, barcode: null, priceInCents: amount, stock: 1, kind: "service" as const }] : [])];
   const variants = variantRows.map((variant) => ({ id: variant.id, label: `${variant.product} · ${variant.variant}`, imageUrl: variant.imageUrl, barcode: variant.barcode, priceInCents: variant.priceInCents, stock: Math.floor(variant.stock / 1000) })).filter((variant) => variant.stock > 0);
   const pending = attendancePendingItems(appointment.metadata);
   for (const item of pending) {
@@ -61,4 +61,5 @@ export async function AttendancePos({ appointmentId }: { appointmentId: string }
     </section>
   </section>;
 }
+
 

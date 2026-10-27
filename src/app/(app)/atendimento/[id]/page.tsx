@@ -103,7 +103,7 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
       </section>
      <section id="documentos" className="mt-5 scroll-mt-6">
       <div className="grid gap-4">
-        <AttendanceTools availableTools={canIssueMedical ? ["receituario", "atestado", "acompanhamento", "exames"] : ["acompanhamento"]} forms={{
+        <AttendanceTools restrictionMessage={canIssueMedical ? undefined : "Receitas, atestados e exames exigem acesso do profissional responsável, permissão de emissão e CRM/UF cadastrados."} availableTools={canIssueMedical ? ["receituario", "atestado", "acompanhamento", "exames"] : ["acompanhamento"]} forms={{
           receituario: canIssue && professional && templateFor("prescription") ? documentForm(<PrescriptionComposer templateId={templateFor("prescription")!.id} organizationName={organization.name} clients={clientOptions} professionals={professionalOptions} initial={initial} fixedParticipants />) : missingTemplate,
           atestado: canIssue && professional && templateFor("certificate") ? documentForm(<CertificateComposer templateId={templateFor("certificate")!.id} clients={clientOptions} professionals={professionalOptions} initial={initial} fixedParticipants />) : missingTemplate,
           acompanhamento: canIssue && professional ? documentForm(<CompanionDeclaration clientName={client.name} date={appointment.startsAt.toLocaleDateString("pt-BR", { timeZone: organization.timezone })} />) : missingTemplate,

@@ -44,7 +44,7 @@ import { assertOrganizationPermission, hasOrganizationPermission } from "@/lib/p
 import { requireOrganization } from "@/lib/session";
 import { getMercadoPagoCredential } from "@/lib/mercado-pago";
 import { checkoutInputHash } from "@/lib/pos-payments-policy";
-import { ensurePosCheckout } from "@/lib/pos-mercado-pago";
+import { ensurePosCheckout, posOtherContext } from "@/lib/pos-checkout";
 
 const text = (data: FormData, key: string) => String(data.get(key) ?? "").trim();
 
@@ -247,14 +247,18 @@ export async function registerRetailSale(data: FormData) {
   const scopedCheckout = attendance && (organization.role === "professional" || hasOrganizationPermission(organization.role, "finance.manage"));
   if (!scopedCheckout && !hasOrganizationPermission(organization.role, "sales.sell") && !hasOrganizationPermission(organization.role, "inventory.manage")) assertOrganizationPermission(organization.role, "sales.sell");
   const selectedProvider = text(data, "checkoutProvider") || "manual";
-  if (!["manual", "mercado_pago"].includes(selectedProvider)) return { error: "Provedor de pagamento indisponível no PDV." };
-  const online = selectedProvider === "mercado_pago";
+  if (!["manual", "mercado_pago", "asaas", "pagbank"].includes(selectedProvider)) return { error: "Provedor de pagamento indisponível no PDV." };
+  const online = selectedProvider !== "manual";
   // The first online checkout is the sales workspace; the attendance checkout
   // keeps its existing split/settlement flow until its own integration is enabled.
-  if (online && attendanceId) return { error: "Use Venda e orçamento para receber pelo Mercado Pago. O caixa do atendimento mantém os recebimentos manuais." };
+  if (online && attendanceId) return { error: "Use Venda e orçamento para receber pelo provedor integrado. O caixa do atendimento mantém os recebimentos manuais." };
   const checkoutKey = online ? z.uuid().parse(text(data, "checkoutKey")) : null;
   let collectorId: string | null = null, paymentEnvironment: string | null = null;
-  if (online) {
+  let credentialFingerprint: string | null = null;
+  if (online && selectedProvider !== "mercado_pago") {
+    const context = await posOtherContext(organization.id, selectedProvider);
+    collectorId = context.collectorId; paymentEnvironment = context.paymentEnvironment; credentialFingerprint = context.credentialFingerprint;
+  } else if (online) {
     const credential = await getMercadoPagoCredential(organization.id);
     if (!credential.webhookSecret) return { error: "Configure o webhook do Mercado Pago antes de receber pelo PDV." };
     const [integration] = await db.select({ metadata: organizationFinancialIntegrations.metadata }).from(organizationFinancialIntegrations).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "mercado_pago"))).limit(1);
@@ -308,12 +312,12 @@ export async function registerRetailSale(data: FormData) {
     if (!['cash', 'credit_card', 'debit_card', 'pix', 'bank_transfer', 'boleto', 'other'].includes(method) || !Number.isInteger(amountInCents) || amountInCents < 0 || (method === "other" && otherPaymentMethod.length < 2)) throw new Error("Revise as formas, os valores e a justificativa do pagamento.");
     return { method, amountInCents, otherPaymentMethod };
   });
-  const paymentMethod = online ? "mercado_pago" : normalizedPayments.length > 1 ? "mixed" : normalizedPayments[0].method;
+  const paymentMethod = online ? selectedProvider : normalizedPayments.length > 1 ? "mixed" : normalizedPayments[0].method;
   // Concluir a venda representa a confirmação de recebimento do valor total.
   const received = !online;
   const commissionBeneficiary = text(data, "commissionBeneficiary") ? parseBeneficiary(text(data, "commissionBeneficiary")) : null;
   const today = organizationDate(new Date(), organization.timezone);
-  const inputHash = online ? checkoutInputHash({ items: [...grouped].sort(([a],[b]) => a.localeCompare(b)), clientId, quoteId, commissionBeneficiary,
+  const inputHash = online ? checkoutInputHash({ provider:selectedProvider, items: [...grouped].sort(([a],[b]) => a.localeCompare(b)), clientId, quoteId, commissionBeneficiary,
     receiptEmail, receiptPhoneDigits, notes: text(data, "notes") }) : null;
 
   const pendingIds = z.array(z.uuid()).parse(JSON.parse(String(data.get("pendingAttendanceItemIds") || "[]")));
@@ -410,7 +414,7 @@ export async function registerRetailSale(data: FormData) {
     const totalInCents = subtotalInCents - discountInCents;
     if (online) {
       if (totalInCents <= 0) throw new Error("Use recebimento manual para uma venda com total zero.");
-      normalizedPayments = [{ method: "mercado_pago", amountInCents: totalInCents, otherPaymentMethod: "" }];
+      normalizedPayments = [{ method: selectedProvider, amountInCents: totalInCents, otherPaymentMethod: "" }];
     }
     if (normalizedPayments.some((payment) => payment.amountInCents === 0) && (totalInCents !== 0 || normalizedPayments.length !== 1)) throw new Error("Pagamento zero só é permitido quando o total da venda é zero.");
     if (normalizedPayments.reduce((sum, payment) => sum + payment.amountInCents, 0) !== totalInCents) throw new Error("A soma dos pagamentos deve ser igual ao total da venda.");
@@ -437,7 +441,7 @@ export async function registerRetailSale(data: FormData) {
       receiptEmail, receiptPhone: receiptPhoneDigits,
       subtotalInCents, discountInCents, totalInCents, notes: text(data, "notes") || null,
       createdByUserId: session.user.id,
-      status: online ? "pending_payment" : "completed", paymentProvider: online ? "mercado_pago" : null,
+      status: online ? "pending_payment" : "completed", paymentProvider: online ? selectedProvider : null,
       checkoutKey, checkoutInputHash: inputHash,
     }).returning({ id: retailSales.id, receiptToken: retailSales.receiptToken });
     await tx.insert(retailSaleItems).values(lines.map((item) => ({
@@ -479,17 +483,17 @@ export async function registerRetailSale(data: FormData) {
       if (clientId) await tx.insert(clientHistoryEntries).values({ organizationId: organization.id, clientId, authorUserId: session.user.id, appointmentId: sourceQuote.attendanceId, retailQuoteId: sourceQuote.id, entryType: "quote_conversion", title: "Orçamento convertido em venda", content: `Orçamento #${sourceQuote.id.slice(0, 8)} convertido na venda #${sale.id.slice(0, 8)}.` });
     }
     if (online) {
-      await tx.insert(paymentCharges).values({ organizationId: organization.id, provider: "mercado_pago", originType: "retail_sale", originId: sale.id,
+      await tx.insert(paymentCharges).values({ organizationId: organization.id, provider: selectedProvider, originType: "retail_sale", originId: sale.id,
         financialEntryId: financialEntry.id, clientId, paymentMethod: "link", amountInCents: totalInCents,
         description: `Venda no PDV #${sale.id.slice(0,8)}`, customerName: "Cliente do PDV", customerEmail: receiptEmail,
-        dueDate: today, createdByUserId: session.user.id, metadata: { collectorId, environment: paymentEnvironment, checkoutState: "new" } });
+        dueDate: today, createdByUserId: session.user.id, metadata: { collectorId, credentialFingerprint, environment: paymentEnvironment, checkoutState: "new" } });
     }
     return sale;
   });
   if (online) {
     await ensurePosCheckout(organization.id, createdSale.id);
     revalidatePath("/vendas"); revalidatePath("/estoque"); revalidatePath("/financeiro"); revalidatePath("/financeiro/cobrancas");
-    return { openUrl: `/vendas/pagamento/${createdSale.id}`, warning: "Venda aguardando pagamento. Os itens estão reservados; a liberação depende da confirmação do Mercado Pago." };
+    return { openUrl: `/vendas/pagamento/${createdSale.id}`, warning: "Venda aguardando pagamento. Os itens estão reservados; a liberação depende da confirmação do provedor." };
   }
   const receiptPath = `/recibo/${createdSale.receiptToken}`;
   const receiptUrl = `${(process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "")}${receiptPath}`;
@@ -526,7 +530,7 @@ export async function reverseRetailSale(data: FormData) {
     const [sale] = await tx.select({ id: retailSales.id, status: retailSales.status, financialEntryId: retailSales.financialEntryId, appointmentFinancialEntryId: retailSales.appointmentFinancialEntryId }).from(retailSales).where(and(eq(retailSales.id, saleId), eq(retailSales.organizationId, organization.id))).limit(1);
     if (!sale) throw new Error("Venda não encontrada.");
     const [integrated] = await tx.select({ provider: retailSales.paymentProvider }).from(retailSales).where(eq(retailSales.id, saleId));
-    if (integrated?.provider) throw new Error("Esta venda tem pagamento integrado. Consulte a cobrança e solicite o estorno no Mercado Pago; o recebimento não pode ser alterado manualmente.");
+    if (integrated?.provider) throw new Error("Esta venda tem pagamento integrado. Consulte a cobrança e solicite o estorno no provedor; o recebimento não pode ser alterado manualmente.");
     if (sale.status !== "completed") throw new Error("Esta venda já foi cancelada ou estornada.");
     const items = await tx.select({ productId: retailSaleItems.inventoryProductId, quantity: retailSaleItems.quantity }).from(retailSaleItems).where(and(eq(retailSaleItems.saleId, saleId), eq(retailSaleItems.organizationId, organization.id)));
     const productIds = [...new Set(items.map((item) => item.productId).filter((id): id is string => Boolean(id)))].sort();

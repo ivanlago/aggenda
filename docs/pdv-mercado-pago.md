@@ -1,5 +1,7 @@
 # Mercado Pago no PDV
 
+O PDV também permite selecionar Asaas e PagBank. Consulte [Provedor padrão do PDV](pdv-provedores.md) para a configuração atual dos três provedores.
+
 ## Configuração
 
 Em Financeiro → Pagamentos → Mercado Pago, conecte e valide a conta da própria empresa e configure o webhook. Marque **Usar como provedor padrão no PDV** e salve. A preferência é exclusiva de cada empresa. Somente conexões ativas com webhook configurado aparecem como opção.

@@ -33,7 +33,8 @@ export function checkoutInputHash(input: unknown) {
   return createHash("sha256").update(JSON.stringify(input)).digest("hex");
 }
 
-export function checkoutUrlIsSafe(url: string) {
-  try { const parsed = new URL(url); return parsed.protocol === "https:" && !parsed.username && !parsed.password &&
-    (parsed.hostname === "mercadopago.com.br" || parsed.hostname.endsWith(".mercadopago.com.br")); } catch { return false; }
+export function checkoutUrlIsSafe(url: string, provider = "mercado_pago") {
+  const domains: Record<string,string[]> = {mercado_pago:["mercadopago.com.br"],asaas:["asaas.com"],pagbank:["pagbank.com.br","pagseguro.com.br","pagseguro.uol.com.br"]};
+  try { const parsed = new URL(url); return parsed.protocol === "https:" && !parsed.username && !parsed.password && !parsed.port &&
+    Boolean(domains[provider]?.some(domain=>parsed.hostname===domain || parsed.hostname.endsWith(`.${domain}`))); } catch { return false; }
 }

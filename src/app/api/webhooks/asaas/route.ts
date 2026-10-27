@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -20,6 +20,8 @@ import { asaasRequest } from "@/lib/asaas";
 import { decodeOrganizationAsaasCredential } from "@/lib/organization-asaas";
 import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
 import { processCommercialPayment } from "@/lib/commercial-payment";
+import { refreshPosPayment } from "@/lib/pos-checkout";
+import { revalidatePath } from "next/cache";
 
 type AsaasSubscription = {
   id: string;
@@ -116,9 +118,16 @@ async function processOrganizationCharge(organizationId: string, event: AsaasWeb
   const externalChargeId = payment.externalReference?.startsWith("charge:") ? payment.externalReference.slice(7) : null;
   const [charge] = await db.select().from(paymentCharges).where(and(
     eq(paymentCharges.organizationId, organizationId),
-    externalChargeId ? eq(paymentCharges.id, externalChargeId) : eq(paymentCharges.providerPaymentId, payment.id),
+    eq(paymentCharges.provider, "asaas"),
+    externalChargeId ? eq(paymentCharges.id, externalChargeId) : payment.checkoutSession ? sql`${paymentCharges.metadata}->>'checkoutId' = ${payment.checkoutSession}` : eq(paymentCharges.providerPaymentId, payment.id),
   )).limit(1);
   if (!charge) return false;
+  if (charge.originType === "retail_sale") {
+    await refreshPosPayment(organizationId, charge.originId);
+    revalidatePath("/vendas"); revalidatePath("/financeiro"); revalidatePath("/financeiro/cobrancas"); revalidatePath("/pacotes");
+    revalidatePath(`/vendas/pagamento/${charge.originId}`);
+    return true;
+  }
   const mappedStatus = chargeStatus(event.event);
   const status = mappedStatus === "pending" && charge.status !== "pending" ? charge.status : mappedStatus;
   await db.transaction(async (tx) => {

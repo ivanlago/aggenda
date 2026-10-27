@@ -3,6 +3,8 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLogs, financialEntries, paymentChargeEvents, paymentCharges } from "@/db/schema";
 import { getPagBankCredential, pagBankRequest } from "@/lib/pagbank";
+import { refreshPosPayment } from "@/lib/pos-checkout";
+import { revalidatePath } from "next/cache";
 
 type PagBankCharge = { id?: string; status?: string; paid_at?: string; payment_method?: { type?: string } };
 type PagBankResource = { id?: string; reference_id?: string; status?: string; charges?: PagBankCharge[]; payments?: Array<{ id?: string; reference_id?: string; charges?: PagBankCharge[] }> };
@@ -25,6 +27,12 @@ export async function POST(request: Request) {
   if (!chargeId) return Response.json({ received: true });
   const [charge] = await db.select().from(paymentCharges).where(and(eq(paymentCharges.id, chargeId), eq(paymentCharges.organizationId, organizationId), eq(paymentCharges.provider, "pagbank"))).limit(1);
   if (!charge) return Response.json({ received: true });
+  if (charge.originType === "retail_sale") {
+    await refreshPosPayment(organizationId, charge.originId);
+    revalidatePath("/vendas"); revalidatePath("/financeiro"); revalidatePath("/financeiro/cobrancas"); revalidatePath("/pacotes");
+    revalidatePath(`/vendas/pagamento/${charge.originId}`);
+    return Response.json({ received: true });
+  }
   const providerCharge = resource.charges?.[0] ?? resource.payments?.flatMap((item) => item.charges ?? [])[0];
   const providerStatus = providerCharge?.status ?? resource.status ?? "WAITING";
   const mappedStatus = mapStatus(providerStatus);

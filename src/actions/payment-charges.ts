@@ -13,6 +13,7 @@ import { getOrganizationAsaasCredential } from "@/lib/organization-asaas";
 import { cancelPagBankCharge, refundPagBankCharge } from "@/actions/pagbank";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
+import { posConnectionGuard } from "@/lib/pos-connection-guard";
 
 const text = (data: FormData, key: string) => String(data.get(key) ?? "").trim();
 const digits = (value: string) => value.replace(/\D/g, "");
@@ -38,6 +39,8 @@ export async function connectAsaasAccount(data: FormData) {
   const apiKey = text(data, "credential");
   const environment = text(data, "environment") === "production" ? "production" : "sandbox";
   if (apiKey.length < 20) return { error: "Informe uma chave API Asaas válida." };
+  const posError = await posConnectionGuard(organization.id, "asaas", {secret:apiKey,environment});
+  if (posError) return {error:posError};
   let account: AsaasAccount;
   try { account = await organizationAsaasRequest<AsaasAccount>("/myAccount", { apiKey, environment }); }
   catch (error) { return { error: errorMessage(error, "Não foi possível validar a conta Asaas.") }; }
@@ -70,9 +73,11 @@ export async function testAsaasIntegration() {
 
 export async function disconnectAsaasAccount() {
   const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "integrations.manage");
+  const posError = await posConnectionGuard(organization.id, "asaas");
+  if (posError) return {error:posError};
   const [integration] = await db.select().from(organizationFinancialIntegrations).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "asaas"))).limit(1);
   if (!integration) return { error: "Não existe uma conta Asaas conectada." };
-  await db.update(organizationFinancialIntegrations).set({ status: "disconnected", metadata: { ...(integration.metadata ?? {}), disconnectedAt: new Date().toISOString() }, updatedAt: new Date() }).where(eq(organizationFinancialIntegrations.id, integration.id));
+  await db.update(organizationFinancialIntegrations).set({ status: "disconnected", isDefaultPos:false, metadata: { ...(integration.metadata ?? {}), disconnectedAt: new Date().toISOString() }, updatedAt: new Date() }).where(eq(organizationFinancialIntegrations.id, integration.id));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "disconnect", entityType: "financial_integration:asaas" }); revalidateCharges();
 }
 
@@ -119,6 +124,7 @@ export async function createFinancialCharge(data: FormData) {
 export async function updatePaymentCharge(data: FormData) {
   const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage");
   const charge = await chargeForOrganization(text(data, "id"), organization.id);
+  if (charge?.originType === "retail_sale") return { error:"Gerencie esta cobrança pela venda no PDV." };
   if (charge?.provider !== "asaas") return { error: "Alterações diretas estão disponíveis apenas para pagamentos Asaas nesta versão." };
   if (!charge || !["pending", "overdue"].includes(charge.status) || !charge.providerPaymentId) return { error: "Cobrança não encontrada ou não pode mais ser alterada." };
   const dueDate = text(data, "dueDate"); const description = text(data, "description"); const amountInCents = Math.round(Number(text(data, "amount").replace(/\./g, "").replace(",", ".")) * 100);
@@ -132,6 +138,7 @@ export async function updatePaymentCharge(data: FormData) {
 
 export async function cancelPaymentCharge(data: FormData) {
   const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage"); const charge = await chargeForOrganization(text(data, "id"), organization.id);
+  if (charge?.originType === "retail_sale") return { error:"Cancele o checkout pela venda no PDV para conferir os pagamentos e liberar a reserva com segurança." };
   if (!charge || !["pending", "overdue"].includes(charge.status)) return { error: "Cobrança não encontrada ou já finalizada." };
   if (charge.provider === "pagbank") { try { return await cancelPagBankCharge(charge, session.user.id); } catch (error) { return { error: errorMessage(error, "O PagBank não aceitou o cancelamento.") }; } }
   if (charge.provider !== "asaas") return { error: "Cancelamento direto indisponível para este provedor." };
@@ -142,6 +149,7 @@ export async function cancelPaymentCharge(data: FormData) {
 
 export async function refundPaymentCharge(data: FormData) {
   const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage"); const charge = await chargeForOrganization(text(data, "id"), organization.id);
+  if (charge?.originType === "retail_sale") return { error:"Solicite o estorno no painel do provedor e acompanhe a confirmação na venda do PDV." };
   if (!charge || charge.status !== "paid" || !charge.providerPaymentId) return { error: "Somente uma cobrança paga pode ser estornada." };
   if (charge.provider === "pagbank") { try { return await refundPagBankCharge(charge, session.user.id); } catch (error) { return { error: errorMessage(error, "O PagBank não aceitou o estorno.") }; } }
   if (charge.provider !== "asaas") return { error: "Estorno direto indisponível para este provedor." };

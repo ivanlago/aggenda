@@ -36,6 +36,7 @@ async function requestWithCredential<T>(
     },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     cache: "no-store",
+    signal: AbortSignal.timeout(15000),
   });
   const data = (await response.json().catch(() => null)) as unknown;
   if (!response.ok) {

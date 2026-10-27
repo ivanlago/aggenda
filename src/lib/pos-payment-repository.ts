@@ -11,19 +11,19 @@ import { checkoutInputHash, paymentCents, posPaymentStatus, verifyPosPayment, ty
 export class PosPaymentRepository {
   constructor(private readonly database: typeof db) {}
 
-  async apply(organizationId: string, chargeId: string, payment: MercadoPagoPayment) {
+  async apply(organizationId: string, chargeId: string, payment: MercadoPagoPayment, provider = "mercado_pago") {
     return this.database.transaction(async tx => {
       const [charge] = await tx.select().from(paymentCharges).where(and(eq(paymentCharges.id, chargeId), eq(paymentCharges.organizationId, organizationId),
-        eq(paymentCharges.provider, "mercado_pago"), eq(paymentCharges.originType, "retail_sale"))).for("update");
+        eq(paymentCharges.provider, provider), eq(paymentCharges.originType, "retail_sale"))).for("update");
       if (!charge) throw new Error("Cobrança do PDV não encontrada.");
       verifyPosPayment(payment, { chargeId, collectorId: String(charge.metadata?.collectorId ?? ""), environment: String(charge.metadata?.environment ?? ""), amount: charge.amountInCents });
       const [sale] = await tx.select().from(retailSales).where(and(eq(retailSales.id, charge.originId), eq(retailSales.organizationId, organizationId))).for("update");
-      if (!sale || sale.paymentProvider !== "mercado_pago" || sale.totalInCents !== charge.amountInCents) throw new Error("Venda divergente da cobrança.");
+      if (!sale || sale.paymentProvider !== provider || sale.totalInCents !== charge.amountInCents) throw new Error("Venda divergente da cobrança.");
       const refund = paymentCents(payment.transaction_amount_refunded ?? 0);
       if (refund === null || refund > charge.amountInCents) throw new Error("Valor de estorno inválido.");
-      const eventId = `pos-mp:${payment.id}:${checkoutInputHash({ status: payment.status, refund, at: payment.date_last_updated ?? null })}`;
+      const eventId = `pos-${provider}:${payment.id}:${checkoutInputHash({ status: payment.status, refund, at: payment.date_last_updated ?? null })}`;
       const [event] = await tx.insert(paymentChargeEvents).values({ organizationId, chargeId, providerEventId: eventId,
-        eventType: `POS_MERCADO_PAGO_${payment.status.toUpperCase()}`, previousStatus: charge.status, status: posPaymentStatus(payment),
+        eventType: `POS_${provider.toUpperCase()}_${payment.status.toUpperCase()}`, previousStatus: charge.status, status: posPaymentStatus(payment),
         payload: { paymentId: String(payment.id), providerStatus: payment.status, refundedInCents: refund } }).onConflictDoNothing().returning({ id: paymentChargeEvents.id });
       if (!event) return { duplicate: true, status: sale.status };
       const incomingAt = payment.date_last_updated ? Date.parse(payment.date_last_updated) : NaN;
@@ -36,7 +36,7 @@ export class PosPaymentRepository {
       const approvedAt = payment.date_approved ? new Date(payment.date_approved) : now;
       if (!Number.isFinite(approvedAt.getTime())) throw new Error("Data do pagamento inválida.");
       const [org] = await tx.select({ timezone: organizations.timezone }).from(organizations).where(eq(organizations.id, organizationId));
-      const method = payment.payment_type_id === "credit_card" ? "credit_card" : payment.payment_type_id === "debit_card" ? "debit_card" : payment.payment_method_id === "pix" ? "pix" : payment.payment_type_id === "ticket" ? "boleto" : "mercado_pago";
+      const method = payment.payment_type_id === "credit_card" ? "credit_card" : payment.payment_type_id === "debit_card" ? "debit_card" : payment.payment_method_id === "pix" ? "pix" : payment.payment_type_id === "ticket" ? "boleto" : provider;
       const settledPaymentId = charge.metadata?.paidPaymentId ?? charge.providerPaymentId;
       const anotherPayment = settledPaymentId && String(settledPaymentId) !== String(payment.id);
       const needsReview = sale.status === "payment_review" || status === "payment_review" || status === "partially_refunded" || Boolean(anotherPayment) || (status === "paid" && (sale.status === "cancelled" || sale.stockRestoredAt));
@@ -47,7 +47,7 @@ export class PosPaymentRepository {
       await tx.update(paymentCharges).set({ status: needsReview ? "payment_review" : status, providerPaymentId: anotherPayment ? charge.providerPaymentId : String(payment.id),
         paidAt: charge.paidAt ?? (status === "paid" ? approvedAt : null), refundedAt: status === "refunded" ? now : charge.refundedAt,
         paymentMethod: method, metadata: { ...(charge.metadata ?? {}), summary, providerUpdatedAt: payment.date_last_updated ?? null,
-          ...(status === "paid" && !anotherPayment ? { paidPaymentId: String(payment.id) } : {}), ...(needsReview ? { attention: anotherPayment ? "Pagamento adicional para a mesma venda; conferir e estornar o excedente no Mercado Pago." : "Pagamento exige conferência financeira. Não libere itens automaticamente." } : {}) }, updatedAt: now }).where(eq(paymentCharges.id, charge.id));
+          ...(status === "paid" && !anotherPayment ? { paidPaymentId: String(payment.id) } : {}), ...(needsReview ? { attention: anotherPayment ? "Pagamento adicional para a mesma venda; conferir e estornar o excedente no provedor." : "Pagamento exige conferência financeira. Não libere itens automaticamente." } : {}) }, updatedAt: now }).where(eq(paymentCharges.id, charge.id));
       await tx.update(retailSales).set({ status: saleStatus, paymentMethod: method, ...(saleStatus === "completed" ? { soldAt: approvedAt } : {}) }).where(eq(retailSales.id, sale.id));
       await tx.update(retailSalePayments).set({ status: saleStatus === "completed" ? "received" : saleStatus, method }).where(and(eq(retailSalePayments.organizationId, organizationId), eq(retailSalePayments.saleId, sale.id)));
       const ids = [...new Set([sale.financialEntryId, sale.appointmentFinancialEntryId].filter((id): id is string => Boolean(id)))];
@@ -61,7 +61,7 @@ export class PosPaymentRepository {
           await tx.update(clientPackages).set({ status: "active", purchasedAt: approvedAt, expiresAt: duration === null ? null : new Date(approvedAt.getTime() + duration), updatedAt: now }).where(eq(clientPackages.id, assigned.id));
         } else if (saleStatus !== "completed" && assigned.status !== "cancelled") await tx.update(clientPackages).set({ status: "suspended", updatedAt: now }).where(eq(clientPackages.id, assigned.id));
       }
-      if (saleStatus === "completed") await tx.update(inventoryMovements).set({ type: "sale", notes: `Venda ${sale.id.slice(0,8)} · Mercado Pago confirmado` }).where(and(eq(inventoryMovements.organizationId, organizationId), eq(inventoryMovements.retailSaleId, sale.id), eq(inventoryMovements.type, "sale_reservation")));
+      if (saleStatus === "completed") await tx.update(inventoryMovements).set({ type: "sale", notes: `Venda ${sale.id.slice(0,8)} · pagamento confirmado (${provider})` }).where(and(eq(inventoryMovements.organizationId, organizationId), eq(inventoryMovements.retailSaleId, sale.id), eq(inventoryMovements.type, "sale_reservation")));
       await tx.insert(auditLogs).values({ organizationId, action: `pos_payment:${saleStatus}`, entityType: "retail_sale", entityId: sale.id, details: { chargeId, paymentId: String(payment.id), refundedInCents: refund } });
       return { duplicate: false, status: saleStatus };
     });
@@ -69,9 +69,9 @@ export class PosPaymentRepository {
 
   /** Call only after disabling the preference and checking/cancelling all pending
    * provider payments. Paid refunds never imply a physical inventory return. */
-  async cancelUnpaid(organizationId: string, saleId: string, userId: string) {
+  async cancelUnpaid(organizationId: string, saleId: string, userId: string, provider = "mercado_pago") {
     return this.database.transaction(async tx => {
-      const [charge] = await tx.select().from(paymentCharges).where(and(eq(paymentCharges.organizationId, organizationId), eq(paymentCharges.originId, saleId), eq(paymentCharges.originType, "retail_sale"), eq(paymentCharges.provider, "mercado_pago"))).for("update");
+      const [charge] = await tx.select().from(paymentCharges).where(and(eq(paymentCharges.organizationId, organizationId), eq(paymentCharges.originId, saleId), eq(paymentCharges.originType, "retail_sale"), eq(paymentCharges.provider, provider))).for("update");
       const [sale] = await tx.select().from(retailSales).where(and(eq(retailSales.organizationId, organizationId), eq(retailSales.id, saleId))).for("update");
       if (!sale || !charge) throw new Error("Venda não encontrada.");
       if (sale.status === "cancelled") return;

@@ -10,6 +10,7 @@ import { encryptFinancialCredential } from "@/lib/financial-secret";
 import { getPagBankCredential, pagBankRequest } from "@/lib/pagbank";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
+import { posConnectionGuard } from "@/lib/pos-connection-guard";
 
 const text = (data: FormData, key: string) => String(data.get(key) ?? "").trim();
 const digits = (value: string) => value.replace(/\D/g, "");
@@ -31,6 +32,8 @@ export async function connectPagBankAccount(data: FormData) {
   const token = text(data, "token");
   const environment = text(data, "environment") === "production" ? "production" : "sandbox";
   if (token.length < 30) return { error: "Informe um token PagBank válido." };
+  const posError = await posConnectionGuard(organization.id, "pagbank", {secret:token,environment});
+  if (posError) return {error:posError};
   try { await pagBankRequest<PublicKey>("/public-keys/card", { token, environment }); }
   catch (error) { return { error: message(error, "Não foi possível validar o token PagBank.") }; }
   const webhookStatus = appUrl().startsWith("https://") ? "configured" : "pending_https";
@@ -56,7 +59,9 @@ export async function testPagBankIntegration() {
 export async function disconnectPagBankAccount() {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "integrations.manage");
-  await db.update(organizationFinancialIntegrations).set({ status: "disconnected", updatedAt: new Date() }).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "pagbank")));
+  const posError = await posConnectionGuard(organization.id, "pagbank");
+  if (posError) return {error:posError};
+  await db.update(organizationFinancialIntegrations).set({ status: "disconnected", isDefaultPos:false, updatedAt: new Date() }).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "pagbank")));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "disconnect", entityType: "financial_integration:pagbank" });
   refresh();
 }

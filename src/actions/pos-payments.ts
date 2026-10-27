@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { retailSales } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
 import { hasOrganizationPermission, assertOrganizationPermission } from "@/lib/permissions";
-import { cancelPosCheckout, refreshPosPayment } from "@/lib/pos-mercado-pago";
+import { cancelPosCheckout, refreshPosPayment } from "@/lib/pos-checkout";
 
 async function contextForSale(data: FormData) {
   const context = await requireOrganization();
@@ -22,7 +22,7 @@ function refresh(saleId: string) {
 export async function consultPosPayment(data: FormData) {
   const { organization, saleId } = await contextForSale(data);
   try { await refreshPosPayment(organization.id, saleId); }
-  catch { return { error: "Não foi possível consultar o Mercado Pago. A venda não foi marcada como paga. Confira a conexão e tente novamente." }; }
+  catch { return { error: "Não foi possível consultar o provedor de pagamento. A venda não foi marcada como paga. Confira a conexão e tente novamente." }; }
   refresh(saleId);
 }
 export async function cancelPendingPosPayment(data: FormData) {
@@ -31,8 +31,8 @@ export async function cancelPendingPosPayment(data: FormData) {
   try { await cancelPosCheckout(organization.id, saleId, session.user.id); }
   catch (error) {
     const message = error instanceof Error ? error.message : "";
-    const safe = ["A criação do checkout está inconclusiva.", "O Mercado Pago já processou", "O Mercado Pago ainda não confirmou", "Confira o pagamento;"];
-    return { error: safe.some(prefix => message.startsWith(prefix)) ? message : "Não foi possível confirmar o cancelamento no Mercado Pago. A reserva foi mantida; consulte a situação antes de tentar novamente." };
+    const safe = ["A criação do checkout está inconclusiva.", "O provedor de pagamento já processou", "O provedor de pagamento ainda não confirmou", "Confira o pagamento;"];
+    return { error: safe.some(prefix => message.startsWith(prefix)) ? message : "Não foi possível confirmar o cancelamento no provedor de pagamento. A reserva foi mantida; consulte a situação antes de tentar novamente." };
   }
   refresh(saleId);
 }

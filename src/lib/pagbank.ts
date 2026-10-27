@@ -20,6 +20,7 @@ export async function pagBankRequest<T>(path: string, credential: PagBankCredent
     },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
     cache: "no-store",
+    signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) {
     const detail = await response.text();

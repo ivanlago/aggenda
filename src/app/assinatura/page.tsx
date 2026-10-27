@@ -12,7 +12,7 @@ import { cancelSubscription } from "@/actions/billing";
 import { CommercialCheckout } from "@/components/commercial-checkout";
 import { SubscriptionRefresh } from "./subscription-refresh";
 
-export const metadata = { title: "Planos, teste e cobrança" };
+export const metadata = { title: "Plano e cobrança do Aggenda" };
 export default async function SubscriptionPage({ searchParams }: { searchParams: Promise<{ checkout?: string; message?: string; piloto?: string; product?: string; cycle?: string }> }) {
   const { organization, session } = await requireOrganizationMembership();
   assertOrganizationPermission(organization.role, "billing.manage");
@@ -33,8 +33,8 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
   return <main className="mx-auto min-h-screen max-w-5xl px-6 py-12">
     <SubscriptionRefresh enabled={query.checkout === "sucesso" && !paid} confirmed={query.checkout === "sucesso" && paid} />
     <Link href="/dashboard" className="font-extrabold text-brand">← Aggenda</Link>
-    <h1 className="mt-8 text-4xl font-extrabold">Planos, teste e cobrança</h1>
-    <p className="mt-3 text-muted">Sua contratação pertence a {organization.name}.</p>
+    <h1 className="mt-8 text-4xl font-extrabold">Plano e cobrança do Aggenda</h1>
+    <p className="mt-3 text-muted">Gerencie a assinatura do Aggenda para {organization.name}: plano, profissionais, adicionais e pagamentos.</p>
     {platform && ["super_admin", "billing"].includes(platform.role) && <Link href="/plataforma/convites-piloto" className="mt-4 inline-block font-bold text-brand underline">Gerenciar convites do piloto anual</Link>}
     {query.checkout === "sucesso" && <p role="status" className="mt-6 rounded-2xl bg-brand/5 p-5 font-bold">{paid ? "Pagamento confirmado. Seu Aggenda está liberado!" : "Aguardando confirmação do pagamento pelo Asaas. A página será atualizada automaticamente."}</p>}
     {query.checkout === "erro" && <p role="alert" className="mt-6 rounded-2xl bg-red-50 p-5 text-red-800">{query.message ?? "Não foi possível preparar seu pagamento."}</p>}

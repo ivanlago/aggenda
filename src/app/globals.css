@@ -122,7 +122,7 @@ a[href]:focus-visible {
   }
 
   .content-grid {
-    @apply grid items-start gap-5 xl:grid-cols-[360px_1fr];
+    @apply grid items-start gap-5 xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)];
   }
 
   .form-stack {
@@ -201,4 +201,22 @@ a[href]:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .internal-app .primary-button { transition: none; }
   .internal-app .primary-button:hover { transform: none; }
+}
+
+/* Size dashboard columns against the usable workspace, including browser scaling. */
+.dashboard-layout { container-type: inline-size; container-name: dashboard; }
+.dashboard-main { container-type: inline-size; container-name: dashboard-main; }
+.dashboard-columns { grid-template-columns: minmax(0, 1fr); }
+.dashboard-metrics, .dashboard-financial-cards { grid-template-columns: minmax(0, 1fr); }
+@container dashboard (min-width: 64rem) {
+  .dashboard-columns { grid-template-columns: minmax(0, 1fr) 19rem; }
+}
+@container dashboard-main (min-width: 24rem) {
+  .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container dashboard-main (min-width: 40rem) {
+  .dashboard-financial-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container dashboard-main (min-width: 48rem) {
+  .dashboard-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }

@@ -36,7 +36,7 @@ export function RetailQuoteForm({ catalog, clients, attendanceId, initialClientI
       return existing ? current.map((item) => item.variantId === variantId ? { ...item, quantity: Math.min(limit, item.quantity + 1) } : item) : current.length < 50 ? [...current, { variantId, quantity: 1, discountInCents: 0 }] : current;
     });
   }
-  return <ActionForm action={saveRetailQuote} successMessage="Orçamento salvo. Disponível em Venda e orçamento." onSuccess={() => { setItems([]); setId(""); setDiscountValue(""); }} className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr] xl:items-start">
+  return <ActionForm action={saveRetailQuote} successMessage="Orçamento salvo. Disponível em Venda e orçamento." onSuccess={() => { setItems([]); setId(""); setDiscountValue(""); }} className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)] xl:items-start">
     <input type="hidden" name="id" value={id} />
     <input type="hidden" name="items" value={discountError ? "[]" : JSON.stringify(discountedItems)} />
     {attendanceId && <input type="hidden" name="attendanceId" value={attendanceId} />}

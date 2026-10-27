@@ -40,7 +40,7 @@ export function DashboardActivity({ monthAppointments, recentAppointments, today
   const hasMovement = activity.daily.some(day => day.completed + day.scheduled + day.lost > 0);
   return <section aria-labelledby="dashboard-activity-title">
     <h2 id="dashboard-activity-title" className="mb-3 text-lg font-extrabold">Movimento da clínica</h2>
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{cards.map(card => <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" key={card.label}><p className="text-xs font-bold text-muted">{card.label}</p><p className="mt-3 text-3xl font-extrabold text-brand">{card.value}</p><p className="mt-2 text-xs text-muted">{card.hint}</p></article>)}</div>
+    <div className="dashboard-metrics grid gap-3">{cards.map(card => <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" key={card.label}><p className="text-xs font-bold text-muted">{card.label}</p><p className="mt-3 text-3xl font-extrabold text-brand">{card.value}</p><p className="mt-2 text-xs text-muted">{card.hint}</p></article>)}</div>
     <div className="panel mt-4">
       <h3 className="font-extrabold">Agenda nos últimos 7 dias</h3>
       <p className="mt-1 text-xs text-muted">Quantidade de agendamentos por dia, conforme o status atual.</p>

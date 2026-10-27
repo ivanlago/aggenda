@@ -69,7 +69,7 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
 
 
   return (
-    <ActionForm action={async data => { if (onlinePayment) { checkoutKeyRef.current ??= crypto.randomUUID(); data.set("checkoutKey", checkoutKeyRef.current); } return registerRetailSale(data); }} successMessage="Venda registrada com sucesso." onSuccess={() => { checkoutKeyRef.current = null; setCart([]); setDiscountValue(""); setPayments([{ id: Date.now(), method: "cash", amount: "" }]); }} className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr] xl:items-start">
+    <ActionForm action={async data => { if (onlinePayment) { checkoutKeyRef.current ??= crypto.randomUUID(); data.set("checkoutKey", checkoutKeyRef.current); } return registerRetailSale(data); }} successMessage="Venda registrada com sucesso." onSuccess={() => { checkoutKeyRef.current = null; setCart([]); setDiscountValue(""); setPayments([{ id: Date.now(), method: "cash", amount: "" }]); }} className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)] xl:items-start">
       {attendanceId && <input type="hidden" name="attendanceId" value={attendanceId} />}
       <input type="hidden" name="pendingAttendanceItemIds" value={JSON.stringify(pendingItemsInCart(pendingAttendanceItems, cart))} />
       <input type="hidden" name="checkoutProvider" value={checkoutProvider} />

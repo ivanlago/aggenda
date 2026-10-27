@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { PrintReceiptButton } from "@/components/print-receipt-button";
 import { db } from "@/db";
@@ -18,6 +18,7 @@ export default async function RetailReceiptPage({ params }: { params: Promise<{ 
     taxId: organizations.taxId, address: organizations.publicAddress, phone: organizations.phone,
   }).from(retailSales).innerJoin(organizations, eq(organizations.id, retailSales.organizationId)).leftJoin(clients, eq(clients.id, retailSales.clientId)).where(eq(retailSales.receiptToken, token)).limit(1);
   if (!sale) notFound();
+  if (["pending_payment", "payment_review"].includes(sale.status)) redirect(`/pagamento/venda/${token}`);
   const [items, payments] = await Promise.all([db.select().from(retailSaleItems).where(eq(retailSaleItems.saleId, sale.id)), db.select().from(retailSalePayments).where(eq(retailSalePayments.saleId, sale.id))]);
 
   return <main className="mx-auto min-h-screen max-w-[80mm] bg-white p-4 font-mono text-[12px] text-black">

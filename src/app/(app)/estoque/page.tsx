@@ -99,7 +99,7 @@ export default async function InventoryPage() {
   const movementLabels: Record<string, string> = {
     clinical_application: "Aplicação clínica por lote", procedure_consumption: "Consumo do procedimento",
     expired: "Produto vencido", recall: "Recall / recolhimento", entry: "Entrada", initial: "Estoque inicial", exit: "Saída / ajuste", consumption: "Transferido p/ consumo", usage: "Retirada p/ uso",
-    sale: "Venda", sale_cancellation: "Cancelamento de venda", sale_refund: "Estorno de venda",
+    sale: "Venda", sale_cancellation: "Cancelamento de venda", sale_refund: "Estorno de venda", sale_reservation: "Reserva para pagamento", sale_reservation_release: "Liberação de reserva",
   };
   const movementRows: StockMovementRow[] = movements.map((item) => ({
     id: item.id, productName: item.productName,

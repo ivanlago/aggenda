@@ -1,6 +1,6 @@
 "use server";
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { createFinancialCharge } from "@/actions/payment-charges";
@@ -25,6 +25,11 @@ export async function connectMercadoPagoAccount(data: FormData) {
   const accessToken = text(data, "accessToken"); const webhookSecret = text(data, "webhookSecret"); const environment = text(data, "environment") === "production" ? "production" : "sandbox";
   if (accessToken.length < 30) return { error: "Informe um Access Token válido do Mercado Pago." };
   let user: MpUser; try { user = await mercadoPagoRequest<MpUser>("/users/me", accessToken); } catch (error) { return { error: error instanceof Error ? error.message : "Não foi possível validar a conta Mercado Pago." }; }
+  const [currentConnection] = await db.select().from(organizationFinancialIntegrations).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "mercado_pago"))).limit(1);
+  if (currentConnection && (String(currentConnection.metadata?.accountId) !== String(user.id) || currentConnection.environment !== environment)) {
+    const [open] = await db.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.organizationId, organization.id), eq(paymentCharges.provider, "mercado_pago"), eq(paymentCharges.originType, "retail_sale"), inArray(paymentCharges.status, ["pending", "paid", "payment_review", "partially_refunded"]))).limit(1);
+    if (open) return { error: "Há cobranças do PDV vinculadas à conta atual. Mantenha a conta e o ambiente originais para não interromper a confirmação e os estornos." };
+  }
   const metadata = { accountId: user.id, accountName: user.nickname ?? user.email ?? `Conta ${user.id}`, siteId: user.site_id ?? "MLB", webhookStatus: webhookSecret ? "configured" : "pending", testedAt: new Date().toISOString(), billingOwner: "client" };
   const encryptedCredential = encryptFinancialCredential(JSON.stringify({ accessToken, webhookSecret: webhookSecret || undefined }));
   await db.insert(organizationFinancialIntegrations).values({ organizationId: organization.id, provider: "mercado_pago", environment, encryptedCredential, status: "active", metadata }).onConflictDoUpdate({ target: [organizationFinancialIntegrations.organizationId, organizationFinancialIntegrations.provider], set: { environment, encryptedCredential, status: "active", metadata, updatedAt: new Date() } });
@@ -38,7 +43,9 @@ export async function testMercadoPagoIntegration() {
 
 export async function disconnectMercadoPagoAccount() {
   const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "integrations.manage");
-  await db.update(organizationFinancialIntegrations).set({ status: "disconnected", updatedAt: new Date() }).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "mercado_pago")));
+  const [pending] = await db.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.organizationId, organization.id), eq(paymentCharges.provider, "mercado_pago"), eq(paymentCharges.originType, "retail_sale"), eq(paymentCharges.status, "pending"))).limit(1);
+  if (pending) return { error: "Conclua ou cancele os checkouts pendentes do PDV antes de desconectar o Mercado Pago." };
+  await db.update(organizationFinancialIntegrations).set({ status: "disconnected", isDefaultPos: false, updatedAt: new Date() }).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "mercado_pago")));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "disconnect", entityType: "financial_integration:mercado_pago" }); refresh();
 }
 

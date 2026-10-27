@@ -1396,6 +1396,10 @@ export const retailSales = pgTable("retail_sales", {
   commissionProfessionalId: uuid("commission_professional_id").references(() => professionals.id, { onDelete: "restrict" }),
   commissionUserId: text("commission_user_id").references(() => users.id, { onDelete: "restrict" }),
   status: text("status").default("completed").notNull(),
+  paymentProvider: text("payment_provider"),
+  checkoutKey: uuid("checkout_key"),
+  checkoutInputHash: text("checkout_input_hash"),
+  stockRestoredAt: timestamp("stock_restored_at"),
   paymentMethod: text("payment_method"),
   receiptToken: uuid("receipt_token").defaultRandom().notNull(),
   receiptEmail: text("receipt_email"),
@@ -1410,7 +1414,7 @@ export const retailSales = pgTable("retail_sales", {
   soldAt: timestamp("sold_at").defaultNow().notNull(),
   createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => [uniqueIndex("retail_sales_receipt_token_unique").on(table.receiptToken), index("retail_sales_org_sold_idx").on(table.organizationId, table.soldAt)]);
+}, (table) => [uniqueIndex("retail_sales_receipt_token_unique").on(table.receiptToken), uniqueIndex("retail_sales_checkout_unique").on(table.organizationId, table.checkoutKey), index("retail_sales_org_sold_idx").on(table.organizationId, table.soldAt)]);
 
 export const retailQuotes = pgTable("retail_quotes", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -1918,8 +1922,9 @@ export const bankImportTransactions = pgTable("bank_import_transactions", {
 }, (table) => [uniqueIndex("bank_import_org_external_unique").on(table.organizationId, table.accountId, table.externalId), index("bank_import_status_idx").on(table.organizationId, table.status)]);
 
 export const organizationFinancialIntegrations = pgTable("organization_financial_integrations", {
+  isDefaultPos: boolean("is_default_pos").default(false).notNull(),
   id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), provider: text("provider").notNull(), environment: text("environment").default("sandbox").notNull(), encryptedCredential: text("encrypted_credential").notNull(), status: text("status").default("configured").notNull(), metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => [uniqueIndex("organization_financial_integrations_unique").on(table.organizationId, table.provider)]);
+}, (table) => [uniqueIndex("organization_financial_integrations_unique").on(table.organizationId, table.provider), uniqueIndex("financial_integrations_pos_default_unique").on(table.organizationId).where(sql`${table.isDefaultPos} = true`)]);
 
 export const paymentCharges = pgTable("payment_charges", {
   id: uuid("id").defaultRandom().primaryKey(),

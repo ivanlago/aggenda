@@ -1,3 +1,4 @@
+import { PaginatedCollection } from "@/components/paginated-collection";
 import { and, countDistinct, desc, eq } from "drizzle-orm";
 import Link from "next/link";
 
@@ -43,17 +44,17 @@ export default async function CompaniesAdminPage() {
     <div>
       <h1 className="text-3xl font-extrabold">Empresas</h1>
       <p className="mt-2 text-muted">Organizações, plano e volume cadastrado na plataforma.</p>
-      <div className="panel mt-6 overflow-x-auto">
+      <div className="panel mt-6 overflow-x-auto max-h-[40rem] overflow-y-auto">
         <table className="w-full text-left text-sm">
           <thead><tr className="border-b text-muted"><th className="py-3">Empresa</th><th>Plano</th><th>Membros</th><th>Clientes</th><th>Serviços</th><th>NFS-e</th><th>Status</th></tr></thead>
-          <tbody>
+          <PaginatedCollection as="tbody" pageSize={20} label="Registros">
             {items.map((item) => (
               <tr className="border-b last:border-0" key={item.id}>
                 <td className="py-4"><Link className="font-bold text-brand" href={`/admin/empresas/${item.id}`}>{item.name}</Link><p className="text-xs text-muted">{item.slug}</p></td>
                 <td>{item.plan ?? "sem plano"}</td><td>{item.members}</td><td>{item.clients}</td><td>{item.services}</td><td className={item.nfseStatus === "requested" ? "font-bold text-amber-700" : ""}>{item.nfseStatus === "requested" ? "solicitada" : item.nfseStatus === "configured" || item.nfseStatus === "active" ? "ativa" : "—"}</td><td>{item.subscriptionStatus ?? "não configurado"}</td>
               </tr>
             ))}
-          </tbody>
+          </PaginatedCollection>
         </table>
       </div>
     </div>

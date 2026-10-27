@@ -1,3 +1,6 @@
+import { count } from "drizzle-orm";
+import { ListPagination } from "@/components/list-pagination";
+import { DEFAULT_PAGE_SIZE, parseListPage } from "@/lib/list-pagination";
 import { and, eq, ilike, inArray } from "drizzle-orm";
 import { Search, Trash2, X } from "lucide-react";
 import Link from "next/link";
@@ -19,7 +22,7 @@ export const metadata = { title: "Clientes" };
 export default async function ClientsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ busca?: string }>;
+  searchParams: Promise<{ busca?: string; pagina?: string }>;
 }) {
   const { session, organization } = await requireOrganization();
   const professionalScopeId = organization.role === "professional"
@@ -28,15 +31,15 @@ export default async function ClientsPage({
   const canManage = hasOrganizationPermission(organization.role, "clients.manage");
   const query = await searchParams;
   const search = String(query.busca ?? "").trim().slice(0, 100);
-  const items = await db.select().from(clients)
-    .where(
+  const condition =
       and(
         eq(clients.organizationId, organization.id),
         professionalScopeId ? inArray(clients.id, db.select({ id: appointments.clientId }).from(appointments).where(and(eq(appointments.organizationId, organization.id), eq(appointments.professionalId, professionalScopeId)))) : undefined,
         search ? ilike(clients.name, `%${search}%`) : undefined
-      )
-    )
-    .orderBy(clients.name);
+      );
+  const [{ total }] = await db.select({ total: count() }).from(clients).where(condition);
+  const page = Math.min(parseListPage(query.pagina), Math.max(1, Math.ceil(total / DEFAULT_PAGE_SIZE)));
+  const items = await db.select().from(clients).where(condition).orderBy(clients.name, clients.id).limit(DEFAULT_PAGE_SIZE).offset((page - 1) * DEFAULT_PAGE_SIZE);
 
   return (
     <div className="page-wrap">
@@ -73,8 +76,8 @@ export default async function ClientsPage({
         <section className="panel">
           <div className="flex flex-col gap-4">
             <h2 className="text-lg font-extrabold">
-              {items.length}{" "}
-              {(items.length === 1
+              {total}{" "}
+              {(total === 1
                 ? organization.clientLabel
                 : organization.clientLabelPlural
               ).toLowerCase()}
@@ -133,6 +136,7 @@ export default async function ClientsPage({
               </p>
             )}
           </div>
+          <ListPagination path="/clientes" query={{ busca: search }} page={page} total={total} />
         </section>
       </div>
     </div>

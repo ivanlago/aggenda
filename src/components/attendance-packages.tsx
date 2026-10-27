@@ -1,3 +1,4 @@
+import { PaginatedCollection } from "@/components/paginated-collection";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { attendancePackageItems, packageUsages, servicePackages, clientPackages, clientPackageBalances, services } from "@/db/schema";
@@ -19,7 +20,7 @@ export async function AttendancePackages({ appointmentId }: { appointmentId: str
   const canSelect = ["scheduled", "confirmed"].includes(appointment.status) && hasOrganizationPermission(organization.role, "appointments.manage");
   return <section className="panel mt-5"><h2 className="mb-3 text-lg font-extrabold">Pacotes disponíveis</h2>
     <p className="text-sm text-muted">Selecione individualmente os procedimentos a utilizar. As sessões ficam reservadas e são consumidas ao concluir o atendimento.</p>
-    <div className="mt-3 divide-y">
+    <PaginatedCollection label="Registros" className="mt-3 divide-y">
       {balances.map((balance) => {
         const main = balance.serviceId === appointment.serviceId;
         const alreadySelected = selected.some((item) => item.balanceId === balance.id) || (main && Boolean(usage));
@@ -33,7 +34,7 @@ export async function AttendancePackages({ appointmentId }: { appointmentId: str
           {alreadySelected && <span className="text-sm font-bold text-brand">Já vinculado ao atendimento</span>}
         </div>;
       })}
-    </div>
+    </PaginatedCollection>
     {usage && <p className="mt-3 text-sm font-bold">{usage.name} · Procedimento principal: {usage.status === "consumed" ? "utilizado" : usage.status === "reserved" ? "reservado" : "reserva liberada"}.</p>}
     {selected.map((item) => <div key={item.id} className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3"><p className="text-sm"><strong>{item.name} · {item.quantity} sessão(ões)</strong><br />{item.packageName} · {item.status === "consumed" ? "Utilizado" : item.status === "reserved" ? "Reservado" : "Reserva liberada"}</p>{canSelect && item.status === "reserved" && <ActionForm action={removeAttendancePackageItem} successMessage="Procedimento removido e saldo liberado."><input type="hidden" name="appointmentId" value={appointmentId} /><input type="hidden" name="itemId" value={item.id} /><button className="secondary-button">Remover</button></ActionForm>}</div>)}
     {!balances.length && !usage && !selected.length && <p className="mt-3 text-sm text-muted">Nenhum pacote disponível para este cliente.</p>}

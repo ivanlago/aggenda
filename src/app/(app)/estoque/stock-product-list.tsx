@@ -1,5 +1,8 @@
 "use client";
 
+import { PaginatedCollection } from "@/components/paginated-collection";
+
+
 import { Pencil, Search, X } from "lucide-react";
 import { useDeferredValue, useMemo, useState } from "react";
 
@@ -323,7 +326,7 @@ export function StockProductList({
           ))}
         </select>
       </div>
-      <div className="mt-4 overflow-x-auto">
+      <div className="mt-4 overflow-x-auto max-h-[40rem] overflow-y-auto">
         <table className="w-full min-w-[1100px] text-left text-sm">
           <thead className="border-b text-xs uppercase text-muted">
             <tr>
@@ -342,7 +345,7 @@ export function StockProductList({
               )}
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <PaginatedCollection as="tbody" pageSize={20} label="Registros" className="divide-y">
             {filtered.map((item) => (
               <tr key={item.id}>
                 <td className="p-3">
@@ -373,7 +376,7 @@ export function StockProductList({
                 )}
               </tr>
             ))}
-          </tbody>
+          </PaginatedCollection>
         </table>
         {!filtered.length && (
           <p className="py-8 text-center text-sm text-muted">

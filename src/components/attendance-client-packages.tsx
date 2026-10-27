@@ -1,3 +1,4 @@
+import { PaginatedCollection } from "@/components/paginated-collection";
 import { requireAttendance } from "@/lib/attendance";
 import { getPosPackageBalances, type PosPackageBalance } from "@/lib/pos-package-balances";
 
@@ -14,7 +15,7 @@ export async function AttendanceClientPackages({ appointmentId }: { appointmentI
 
   return <details className="panel mt-5">
     <summary className="cursor-pointer font-extrabold">Pacotes do cliente</summary>
-    <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <PaginatedCollection label="Registros" className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {[...packages].map(([id, items]) => {
         const pack = items[0];
         const expiration = pack.expiresAt ? new Date(pack.expiresAt).toLocaleDateString("pt-BR", { timeZone: organization.timezone }) : null;
@@ -26,7 +27,7 @@ export async function AttendanceClientPackages({ appointmentId }: { appointmentI
           <p className="mt-auto text-sm font-bold text-muted">{expiration ? `Vencimento: ${expiration}` : "Sem vencimento"} · Ativo</p>
         </article>;
       })}
-    </div>
+    </PaginatedCollection>
     {!packages.size && <p className="mt-3 text-sm text-muted">Nenhum pacote disponível para este cliente.</p>}
   </details>;
 }

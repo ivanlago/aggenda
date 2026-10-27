@@ -1,3 +1,4 @@
+import { PaginatedCollection } from "@/components/paginated-collection";
 import { PortalDependents } from "@/components/portal-dependents";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { consumedPackageQuantity } from "@/lib/package-remaining";
@@ -298,7 +299,7 @@ export default async function ClientHistoryPage({
       </CollapsiblePanel>}
       {canReadDocuments && <CollapsiblePanel title={`Documentos emitidos (${documents.length})`} id="documentos-emitidos">
         <p className="text-sm text-muted">Consulte os documentos do cliente ou use uma receita anterior como base para uma nova emissão.</p>
-        <div className="mt-4 divide-y">
+        <PaginatedCollection label="Registros" className="mt-4 divide-y">
           {documents.map((document) => <article key={document.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
             <div className="min-w-0">
               <p className="break-words font-extrabold">{document.title}</p>
@@ -311,13 +312,13 @@ export default async function ClientHistoryPage({
             </div>
           </article>)}
           {!documents.length && <p className="empty-state">Nenhum documento emitido para este cliente.</p>}
-        </div>
+        </PaginatedCollection>
       </CollapsiblePanel>}
       <CollapsiblePanel title="Pacotes e saldos">
         <div className="flex justify-end">
           {canManage && <Link href="/pacotes" className="text-sm font-bold text-brand">Gerenciar pacotes</Link>}
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <PaginatedCollection label="Registros" className="mt-4 grid gap-3 md:grid-cols-2">
           {[...packages.entries()].map(([packageId, item]) => (
             <article key={packageId} className="rounded-2xl border p-4">
               <p className="font-extrabold">{item.name}</p>
@@ -328,7 +329,7 @@ export default async function ClientHistoryPage({
             </article>
           ))}
           {!packages.size && <p className="empty-state md:col-span-2">Este {organization.clientLabel.toLowerCase()} ainda não possui pacotes.</p>}
-        </div>
+        </PaginatedCollection>
       </CollapsiblePanel>
       {canReadClinical && <CollapsiblePanel title={recordLabel}>
         <p className="text-sm text-muted">Registre evoluções e informações relevantes com autoria e data.</p>
@@ -347,7 +348,7 @@ export default async function ClientHistoryPage({
           <textarea className="field min-h-28" name="content" required placeholder={isHealth ? "Evolução, observações clínicas e conduta" : "Informações relevantes do atendimento"} />
           <button className="primary-button sm:w-fit">Adicionar ao {recordLabel.toLowerCase()}</button>
         </ActionForm>}
-        <div className="mt-6 divide-y">
+        <PaginatedCollection label="Registros" className="mt-6 divide-y">
           {visibleEntries.map((entry) => entry.electronicDocumentId ? <article key={entry.id} className="grid gap-3 py-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center">
             <p className="truncate font-extrabold">{entry.title || (entry.entryType === "prescription" ? "Receituário" : "Documento")}</p>
             <span className="text-xs font-bold text-muted md:whitespace-nowrap">{formatOrganizationDateTime(entry.occurredAt, organization.timezone)}</span>
@@ -363,7 +364,7 @@ export default async function ClientHistoryPage({
             <p className="mt-2 text-xs text-muted">Registrado por {entry.author} em {formatOrganizationDateTime(entry.createdAt, organization.timezone)}</p>
           </article>)}
           {!visibleEntries.length && <p className="empty-state">Nenhum registro adicionado.</p>}
-        </div>
+        </PaginatedCollection>
       </CollapsiblePanel>}
       <CollapsiblePanel title={`${history.length} ${organization.appointmentLabelPlural.toLowerCase()}`}>
         <div className="flex justify-end">
@@ -372,7 +373,7 @@ export default async function ClientHistoryPage({
         {client.notes && (
           <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm">{client.notes}</p>
         )}
-        <div className="mt-5 divide-y">
+        <PaginatedCollection label="Registros" className="mt-5 divide-y">
           {history.map((item) => (
             <article key={item.id} className="grid gap-2 py-4 sm:grid-cols-[150px_1fr_auto]">
               <p className="font-bold text-brand">
@@ -393,11 +394,11 @@ export default async function ClientHistoryPage({
             </article>
           ))}
           {!history.length && <p className="empty-state">Nenhum histórico registrado.</p>}
-        </div>
+        </PaginatedCollection>
       </CollapsiblePanel>
       <CollapsiblePanel title="Linha do tempo de agendamentos" className="mb-0">
         <p className="text-sm text-muted">Acompanhe criação, reagendamentos e mudanças de status em ordem cronológica.</p>
-        <div className="mt-5 divide-y">
+        <PaginatedCollection label="Registros" className="mt-5 divide-y">
           {timeline.map((event) => {
             const appointment = event.appointmentId ? appointmentById.get(event.appointmentId) : undefined;
             const details: Record<string, unknown> = event.details ?? {};
@@ -436,7 +437,7 @@ export default async function ClientHistoryPage({
             </article>;
           })}
           {!timeline.length && <p className="empty-state">Nenhum evento automático registrado.</p>}
-        </div>
+        </PaginatedCollection>
       </CollapsiblePanel>
     </div>
   );

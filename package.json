@@ -31,7 +31,8 @@
     "reference:bootstrap": "tsx scripts/reference-catalogs.ts bootstrap",
     "reference:sync": "tsx scripts/reference-catalogs.ts sync",
     "reference:import": "tsx scripts/reference-catalogs.ts import",
-    "test:references": "tsx --test tests/reference-catalogs.test.ts tests/reference-downloads.test.ts"
+    "test:references": "tsx --test tests/reference-catalogs.test.ts tests/reference-downloads.test.ts",
+    "test:lists": "tsx --test tests/list-pagination.test.ts tests/paginated-collection.test.tsx"
   },
   "dependencies": {
     "@signpdf/placeholder-pdf-lib": "^3.3.0",

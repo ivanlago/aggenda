@@ -1,5 +1,8 @@
 "use client";
 
+import { PaginatedCollection } from "@/components/paginated-collection";
+
+
 import { Search } from "lucide-react";
 import { useDeferredValue, useMemo, useState } from "react";
 
@@ -34,7 +37,7 @@ export function InventoryProductBalanceList({ products }: { products: ProductBal
           <input className="field w-full pl-9" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar produto ou SKU" />
         </label>
       </div>
-      <div className="mt-4 divide-y">
+      <PaginatedCollection label="Registros" className="mt-4 divide-y">
         {filteredProducts.map((product) => (
           <article className="flex flex-wrap items-center justify-between gap-3 py-4" key={product.id}>
             <div>
@@ -45,7 +48,7 @@ export function InventoryProductBalanceList({ products }: { products: ProductBal
           </article>
         ))}
         {filteredProducts.length === 0 && <p className="py-8 text-center text-sm text-muted">Nenhum produto encontrado.</p>}
-      </div>
+      </PaginatedCollection>
     </section>
   );
 }

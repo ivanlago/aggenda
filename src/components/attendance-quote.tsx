@@ -1,3 +1,4 @@
+import { PaginatedCollection } from "@/components/paginated-collection";
 import Link from "next/link";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -16,6 +17,6 @@ export async function AttendanceQuote({ appointmentId }: { appointmentId: string
   ]);
   return <div className="grid gap-4">
     <RetailQuoteForm catalog={[...products, ...offerings]} clients={[]} attendanceId={appointmentId} initialClientId={appointment.clientId} canDiscount={hasOrganizationPermission(organization.role, "sales.discount")} defaultValidity={organizationDate(new Date(new Date().getTime() + 30 * 86400000), organization.timezone)} />
-    {quotes.length > 0 && <div className="rounded-xl border p-4"><h3 className="font-bold">Orçamentos deste atendimento</h3>{quotes.map((quote) => <div key={quote.id} className="mt-3 flex flex-wrap items-center gap-3"><span className="text-sm">#{quote.id.slice(0, 8)} · {quote.saleId ? "Convertido em venda" : "Salvo"}</span><Link className="secondary-button" href={`/api/quotes/${quote.id}/pdf`} target="_blank">Abrir PDF</Link><Link className="secondary-button" href={`/vendas?quote=${quote.id}#orcamentos`}>Recuperar orçamento</Link></div>)}</div>}
+    {quotes.length > 0 && <PaginatedCollection label="Registros" className="rounded-xl border p-4"><h3 className="font-bold">Orçamentos deste atendimento</h3>{quotes.map((quote) => <div key={quote.id} className="mt-3 flex flex-wrap items-center gap-3"><span className="text-sm">#{quote.id.slice(0, 8)} · {quote.saleId ? "Convertido em venda" : "Salvo"}</span><Link className="secondary-button" href={`/api/quotes/${quote.id}/pdf`} target="_blank">Abrir PDF</Link><Link className="secondary-button" href={`/vendas?quote=${quote.id}#orcamentos`}>Recuperar orçamento</Link></div>)}</PaginatedCollection>}
   </div>;
 }

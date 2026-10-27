@@ -1,5 +1,8 @@
 "use client";
 
+import { PaginatedCollection } from "@/components/paginated-collection";
+
+
 import { Search } from "lucide-react";
 import { useDeferredValue, useMemo, useState } from "react";
 
@@ -75,20 +78,20 @@ export function StockMovementList({ movements }: { movements: StockMovementRow[]
       </label>
     </div>
 
-    <div className="mt-4 overflow-x-auto">
+    <div className="mt-4 overflow-x-auto max-h-[40rem] overflow-y-auto">
       <table className="w-full min-w-[900px] text-left text-sm">
         <thead className="border-b text-xs uppercase text-muted"><tr>
           <th className="p-3">Data e hora</th><th className="p-3">Produto</th><th className="p-3">Tipo</th>
           <th className="p-3 text-right">Quantidade</th><th className="p-3 text-right">Saldo</th><th className="p-3">Motivo / referência</th>
         </tr></thead>
-        <tbody className="divide-y">{filtered.map((item) => <tr key={item.id}>
+        <PaginatedCollection as="tbody" pageSize={20} label="Registros" className="divide-y">{filtered.map((item) => <tr key={item.id}>
           <td className="whitespace-nowrap p-3">{item.occurredAtLabel}</td>
           <td className="p-3"><strong>{item.productName}</strong>{item.presentation !== "—" && <p className="text-xs text-muted">{item.presentation}</p>}</td>
           <td className="p-3"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${item.direction === "entry" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{item.typeLabel}</span></td>
           <td className={`p-3 text-right font-bold ${item.direction === "entry" ? "text-brand" : "text-amber-800"}`}>{item.direction === "entry" ? "+" : "−"}{item.quantity}</td>
           <td className="p-3 text-right">{item.balance}</td>
           <td className="p-3 text-muted">{item.notes || "—"}</td>
-        </tr>)}</tbody>
+        </tr>)}</PaginatedCollection>
       </table>
       {!filtered.length && <p className="py-8 text-center text-sm text-muted">Nenhuma entrada/saída encontrada para os filtros selecionados.</p>}
     </div>

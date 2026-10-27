@@ -1,3 +1,4 @@
+import { PaginatedCollection } from "@/components/paginated-collection";
 import { and, eq } from "drizzle-orm";
 import { consumedPackageQuantity } from "@/lib/package-remaining";
 import { PackageCheck, Power, PowerOff } from "lucide-react";
@@ -141,7 +142,7 @@ export default async function PackagesPage() {
 
       <section className="panel mt-5">
         <h2 className="text-lg font-extrabold">Modelos disponíveis</h2>
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <PaginatedCollection label="Registros" className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {templates.map((template) => (
             <article key={template.id} className="rounded-2xl border bg-white p-4">
               <div className="flex items-start justify-between gap-3">
@@ -160,12 +161,12 @@ export default async function PackagesPage() {
               <p className="mt-3 text-xs font-bold text-muted">{template.validityDays ? `Validade: ${template.validityDays} dias` : "Sem prazo de validade"} · {template.isActive ? "Ativo" : "Inativo"}</p>
             </article>
           ))}
-        </div>
+        </PaginatedCollection>
       </section>
 
       <section className="panel mt-5">
         <h2 className="text-lg font-extrabold">Pacotes dos clientes</h2>
-        <div className="mt-4 divide-y">
+        <PaginatedCollection label="Registros" className="mt-4 divide-y">
           {assigned.map((item) => (
             <article key={item.id} className="py-4">
               <div className="flex items-center gap-2"><PackageCheck className="size-4 text-brand" /><p className="font-extrabold">{item.client} · {item.packageName}</p></div>
@@ -178,7 +179,7 @@ export default async function PackagesPage() {
             </article>
           ))}
           {!assigned.length && <p className="empty-state">Nenhum pacote vinculado a cliente.</p>}
-        </div>
+        </PaginatedCollection>
       </section>
     </div>
   );

@@ -1,5 +1,8 @@
 "use client";
 
+import { PaginatedCollection } from "@/components/paginated-collection";
+
+
 import Link from "next/link";
 import { useState } from "react";
 
@@ -37,12 +40,12 @@ export function StockLotList({ lots, today }: { lots: StockLotRow[]; today: stri
       <p className="text-muted" role="status">{filtered.length} lote(s) encontrado(s)</p>
       <button className="secondary-button" type="button" onClick={() => { setCode(""); setProduct(""); setFrom(""); setUntil(""); }}>Limpar filtros</button>
     </div>
-    <div className="mt-4 overflow-x-auto">
+    <div className="mt-4 overflow-x-auto max-h-[40rem] overflow-y-auto">
       <table className="w-full min-w-[850px] text-left text-sm">
         <thead className="border-b text-xs uppercase text-muted"><tr>
           <th className="p-3">Número do lote</th><th className="p-3">Produto / apresentação</th><th className="p-3">Marca</th><th className="p-3 text-right">Qtd.</th><th className="p-3" aria-sort="ascending">Vencimento ↑</th><th className="p-3">Status</th><th className="p-3">Ações</th>
         </tr></thead>
-        <tbody className="divide-y">{filtered.map(lot => {
+        <PaginatedCollection as="tbody" pageSize={20} label="Registros" className="divide-y">{filtered.map(lot => {
           const status = statusOf(lot, today);
           return <tr key={lot.id}>
             <td className="p-3 font-bold">{lot.code}</td>
@@ -54,7 +57,7 @@ export function StockLotList({ lots, today }: { lots: StockLotRow[]; today: stri
             <td className="p-3"><Link className="text-brand underline" href={`/estoque/lotes/${lot.id}`}>Detalhes</Link>
             </td>
           </tr>;
-        })}</tbody>
+        })}</PaginatedCollection>
       </table>
       {!filtered.length && <p className="py-8 text-center text-sm text-muted">Nenhum lote encontrado para os filtros selecionados.</p>}
     </div>

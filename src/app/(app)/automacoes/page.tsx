@@ -1,3 +1,4 @@
+import { PaginatedCollection } from "@/components/paginated-collection";
 import { usesInternalWhatsAppAgent } from "@/lib/whatsapp-message";
 import { and, eq } from "drizzle-orm";
 import { Bot, CheckCircle2, MessageCircleMore, Sparkles, Workflow } from "lucide-react";
@@ -114,12 +115,12 @@ export default async function AutomationsPage() {
                 /> : <p className="mt-3 rounded-xl bg-[#edf7f1] p-3 text-xs font-semibold text-brand">O WhatsApp Assistido não precisa conectar um número à API.</p>}
             </>
           ) : (
-            <div className="mt-4 grid gap-3">{channels.map((channel) => (
+            <PaginatedCollection label="Registros" className="mt-4 grid gap-3">{channels.map((channel) => (
               <div className="rounded-xl border p-3" key={channel.id}>
                 <p className="font-bold">{channel.displayPhoneNumber ?? "Número configurado"}</p>
                 <p className="mt-1 flex items-center gap-2 text-xs text-muted"><CheckCircle2 className="size-3 text-brand" />{channel.connectionStatus === "active" && channel.isActive ? "Ativo" : "Pendente"}</p>
               </div>
-            ))}</div>
+            ))}</PaginatedCollection>
           )}
         </aside>
       </section>

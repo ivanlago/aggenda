@@ -1,3 +1,4 @@
+import { PaginatedCollection } from "@/components/paginated-collection";
 import { ScheduleBlockForm } from "./schedule-block-form";
 import { ScheduleBlocks } from "./schedule-blocks";
 import { AppointmentRoomForm } from "./appointment-room-form";
@@ -71,9 +72,9 @@ export async function AgendaPage({ openNewAppointment = false, filters = {} }: {
     <ScheduleBlocks organizationId={organization.id} timezone={organization.timezone} canManage={canManageAvailability} scopeId={professionalScopeId} professionalFilter={filters.professionalId} />
     <section className="panel min-w-0">
       <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-extrabold">Atendimentos do período</h2><span className="text-sm text-muted">{items.length} registros</span></div>
-      <div className="min-w-0 max-w-full overflow-x-auto" tabIndex={0} role="region" aria-label="Atendimentos do período"><table className="w-full min-w-[950px] text-left text-sm">
+      <div className="min-w-0 max-w-full overflow-x-auto max-h-[40rem] overflow-y-auto" tabIndex={0} role="region" aria-label="Atendimentos do período"><table className="w-full min-w-[950px] text-left text-sm">
         <thead className="border-b text-xs uppercase text-muted"><tr><th className="p-3">Hora</th><th className="p-3">Atendimento</th><th className="p-3">Status</th><th className="p-3">Profissional</th><th className="p-3">Sala</th><th className="p-3">Cliente</th>{canManageFinance && <th className="relative p-3"><span className="sr-only">Pagamento</span></th>}{canManage && <th className="relative p-3"><span className="sr-only">Editar</span></th>}<th className="relative p-3"><span className="sr-only">Atender</span></th></tr></thead>
-        <tbody className="divide-y">{items.map((item) => {
+        <PaginatedCollection as="tbody" pageSize={20} label="Registros" className="divide-y">{items.map((item) => {
           const dateTime = formatOrganizationDateTime(item.startsAt, organization.timezone);
           const [date, time] = dateTime.split(", ");
           const message = `Olá, ${item.client}! Seu ${organization.appointmentLabel.toLowerCase()} de ${item.service} está marcado para ${dateTime}.${item.professional ? ` Profissional: ${item.professional}.` : ""}`;
@@ -88,7 +89,7 @@ export async function AgendaPage({ openNewAppointment = false, filters = {} }: {
             {canManageFinance && <td className="p-3"><ModalShell title="Registrar pagamento" variant="payment" completed={item.paymentStatus === "received" || Boolean(item.clientPackageId)}><AppointmentPaymentForm appointmentId={item.id} client={item.client} description={item.service} defaultAmount={price} packages={availablePackages} /></ModalShell></td>}
             {canManage && <td className="p-3"><ModalShell title="Editar agendamento" variant="edit"><div className="grid gap-5"><div className="rounded-2xl bg-slate-50 p-4"><p className="font-extrabold">{item.client}</p><p className="text-sm text-muted">{item.service} · {item.professional ?? "Sem profissional"}</p><p className="mt-1 text-sm font-bold text-brand">{dateTime}</p>{item.packageName && <p className="mt-1 text-xs text-brand">Pacote: {item.packageName} · {item.packageStatus}</p>}</div><AppointmentRoomForm appointmentId={item.id} roomId={item.roomId} rooms={roomItems} /><AppointmentStatusForm action={updateAppointmentStatus} appointmentId={item.id} initialStatus={item.status} initialCancellationReason={item.cancellationReason} statuses={statuses} />{item.professionalId && <div><h3 className="font-extrabold">Reagendar</h3><AppointmentRescheduleForm rooms={roomItems} initialRoomId={item.roomId} action={rescheduleAppointment} appointmentId={item.id} serviceId={item.serviceId} professionalId={item.professionalId} timezone={organization.timezone} /></div>}{canSendWhatsApp && whatsapp && <a className="secondary-button sm:w-fit" href={whatsapp} target="_blank" rel="noreferrer">Enviar pelo WhatsApp</a>}</div></ModalShell></td>}
           <td className="p-3"><Link className="primary-button whitespace-nowrap py-2" href={`/atendimento/${item.id}`}>Atender</Link></td></tr>;
-        })}</tbody>
+        })}</PaginatedCollection>
       </table>{!items.length && <p className="empty-state">Nenhum atendimento no período selecionado.</p>}</div>
     </section>
   </div>;

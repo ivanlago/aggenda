@@ -1,3 +1,4 @@
+import { PaginatedCollection } from "@/components/paginated-collection";
 import { and, desc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { diagnoseNfseCompatibility, registerFiscalDocument, requestNfseActivation, saveNfseFiscalProfile } from "@/actions/financial-operations";
@@ -90,7 +91,7 @@ export default async function NfsePage({ searchParams }: { searchParams: Promise
     <article className="panel mt-5"><h2 className="text-lg font-extrabold">Solicitações recentes</h2><p className="mt-1 text-sm text-muted">Homologação não consome a franquia de produção. Em caso de falha, consulte a mesma solicitação.</p>
       <details className="mt-4"><summary className="cursor-pointer font-bold">Exportar XMLs de teste</summary><form action="/api/nfse/export" method="get" className="mt-3 flex flex-wrap items-end gap-3"><label className="grid gap-2 text-sm font-bold">De<input className="field" name="from" type="date" required /></label><label className="grid gap-2 text-sm font-bold">Até<input className="field" name="to" type="date" required /></label><button className="secondary-button">Baixar ZIP</button><p className="w-full text-xs text-muted">Por data de criação da solicitação, em UTC. Até 31 dias, 500 notas e 25 MB; inclui eventos de cancelamento confirmados. O manifesto informa o status de cada documento no momento da leitura.</p></form></details>
       {!requests.length && <p className="mt-4 text-sm text-muted">Nenhuma solicitação de emissão.</p>}
-      <div className="mt-4 grid gap-4">{requests.map((request) => {
+      <PaginatedCollection label="Registros" className="mt-4 grid gap-4">{requests.map((request) => {
         const draft = fiscalDraftSchema.parse(JSON.parse(readStoredNfseValue(organization.id, `${request.id}/draft`, request.encryptedDraft)));
         return <section className="rounded-2xl border p-4" key={request.id}>
           <div className="flex flex-wrap justify-between gap-2"><strong>{labels[request.status] ?? "Em análise"}{request.number ? ` · Nota ${request.number}` : ""}</strong><span>{money(request.amountInCents)} · {request.environment === "sandbox" ? "Teste" : "Produção"}</span></div>
@@ -104,9 +105,9 @@ export default async function NfsePage({ searchParams }: { searchParams: Promise
           {request.status === "cancelled" && <a className="secondary-button mt-3" href={`/api/nfse/${request.id}/event`}>Baixar confirmação de cancelamento</a>}
           <details className="mt-3"><summary className="cursor-pointer text-sm font-bold">Histórico recente de operações</summary>{events.filter((event) => event.requestId === request.id).map((event) => <p className="mt-1 text-xs text-muted" key={event.id}>{event.createdAt.toLocaleString("pt-BR", { timeZone: organization.timezone })} · {eventLabels[event.type] ?? "Operação fiscal registrada"}</p>)}</details>
         </section>;
-      })}</div>
+      })}</PaginatedCollection>
     </article>
-    <article className="panel mt-5"><h2 className="font-extrabold">Notas registradas externamente</h2><p className="text-sm text-muted">Notas emitidas em outro sistema, separadas das emissões de teste do Aggenda.</p>{external.map((note) => <p className="mt-2 text-sm" key={note.id}>Nota {note.number ?? "sem número"} · {money(note.amount)}</p>)}
+    <article className="panel mt-5"><h2 className="font-extrabold">Notas registradas externamente</h2><p className="text-sm text-muted">Notas emitidas em outro sistema, separadas das emissões de teste do Aggenda.</p><PaginatedCollection label="Registros" className="mt-3">{external.map((note) => <p className="mt-2 text-sm" key={note.id}>Nota {note.number ?? "sem número"} · {money(note.amount)}</p>)}</PaginatedCollection>
       {manage && <details className="mt-4"><summary className="cursor-pointer font-bold">Registrar nota já emitida</summary><ActionForm action={registerFiscalDocument} successMessage="Nota externa registrada." className="mt-3 grid gap-3 md:grid-cols-2"><label className="grid gap-2 text-sm font-bold">Recebimento<select className="field" name="financialEntryId"><option value="">Sem recebimento vinculado</option>{entries.map((entry) => <option key={entry.id} value={entry.id}>{entry.description} · {money(entry.amount)}</option>)}</select></label><label className="grid gap-2 text-sm font-bold">Número da nota<input className="field" name="number" required maxLength={60} /></label><label className="grid gap-2 text-sm font-bold">Valor<input className="field" name="amount" inputMode="decimal" required /></label><label className="grid gap-2 text-sm font-bold">Endereço de verificação<input className="field" name="verificationUrl" type="url" placeholder="https://..." /></label><button className="secondary-button">Registrar nota externa</button></ActionForm></details>}
     </article>
   </div>;

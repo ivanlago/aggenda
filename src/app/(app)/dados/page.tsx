@@ -1,3 +1,4 @@
+import { PaginatedCollection } from "@/components/paginated-collection";
 import { desc, eq } from "drizzle-orm";
 import { Download, RotateCcw, Upload } from "lucide-react";
 
@@ -28,7 +29,7 @@ export default async function DataPage() {
     </section>
     <section className="panel mt-6">
       <div className="flex items-center gap-2"><Upload className="size-5 text-brand" /><h2 className="text-lg font-extrabold">Histórico de importações</h2></div>
-      <div className="mt-4 divide-y">{history.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-4"><div><p className="font-bold">{item.fileName}</p><p className="text-sm text-muted">{item.entityType === "clients" ? "Clientes" : "Serviços"} · {item.createdRows} criados · {item.updatedRows} atualizados · {item.errorRows} erros · {item.createdAt.toLocaleString("pt-BR")}</p></div>{item.status === "completed" && !item.undoneAt && <form action={undoDataImport}><input type="hidden" name="id" value={item.id} /><button className="secondary-button flex items-center gap-2"><RotateCcw className="size-4" /> Desfazer</button></form>}{item.undoneAt && <span className="status-pill">Desfeita</span>}</div>)}{!history.length && <p className="empty-state">Nenhuma importação realizada.</p>}</div>
+      <PaginatedCollection label="Registros" className="mt-4 divide-y">{history.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-4"><div><p className="font-bold">{item.fileName}</p><p className="text-sm text-muted">{item.entityType === "clients" ? "Clientes" : "Serviços"} · {item.createdRows} criados · {item.updatedRows} atualizados · {item.errorRows} erros · {item.createdAt.toLocaleString("pt-BR")}</p></div>{item.status === "completed" && !item.undoneAt && <form action={undoDataImport}><input type="hidden" name="id" value={item.id} /><button className="secondary-button flex items-center gap-2"><RotateCcw className="size-4" /> Desfazer</button></form>}{item.undoneAt && <span className="status-pill">Desfeita</span>}</div>)}{!history.length && <p className="empty-state">Nenhuma importação realizada.</p>}</PaginatedCollection>
     </section>
   </div>;
 }

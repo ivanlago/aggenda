@@ -1,3 +1,4 @@
+import { PaginatedCollection } from "@/components/paginated-collection";
 import { and, eq } from "drizzle-orm";
 import Link from "next/link";
 
@@ -56,9 +57,9 @@ export async function TermsPage({ legal = false }: { legal?: boolean } = {}) {
       </ActionForm>
     </section> : null}
 
-    <section className="panel mt-5"><div><h2 className="text-xl font-extrabold">Modelos de termos e contratos</h2><p className="mt-1 text-sm text-muted">Modelos nativos são protegidos. Duplique um deles para criar uma versão adaptada.</p></div><div className="mt-4 divide-y">{templates.map((item) => <article className="grid gap-3 py-4 lg:grid-cols-[1fr_auto] lg:items-start" key={item.id}>
+    <section className="panel mt-5"><div><h2 className="text-xl font-extrabold">Modelos de termos e contratos</h2><p className="mt-1 text-sm text-muted">Modelos nativos são protegidos. Duplique um deles para criar uma versão adaptada.</p></div><div className="mt-4 divide-y"><PaginatedCollection label="Registros" className="mt-4">{templates.map((item) => <article className="grid gap-3 py-4 lg:grid-cols-[1fr_auto] lg:items-start" key={item.id}>
       <div><div className="flex flex-wrap items-center gap-2"><p className="font-extrabold">{item.name}</p>{item.isSystemPreset ? <span className="status-pill">Nativo</span> : null}</div><p className="text-xs text-muted">{typeLabels[item.documentType]} · {item.isActive ? "ativo" : "inativo"}</p>{canManage && !item.isSystemPreset ? <details className="mt-3"><summary className="cursor-pointer text-sm font-extrabold text-brand">Editar modelo</summary><ActionForm action={updateDocumentTemplate} successMessage="Modelo atualizado." className="mt-3 grid gap-2 rounded-xl border p-3"><input type="hidden" name="id" value={item.id} /><input className="field" name="name" defaultValue={item.name} required /><input className="field" name="title" defaultValue={item.title} required /><textarea className="field min-h-48" name="content" defaultValue={item.content} required /><button className="primary-button w-fit">Salvar conteúdo</button></ActionForm></details> : null}</div>
       {canManage ? item.isSystemPreset ? <ActionForm action={duplicateDocumentTemplate} successMessage="Cópia criada e pronta para personalização."><input type="hidden" name="id" value={item.id} /><button className="secondary-button py-2">Duplicar e personalizar</button></ActionForm> : <div className="flex flex-wrap gap-2"><ActionForm action={setDocumentTemplateActive} successMessage="Modelo atualizado."><input type="hidden" name="id" value={item.id} /><input type="hidden" name="active" value={String(!item.isActive)} /><button className="secondary-button py-2">{item.isActive ? "Desativar" : "Ativar"}</button></ActionForm><DeleteDocumentTemplateForm id={item.id} name={item.name} /></div> : null}
-    </article>)}{!templates.length ? <p className="empty-state">Nenhum modelo disponível.</p> : null}</div></section>
+    </article>)}</PaginatedCollection>{!templates.length ? <p className="empty-state">Nenhum modelo disponível.</p> : null}</div></section>
   </div>;
 }

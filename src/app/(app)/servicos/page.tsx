@@ -1,3 +1,4 @@
+import { PaginatedCollection } from "@/components/paginated-collection";
 import { ActionForm } from "@/components/action-form";
 import { ServiceRepeatPolicy } from "@/components/service-repeat-policy";
 import { eq } from "drizzle-orm";
@@ -56,7 +57,7 @@ export default async function ServicesPage({ searchParams }: { searchParams: Pro
         </ServiceCreateToggle>}
         <section className="panel">
           <h2 className="text-lg font-extrabold">{categories.length} {categories.length === 1 ? "categoria cadastrada" : "categorias cadastradas"}</h2>
-          <div className="mt-5 divide-y">
+          <PaginatedCollection label="Registros" className="mt-5 divide-y">
             {categories.map(category => (
               <div key={category.id} className="flex items-center gap-4 py-4">
                 <p className="min-w-0 flex-1 font-bold">{category.name}</p>
@@ -74,7 +75,7 @@ export default async function ServicesPage({ searchParams }: { searchParams: Pro
               </div>
             ))}
             {!categories.length && <p className="empty-state">Nenhuma categoria cadastrada.</p>}
-          </div>
+          </PaginatedCollection>
           {canManage && <p className="mt-3 text-sm text-muted">Ao excluir uma categoria, seus serviços ficam sem categoria.</p>}
         </section>
       </div>
@@ -122,7 +123,7 @@ export default async function ServicesPage({ searchParams }: { searchParams: Pro
               : organization.serviceLabelPlural
             ).toLowerCase()}
           </h2>
-          <div className="mt-5 divide-y">
+          <PaginatedCollection label="Registros" className="mt-5 divide-y">
             {items.map((item) => (
               <div key={item.id} id={`procedimento-${item.id}`} className="flex scroll-mt-32 items-center gap-4 py-4 target:rounded-lg target:bg-brand/5">
                 <EntityThumbnail src={item.imageUrl} alt={item.name} fallback={item.name[0]} />
@@ -167,7 +168,7 @@ export default async function ServicesPage({ searchParams }: { searchParams: Pro
                 {query || category ? "Nenhum resultado encontrado para os filtros informados." : `Nenhum ${organization.serviceLabel.toLowerCase()} cadastrado.`}
               </p>
             )}
-          </div>
+          </PaginatedCollection>
         </section>
       </div>
     </div>

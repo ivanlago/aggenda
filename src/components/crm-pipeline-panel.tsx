@@ -1,3 +1,4 @@
+import { PaginatedCollection } from "@/components/paginated-collection";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { CheckCircle2, CircleDollarSign, Clock3, KanbanSquare, Plus, Target, UsersRound } from "lucide-react";
 import Link from "next/link";
@@ -110,7 +111,7 @@ export async function CrmPipelinePanel({ organizationId, timezone }: { organizat
                 return <section className="rounded-2xl border bg-[#eef1ed] p-3" key={stage.id}>
                   <div className="flex items-center justify-between gap-2 px-1"><h2 className="font-extrabold">{stage.name}</h2><span className="status-pill">{items.length}</span></div>
                   <p className="px-1 text-xs text-muted">{stage.probability}% de probabilidade</p>
-                  <div className="mt-3 grid gap-3">
+                  <PaginatedCollection label="Registros" className="mt-3 grid gap-3">
                     {items.map((item) => <article className="rounded-xl border bg-white p-4 shadow-sm" key={item.id}>
                       <Link className="font-extrabold hover:text-brand" href={`/crm/leads/${item.leadId}`}>{item.title}</Link>
                       <p className="mt-1 text-sm text-muted">{item.leadName}{item.company ? ` · ${item.company}` : ""}</p>
@@ -128,7 +129,7 @@ export async function CrmPipelinePanel({ organizationId, timezone }: { organizat
                       </div>
                     </article>)}
                     {!items.length && <p className="rounded-xl border border-dashed bg-white/60 p-5 text-center text-xs text-muted">Nenhuma oportunidade</p>}
-                  </div>
+                  </PaginatedCollection>
                 </section>;
               })}
             </div>
@@ -136,14 +137,14 @@ export async function CrmPipelinePanel({ organizationId, timezone }: { organizat
 
           <section className="panel mt-2">
             <h2 className="text-xl font-extrabold">Próximas atividades</h2>
-            <div className="mt-4 divide-y">
+            <PaginatedCollection label="Registros" className="mt-4 divide-y">
               {tasks.map((task) => <div className="flex flex-wrap items-center gap-3 py-3" key={task.id}>
                 <Clock3 className={`size-4 ${task.dueAt < new Date() ? "text-red-700" : "text-brand"}`} />
                 <div className="min-w-0 flex-1"><p className="font-bold">{task.title}</p><p className="text-xs text-muted">{task.type} · {task.owner ?? "Sem responsável"} · {task.dueAt.toLocaleString("pt-BR", { timeZone: timezone })}</p></div>
                 <ActionForm action={completeCrmTask} successMessage="Atividade concluída."><input type="hidden" name="taskId" value={task.id} /><button className="icon-button" aria-label="Concluir atividade"><CheckCircle2 className="size-4" /></button></ActionForm>
               </div>)}
               {!tasks.length && <p className="empty-state">Nenhuma atividade pendente.</p>}
-            </div>
+            </PaginatedCollection>
           </section>
         </>
       )}

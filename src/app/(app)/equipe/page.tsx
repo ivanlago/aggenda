@@ -1,3 +1,4 @@
+import { PaginatedCollection } from "@/components/paginated-collection";
 import { and, eq } from "drizzle-orm";
 
 import { PageHeader } from "@/components/page-header";
@@ -53,9 +54,9 @@ export default async function TeamPage() {
         {canManage && <section className="panel xl:sticky xl:top-5"><h2 className="mb-5 text-xl font-extrabold">Cadastrar membro da equipe</h2><TeamCreateForm professions={professionOptions} specialties={specialtyOptions} /></section>}
         <section className="panel">
           <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-extrabold">Equipe cadastrada</h2><span className="status-pill">{memberCards.length} {memberCards.length === 1 ? "membro" : "membros"}</span></div>
-          <div className="mt-5 grid gap-3">
+          <PaginatedCollection label="Registros" className="mt-5 grid gap-3">
             {memberCards.map((member) => <TeamMemberCard key={member.userId} member={member} professions={professionOptions} specialties={specialtyOptions} canEdit={canManage} canDelete={canManage && member.role !== "owner" && member.userId !== session.user.id} />)}
-          </div>
+          </PaginatedCollection>
         </section>
       </div>
     </div>

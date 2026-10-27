@@ -1,3 +1,4 @@
+import { PaginatedCollection } from "@/components/paginated-collection";
 import { desc, eq } from "drizzle-orm";
 
 import { db } from "@/db";
@@ -27,15 +28,15 @@ export default async function UsersAdminPage() {
     <div>
       <h1 className="text-3xl font-extrabold">Usuários</h1>
       <p className="mt-2 text-muted">Contas da plataforma e vínculos com empresas.</p>
-      <div className="panel mt-6 overflow-x-auto">
+      <div className="panel mt-6 overflow-x-auto max-h-[40rem] overflow-y-auto">
         <table className="w-full text-left text-sm">
           <thead><tr className="border-b text-muted"><th className="py-3">Usuário</th><th>Empresa</th><th>Papel empresarial</th><th>Papel SaaS</th></tr></thead>
-          <tbody>{items.map((item, index) => (
+          <PaginatedCollection as="tbody" pageSize={20} label="Registros">{items.map((item, index) => (
             <tr className="border-b last:border-0" key={`${item.id}-${item.organizationName ?? index}`}>
               <td className="py-4"><p className="font-bold">{item.name}</p><p className="text-xs text-muted">{item.email}</p></td>
               <td>{item.organizationName ?? "—"}</td><td>{item.organizationRole ?? "—"}</td><td>{item.platformRole ?? "—"}</td>
             </tr>
-          ))}</tbody>
+          ))}</PaginatedCollection>
         </table>
       </div>
     </div>

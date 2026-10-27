@@ -21,8 +21,9 @@ export function SubscriptionServices({ signatureControl, signaturesActive = fals
         <p className="mt-3 text-sm text-muted">Emissão de NFS-e de serviços vinculada à clínica, com configuração fiscal própria. Disponível para contratação após liberação do fluxo fiscal de produção.</p>
         <dl className="mt-4 grid gap-4 text-sm">
           <div><dt className="font-bold">O que a clínica precisa</dt><dd className="mt-1 text-muted">Cadastro fiscal da empresa, CNPJ e inscrições aplicáveis, enquadramento e códigos de serviço conferidos com o contador, além de habilitação compatível com o município atendido.</dd></div>
-          <div><dt className="font-bold">Certificado para o fluxo fiscal atual</dt><dd className="mt-1 text-muted">Certificado ICP-Brasil A1 com CNPJ da clínica, válido e compatível com a integração. É diferente do e-CPF pessoal do profissional e deve ser adquirido separadamente.</dd></div>
+          <div><dt className="font-bold">Autenticação depende da integração</dt><dd className="mt-1 text-muted">O conector atual do Aggenda exige certificado ICP-Brasil A1 com CNPJ da clínica. Isso não é uma exigência universal de NFS-e. Emissores municipais podem aceitar usuário e senha, conforme suporte e credenciamento; essas alternativas ainda dependem de integração e homologação no Aggenda. O certificado, quando exigido, é adquirido separadamente.</dd></div>
         </dl>
+        <p className="mt-4 text-sm text-muted">Você pode registrar no financeiro uma nota emitida em outro sistema sem cadastrar certificado no Aggenda. O registro externo não equivale à emissão automática.</p>
         <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-950">A contratação e a cobrança deste adicional permanecem indisponíveis até a homologação. Cadastro do certificado, sozinho, não comprova habilitação para emitir notas.</p>
       </article>
     </div>

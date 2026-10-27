@@ -1,3 +1,5 @@
+import { NfseEmissionOptions } from "@/components/nfse-emission-options";
+import { nfseEmissionMode } from "@/lib/nfse/emission-options";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { and, desc, eq } from "drizzle-orm";
 import Link from "next/link";
@@ -12,7 +14,6 @@ import { readStoredNfseValue } from "@/lib/nfse/vault";
 import { readNfseProfile } from "@/lib/nfse-routing";
 import { fiscalDraftSchema } from "@/lib/nfse/xml";
 import { assertOrganizationPermission, hasOrganizationPermission } from "@/lib/permissions";
-import { nfsePublicOffer } from "@/lib/service-plans";
 import { requireOrganization } from "@/lib/session";
 
 export const metadata = { title: "Emissão de NFS-e" };
@@ -20,7 +21,7 @@ const money = (value: number) => (value / 100).toLocaleString("pt-BR", { style: 
 const eventLabels: Record<string, string> = { draft_created: "Rascunho criado", draft_updated: "Rascunho atualizado", submission_started: "Envio iniciado", rejected: "Rejeição confirmada", result_unconfirmed: "Resultado aguardando confirmação", consultation_requested: "Consulta solicitada", authorized: "Autorização confirmada", cancellation_started: "Cancelamento solicitado", cancellation_unconfirmed: "Cancelamento aguardando confirmação", cancellation_consultation: "Consulta de cancelamento", cancelled: "Cancelamento confirmado", custody_rotated: "Proteção do documento atualizada", xml_downloaded: "XML baixado", xml_exported: "XML exportado", cancellation_event_downloaded: "Comprovante de cancelamento baixado" };
 const labels: Record<string, string> = { draft: "Rascunho", rejected: "Rejeitada antes da autorização", processing: "Em processamento", uncertain: "Resultado pendente de consulta", authorized: "Autorizada em homologação", cancellation_processing: "Cancelamento em processamento", cancellation_uncertain: "Cancelamento pendente de consulta", cancelled: "Cancelada em homologação" };
 
-export default async function NfsePage({ searchParams }: { searchParams: Promise<{ recebimento?: string }> }) {
+export default async function NfsePage({ searchParams }: { searchParams: Promise<{ recebimento?: string; modo?: string; municipio?: string; regime?: string }> }) {
   const { organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "finance.read");
   const manage = hasOrganizationPermission(organization.role, "finance.manage");
@@ -31,11 +32,12 @@ export default async function NfsePage({ searchParams }: { searchParams: Promise
     db.select({ status: organizationFinancialIntegrations.status, environment: organizationFinancialIntegrations.environment, metadata: organizationFinancialIntegrations.metadata }).from(organizationFinancialIntegrations).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "nfse"))).limit(1),
     db.select().from(nfseRequests).where(eq(nfseRequests.organizationId, organization.id)).orderBy(desc(nfseRequests.createdAt)).limit(50),
     db.select({ id: financialEntries.id, description: financialEntries.description, amount: financialEntries.amountInCents, name: clients.name, cpf: clients.cpf }).from(financialEntries).leftJoin(clients, and(eq(clients.id, financialEntries.clientId), eq(clients.organizationId, organization.id))).where(and(eq(financialEntries.organizationId, organization.id), eq(financialEntries.type, "receivable"), eq(financialEntries.status, "received"))).orderBy(desc(financialEntries.createdAt)).limit(100),
-    db.select({ id: fiscalDocuments.id, number: fiscalDocuments.number, amount: fiscalDocuments.amountInCents }).from(fiscalDocuments).where(eq(fiscalDocuments.organizationId, organization.id)).orderBy(desc(fiscalDocuments.createdAt)).limit(20),
+    db.select({ id: fiscalDocuments.id, number: fiscalDocuments.number, amount: fiscalDocuments.amountInCents, verificationUrl: fiscalDocuments.verificationUrl }).from(fiscalDocuments).where(eq(fiscalDocuments.organizationId, organization.id)).orderBy(desc(fiscalDocuments.createdAt)).limit(20),
     db.select({ id: nfseRequestEvents.id, requestId: nfseRequestEvents.requestId, type: nfseRequestEvents.type, createdAt: nfseRequestEvents.createdAt }).from(nfseRequestEvents).where(eq(nfseRequestEvents.organizationId, organization.id)).orderBy(desc(nfseRequestEvents.createdAt)).limit(100),
   ]);
   const integration = integrations[0];
   const profile = readNfseProfile(integration?.metadata);
+  const mode = nfseEmissionMode(query.modo, Boolean(profile));
   const selected = entries.find((entry) => entry.id === query.recebimento);
   const daysLeft = profile?.certificateExpiresAt ? Math.ceil((Date.parse(profile.certificateExpiresAt) - new Date().getTime()) / 86400000) : null;
   const vaultConfigured = Boolean(process.env.NFSE_STORAGE_KEYS && process.env.NFSE_STORAGE_ACTIVE_KEY);
@@ -45,15 +47,16 @@ export default async function NfsePage({ searchParams }: { searchParams: Promise
     <Link className="mb-4 inline-flex text-sm font-bold text-brand" href="/financeiro">← Voltar ao financeiro</Link>
     <PageHeader eyebrow="Financeiro" title="Emissão de NFS-e" description="Configure a clínica, revise os dados e acompanhe cada solicitação fiscal." />
     <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm" role="status"><strong>Emissor em homologação</strong><p className="mt-1">As notas de teste não têm validade fiscal. Produção e cobertura pelo parceiro aguardam validação. A consulta municipal não ativa a emissão em produção.</p></div>
-    <article className="panel">
+    <NfseEmissionOptions canManageBilling={hasOrganizationPermission(organization.role, "billing.manage")} mode={mode} municipalityCode={query.municipio ?? profile?.municipalityCode ?? ""} regime={query.regime ?? profile?.taxRegime ?? ""} />
+    {mode === "a1" && <article className="panel">
       {!vaultConfigured && <p className="mb-4 rounded-xl border border-amber-200 p-3 text-sm">Cadastro de A1 indisponível: o responsável técnico precisa configurar a custódia fiscal no servidor. Depois da configuração, reabra esta página para habilitar o cadastro.</p>}
       {integration?.status === "revoked" && <p className="mb-4 rounded-xl border border-amber-200 p-3 text-sm">O A1 foi removido do cadastro ativo e novas operações foram interrompidas. Cadastre um certificado autorizado para retomar.</p>}
       <div className="flex flex-wrap justify-between gap-3"><h2 className="text-lg font-extrabold">Configuração fiscal</h2><span className="status-pill">{profile ? "Cadastro em homologação" : integration ? "Cadastro pendente" : "Não configurado"}</span></div>
       {contract && <p className="mt-3 text-sm">{contract.noteLimit ? `${contract.noteLimit} notas autorizadas incluídas por período de franquia, após homologação fiscal. Sem mensalidade adicional ou cobrança automática de excedentes. Homologação não consome notas reais.` : "Módulo fiscal não incluído. Contratação disponível após homologação."}</p>}
       {!integration && configure && (!contract || contract.noteLimit > 0) && <ActionForm action={requestNfseActivation} successMessage="Solicitação recebida. Complete o cadastro fiscal." className="mt-4 grid gap-3">
-        {!contract && <p className="text-sm text-muted">Oferta prevista: {money(nfsePublicOffer.monthlyPriceInCents)}/mês, {nfsePublicOffer.monthlyLimit} notas e {money(nfsePublicOffer.overageInCents)} por excedente. Cobrança em produção será confirmada antes da ativação.</p>}
+        <p className="text-sm text-muted">Esta solicitação prepara o piloto; não contrata o serviço nem libera produção. Consulte as condições em Administração → Assinaturas.</p>
         <label className="grid gap-2 text-sm font-bold">Configuração<select className="field" name="setupMode"><option value="self_service">Autoconfiguração gratuita</option><option value="assisted">Assistida — gratuita nesta fase inicial</option></select></label>
-        <label className="flex gap-2 text-sm"><input type="checkbox" name="acceptNfseOffer" required />Li as condições comerciais e a disponibilidade sujeita à homologação.</label><button className="primary-button">Iniciar configuração</button>
+        <label className="flex gap-2 text-sm"><input type="checkbox" name="confirmPilotSetup" required />Entendo que esta configuração é somente para homologação e não contrata o serviço nem libera emissão em produção.</label><button className="primary-button">Iniciar configuração</button>
       </ActionForm>}
       {profile && <div className="mt-4 grid gap-2 text-sm"><p>CNPJ final {profile.cnpj.slice(-4)} · município IBGE {profile.municipalityCode}</p><p>{profile.compatibilityMessage ?? "Consulte os parâmetros municipais e emita uma nota de teste para validar o cadastro."}</p><p className={daysLeft !== null && daysLeft <= 30 ? "font-bold text-amber-800" : "text-muted"}>{daysLeft === null ? "Certificado precisa ser validado novamente." : daysLeft <= 0 ? "Certificado vencido. Atualize para continuar." : `Certificado válido até ${new Date(profile.certificateExpiresAt!).toLocaleDateString("pt-BR", { timeZone: organization.timezone })}${daysLeft <= 30 ? ` · vence em ${daysLeft} dia(s)` : ""}.`}</p><p className="text-xs text-muted">A verificação local confere chave privada, CNPJ, validade e autenticação de cliente. A aceitação fiscal é confirmada pelo governo.</p>
         {configure && <ActionForm action={diagnoseNfseCompatibility} successMessage="Consulta concluída. Confira o diagnóstico." className="mt-2"><button className="secondary-button" disabled={!vaultConfigured}>Consultar parâmetros municipais</button></ActionForm>}
@@ -70,9 +73,9 @@ export default async function NfsePage({ searchParams }: { searchParams: Promise
         <p className="text-sm text-muted md:col-span-2">O arquivo e a senha são armazenados criptografados. O cadastro usará o ambiente de testes. Configurações de produção existentes precisam de nova validação.</p><label className="flex items-start gap-2 text-sm md:col-span-2"><input type="checkbox" name="authorizeCertificate" required />Autorizo o Aggenda a guardar e utilizar este A1 nas operações fiscais desta clínica. Posso interromper novos usos removendo o certificado do cadastro ativo.</label><button className="primary-button" disabled={!vaultConfigured}>Conferir certificado e salvar</button></fieldset>
       </ActionForm></details>}
       {configure && profile && integration?.status !== "revoked" && <details className="mt-4"><summary className="cursor-pointer font-bold">Interromper o uso e remover o A1</summary><ActionForm action={revokeNfseCertificate} successMessage="Certificado removido do cadastro ativo. Novas operações foram interrompidas." className="mt-3 grid gap-3"><p className="text-sm text-muted">Isso não cancela notas nem revoga o certificado na certificadora. Solicitações já iniciadas podem concluir. Cópias de backup seguem a política de retenção.</p><label className="flex gap-2 text-sm"><input name="confirmRevocation" type="checkbox" required />Confirmo a remoção do A1 e a interrupção de novas operações.</label><button className="secondary-button">Remover A1 do cadastro ativo</button></ActionForm></details>}
-    </article>
-    {pilotReady && manage && <article className="panel mt-5"><h2 className="text-lg font-extrabold">Preparar nota de teste</h2><p className="mt-1 text-sm text-muted">Escolha um recebimento para aproveitar os dados do paciente. Confira quem é o pagador antes de emitir.</p>
-      <form className="mt-4 flex flex-wrap items-end gap-3" action="/financeiro/nfse" method="get"><label className="grid flex-1 gap-2 text-sm font-bold">Recebimento<select className="field" name="recebimento" defaultValue={selected?.id ?? ""} required><option value="">Selecione um recebimento confirmado</option>{entries.map((entry) => <option key={entry.id} value={entry.id}>{entry.description} · {money(entry.amount)}</option>)}</select></label><button className="secondary-button">Preparar nota deste recebimento</button></form>
+    </article>}
+    {mode === "a1" && pilotReady && manage && <article className="panel mt-5"><h2 className="text-lg font-extrabold">Preparar nota de teste</h2><p className="mt-1 text-sm text-muted">Escolha um recebimento para aproveitar os dados do paciente. Confira quem é o pagador antes de emitir.</p>
+      <form className="mt-4 flex flex-wrap items-end gap-3" action="/financeiro/nfse" method="get"><input type="hidden" name="modo" value="a1" /><label className="grid flex-1 gap-2 text-sm font-bold">Recebimento<select className="field" name="recebimento" defaultValue={selected?.id ?? ""} required><option value="">Selecione um recebimento confirmado</option>{entries.map((entry) => <option key={entry.id} value={entry.id}>{entry.description} · {money(entry.amount)}</option>)}</select></label><button className="secondary-button">Preparar nota deste recebimento</button></form>
       {!entries.length && <p className="mt-3 text-sm text-muted">Nenhum recebimento confirmado disponível.</p>}
       {selected && <ActionForm key={selected.id} action={saveNfseDraft} successMessage="Rascunho preparado. Revise os dados abaixo antes de emitir." className="mt-5 grid gap-3 md:grid-cols-2">
         <input type="hidden" name="financialEntryId" value={selected.id} />
@@ -107,7 +110,7 @@ export default async function NfsePage({ searchParams }: { searchParams: Promise
         </section>;
       })}</PaginatedCollection>
     </article>
-    <article className="panel mt-5"><h2 className="font-extrabold">Notas registradas externamente</h2><p className="text-sm text-muted">Notas emitidas em outro sistema, separadas das emissões de teste do Aggenda.</p><PaginatedCollection label="Registros" className="mt-3">{external.map((note) => <p className="mt-2 text-sm" key={note.id}>Nota {note.number ?? "sem número"} · {money(note.amount)}</p>)}</PaginatedCollection>
+    <article id="notas-externas" className="panel mt-5"><h2 className="font-extrabold">Notas registradas externamente</h2><p className="text-sm text-muted">Notas emitidas em outro sistema, separadas das emissões de teste do Aggenda.</p><PaginatedCollection label="Registros" className="mt-3">{external.map((note) => <p className="mt-2 text-sm" key={note.id}>Nota {note.number ?? "sem número"} · {money(note.amount)}{note.verificationUrl && <a className="ml-3 font-bold text-brand underline" href={note.verificationUrl} target="_blank" rel="noopener noreferrer">Abrir verificação externa</a>}</p>)}</PaginatedCollection>
       {manage && <details className="mt-4"><summary className="cursor-pointer font-bold">Registrar nota já emitida</summary><ActionForm action={registerFiscalDocument} successMessage="Nota externa registrada." className="mt-3 grid gap-3 md:grid-cols-2"><label className="grid gap-2 text-sm font-bold">Recebimento<select className="field" name="financialEntryId"><option value="">Sem recebimento vinculado</option>{entries.map((entry) => <option key={entry.id} value={entry.id}>{entry.description} · {money(entry.amount)}</option>)}</select></label><label className="grid gap-2 text-sm font-bold">Número da nota<input className="field" name="number" required maxLength={60} /></label><label className="grid gap-2 text-sm font-bold">Valor<input className="field" name="amount" inputMode="decimal" required /></label><label className="grid gap-2 text-sm font-bold">Endereço de verificação<input className="field" name="verificationUrl" type="url" placeholder="https://..." /></label><button className="secondary-button">Registrar nota externa</button></ActionForm></details>}
     </article>
   </div>;

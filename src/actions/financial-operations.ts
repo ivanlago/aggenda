@@ -11,7 +11,6 @@ import { nfseVault, openNfseCertificate } from "@/lib/nfse/vault";
 import { readFiscalCertificate } from "@/lib/nfse/certificate";
 import { governmentTransport } from "@/lib/nfse/government";
 import { checkGovernmentNfseCompatibility, readNfseProfile, selectNfseRoute, type NfseCertificateSecret, type NfseFiscalProfile } from "@/lib/nfse-routing";
-import { nfsePublicOffer } from "@/lib/service-plans";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
@@ -29,15 +28,15 @@ export async function reconcileOfx(data: FormData) { const { organization } = aw
 export async function requestNfseActivation(data: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "integrations.manage");
-  if (data.get("acceptNfseOffer") !== "on") throw new Error("Aceite as condições comerciais da NFS-e.");
+  if (data.get("confirmPilotSetup") !== "on") throw new Error("Confirme que a configuração é somente para homologação, sem contratação ou liberação de produção.");
   const setupMode = value(data, "setupMode") === "assisted" ? "assisted" : "self_service";
   const [contract] = await db.select().from(commercialContracts).where(eq(commercialContracts.organizationId, organization.id));
   if (contract && !contract.noteLimit) throw new Error("NFS-e não incluída nesta contratação. A venda do módulo aguarda homologação.");
   const [existing] = await db.select({ status: organizationFinancialIntegrations.status }).from(organizationFinancialIntegrations).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "nfse"))).limit(1);
   if (existing?.status === "configured" || existing?.status === "active") throw new Error("A emissão de NFS-e já está configurada.");
-  const commercialAcceptance = { monthlyPriceInCents: contract ? 0 : nfsePublicOffer.monthlyPriceInCents, monthlyLimit: contract?.noteLimit ?? nfsePublicOffer.monthlyLimit, overageInCents: contract ? 0 : nfsePublicOffer.overageInCents, overageMode: contract ? "prepaid_required" : "legacy", assistedSetupInCents: setupMode === "assisted" ? nfsePublicOffer.assistedSetupInCents : 0, setupMode, acceptedAt: new Date().toISOString(), acceptedByUserId: session.user.id };
-  await db.insert(organizationFinancialIntegrations).values({ organizationId: organization.id, provider: "nfse", environment: "sandbox", encryptedCredential: encryptFinancialCredential("activation-requested"), status: "requested", metadata: { billingOwner: "client", costsPaidBy: "client", requestedAt: new Date().toISOString(), requestedByUserId: session.user.id, commercialAcceptance } }).onConflictDoUpdate({ target: [organizationFinancialIntegrations.organizationId, organizationFinancialIntegrations.provider], set: { status: "requested", metadata: { billingOwner: "client", costsPaidBy: "client", requestedAt: new Date().toISOString(), requestedByUserId: session.user.id, commercialAcceptance }, updatedAt: new Date() } });
-  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "request_activation", entityType: "financial_integration:nfse", details: commercialAcceptance });
+  const pilotSetup = { purpose: "sandbox_setup_only", contractsService: false, enablesProduction: false, setupMode, acceptedAt: new Date().toISOString(), acceptedByUserId: session.user.id };
+  await db.insert(organizationFinancialIntegrations).values({ organizationId: organization.id, provider: "nfse", environment: "sandbox", encryptedCredential: encryptFinancialCredential("activation-requested"), status: "requested", metadata: { billingOwner: "client", costsPaidBy: "client", requestedAt: new Date().toISOString(), requestedByUserId: session.user.id, pilotSetup } }).onConflictDoUpdate({ target: [organizationFinancialIntegrations.organizationId, organizationFinancialIntegrations.provider], set: { status: "requested", metadata: { billingOwner: "client", costsPaidBy: "client", requestedAt: new Date().toISOString(), requestedByUserId: session.user.id, pilotSetup }, updatedAt: new Date() } });
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "request_activation", entityType: "financial_integration:nfse", details: pilotSetup });
   revalidatePath("/financeiro/nfse");
 }
 

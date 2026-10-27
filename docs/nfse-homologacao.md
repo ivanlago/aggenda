@@ -6,6 +6,14 @@ Implementação local para testar o ciclo nacional: cadastro A1, recebimento con
 
 ## Preparação do ambiente
 
+### Formas de emissão na interface
+
+Em `/financeiro/nfse`, o usuário pode consultar o piloto nacional com A1, consultar a alternativa municipal ou registrar uma nota emitida fora do Aggenda. A escolha na URL é apenas de apresentação: não altera o perfil fiscal salvo, credenciais, contrato ou autorização de produção.
+
+O A1 com CNPJ é requisito do conector atual. Não existe conector municipal por usuário/senha homologado nesta implementação. Informar município e regime não confirma cobertura. Antes de habilitar essa alternativa, é necessário selecionar e homologar um conector direto ou parceiro, verificar autenticação e credenciamento do prestador e validar emissão, consulta e cancelamento. Nenhuma senha municipal ou gov.br é coletada nesta tela.
+
+O registro externo guarda os dados de uma nota já emitida e permite abrir seu endereço de verificação. Não emite outra nota, não valida sua autenticidade e não consome a franquia de emissão automática. A solicitação de configuração do piloto registra ciência de homologação, sem aceite de preços; a contratação continua centralizada em Administração → Assinaturas.
+
 1. Instalar as dependências com `npm ci`.
 2. Configurar `NFSE_STORAGE_KEYS` (JSON com chaves aleatórias de 32 bytes em Base64) e `NFSE_STORAGE_ACTIVE_KEY` (identificador ativo). Não reutilizar segredos de autenticação ou prontuários. Preservar as chaves antigas enquanto houver dados ou backups dependentes delas. Preservar também `FINANCIAL_INTEGRATION_SECRET`/alternativa legada para ler dados históricos até a migração.
 3. Aplicar as migrações Drizzle `0068_nfse_requests.sql`, `0069_nfse_custody_events.sql` e `0070_nfse_rejected_attempts.sql` pelo fluxo habitual, primeiro em banco isolado. Nenhuma foi aplicada ao banco conectado ou à produção nesta tarefa.

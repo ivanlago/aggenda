@@ -87,6 +87,20 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
       return { saleId,charge,key,form };
     }
     const repository = new PosPaymentRepository(database);
+    await t.test("página pública consulta o vínculo da cobrança sem erro de tipos SQL", async () => {
+      const pageBundle=await build({entryPoints:["src/app/pagamento/venda/[token]/page.tsx"],bundle:true,write:false,format:"cjs",platform:"node",packages:"external",jsx:"automatic",plugins:[{name:"public-page-mock",setup(builder){
+        const mocks:Record<string,string>={"@/db":"export const db=globalThis.__posDb;","next/navigation":"export function notFound(){throw new Error('TEST_NOT_FOUND')} export function useRouter(){return {refresh(){}}}"};
+        builder.onResolve({filter:/.*/},args=>mocks[args.path]?{path:args.path,namespace:"public-page-mock"}:undefined);
+        builder.onLoad({filter:/.*/,namespace:"public-page-mock"},args=>({contents:mocks[args.path],loader:"js"}));
+      }}]});
+      const pageModule={exports:{} as {default:(input:{params:Promise<{token:string}>})=>Promise<unknown>}};
+      new Function("require","module","exports",pageBundle.outputFiles[0].text)(createRequire(import.meta.url),pageModule,pageModule.exports);
+      await assert.rejects(pageModule.exports.default({params:Promise.resolve({token:randomUUID()})}),/TEST_NOT_FOUND/);
+      const pending=await create();
+      const token=(await pg.query<{receipt_token:string}>("SELECT receipt_token FROM retail_sales WHERE id=$1",[pending.saleId])).rows[0].receipt_token;
+      assert.ok(await pageModule.exports.default({params:Promise.resolve({token})}));
+      await repository.cancelUnpaid(org,pending.saleId,"cashier");
+    });
     await t.test("criação externa concorrente ocorre uma vez e timeout não gera segunda cobrança", async () => {
       let calls = 0;
       let fail = false;

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { db } from "@/db";
@@ -13,7 +13,7 @@ export default async function PublicSalePayment({ params }: { params: Promise<{ 
   if (!/^[a-f0-9-]{36}$/i.test(token)) notFound();
   const [row] = await db.select({ company: organizations.name, status: retailSales.status, total: retailSales.totalInCents,
     url: paymentCharges.invoiceUrl, environment: paymentCharges.metadata }).from(retailSales)
-    .innerJoin(organizations, eq(organizations.id, retailSales.organizationId)).innerJoin(paymentCharges, and(eq(paymentCharges.organizationId, retailSales.organizationId), eq(paymentCharges.originId, retailSales.id), eq(paymentCharges.originType, "retail_sale"), eq(paymentCharges.provider, "mercado_pago")))
+    .innerJoin(organizations, eq(organizations.id, retailSales.organizationId)).innerJoin(paymentCharges, and(eq(paymentCharges.organizationId, retailSales.organizationId), eq(paymentCharges.originId, sql`${retailSales.id}::text`), eq(paymentCharges.originType, "retail_sale"), eq(paymentCharges.provider, "mercado_pago")))
     .where(eq(retailSales.receiptToken, token)).limit(1);
   if (!row) notFound();
   return <main className="mx-auto grid min-h-screen max-w-xl content-center gap-5 px-5 py-10"><section className="panel form-stack"><h1 className="text-2xl font-extrabold">{row.company}</h1><h2 className="text-lg font-bold">Pagamento da compra</h2><p className="text-3xl font-extrabold text-brand">{(row.total/100).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</p><p role="status">{retailSaleStatusLabels[row.status] ?? "Em conferência"}</p>

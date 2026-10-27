@@ -74,16 +74,16 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       { href: "/crescimento", label: "CRM", icon: TrendingUp, permission: "crm.read" },
     ] },
     { label: "Atendimento", items: [
+      { href: "/estoque", label: "Estoque", icon: Boxes, permission: "inventory.read" },
       { href: "/servicos", label: organization.serviceLabelPlural, icon: Wrench, permission: "services.read" },
       { href: "/pacotes", label: "Pacotes", icon: PackageOpen, permission: "services.read" },
-      { href: "/documentos/assinatura-profissional", label: "Assinatura profissional", icon: FileSignature, permission: "documents.sign" },
-      { href: "/estoque", label: "Estoque", icon: Boxes, permission: "inventory.read" },
       { href: "/documentos", label: "Documentos", icon: FileSignature, permission: "documents.read", children: [
         { href: "/documentos/clinicos", label: "Clínicos", icon: FileCheck2, permission: "documents.read", secondary: true },
         { href: "/documentos/juridicos", label: "Jurídicos", icon: ScrollText, permission: "documents.read", secondary: true },
         { href: "/documentos", label: "Criar documentos", icon: FileSignature, permission: "documents.read", secondary: true },
         { href: "/documentos/historico", label: "Histórico", icon: ReceiptText, permission: "documents.read", secondary: true },
       ] },
+      { href: "/documentos/assinatura-profissional", label: "Assinatura profissional", icon: FileSignature, permission: "documents.sign" },
     ] },
     { label: "Financeiro", items: [
       { href: "/financeiro", label: "Contas e fluxo de caixa", icon: WalletCards, permission: "finance.read" },

@@ -1131,6 +1131,7 @@ export async function updateFinancialEntryStatus(formData: FormData) {
   )).limit(1);
   if (!current) throw new Error("Lançamento financeiro não encontrado.");
   if (current.source === "commission_payment") throw new Error("Gerencie esta quitação pela tela de comissões para preservar o saldo e o histórico.");
+  if (current.source === "retail_sale") throw new Error("Gerencie o recebimento pela venda no PDV. Pagamentos integrados dependem da confirmação do provedor.");
   const status = requestedStatus === "realized"
     ? (current.type === "payable" ? "paid" : "received")
     : requestedStatus;

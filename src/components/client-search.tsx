@@ -16,7 +16,7 @@ export function ClientSearch({ clients, value, onChange, fixed = false, required
   return <div className="relative grid gap-2">
     <input type="hidden" name="clientId" value={value} />
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-sm font-bold">{fixed ? "Cliente" : "Cliente (opcional)"}</span>
+      <span className="text-sm font-bold">{fixed ? "Cliente" : required ? "Cliente (obrigatório)" : "Cliente (opcional)"}</span>
       {!fixed && <button type="button" className="icon-button" aria-label="Buscar cliente" aria-expanded={open} aria-controls={id} onClick={() => setOpen((current) => !current)}><Search className="size-4" /></button>}
       {open && <input autoFocus className="field w-[17ch] max-w-full" aria-label="Nome do cliente" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); if (event.key === "Enter") { event.preventDefault(); if (matches.length === 1) { onChange(matches[0].id); setOpen(false); setQuery(""); } } }} />}
     </div>
@@ -29,3 +29,4 @@ export function ClientSearch({ clients, value, onChange, fixed = false, required
     {required && !value && <p className="text-xs text-amber-700">Selecione um cliente para vender procedimentos ou pacotes.</p>}
   </div>;
 }
+

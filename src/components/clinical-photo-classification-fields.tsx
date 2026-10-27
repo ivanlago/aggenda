@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const views = {
   front: "Frontal", back: "Posterior", three_quarter_right: "¾ direita", three_quarter_left: "¾ esquerda",
@@ -28,9 +28,21 @@ const regions: Array<{ value: string; label: string; views: ViewCode[] }> = [
 
 export function ClinicalPhotoClassificationFields() {
   const [region, setRegion] = useState(""); const [view, setView] = useState(""); const selectedRegion = regions.find((item) => item.value === region);
+  const viewRef = useRef<HTMLSelectElement>(null);
+  useEffect(() => {
+    const form = viewRef.current?.form;
+    const advance = () => {
+      const available = selectedRegion?.views ?? [];
+      const next = available[available.indexOf(view as ViewCode) + 1];
+      if (next && next !== "custom") setView(next);
+    };
+    form?.addEventListener("aggenda:form-saved", advance);
+    return () => form?.removeEventListener("aggenda:form-saved", advance);
+  }, [selectedRegion, view]);
   return <>
-    <select className="field" name="bodyRegion" value={region} onChange={(event) => { setRegion(event.target.value); setView(""); }} required><option value="">Região corporal</option>{regions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
-    <select className="field" name="viewCode" value={view} onChange={(event) => setView(event.target.value)} disabled={!region} required><option value="">{region ? "Vista / enquadramento" : "Escolha primeiro a região"}</option>{selectedRegion?.views.map((code) => <option key={code} value={code}>{views[code]}</option>)}</select>
+    <p className="text-xs text-muted col-span-full">Após salvar, a próxima vista é selecionada automaticamente. Tratamento, visita e consentimento são mantidos.</p>
+    <select className="field" name="bodyRegion" value={region} onChange={(event) => { setRegion(event.target.value); setView(regions.find(item => item.value === event.target.value)?.views[0] ?? ""); }} required><option value="">Região corporal</option>{regions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
+    <select ref={viewRef} className="field" aria-label="Vista / enquadramento" name="viewCode" value={view} onChange={(event) => setView(event.target.value)} disabled={!region} required><option value="">{region ? "Vista / enquadramento" : "Escolha primeiro a região"}</option>{selectedRegion?.views.map((code) => <option key={code} value={code}>{views[code]}</option>)}</select>
     <select className="field" name="patientPosition" defaultValue="standing"><option value="standing">Em pé</option><option value="seated">Sentado</option><option value="lying">Deitado</option><option value="custom">Posição personalizada</option></select>
     {region === "custom" && <input className="field" name="customBodyRegion" placeholder="Informe a região corporal" required />}
     {view === "custom" && <input className="field" name="customViewCode" placeholder="Informe a vista / enquadramento" required />}

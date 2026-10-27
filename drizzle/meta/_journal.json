@@ -603,6 +603,20 @@
       "when": 1793063086726,
       "tag": "0085_pos_online_payments",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1793106696491,
+      "tag": "0086_clinical_photo_visits",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1793106803661,
+      "tag": "0087_clinical_photo_consent_reference",
+      "breakpoints": true
     }
   ]
 }

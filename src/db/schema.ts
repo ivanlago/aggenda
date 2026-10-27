@@ -751,6 +751,8 @@ export const clientClinicalMedia = pgTable("client_clinical_media", {
   mediaType: text("media_type").default("photo").notNull(),
   phase: text("phase").default("clinical").notNull(),
   captureSession: text("capture_session"),
+  visitDate: date("visit_date"),
+  consentDocumentId: uuid("consent_document_id").references((): import("drizzle-orm/pg-core").AnyPgColumn => electronicDocuments.id, { onDelete: "restrict" }),
   bodyRegion: text("body_region"),
   viewCode: text("view_code"),
   patientPosition: text("patient_position"),

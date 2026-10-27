@@ -10,6 +10,13 @@ export function GuidedClinicalPhotoInput({ references }: { references: Reference
   const [cameraOpen, setCameraOpen] = useState(false); const [preview, setPreview] = useState<string | null>(null); const [referenceId, setReferenceId] = useState(""); const [opacity, setOpacity] = useState(35); const [error, setError] = useState("");
   const reference = references.find((item) => item.id === referenceId);
   useEffect(() => () => { streamRef.current?.getTracks().forEach((track) => track.stop()); if (preview) URL.revokeObjectURL(preview); }, [preview]);
+  useEffect(() => {
+    const input = inputRef.current;
+    const form = input?.form;
+    const clear = () => { if (input) input.value = ""; setPreview(null); };
+    form?.addEventListener("aggenda:form-saved", clear);
+    return () => form?.removeEventListener("aggenda:form-saved", clear);
+  }, []);
   async function openCamera() {
     setError("");
     try {

@@ -1,5 +1,6 @@
 "use server";
 
+import { parseClinicalVisitDate, validateClinicalPhotoPair } from "@/lib/clinical-photo";
 import { serviceCatalogReference } from "@/lib/reference-snapshots";
 import { assertProfessionalCapacity } from "@/lib/commercial-access";
 import { serviceDeletionError } from "@/lib/service-deletion";
@@ -27,6 +28,7 @@ import {
   financialBudgets,
   clientHistoryEntries,
   clientClinicalMedia,
+  electronicDocuments,
   professionalRegistrations,
   professionalGoogleCalendarAccounts,
   professionalSpecialties,
@@ -680,15 +682,27 @@ export async function createClientClinicalMedia(formData: FormData) {
   const parentMediaId = optionalText(formData, "parentMediaId");
   const mediaType = textValue(formData, "mediaType") || "photo";
   if (!["photo", "simulation", "comparison"].includes(mediaType)) throw new Error("Tipo de registro clínico inválido.");
-  const captureSession = optionalText(formData, "captureSession")?.slice(0, 120) || null;
+  if (parentMediaId && mediaType !== "simulation") throw new Error("Apenas planejamentos podem derivar de uma fotografia.");
+  if (!["before", "during", "after", "clinical"].includes(textValue(formData, "phase") || "clinical")) throw new Error("Fase do tratamento inválida.");
+  let captureSession = optionalText(formData, "captureSession")?.slice(0, 120) || null;
+  let visitDate = parseClinicalVisitDate(optionalText(formData, "visitDate"));
+  let consentDocumentId = optionalText(formData, "consentDocumentId") || null;
+  if (consentDocumentId) {
+    const [document] = await db.select({ id: electronicDocuments.id }).from(electronicDocuments).where(and(
+      eq(electronicDocuments.id, consentDocumentId), eq(electronicDocuments.organizationId, organization.id),
+      eq(electronicDocuments.clientId, clientId), eq(electronicDocuments.status, "signed"),
+      eq(electronicDocuments.workflowType, "patient_signature"), eq(electronicDocuments.documentType, "consent"),
+    )).limit(1);
+    if (!document) throw new Error("Selecione um termo de consentimento assinado deste paciente.");
+  }
   const bodyRegionValue = optionalText(formData, "bodyRegion");
   const viewCodeValue = optionalText(formData, "viewCode");
-  const bodyRegion = (bodyRegionValue === "custom" ? optionalText(formData, "customBodyRegion") : bodyRegionValue)?.slice(0, 80) || null;
-  const viewCode = (viewCodeValue === "custom" ? optionalText(formData, "customViewCode") : viewCodeValue)?.slice(0, 80) || null;
+  let bodyRegion = (bodyRegionValue === "custom" ? optionalText(formData, "customBodyRegion") : bodyRegionValue)?.slice(0, 80) || null;
+  let viewCode = (viewCodeValue === "custom" ? optionalText(formData, "customViewCode") : viewCodeValue)?.slice(0, 80) || null;
   if (bodyRegionValue === "custom" && !bodyRegion) throw new Error("Informe a região corporal personalizada.");
   if (viewCodeValue === "custom" && !viewCode) throw new Error("Informe a vista personalizada.");
-  const patientPosition = optionalText(formData, "patientPosition")?.slice(0, 80) || null;
-  const consentPurpose = textValue(formData, "consentPurpose") || "clinical";
+  let patientPosition = optionalText(formData, "patientPosition")?.slice(0, 80) || null;
+  let consentPurpose = textValue(formData, "consentPurpose") || "clinical";
   if (!["clinical", "client_share", "marketing"].includes(consentPurpose)) throw new Error("Finalidade do registro inválida.");
   let sourceMediaIds: string[] = [];
   const sourceMediaIdsRaw = optionalText(formData, "sourceMediaIds");
@@ -702,13 +716,22 @@ export async function createClientClinicalMedia(formData: FormData) {
     }
   }
   if (sourceMediaIds.length) {
-    const sources = await db.select({ id: clientClinicalMedia.id }).from(clientClinicalMedia).where(and(
+    const sources = await db.select().from(clientClinicalMedia).where(and(
       eq(clientClinicalMedia.organizationId, organization.id),
       eq(clientClinicalMedia.clientId, clientId),
       inArray(clientClinicalMedia.id, sourceMediaIds),
     ));
     if (sources.length !== new Set(sourceMediaIds).size) throw new Error("Uma das imagens de origem não pertence a este cliente.");
+    if (mediaType === "comparison") {
+      const pair = validateClinicalPhotoPair(sources);
+      captureSession = pair.before.captureSession; bodyRegion = pair.before.bodyRegion; viewCode = pair.before.viewCode;
+      patientPosition = pair.before.patientPosition; visitDate = pair.after.visitDate;
+      consentPurpose = pair.consentPurpose;
+      consentDocumentId = pair.before.consentDocumentId === pair.after.consentDocumentId ? pair.before.consentDocumentId : null;
+    }
   }
+  if (mediaType === "comparison" && sourceMediaIds.length !== 2) throw new Error("Selecione duas fotografias de origem.");
+  if (mediaType === "photo" && (!captureSession || !bodyRegion || !viewCode || !visitDate)) throw new Error("Informe o tratamento, a data da visita, a região e a vista.");
   let annotations: Array<Record<string, unknown>> = [];
   const annotationsRaw = optionalText(formData, "annotations");
   if (annotationsRaw) {
@@ -721,12 +744,14 @@ export async function createClientClinicalMedia(formData: FormData) {
     }
   }
   if (parentMediaId) {
-    const [parent] = await db.select({ id: clientClinicalMedia.id }).from(clientClinicalMedia).where(and(
+    const [parent] = await db.select().from(clientClinicalMedia).where(and(
       eq(clientClinicalMedia.id, parentMediaId),
       eq(clientClinicalMedia.clientId, clientId),
       eq(clientClinicalMedia.organizationId, organization.id),
     )).limit(1);
     if (!parent) throw new Error("Fotografia original não encontrada.");
+    captureSession = parent.captureSession; bodyRegion = parent.bodyRegion; viewCode = parent.viewCode;
+    patientPosition = parent.patientPosition; visitDate = parent.visitDate; consentPurpose = parent.consentPurpose; consentDocumentId = parent.consentDocumentId;
   }
   const uploaded = await uploadClinicalImage(file, organization.id, clientId);
   try {
@@ -738,6 +763,8 @@ export async function createClientClinicalMedia(formData: FormData) {
       mediaType,
       phase: textValue(formData, "phase") || "clinical",
       captureSession,
+      visitDate,
+      consentDocumentId,
       bodyRegion,
       viewCode,
       patientPosition,

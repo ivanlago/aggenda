@@ -10,6 +10,7 @@ import { PhoneInput } from "@/components/phone-input";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { ClinicalPhotoTreatmentField } from "@/components/clinical-photo-treatment-field";
 import { createClientClinicalMedia, createClientHistoryEntry, updateClient } from "@/actions/app";
 import { ActionForm } from "@/components/action-form";
 import { ClinicalMediaGallery } from "@/components/clinical-media-gallery";
@@ -132,6 +133,7 @@ export default async function ClientHistoryPage({
       id: electronicDocuments.id,
       title: electronicDocuments.title,
       documentType: electronicDocuments.documentType,
+      workflowType: electronicDocuments.workflowType,
       issuedAt: electronicDocuments.issuedAt,
       signedAt: electronicDocuments.signedAt,
       createdAt: electronicDocuments.createdAt,
@@ -239,19 +241,21 @@ export default async function ClientHistoryPage({
       {canManage && <PortalDependents organizationId={organization.id} guardianId={client.id} />}
       {canReadClinical && <ClinicalWorkspace clientId={client.id} />}
       {canReadClinical && <CollapsiblePanel title="Fotografias clínicas" id="fotografias-clinicas" open={section === "photos"}>
-        <p className="text-sm text-muted">Crie sessões de antes, evolução e depois para qualquer região corporal. Registros com a mesma sessão, região e vista são pareados automaticamente.</p>
-        {canManageClinicalMedia && <ActionForm action={createClientClinicalMedia} successMessage="Fotografia clínica enviada." className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <p className="text-sm text-muted">Organize fotos por tratamento, data da visita e vista. Compare a evolução entre visitas do mesmo tratamento.</p>
+        {canManageClinicalMedia && <ActionForm action={createClientClinicalMedia} resetOnSuccess={false} successMessage="Fotografia salva. Você pode continuar com a próxima vista." className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <input type="hidden" name="clientId" value={client.id} />
-          <input className="field" name="captureSession" placeholder="Sessão (ex.: Tratamento setembro/2026)" required />
+          <ClinicalPhotoTreatmentField treatments={[...new Set(clinicalMedia.map(item => item.captureSession).filter((value): value is string => Boolean(value)))]} />
+          <label className="text-xs font-bold">Data da visita<input className="field mt-1" type="date" name="visitDate" required defaultValue={new Intl.DateTimeFormat("en-CA", { timeZone: organization.timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())} /></label>
           <select className="field" name="appointmentId" defaultValue=""><option value="">Atendimento relacionado (opcional)</option>{history.map((item) => <option key={item.id} value={item.id}>{item.service} · {formatOrganizationDateTime(item.startsAt, organization.timezone)}</option>)}</select>
           <select className="field" name="phase"><option value="before">Antes</option><option value="during">Evolução</option><option value="after">Depois</option><option value="clinical">Registro clínico</option></select>
           <ClinicalPhotoClassificationFields />
           <input className="field lg:col-span-2" name="title" placeholder="Procedimento, área específica ou observação" />
           <select className="field" name="consentPurpose" defaultValue="clinical"><option value="clinical">Uso interno / prontuário</option><option value="client_share">Compartilhar com o cliente</option><option value="marketing">Divulgação / publicidade</option></select>
+          <label className="text-xs font-bold">Termo de consentimento assinado (opcional)<select className="field mt-1" name="consentDocumentId" defaultValue=""><option value="">Sem termo vinculado</option>{documents.filter(doc => doc.signedAt && doc.documentType === "consent" && doc.workflowType === "patient_signature").map(doc => <option key={doc.id} value={doc.id}>{doc.title}</option>)}</select></label>
           <GuidedClinicalPhotoInput references={clinicalMedia.filter((item) => item.mediaType === "photo" && item.phase === "before").map((item) => ({ id: item.id, src: item.storageProvider === "cloudinary" ? `/api/clinical-media/${item.id}?width=1200` : item.url, label: [item.captureSession, item.bodyRegion, item.viewCode].filter(Boolean).join(" · ") || item.title || "Fotografia Antes" }))} />
           <p className="text-xs text-muted sm:col-span-2 lg:col-span-3">No celular, use a câmera na mesma distância, iluminação e posição. Ao registrar o Depois, consulte abaixo a foto Antes pareada como referência.</p>
           <label className="flex items-start gap-2 text-sm font-bold sm:col-span-2 lg:col-span-3"><input className="mt-1" name="consentConfirmed" type="checkbox" required />Confirmo o consentimento para a finalidade selecionada.</label>
-          <button className="primary-button sm:w-fit">Adicionar fotografia</button>
+          <button className="primary-button sm:w-fit">Salvar e continuar</button>
         </ActionForm>}
         <ClinicalMediaGallery clientId={client.id} canManage={canManageClinicalMedia} media={clinicalMedia.map((item) => ({
           id: item.id,
@@ -259,6 +263,8 @@ export default async function ClientHistoryPage({
           phase: item.phase,
           mediaType: item.mediaType,
           captureSession: item.captureSession,
+          visitDate: item.visitDate,
+          consentDocumentTitle: documents.find(doc => doc.id === item.consentDocumentId)?.title ?? null,
           bodyRegion: item.bodyRegion,
           viewCode: item.viewCode,
           patientPosition: item.patientPosition,

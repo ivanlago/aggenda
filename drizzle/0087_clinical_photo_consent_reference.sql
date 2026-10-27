@@ -1,0 +1,1 @@
+ALTER TABLE "client_clinical_media" ADD CONSTRAINT "client_clinical_media_consent_document_id_electronic_documents_id_fk" FOREIGN KEY ("consent_document_id") REFERENCES "public"."electronic_documents"("id") ON DELETE restrict ON UPDATE no action;

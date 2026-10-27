@@ -2,6 +2,8 @@ import { and, eq } from "drizzle-orm";
 import { db as defaultDb } from "@/db";
 import { billingPayments, billingWebhookEvents, commercialContracts, commercialOrders, organizationServicePlans, organizationSubscriptions, pilotInvitations } from "@/db/schema";
 import { addCalendarMonths } from "./commercial-catalog";
+import { asaasRequest } from "./asaas";
+import { commercialQuote } from "./commercial-catalog";
 import { usagePeriod } from "./commercial-access";
 
 type Event = { id: string; event: string; checkout?: { id: string; externalReference?: string | null }; payment?: {
@@ -9,7 +11,7 @@ type Event = { id: string; event: string; checkout?: { id: string; externalRefer
 }; subscription?: { id: string; externalReference?: string | null } };
 
 /** Handles only orders created by the new checkout; legacy billing remains separate. */
-export async function processCommercialPayment(event: Event, db = defaultDb) {
+export async function processCommercialPayment(event: Event, db = defaultDb, updateRecurring: (id: string, value: number) => Promise<unknown> = (id, value) => asaasRequest(`/subscriptions/${encodeURIComponent(id)}`, { method: "PUT", body: { value: value / 100, updatePendingPayments: false } })) {
   const reference = event.payment?.externalReference ?? event.checkout?.externalReference ?? event.subscription?.externalReference;
   const orderId = reference?.startsWith("commercial:") ? reference.slice(11) : null;
   const checkoutId = event.checkout?.id ?? event.payment?.checkoutSession;
@@ -32,7 +34,7 @@ export async function processCommercialPayment(event: Event, db = defaultDb) {
   await db.transaction(async (tx) => {
     const [current] = await tx.select().from(commercialOrders).where(eq(commercialOrders.id, selected.id)).for("update");
     const [dedupe] = await tx.insert(billingWebhookEvents).values({ id: event.id, provider: "asaas", type: event.event }).onConflictDoNothing().returning();
-    if (!dedupe) return;
+    if (!dedupe || current.status === "reversed") return;
     const now = new Date();
     if (event.event === "SUBSCRIPTION_CREATED" || event.event === "SUBSCRIPTION_UPDATED") {
       if (current.quote.kind !== "commercial") throw new Error("Esta oferta não permite recorrência.");
@@ -59,6 +61,18 @@ export async function processCommercialPayment(event: Event, db = defaultDb) {
     if (!paid) {
       if (["CHECKOUT_CANCELED", "CHECKOUT_EXPIRED"].includes(event.event) && !current.activatedAt) await tx.update(commercialOrders).set({ status: "expired" }).where(eq(commercialOrders.id, current.id));
       if (["PAYMENT_REFUNDED", "PAYMENT_CHARGEBACK_REQUESTED", "PAYMENT_CHARGEBACK_DISPUTE"].includes(event.event) && event.payment?.id === current.providerPaymentId) {
+        if (current.quote.kind === "addon") {
+          const [base] = await tx.select().from(commercialOrders).where(eq(commercialOrders.id, current.quote.contractOrderId));
+          const [subscription] = await tx.select().from(organizationSubscriptions).where(eq(organizationSubscriptions.organizationId, current.organizationId));
+          if (base?.quote.kind === "commercial" && base.quote.billing?.recurring) {
+            if (!subscription?.billingSubscriptionId || subscription.billingPlanCode !== 'commercial:' + base.id) throw new Error("Concilie o estorno do adicional e a recorrência do plano.");
+            const restored = commercialQuote(current.quote.baseSelection);
+            await updateRecurring(subscription.billingSubscriptionId, restored.amountInCents);
+            await tx.update(commercialOrders).set({ quote: { ...base.quote, signatures: false, documents: 0, renewalAmountInCents: restored.amountInCents } }).where(eq(commercialOrders.id, base.id));
+          }
+          await tx.update(commercialOrders).set({ status: "reversed" }).where(eq(commercialOrders.id, current.id));
+          return;
+        }
         if (current.quote.kind === "extra") {
           await tx.update(commercialOrders).set({ status: "reversed" }).where(eq(commercialOrders.id, current.id));
           return;
@@ -72,14 +86,16 @@ export async function processCommercialPayment(event: Event, db = defaultDb) {
     if (current.status === "reversed") return;
     if (current.quote.kind !== "commercial" && event.payment?.subscription) throw new Error("Oferta sem recorrência recebeu pagamento de assinatura; conciliação necessária.");
     const [activeContract] = await tx.select().from(commercialContracts).where(eq(commercialContracts.organizationId, current.organizationId)).for("update");
-    if (current.quote.kind !== "extra" && activeContract?.orderId && activeContract.orderId !== current.id && activeContract.endsAt > now) {
+    if (current.quote.kind !== "extra" && current.quote.kind !== "addon" && activeContract?.orderId && activeContract.orderId !== current.id && activeContract.endsAt > now) {
       throw new Error("Pagamento de outro contrato requer conciliação; contratação ativa preservada.");
     }
-    if (event.payment?.value != null && Math.round(event.payment.value * 100) !== current.quote.amountInCents) throw new Error("Valor pago divergente do pedido comercial.");
     const [previousPayment] = event.payment ? await tx.select().from(billingPayments).where(and(eq(billingPayments.provider, "asaas"), eq(billingPayments.providerPaymentId, event.payment.id))) : [];
-    if (previousPayment?.status === "paid") return;
+    if (previousPayment?.status === "paid") { if (previousPayment.organizationId !== current.organizationId || previousPayment.planCode !== `commercial:${current.id}`) throw new Error("Pagamento já vinculado a outro pedido."); return; }
+    const renewing = Boolean(current.activatedAt && event.payment?.subscription && event.payment.id !== current.providerPaymentId);
+    const expectedAmount = renewing ? current.quote.renewalAmountInCents ?? current.quote.amountInCents : current.quote.amountInCents;
+    if (event.payment?.value != null && Math.round(event.payment.value * 100) !== expectedAmount) throw new Error("Valor pago divergente do pedido comercial.");
     if (event.payment) await tx.insert(billingPayments).values({ organizationId: current.organizationId, provider: "asaas", providerPaymentId: event.payment.id,
-      planCode: `commercial:${current.id}`, paymentMethod: event.payment.billingType?.toLowerCase(), amountInCents: current.quote.amountInCents, status: "paid", paidAt: now })
+      planCode: `commercial:${current.id}`, paymentMethod: event.payment.billingType?.toLowerCase(), amountInCents: expectedAmount, status: "paid", paidAt: now })
       .onConflictDoUpdate({ target: [billingPayments.provider, billingPayments.providerPaymentId], set: { status: "paid", paidAt: now } });
     // CHECKOUT_PAID and PAYMENT_CONFIRMED describe the same first purchase.
     const renewal = Boolean(current.activatedAt && current.providerPaymentId && event.payment?.subscription && event.payment.id !== current.providerPaymentId);
@@ -93,6 +109,21 @@ export async function processCommercialPayment(event: Event, db = defaultDb) {
       return;
     }
     const quote = current.quote;
+    if (quote.kind === "addon") {
+      if (!activeContract || activeContract.kind !== "commercial" || activeContract.orderId !== quote.contractOrderId || activeContract.endsAt.toISOString() !== quote.contractEndsAt || activeContract.endsAt <= now) throw new Error("O plano mudou ou expirou. Concilie o pagamento do adicional com a equipe.");
+      const activated = await tx.select().from(commercialOrders).where(and(eq(commercialOrders.organizationId, current.organizationId), eq(commercialOrders.status, "active")));
+      if (activated.some(order => order.id !== current.id && order.quote.kind === "addon" && order.quote.contractOrderId === quote.contractOrderId && order.periodEnd && order.periodEnd > now)) throw new Error("Adicional já contratado; concilie o pagamento duplicado.");
+      const [base] = await tx.select().from(commercialOrders).where(eq(commercialOrders.id, quote.contractOrderId));
+      const [subscription] = await tx.select().from(organizationSubscriptions).where(eq(organizationSubscriptions.organizationId, current.organizationId));
+      if (!base || base.quote.kind !== "commercial") throw new Error("Plano de origem indisponível.");
+      if (base.quote.billing?.recurring && !subscription?.cancelAtPeriodEnd) {
+        if (!subscription?.billingSubscriptionId || subscription.billingPlanCode !== 'commercial:' + base.id) throw new Error("Recorrência do plano não confirmada. Concilie a contratação antes de ativar o adicional.");
+        await updateRecurring(subscription.billingSubscriptionId, quote.renewalAmountInCents);
+        await tx.update(commercialOrders).set({ quote: { ...base.quote, signatures: true, documents: 50, renewalAmountInCents: quote.renewalAmountInCents } }).where(eq(commercialOrders.id, base.id));
+      }
+      await tx.update(commercialOrders).set({ status: "active", activatedAt: now, periodEnd: activeContract.endsAt, providerPaymentId: event.payment?.id ?? current.providerPaymentId }).where(eq(commercialOrders.id, current.id));
+      return;
+    }
     if (quote.kind === "extra") {
       const [contract] = await tx.select().from(commercialContracts).where(eq(commercialContracts.organizationId, current.organizationId)).for("update");
       if (!contract || contract.endsAt <= now) throw new Error("Contrato expirado antes da confirmação do pacote. Necessário conciliar o pagamento com a equipe.");

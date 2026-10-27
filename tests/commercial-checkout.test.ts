@@ -1,3 +1,4 @@
+import { signatureAddonQuote } from "../src/lib/subscription-addon";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -101,6 +102,41 @@ test("real migration, payment deduplication, pilot quotas and prepaid extras in 
     assert.equal((await database.select().from(schema.organizationServicePlans).where(eq(schema.organizationServicePlans.organizationId, org2)))[0].whatsappServiceCode, "core_ai");
     assert.equal(usagePeriod(new Date("2026-01-31T14:00:00Z"), new Date("2026-03-30T14:00:00Z")), "2026-02-28");
     assert.equal(usagePeriod(new Date("2026-01-31T14:00:00Z"), new Date("2026-03-31T14:00:00Z")), "2026-03-31");
+    const [baseBeforeAddon] = await database.select().from(schema.commercialOrders).where(eq(schema.commercialOrders.id, monthly.id));
+    const [contractBeforeAddon] = await database.select().from(schema.commercialContracts).where(eq(schema.commercialContracts.organizationId, org2));
+    assert.equal(baseBeforeAddon.quote.kind, "commercial");
+    const addonQuote = signatureAddonQuote(baseBeforeAddon.quote as ReturnType<typeof commercialQuote>, monthly.id, contractBeforeAddon.startedAt, contractBeforeAddon.endsAt);
+    const [addonOrder] = await database.insert(schema.commercialOrders).values({ organizationId: org2, quote: addonQuote, checkoutId: "addon_checkout" }).returning();
+    const changes: number[] = [];
+    const updateRecurring = async (_id: string, value: number) => { changes.push(value); };
+    const addonPayment = { id: "addon_payment", value: addonQuote.amountInCents / 100, externalReference: 'commercial:' + addonOrder.id };
+    await assert.rejects(processCommercialPayment({ id: "addon_wrong", event: "PAYMENT_CONFIRMED", payment: { ...addonPayment, value: 1 } }, database, updateRecurring));
+    await assert.rejects(processCommercialPayment({ id: "addon_transport_failure", event: "PAYMENT_CONFIRMED", payment: addonPayment }, database, async () => { throw new Error("Provider unavailable"); }));
+    assert.equal((await database.select().from(schema.commercialOrders).where(eq(schema.commercialOrders.id, addonOrder.id)))[0].status, "pending");
+    await processCommercialPayment({ id: "addon_paid", event: "PAYMENT_CONFIRMED", payment: addonPayment }, database, updateRecurring);
+    await processCommercialPayment({ id: "addon_duplicate", event: "PAYMENT_RECEIVED", payment: addonPayment }, database, updateRecurring);
+    assert.deepEqual(changes, [26970]);
+    const [contractAfterAddon] = await database.select().from(schema.commercialContracts).where(eq(schema.commercialContracts.organizationId, org2));
+    assert.equal(contractAfterAddon.orderId, monthly.id);
+    assert.equal(contractAfterAddon.endsAt.toISOString(), contractBeforeAddon.endsAt.toISOString());
+    await database.transaction(tx => reserveCommercialUsage(tx, org2, "documents", "addon-document"));
+    await processCommercialPayment({ id: "addon_refund", event: "PAYMENT_REFUNDED", payment: addonPayment }, database, updateRecurring);
+    assert.deepEqual(changes, [26970,24980]);
+    await assert.rejects(database.transaction(tx => reserveCommercialUsage(tx, org2, "documents", "after-addon-refund")));
+    const [originalStillActive] = await database.select().from(schema.commercialContracts).where(eq(schema.commercialContracts.organizationId, org2));
+    assert.equal(originalStillActive.endsAt.toISOString(), contractBeforeAddon.endsAt.toISOString());
+    const [secondAddon] = await database.insert(schema.commercialOrders).values({ organizationId: org2, quote: addonQuote, checkoutId: "addon_second" }).returning();
+    await processCommercialPayment({ id: "addon_second_paid", event: "PAYMENT_CONFIRMED", payment: { ...addonPayment, id: "addon_payment_second", externalReference: 'commercial:' + secondAddon.id } }, database, updateRecurring);
+    await processCommercialPayment({ id: "old_refund_retry", event: "PAYMENT_REFUNDED", payment: addonPayment }, database, updateRecurring);
+    assert.deepEqual(changes, [26970,24980,26970]);
+    await processCommercialPayment({ id: "monthly_third", event: "PAYMENT_RECEIVED", payment: { ...monthlyPayment, id: "monthly_payment_3", value: 269.7 } }, database);
+    const [renewedWithAddon] = await database.select().from(schema.commercialContracts).where(eq(schema.commercialContracts.organizationId, org2));
+    assert.equal(renewedWithAddon.documentLimit, 50);
+    assert.equal(renewedWithAddon.orderId, monthly.id);
+    assert.equal(renewedWithAddon.endsAt.toISOString(), addCalendarMonths(contractBeforeAddon.endsAt, 1).toISOString());
+    await processCommercialPayment({ id: "old_payment_retry", event: "PAYMENT_RECEIVED", payment: monthlyPayment }, database);
+    assert.equal((await database.select().from(schema.commercialContracts).where(eq(schema.commercialContracts.organizationId, org2)))[0].endsAt.toISOString(), renewedWithAddon.endsAt.toISOString());
+
     await database.update(schema.commercialContracts).set({ endsAt: new Date(0) }).where(eq(schema.commercialContracts.organizationId, org));
     await assert.rejects(database.transaction((tx) => reserveCommercialUsage(tx, org, "responses", "expired")));
   } finally { await client.close(); }

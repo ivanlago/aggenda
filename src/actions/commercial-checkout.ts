@@ -9,6 +9,7 @@ import { db } from "@/db";
 import { commercialOrders, pilotInvitations, commercialContracts, organizationSubscriptions, professionals, legalAcceptances } from "@/db/schema";
 import { count } from "drizzle-orm";
 import { requireOrganizationMembership, requirePlatformMember } from "@/lib/session";
+import { signatureAddonQuote } from "@/lib/subscription-addon";
 import { commercialQuote, pilotQuote, extraQuote, type CommercialQuote } from "@/lib/commercial-catalog";
 import { asaasCheckoutLink, asaasRequest } from "@/lib/asaas";
 
@@ -51,7 +52,10 @@ async function executeCommercialCheckout(data: FormData) {
   if (data.get("acceptTerms") !== "on") throw new Error("Aceite as condições antes de continuar.");
   const pilot = data.get("pilot") === "1";
   const extra = data.get("extra");
-  const quote: CommercialQuote = extra === "responses" || extra === "documents" ? extraQuote(extra) : pilot ? pilotQuote() : commercialQuote({ product: String(data.get("product")) as "essential",
+  const addon = data.get("service") === "signatures";
+  if (addon && (pilot || extra)) throw new Error("Contrate o adicional separadamente de outras ofertas.");
+  if (data.has("service") && !addon) throw new Error("Serviço indisponível para contratação.");
+  let quote: CommercialQuote = addon ? commercialQuote({ product: "essential", cycle: "monthly", professionals: 1, signatures: false, nfse: "none" }) : extra === "responses" || extra === "documents" ? extraQuote(extra) : pilot ? pilotQuote() : commercialQuote({ product: String(data.get("product")) as "essential",
     cycle: String(data.get("cycle")) as "monthly", professionals: Number(data.get("professionals")), signatures: data.get("signatures") === "on", nfse: "none" });
   // Production NFS-e remains disabled pending fiscal homologation; cannot sell an unavailable module.
   const method = data.get("paymentMethod") === "pix" ? "PIX" : data.get("paymentMethod") === "credit_card" ? "CREDIT_CARD" : null;
@@ -69,15 +73,30 @@ async function executeCommercialCheckout(data: FormData) {
   const requestHeaders = await headers();
   const order = await db.transaction(async (tx) => {
     const [existingSubscription] = await tx.select().from(organizationSubscriptions).where(eq(organizationSubscriptions.organizationId, organization.id)).for("update");
-    if (quote.kind !== "extra" && existingSubscription?.billingSubscriptionId && existingSubscription.status !== "trialing" && !existingSubscription.cancelAtPeriodEnd) throw new Error("Cancele a renovação da assinatura atual antes de iniciar outra contratação. O período já pago será preservado.");
-    if (quote.kind !== "extra") {
+    if (!addon && quote.kind !== "extra" && existingSubscription?.billingSubscriptionId && existingSubscription.status !== "trialing" && !existingSubscription.cancelAtPeriodEnd) throw new Error("Cancele a renovação da assinatura atual antes de iniciar outra contratação. O período já pago será preservado.");
+    if (!addon && quote.kind !== "extra") {
       const [activeProfessionals] = await tx.select({ total: count() }).from(professionals).where(and(eq(professionals.organizationId, organization.id), eq(professionals.isActive, true)));
       if (activeProfessionals.total > quote.professionals) throw new Error("Escolha um pacote que comporte os profissionais ativos ou desative as agendas excedentes antes de contratar.");
     }
     const [contract] = await tx.select().from(commercialContracts).where(eq(commercialContracts.organizationId, organization.id)).for("update");
+    if (addon) {
+      if (!contract || contract.kind !== "commercial" || !contract.orderId || contract.endsAt <= new Date() || contract.documentLimit) throw new Error("Este serviço requer plano pago ativo sem assinatura eletrônica incluída.");
+      const [base] = await tx.select().from(commercialOrders).where(eq(commercialOrders.id, contract.orderId));
+      if (!base || base.quote.kind !== "commercial") throw new Error("A contratação atual exige atendimento para incluir adicionais.");
+      const existing = await tx.select().from(commercialOrders).where(and(eq(commercialOrders.organizationId, organization.id), eq(commercialOrders.status, "active")));
+      if (existing.some(order => order.quote.kind === "addon" && order.quote.contractOrderId === contract.orderId && order.periodEnd && order.periodEnd > new Date())) throw new Error("A assinatura eletrônica já está ativa.");
+      const preview = signatureAddonQuote(base.quote, base.id, contract.startedAt, contract.endsAt);
+      if (data.get("addonAmount") !== String(preview.amountInCents) || data.get("addonEndsAt") !== preview.contractEndsAt) throw new Error("O valor ou o período mudou. Atualize a página para revisar a contratação.");
+      quote = { ...preview, billing: { method, recurring: false } };
+      const pending = await tx.select().from(commercialOrders).where(and(eq(commercialOrders.organizationId, organization.id), eq(commercialOrders.status, "pending")));
+      const same = pending.find(order => order.quote.kind === "addon" && order.quote.contractOrderId === contract.orderId && order.createdAt.getTime() + 86400000 > Date.now());
+      if (same) { if (same.checkoutId && same.quote.amountInCents === quote.amountInCents && same.quote.billing?.method === method) return same; throw new Error("Já existe um adicional aguardando pagamento. Confira o pedido antes de tentar novamente."); }
+    }
     if (quote.kind === "extra") {
-      if (!contract || contract.endsAt <= new Date() || (quote.extraMetric === "responses" ? !contract.responseLimit : !contract.documentLimit)) throw new Error("Este pacote requer uma franquia ativa do recurso.");
-    } else if (contract && contract.kind !== "trial" && contract.endsAt > new Date()) throw new Error("Já existe uma contratação ativa. Alterações de contrato precisam de atendimento da equipe.");
+      const activeAddons = contract ? await tx.select().from(commercialOrders).where(and(eq(commercialOrders.organizationId, organization.id), eq(commercialOrders.status, "active"))) : [];
+      const hasSignatures = Boolean(contract?.documentLimit || activeAddons.some(order => order.quote.kind === "addon" && order.quote.contractOrderId === contract?.orderId && order.periodEnd && order.periodEnd > new Date()));
+      if (!contract || contract.endsAt <= new Date() || (quote.extraMetric === "responses" ? !contract.responseLimit : !hasSignatures)) throw new Error("Este pacote requer uma franquia ativa do recurso.");
+    } else if (!addon && contract && contract.kind !== "trial" && contract.endsAt > new Date()) throw new Error("Já existe uma contratação ativa. Alterações de contrato precisam de atendimento da equipe.");
     if (quote.kind === "commercial") {
       const [pending] = await tx.select().from(commercialOrders).where(and(eq(commercialOrders.organizationId, organization.id), eq(commercialOrders.status, "pending")));
       if (pending && pending.createdAt.getTime() + 86400000 > Date.now()) {
@@ -109,16 +128,17 @@ async function executeCommercialCheckout(data: FormData) {
     }))).onConflictDoNothing();
     return created;
   });
+  quote = order.quote;
   if (order.checkoutId) redirect(asaasCheckoutLink({ id: order.checkoutId }));
   const base = (process.env.NEXT_PUBLIC_APP_URL ?? "https://www.aggenda.app.br").replace(/\/$/, "");
-  const recurring = quote.billing.recurring;
+  const recurring = quote.billing?.recurring ?? false;
   let checkout: { id: string; link?: string };
   try {
     checkout = await asaasRequest("/checkouts", { method: "POST", body: {
       billingTypes: [method], chargeTypes: [recurring ? "RECURRENT" : "DETACHED"], minutesToExpire: 1440,
       externalReference: `commercial:${order.id}`, customerData,
-      callback: { successUrl: `${base}/assinatura?checkout=sucesso`, cancelUrl: `${base}/assinatura?checkout=cancelado`, expiredUrl: `${base}/assinatura?checkout=expirado` },
-      items: [{ externalReference: order.id, name: `Aggenda ${quote.name}`, description: quote.kind === "extra"
+      callback: { successUrl: `${base}/assinatura?checkout=sucesso&pedido=${order.id}`, cancelUrl: `${base}/assinatura?checkout=cancelado`, expiredUrl: `${base}/assinatura?checkout=expirado` },
+      items: [{ externalReference: order.id, name: `Aggenda ${quote.name}`, description: quote.kind === "addon" ? `Assinatura eletrônica até ${quote.contractEndsAt.slice(0,10)}. Cobrança proporcional, vinculada à renovação do plano.` : quote.kind === "extra"
         ? "Pacote avulso, válido até o fim da franquia atual. Sem renovação automática. Saldo não acumula."
         : pilot
         ? "Piloto: pagamento único por 1 ano; 1.000 respostas, 30 documentos enviados e 10 NFS-e nacionais por mês. Sem renovação automática. Integrações dependem de habilitação."

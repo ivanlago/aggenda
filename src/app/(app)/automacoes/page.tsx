@@ -9,7 +9,6 @@ import { PageHeader } from "@/components/page-header";
 import { WhatsAppConnectButton } from "@/components/whatsapp-connect-button";
 import {
   getOrganizationServicePlan,
-  whatsappServiceCodes,
   whatsappServices,
 } from "@/lib/service-plans";
 import { requireOrganization } from "@/lib/session";
@@ -125,22 +124,7 @@ export default async function AutomationsPage() {
         </aside>
       </section>
 
-      <section className="mt-5">
-        <h2 className="text-xl font-extrabold">Serviços disponíveis</h2>
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {whatsappServiceCodes.map((code) => {
-            const service = whatsappServices[code];
-            const active = code === plan.whatsappServiceCode;
-            return <article className={`panel ${active ? "ring-2 ring-brand/20" : ""}`} key={code}>
-              <div className="flex items-center justify-between gap-3"><h3 className="font-extrabold">{service.name}</h3>{active && <span className="status-pill">Atual</span>}</div>
-              <p className="mt-3 text-sm leading-6 text-muted">{service.description}</p>
-              <div className="mt-5 flex gap-2 text-xs font-bold text-brand">
-                <span>{service.usesCloudApi ? "API oficial" : "Sem API"}</span><span>·</span><span>{service.usesAi ? "Com IA" : "Sem IA"}</span>
-              </div>
-            </article>;
-          })}
-        </div>
-      </section>
+      <section className="panel mt-5"><h2 className="text-xl font-extrabold">Planos e serviços complementares</h2><p className="mt-2 text-sm text-muted">Consulte a contratação, as franquias e os requisitos em Administração → Assinaturas. Esta página acompanha apenas a operação do canal.</p></section>
     </div>
   );
 }

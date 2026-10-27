@@ -40,7 +40,7 @@ export async function WhatsAppSettingsContent() {
     <article className="panel"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-sm font-extrabold uppercase tracking-widest text-brand">Serviço atual</p><h2 className="mt-2 text-2xl font-extrabold">{data.current.name}</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{data.current.description}</p></div><span className="status-pill">{data.serviceReady ? "Pronto" : data.plan.isLegacyFallback ? "Acesso legado" : "Configuração pendente"}</span></div>
       <div className={`mt-5 rounded-xl p-3 text-sm font-bold ${data.serviceReady ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{data.serviceReady ? "Serviço pronto para uso." : <>Configuração incompleta: {!data.channelReady && "conecte um canal Meta ativo; "}{data.current.usesCloudApi && !data.templatesReady && "configure os templates transacionais; "}{!data.workflowReady && "configure o processamento contratado."}</>}</div>
       <div className="mt-6 grid gap-3 sm:grid-cols-4"><Metric icon={MessageCircleMore} value={data.received} label="recebidas no mês" /><Metric icon={MessageCircleMore} value={data.sent} label="enviadas no mês" /><Metric icon={Sparkles} value={data.aiCalls} label="chamadas de IA" /><Metric icon={Workflow} value={data.channels.filter((item) => item.isActive).length} label="canais ativos" /></div>
-      <p className="mt-5 text-sm text-muted">Consulte as franquias e os adicionais em Plano e cobrança do Aggenda.{data.canManageBilling && <> <Link href="/assinatura" className="font-bold text-brand underline">Ver minha contratação</Link></>}</p>
+      <p className="mt-5 text-sm text-muted">Consulte as franquias e os adicionais em Administração → Assinaturas.{data.canManageBilling && <> <Link href="/assinatura" className="font-bold text-brand underline">Ver minhas assinaturas</Link></>}</p>
     </article>
     <aside className="panel"><Bot className="size-6 text-brand" /><h2 className="mt-5 text-xl font-extrabold">Canal conectado</h2>{data.channels.length === 0 ? <><p className="mt-3 text-sm leading-6 text-muted">Nenhum número oficial conectado. Escolha o número empresarial e confirme o código recebido.</p>{data.current.usesCloudApi ? <WhatsAppConnectButton appId={process.env.NEXT_PUBLIC_META_APP_ID} configurationId={process.env.NEXT_PUBLIC_META_WHATSAPP_CONFIGURATION_ID} /> : <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">O WhatsApp Assistido não precisa conectar um número à API.</p>}</> : <PaginatedCollection label="Registros" className="mt-4 grid gap-3">{data.channels.map((channel) => <div className="rounded-xl border p-3" key={channel.id}><p className="font-bold">{channel.displayPhoneNumber ?? "Número configurado"}</p><p className="mt-1 flex items-center gap-2 text-xs text-muted"><CheckCircle2 className="size-3 text-brand" />{channel.connectionStatus === "active" && channel.isActive ? "Ativo" : "Pendente"}</p></div>)}</PaginatedCollection>}</aside>
   </section>;
@@ -49,7 +49,7 @@ export async function WhatsAppSettingsContent() {
 export async function AutomationAndAiSettingsContent() {
   const data = await loadAutomationSettings();
   return <section className="grid gap-5">
-    <header><h2 className="text-xl font-extrabold">Recursos de automação ativos</h2><p className="mt-2 text-sm text-muted">Confira o que está habilitado para a operação da clínica. A contratação é gerenciada em Plano e cobrança do Aggenda.</p></header>
+    <header><h2 className="text-xl font-extrabold">Recursos de automação ativos</h2><p className="mt-2 text-sm text-muted">Confira o que está habilitado para a operação da clínica. A contratação é gerenciada em Administração → Assinaturas.</p></header>
     <article className="panel">
       <p className="text-xs font-bold uppercase tracking-widest text-brand">Modalidade habilitada</p>
       <h3 className="mt-2 text-xl font-extrabold">{data.current.name}</h3>
@@ -60,7 +60,7 @@ export async function AutomationAndAiSettingsContent() {
       </dl>
       <p className="mt-5 rounded-xl bg-slate-50 p-3 text-sm text-muted">Para conectar o número e conferir o funcionamento do canal, abra a aba WhatsApp.</p>
     </article>
-    <aside className="rounded-2xl border border-slate-200 bg-white p-5"><h3 className="font-extrabold">Planos, franquias e pagamentos</h3><p className="mt-2 text-sm text-muted">Escolha do plano, quantidade de profissionais, adicionais e histórico de pagamentos ficam reunidos em uma única página.</p>{data.canManageBilling ? <Link className="secondary-button mt-4" href="/assinatura">Acessar plano e cobrança do Aggenda</Link> : <p className="mt-3 text-sm text-muted">Peça ao responsável pela assinatura para consultar ou alterar a contratação.</p>}</aside>
+    <aside className="rounded-2xl border border-slate-200 bg-white p-5"><h3 className="font-extrabold">Planos, franquias e pagamentos</h3><p className="mt-2 text-sm text-muted">Escolha do plano, quantidade de profissionais, adicionais e histórico de pagamentos ficam reunidos em uma única página.</p>{data.canManageBilling ? <Link className="secondary-button mt-4" href="/assinatura">Acessar assinaturas</Link> : <p className="mt-3 text-sm text-muted">Peça ao responsável pela assinatura para consultar ou alterar a contratação.</p>}</aside>
   </section>;
 }
 

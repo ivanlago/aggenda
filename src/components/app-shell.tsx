@@ -100,7 +100,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       { href: "/equipe", label: "Equipe e acesso", icon: UserRoundCog, permission: "team.read" },
       { href: "/configuracoes", label: "Configurações", icon: Settings2, permission: "organization.settings.manage" },
       { href: "/auditoria", label: "Auditoria", icon: ScrollText, permission: "audit.read" },
-      { href: "/assinatura", label: "Plano e cobrança", icon: BriefcaseBusiness, permission: "billing.manage" },
+      { href: "/assinatura", label: "Assinaturas", icon: BriefcaseBusiness, permission: "billing.manage" },
     ] },
   ];
   const navigation = navigationGroups.map((group) => ({

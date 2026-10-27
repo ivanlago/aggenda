@@ -9,7 +9,7 @@ export const commercialSelectionSchema = z.object({
 });
 export type CommercialSelection = z.infer<typeof commercialSelectionSchema>;
 export const commercialProducts = {
-  essential: { name: "Essencial", agent: "assisted", monthly: 0 },
+  essential: { name: "Essential", agent: "assisted", monthly: 0 },
   professional: { name: "Profissional", agent: "chat_ai", monthly: 9990 },
   complete: { name: "Completo", agent: "core_ai", monthly: 19990 },
 } as const;
@@ -41,7 +41,8 @@ export function extraQuote(metric: "responses" | "documents") {
   return { ...pilotQuote(), kind: "extra" as const, name: metric === "responses" ? "500 respostas adicionais" : "100 documentos adicionais",
     months: 1, amountInCents: metric === "responses" ? 4990 : 1990, extraMetric: metric, extraQuantity: metric === "responses" ? 500 : 100 };
 }
-export type CommercialQuote = (ReturnType<typeof commercialQuote> | ReturnType<typeof pilotQuote> | ReturnType<typeof extraQuote>) & {
+export type CommercialQuote = (ReturnType<typeof commercialQuote> | ReturnType<typeof pilotQuote> | ReturnType<typeof extraQuote> | ReturnType<typeof import("./subscription-addon").signatureAddonQuote>) & {
+  renewalAmountInCents?: number;
   billing?: { method: "PIX" | "CREDIT_CARD"; recurring: boolean };
 };
 

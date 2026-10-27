@@ -22,7 +22,8 @@ export async function reserveCommercialUsage(tx: Tx, organizationId: string, met
   if (contract.endsAt <= now) throw new Error("Seu período de acesso terminou. Consulte Plano e cobrança.");
   const baseLimit = { responses: contract.responseLimit, documents: contract.documentLimit, notes: contract.noteLimit }[metric];
   const credits = await tx.select().from(commercialOrders).where(and(eq(commercialOrders.organizationId, organizationId), eq(commercialOrders.status, "active"), sql`${commercialOrders.periodEnd} > ${now}`));
-  const limit = baseLimit + credits.reduce((sum, order) => sum + (order.quote.kind === "extra" && order.quote.extraMetric === metric ? order.quote.extraQuantity : 0), 0);
+  const addon = metric === "documents" ? Math.max(0, ...credits.filter(order => order.quote.kind === "addon" && order.quote.contractOrderId === contract.orderId).map(order => order.quote.kind === "addon" ? (order.quote.firstPeriod === usagePeriod(contract.startedAt, now) ? order.quote.initialDocumentLimit : 50) : 0)) : 0;
+  const limit = Math.max(baseLimit, addon) + credits.reduce((sum, order) => sum + (order.quote.kind === "extra" && order.quote.extraMetric === metric ? order.quote.extraQuantity : 0), 0);
   const periodStart = usagePeriod(contract.startedAt, now, contract.kind === "trial");
   const [usage] = await tx.select({ total: count() }).from(commercialUsage).where(and(eq(commercialUsage.organizationId, organizationId), eq(commercialUsage.metric, metric), eq(commercialUsage.periodStart, periodStart), ne(commercialUsage.state, "released")));
   if (usage.total >= limit) throw new Error("Franquia esgotada. Consulte Plano e cobrança antes de iniciar novas operações.");
@@ -48,5 +49,7 @@ export async function commercialUsageSummary(organizationId: string) {
   const credits = await db.select().from(commercialOrders).where(and(eq(commercialOrders.organizationId, organizationId), eq(commercialOrders.status, "active"), sql`${commercialOrders.periodEnd} > ${new Date()}`));
   const available = { responses: contract.responseLimit, documents: contract.documentLimit, notes: contract.noteLimit };
   for (const credit of credits) if (credit.quote.kind === "extra") available[credit.quote.extraMetric] += credit.quote.extraQuantity;
-  return { contract, period, available, quantities: Object.fromEntries(rows.map((r) => [r.metric, r.quantity])) };
+  const signatureAddon = credits.find(order => order.quote.kind === "addon" && order.quote.contractOrderId === contract.orderId);
+  if (signatureAddon?.quote.kind === "addon") available.documents = Math.max(contract.documentLimit, signatureAddon.quote.firstPeriod === period ? signatureAddon.quote.initialDocumentLimit : 50) + credits.reduce((sum, order) => sum + (order.quote.kind === "extra" && order.quote.extraMetric === "documents" ? order.quote.extraQuantity : 0), 0);
+  return { signatureAddon, contract, period, available, quantities: Object.fromEntries(rows.map((r) => [r.metric, r.quantity])) };
 }

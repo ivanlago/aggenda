@@ -10,7 +10,7 @@ import { PGlite } from "@electric-sql/pglite";
 import * as schema from "../src/db/schema";
 import type { db } from "../src/db";
 import { PosPaymentRepository } from "../src/lib/pos-payment-repository";
-import { posProviderReady } from "../src/lib/pos-providers";
+import { buildPosPaymentSettings, posProviderReady } from "../src/lib/pos-providers";
 import { checkoutInputHash, checkoutUrlIsSafe, paymentCents, posPaymentStatus, verifyPosPayment, type MercadoPagoPayment } from "../src/lib/pos-payments-policy";
 
 test("validação independente de valor, moeda, conta, ambiente e checkout", () => {
@@ -26,11 +26,23 @@ test("validação independente de valor, moeda, conta, ambiente e checkout", () 
   assert.ok(checkoutUrlIsSafe("https://sandbox.asaas.com/checkoutSession/show?id=test","asaas"));
   assert.ok(checkoutUrlIsSafe("https://pagamento.pagbank.com.br/pagamento?test","pagbank"));
   assert.equal(checkoutUrlIsSafe("https://pagamento.pagbank.com.br/pagamento?test","asaas"),false);
-  for(const provider of ["asaas","mercado_pago","pagbank"]){
-    assert.ok(posProviderReady({provider,status:"active",metadata:{webhookStatus:provider==="asaas"?"active":"configured"}}));
+  for(const provider of ["asaas","mercado_pago","pagbank","efi"]){
+    assert.ok(posProviderReady({provider,status:"active",metadata:{webhookStatus:["asaas","efi"].includes(provider)?"active":"configured"}}));
     assert.equal(posProviderReady({provider,status:"disconnected",metadata:{webhookStatus:"configured"}}),false);
     assert.equal(posProviderReady({provider,status:"active",metadata:{webhookStatus:"error"}}),false);
   }
+});
+
+test("todos os provedores aptos aparecem sem padrão; padrão não filtra opções e inativo não é selecionado",()=>{
+  const rows=["asaas","mercado_pago","pagbank","efi"].map(provider=>({provider,status:"active",metadata:{webhookStatus:["asaas","efi"].includes(provider)?"active":"configured"},environment:"production",isDefault:false}));
+  const settings=buildPosPaymentSettings(rows);
+  assert.deepEqual(settings.providers.map(p=>p.id),["asaas","mercado_pago","pagbank","efi"]);assert.equal(settings.defaultProvider,"manual");
+  rows[1].isDefault=true;
+  const withDefault=buildPosPaymentSettings(rows);
+  assert.equal(withDefault.defaultProvider,"mercado_pago");assert.equal(withDefault.providers.length,4);
+  rows[1].status="disconnected";
+  const disconnected=buildPosPaymentSettings(rows);
+  assert.equal(disconnected.defaultProvider,"manual");assert.deepEqual(disconnected.providers.map(p=>p.id),["asaas","pagbank","efi"]);
 });
 
 test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento e estorno", async t => {
@@ -74,7 +86,7 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
     const database = drizzle(pg,{schema}) as unknown as typeof db;
     const globals = globalThis as unknown as { __posDb: typeof db; __posContext: unknown };
     globals.__posDb = database;
-    Object.assign(globalThis,{__posOtherContext:async (_org:string,provider:string)=>({collectorId:"0",paymentEnvironment:"production",credentialFingerprint:checkoutInputHash({provider,secret:`${provider}-test`})})});
+    Object.assign(globalThis,{__posOtherContext:async (_org:string,provider:string)=>({collectorId:"0",paymentEnvironment:"production",credentialFingerprint:checkoutInputHash({provider,secret:provider==="efi"?JSON.stringify({clientId:"efi-test",clientSecret:"secret-test",pixKey:"key-test",certificateBase64:"certificate-test"}):`${provider}-test`})})});
     globals.__posContext = { organization: { id:org,name:"Clínica teste",role:"owner",timezone:"America/Bahia" }, session:{user:{id:"cashier"}} };
     const compiled = await build({entryPoints:["src/actions/retail.ts"],bundle:true,write:false,format:"cjs",platform:"node",packages:"external",plugins:[{name:"pos-mocks",setup(builder){
       const mocks:Record<string,string> = { "@/db":"export const db=globalThis.__posDb;", "@/lib/session":"export async function requireOrganization(){return globalThis.__posContext;}",
@@ -147,13 +159,51 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
       assert.equal(asaasCreates,2);assert.equal(pagBankCreates,2);
       const unchecked=new FormData();unchecked.set("provider","asaas");await defaults.exports.setPosPaymentDefault(unchecked);
       assert.equal((await pg.query<{provider:string}>("SELECT provider FROM organization_financial_integrations WHERE organization_id=$1 AND is_default_pos",[org])).rows[0].provider,"pagbank");
-      const invalid=new FormData();invalid.set("provider","efi");invalid.set("enabled","true");assert.ok((await defaults.exports.setPosPaymentDefault(invalid) as {error:string}).error);
+      const invalid=new FormData();invalid.set("provider","other");invalid.set("enabled","true");assert.ok((await defaults.exports.setPosPaymentDefault(invalid) as {error:string}).error);
       // Reset the fixture inventory for the independent Mercado Pago scenarios.
       await pg.query("UPDATE inventory_products SET current_quantity_millis=10000 WHERE id=$1",[stock]);
       await pg.query("UPDATE organization_financial_integrations SET is_default_pos=false WHERE organization_id=$1",[org]);
       const charge={amountInCents:500,metadata:{checkoutId:asaasId,environment:"production"}};
       assert.throws(()=>loaded.exports.normalizeAsaasPos(charge,{id:"pay",checkoutSession:"another",value:5,status:"CONFIRMED"}));
       assert.throws(()=>loaded.exports.normalizePagBankPos(charge,{id:"CHAR_bad",status:"PAID",amount:{value:499,currency:"BRL",summary:{paid:499}}}));
+    });
+    await t.test("Efí Pix: criação única, confirmação por API, devolução, recuperação e cancelamento",async()=>{
+      await pg.query("INSERT INTO organization_financial_integrations(id,organization_id,provider,status,environment,metadata) VALUES ($1,$2,'efi','active','production',$3)",[randomUUID(),org,JSON.stringify({webhookStatus:"active"})]);
+      let creates=0,fail=false;
+      let cob={txid:"",status:"ATIVA",chave:"key-test",valor:{original:"5.00"},pixCopiaECola:"000201synthetic-test-pix",pix:[] as {endToEndId:string;horario:string;valor:string;devolucoes?:{valor:string;status:string}[]}[]};
+      Object.assign(globalThis,{__posEfi:async(path:string,_credential:unknown,input:{method?:string}={})=>{
+        if(input.method==="PUT"){creates++;cob={...cob,txid:path.split("/").at(-1)!,status:"ATIVA",pix:[]};if(fail)throw new Error("Ambiguous timeout");}
+        if(input.method==="PATCH")cob.status="REMOVIDA_PELO_USUARIO_RECEBEDOR";
+        return structuredClone(cob);
+      }});
+      const bundle=await build({entryPoints:["src/lib/pos-checkout.ts"],bundle:true,write:false,format:"cjs",platform:"node",packages:"external",plugins:[{name:"efi-test",setup(builder){
+        const mocks:Record<string,string>={"@/db":"export const db=globalThis.__posDb;","./efi":"export async function getEfiCredential(){return {clientId:'efi-test',clientSecret:'secret-test',pixKey:'key-test',certificateBase64:'certificate-test',environment:'production'}} export const efiRequest=(...args)=>globalThis.__posEfi(...args);"};
+        builder.onResolve({filter:/.*/},args=>mocks[args.path]?{path:args.path,namespace:"efi-test"}:undefined);
+        builder.onLoad({filter:/.*/,namespace:"efi-test"},args=>({contents:mocks[args.path],loader:"js"}));
+      }}]});
+      const adapter={exports:{} as {ensurePosCheckout:(org:string,id:string)=>Promise<void>;refreshPosPayment:(org:string,id:string)=>Promise<void>;cancelPosCheckout:(org:string,id:string,user:string)=>Promise<void>}};
+      new Function("require","module","exports",bundle.outputFiles[0].text)(createRequire(import.meta.url),adapter,adapter.exports);
+      const paid=await create(undefined,undefined,"efi");
+      await Promise.all([adapter.exports.ensurePosCheckout(org,paid.saleId),adapter.exports.ensurePosCheckout(org,paid.saleId)]);assert.equal(creates,1);
+      const stored=(await pg.query<{status:string;pix_qr_code_payload:string}>("SELECT status,pix_qr_code_payload FROM payment_charges WHERE id=$1",[paid.charge.id])).rows[0];assert.equal(stored.status,"pending");assert.equal(stored.pix_qr_code_payload,cob.pixCopiaECola);
+      cob.status="CONCLUIDA";cob.pix=[{endToEndId:"E_synthetic",horario:new Date().toISOString(),valor:"4.99"}];
+      await adapter.exports.refreshPosPayment(org,paid.saleId);
+      assert.equal((await pg.query<{status:string}>("SELECT status FROM retail_sales WHERE id=$1",[paid.saleId])).rows[0].status,"payment_review");
+      // A mismatching payment must never automatically fulfil a sale.
+      const completed=await create(undefined,undefined,"efi");await adapter.exports.ensurePosCheckout(org,completed.saleId);
+      cob.status="CONCLUIDA";cob.pix=[{endToEndId:"E_complete",horario:new Date().toISOString(),valor:"5.00"}];
+      await adapter.exports.refreshPosPayment(org,completed.saleId);await adapter.exports.refreshPosPayment(org,completed.saleId);
+      assert.equal((await pg.query<{status:string}>("SELECT status FROM retail_sales WHERE id=$1",[completed.saleId])).rows[0].status,"completed");
+      await assert.rejects(adapter.exports.cancelPosCheckout(org,completed.saleId,"cashier"));
+      cob.pix[0].devolucoes=[{valor:"1.00",status:"DEVOLVIDO"}];await adapter.exports.refreshPosPayment(org,completed.saleId);
+      assert.equal((await pg.query<{status:string}>("SELECT status FROM retail_sales WHERE id=$1",[completed.saleId])).rows[0].status,"payment_review");
+      const uncertain=await create(undefined,undefined,"efi");fail=true;
+      await adapter.exports.ensurePosCheckout(org,uncertain.saleId);await adapter.exports.ensurePosCheckout(org,uncertain.saleId);assert.equal(creates,3);
+      await adapter.exports.refreshPosPayment(org,uncertain.saleId);
+      assert.equal((await pg.query<{metadata:{checkoutState:string}}>("SELECT metadata FROM payment_charges WHERE id=$1",[uncertain.charge.id])).rows[0].metadata.checkoutState,"ready");
+      await adapter.exports.cancelPosCheckout(org,uncertain.saleId,"cashier");
+      assert.equal((await pg.query<{status:string}>("SELECT status FROM retail_sales WHERE id=$1",[uncertain.saleId])).rows[0].status,"cancelled");
+      await pg.query("UPDATE inventory_products SET current_quantity_millis=10000 WHERE id=$1",[stock]);
     });
     await t.test("página pública consulta o vínculo da cobrança sem erro de tipos SQL", async () => {
       const pageBundle=await build({entryPoints:["src/app/pagamento/venda/[token]/page.tsx"],bundle:true,write:false,format:"cjs",platform:"node",packages:"external",jsx:"automatic",plugins:[{name:"public-page-mock",setup(builder){

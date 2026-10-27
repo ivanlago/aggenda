@@ -8,6 +8,8 @@ import { checkoutInputHash, checkoutUrlIsSafe, paymentCents, type MercadoPagoPay
 import { posProviderReady } from "./pos-providers";
 import { PosPaymentRepository } from "./pos-payment-repository";
 import * as mp from "./pos-mercado-pago";
+import { getEfiCredential } from "./efi";
+import { efiPosSecret, ensureEfiPosCheckout, refreshEfiPosPayment, cancelEfiPosCheckout } from "./pos-efi";
 
 const appUrl = () => (process.env.NEXT_PUBLIC_APP_URL || "https://www.aggenda.app.br").replace(/\/$/, "");
 export async function getPosCharge(organizationId:string, saleId:string) {
@@ -18,8 +20,8 @@ export async function getPosCharge(organizationId:string, saleId:string) {
 export async function posOtherContext(organizationId:string, provider:string) {
   const [integration]=await db.select().from(organizationFinancialIntegrations).where(and(eq(organizationFinancialIntegrations.organizationId,organizationId),eq(organizationFinancialIntegrations.provider,provider))).limit(1);
   if(!integration || !posProviderReady(integration)) throw new Error("Conecte, valide e configure o webhook do provedor antes de usar o PDV.");
-  const credential = provider === "asaas" ? await getOrganizationAsaasCredential(organizationId) : await getPagBankCredential(organizationId);
-  const secret = "apiKey" in credential ? credential.apiKey : credential.token;
+  const credential = provider === "asaas" ? await getOrganizationAsaasCredential(organizationId) : provider === "efi" ? await getEfiCredential(organizationId) : await getPagBankCredential(organizationId);
+  const secret = "apiKey" in credential ? credential.apiKey : "token" in credential ? credential.token : efiPosSecret(credential);
   return { collectorId:"0", paymentEnvironment:credential.environment, credentialFingerprint:checkoutInputHash({provider,secret}) };
 }
 async function request<T>(charge:typeof paymentCharges.$inferSelect,path:string,method:"GET"|"POST"|"DELETE"="GET",body?:unknown) {
@@ -32,6 +34,7 @@ async function request<T>(charge:typeof paymentCharges.$inferSelect,path:string,
 export async function ensurePosCheckout(org:string,saleId:string) {
   const charge=await getPosCharge(org,saleId);
   if(charge.provider==="mercado_pago") return mp.ensurePosCheckout(org,saleId);
+  if(charge.provider==="efi") return ensureEfiPosCheckout(charge);
   if(charge.invoiceUrl || charge.status!=="pending") return;
   await posOtherContext(org,charge.provider);
   const [sale]=await db.select().from(retailSales).where(and(eq(retailSales.id,saleId),eq(retailSales.organizationId,org))).limit(1);
@@ -109,12 +112,14 @@ async function nativePayments(charge:typeof paymentCharges.$inferSelect) {
 export async function refreshPosPayment(org:string,saleId:string) {
   const charge=await getPosCharge(org,saleId);
   if(charge.provider==="mercado_pago") return mp.refreshPosPayment(org,saleId);
+  if(charge.provider==="efi") return refreshEfiPosPayment(charge);
   const repository=new PosPaymentRepository(db);
   for(const {payment} of await nativePayments(charge)) await repository.apply(org,charge.id,payment,charge.provider);
 }
 export async function cancelPosCheckout(org:string,saleId:string,user:string) {
   const charge=await getPosCharge(org,saleId);
   if(charge.provider==="mercado_pago") return mp.cancelPosCheckout(org,saleId,user);
+  if(charge.provider==="efi") return cancelEfiPosCheckout(charge,user);
   if(charge.status!=="pending") throw new Error("Confira o pagamento; este checkout não está pendente.");
   const id=charge.metadata?.checkoutId;
   if(typeof id!=="string") throw new Error("A criação do checkout está inconclusiva. A reserva foi mantida; contate o suporte.");

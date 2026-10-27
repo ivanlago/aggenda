@@ -24,6 +24,7 @@ function mtlsRequest<T>(url: string, credential: EfiCredential, init: { method?:
       });
     });
     request.on("error", reject);
+    request.setTimeout(15000,()=>request.destroy(new Error("Tempo limite na comunicação com a Efí.")));
     if (body) request.write(body);
     request.end();
   });

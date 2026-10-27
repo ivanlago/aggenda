@@ -11,6 +11,8 @@ import { efiRequest, getEfiCredential, type EfiCredential } from "@/lib/efi";
 import { encryptFinancialCredential } from "@/lib/financial-secret";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
+import { posConnectionGuard } from "@/lib/pos-connection-guard";
+import { efiPosSecret } from "@/lib/pos-efi";
 
 const text = (data: FormData, key: string) => String(data.get(key) ?? "").trim();
 const digits = (value: string) => value.replace(/\D/g, "");
@@ -30,6 +32,8 @@ export async function connectEfiAccount(data: FormData) {
   if (certificate.size > 128 * 1024) return { error: "O certificado deve ter no máximo 128 KB." };
   const webhookHmac = randomBytes(32).toString("base64url");
   const credential: EfiCredential = { clientId, clientSecret, pixKey, certificatePassword: certificatePassword || undefined, certificateBase64: Buffer.from(await certificate.arrayBuffer()).toString("base64"), webhookHmac, environment };
+  const posError=await posConnectionGuard(organization.id,"efi",{secret:efiPosSecret(credential),environment});
+  if(posError) return {error:posError};
   try { await efiRequest<Cob[]>("/v2/cob?inicio=2020-01-01T00:00:00Z&fim=2020-01-01T00:01:00Z", credential); }
   catch (error) { return { error: message(error, "Não foi possível validar as credenciais e o certificado Efí.") }; }
   let webhookStatus = "pending_https"; let webhookError: string | null = null;
@@ -51,7 +55,8 @@ export async function testEfiIntegration() {
 
 export async function disconnectEfiAccount() {
   const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "integrations.manage");
-  await db.update(organizationFinancialIntegrations).set({ status: "disconnected", updatedAt: new Date() }).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "efi")));
+  const posError=await posConnectionGuard(organization.id,"efi");if(posError) return {error:posError};
+  await db.update(organizationFinancialIntegrations).set({ status: "disconnected", isDefaultPos:false, updatedAt: new Date() }).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "efi")));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "disconnect", entityType: "financial_integration:efi" }); refresh();
 }
 

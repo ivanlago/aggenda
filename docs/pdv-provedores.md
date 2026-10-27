@@ -1,14 +1,15 @@
 # Provedor padrão do PDV
 
-Asaas, Mercado Pago e PagBank podem ser selecionados no PDV independente, em Venda e orçamento. A empresa conecta e valida suas próprias credenciais em Financeiro → Pagamentos. A opção **Usar como provedor padrão no PDV** aparece quando a conexão e o webhook estão prontos.
+Asaas, Mercado Pago, PagBank e Efí (Pix) podem ser selecionados no PDV independente, em Venda e orçamento. A empresa conecta e valida suas próprias credenciais em Financeiro → Pagamentos. Todos os provedores aptos aparecem na seleção, mesmo sem serem o padrão. A opção **Usar como provedor padrão no PDV** aparece quando a conexão e o webhook estão prontos.
 
-Existe um único padrão por empresa. Marcar outro provedor substitui o anterior, sem desconectá-lo. Desmarcar uma opção que já não é o padrão não altera a seleção vigente. O operador ainda pode escolher outro provedor habilitado ou recebimento manual em cada nova venda. Vendas existentes permanecem vinculadas ao provedor em que foram criadas.
+Existe um único padrão por empresa. Marcar outro provedor substitui o anterior, sem desconectá-lo. Desmarcar uma opção que já não é o padrão não altera a seleção vigente. Sem um provedor padrão apto, a seleção inicial é **Recebimento manual / maquininha externa**. O operador ainda pode escolher qualquer provedor habilitado em cada nova venda. Vendas existentes permanecem vinculadas ao provedor em que foram criadas.
 
 ## Meios de pagamento
 
 - Asaas Checkout: Pix e cartão de crédito à vista.
 - Mercado Pago Checkout Pro: meios habilitados na conta, incluindo Pix, cartão e boleto.
 - PagBank Checkout: Pix, cartão de crédito à vista e boleto, conforme habilitação da conta.
+- Efí: Pix Cob imediato, com código copia e cola e link público do Aggenda. Requer conexão, certificado da aplicação e webhook ativo. A confirmação exige consulta à API vinculada à chave Pix e ao identificador da cobrança; código criado não significa pagamento.
 
 São páginas de pagamento hospedadas pelos provedores. Maquininhas físicas continuam sendo registradas como recebimento manual. O caixa interno do atendimento continua manual nesta etapa.
 
@@ -22,7 +23,7 @@ O checkout dura 24 horas. A reserva permanece até o pagamento ou cancelamento c
 
 Estornos são solicitados no painel do provedor. Estornos parciais, contestações, pagamentos adicionais e aprovações tardias vão para conferência; pacotes ficam suspensos. A devolução física de produtos deve ser registrada separadamente. Taxas e líquido aparecem quando o provedor fornece esses dados.
 
-Asaas e PagBank mantêm a conexão original enquanto houver vendas que dependam dela para acompanhamento. Para trocar credenciais com vendas vinculadas, procure suporte. Alterar o padrão do PDV não exige alterar credenciais.
+Asaas, PagBank e Efí mantêm a conexão original enquanto houver vendas que dependam dela para acompanhamento. Para trocar credenciais com vendas vinculadas, procure suporte. Alterar o padrão do PDV não exige alterar credenciais. Uma criação Pix Efí inconclusiva pode ser recuperada pelo botão de consulta usando o mesmo identificador; ela não é recriada automaticamente. A reserva só é liberada após confirmação da remoção da cobrança e ausência de Pix recebido.
 
 ## Validação e limites
 

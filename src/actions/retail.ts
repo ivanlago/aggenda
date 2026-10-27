@@ -247,7 +247,7 @@ export async function registerRetailSale(data: FormData) {
   const scopedCheckout = attendance && (organization.role === "professional" || hasOrganizationPermission(organization.role, "finance.manage"));
   if (!scopedCheckout && !hasOrganizationPermission(organization.role, "sales.sell") && !hasOrganizationPermission(organization.role, "inventory.manage")) assertOrganizationPermission(organization.role, "sales.sell");
   const selectedProvider = text(data, "checkoutProvider") || "manual";
-  if (!["manual", "mercado_pago", "asaas", "pagbank"].includes(selectedProvider)) return { error: "Provedor de pagamento indisponível no PDV." };
+  if (!["manual", "mercado_pago", "asaas", "pagbank", "efi"].includes(selectedProvider)) return { error: "Provedor de pagamento indisponível no PDV." };
   const online = selectedProvider !== "manual";
   // The first online checkout is the sales workspace; the attendance checkout
   // keeps its existing split/settlement flow until its own integration is enabled.

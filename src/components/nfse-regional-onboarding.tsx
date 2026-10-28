@@ -5,7 +5,7 @@ import type { NfseOnboarding } from "@/lib/nfse/onboarding";
 
 export function NfseRegionalOnboarding({ initial, canConfigure }: { initial: NfseOnboarding | null; canConfigure: boolean }) {
   return <section className="panel mb-5" aria-labelledby="fiscal-onboarding-title">
-    <h2 id="fiscal-onboarding-title" className="text-xl font-extrabold">Preparação fiscal — Grande Salvador</h2>
+    <h2 id="fiscal-onboarding-title" className="text-xl font-extrabold">Preparação fiscal</h2>
     <p className="mt-2 text-sm text-muted">Preparação para Salvador, Lauro de Freitas e Camaçari. Salve os dados da empresa para preparar a homologação, sem enviar certificado ou senha e sem contratar o serviço.</p>
     {initial && <p className="mt-3 text-sm font-bold text-brand" role="status">Dados de preparação salvos. A emissão automática continua pendente de homologação.</p>}
     {canConfigure ? <details className="mt-4" open={!initial}>

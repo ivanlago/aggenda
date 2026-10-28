@@ -5,15 +5,16 @@ import { build } from "esbuild";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-const globals = globalThis as typeof globalThis & { financeRows?: unknown[][] };
+const globals = globalThis as typeof globalThis & { financeRows?: unknown[][]; chargeListing?: unknown };
 
 async function loadPage(path: string) {
   const result = await build({
     stdin: { contents: `export { default } from ${JSON.stringify(path)};`, resolveDir: process.cwd(), loader: "tsx" },
     bundle: true, write: false, format: "cjs", platform: "node", packages: "external", jsx: "automatic",
     plugins: [{ name: "finance-fixtures", setup(builder) {
-      builder.onResolve({ filter: /^@\/(db$|actions\/|lib\/session$|components\/action-form$)/ }, ({ path }) => ({ path, namespace: "fixture" }));
+      builder.onResolve({ filter: /^@\/(db$|actions\/|lib\/session$|lib\/charge-list$|components\/action-form$)/ }, ({ path }) => ({ path, namespace: "fixture" }));
       builder.onLoad({ filter: /./, namespace: "fixture" }, ({ path }) => {
+        if (path === "@/lib/charge-list") return { contents: 'export async function loadChargeList(){return globalThis.chargeListing} export async function loadChargeableEntries(){return globalThis.financeRows[1]}' };
         if (path === "@/db") return { contents: `let index=0; export const db={select(){const rows=globalThis.financeRows[index++];const query=new Proxy({}, {get(_,key){return key==='then' ? (resolve)=>Promise.resolve(rows).then(resolve) : ()=>query}});return query}};` };
         if (path === "@/lib/session") return { contents: 'export async function requireOrganization(){return {organization:{id:"org",role:"owner",timezone:"America/Bahia"}}}' };
         if (path === "@/components/action-form") return { resolveDir: process.cwd(), contents: 'import React from "react"; export function ActionForm({children, className}){return React.createElement("form",{className},children)}' };
@@ -39,12 +40,13 @@ test("cash flow links integrated entries to charges and PDV instead of offering 
     assert.match(html, /Gerenciar no PDV/);
     assert.doesNotMatch(html, /Salvar baixa manual|Gerar cobrança Asaas|Cobranças emitidas/);
     assert.match(html, /baixa desta conta é controlada/);
-  } finally { delete globals.financeRows; }
+  } finally { delete globals.financeRows; delete globals.chargeListing; }
 });
 
 test("charge filters affect totals and do not preselect an unrelated receivable", async () => {
   const page = await loadPage("./src/app/(app)/financeiro/cobrancas/page.tsx");
-  globals.financeRows = [[baseCharge, { ...baseCharge, id: "paid", financialEntryId: "other", status: "paid", amountInCents: 90000 }], [], [{ provider: "mercado_pago", status: "active" }], [{ ...baseEntry, id: "available" }]];
+  globals.financeRows = [[{ provider: "mercado_pago", status: "active" }], [{ ...baseEntry, id: "available" }]];
+  globals.chargeListing = { charges: [{ ...baseCharge, id: "paid", financialEntryId: "other", status: "paid", amountInCents: 90000 }], events: [], pages: 1, currentPage: 1, totals: { count: 1, paidCount: 1, paidAmount: 90000, openCount: 0, openAmount: 0, overdueCount: 0, overdueAmount: 0 } };
   try {
     const html = renderToStaticMarkup(await page({ searchParams: Promise.resolve({ status: "paid" }) }));
     assert.match(html, /Recebido online/);
@@ -54,7 +56,7 @@ test("charge filters affect totals and do not preselect an unrelated receivable"
     assert.doesNotMatch(html, /<summary[^>]*>Nova cobrança/);
     assert.doesNotMatch(html, /Homologação e prontidão|Enviar por WhatsApp/);
     assert.match(html, /Ver página da cobrança/);
-  } finally { delete globals.financeRows; }
+  } finally { delete globals.financeRows; delete globals.chargeListing; }
 });
 
 
@@ -74,5 +76,5 @@ test("packages separate the catalog from client availability and link sales to t
     assert.match(clients, /Vencido/);
     assert.match(clients, /0 sessão\(ões\) disponível/);
     assert.match(clients, /Saldo registrado sem consumo: 6/);
-  } finally { delete globals.financeRows; }
+  } finally { delete globals.financeRows; delete globals.chargeListing; }
 });

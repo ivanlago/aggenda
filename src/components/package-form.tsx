@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { importPreviousPackage, saveServicePackage } from "@/actions/package-catalog";
+import { saveServicePackage } from "@/actions/package-catalog";
 import { ActionForm } from "@/components/action-form";
 import { FormActions, FormSection } from "@/components/form-dialog-context";
 import { ModalShell } from "@/components/modal-shell";
@@ -34,31 +34,4 @@ export function PackageForm({ procedures, template }: { procedures: PackageProce
 
 export function PackageDialog(props: { procedures: PackageProcedure[]; template?: PackageTemplate }) {
   return <ModalShell title={props.template ? `Editar pacote: ${props.template.name}` : "Novo pacote"} variant={props.template ? "edit" : "new"} wide closeOnSuccess><PackageForm {...props} /></ModalShell>;
-}
-
-export function PreviousPackageForm({ templates, clients, today }: { templates: PackageTemplate[]; clients: { id: string; name: string }[]; today: string }) {
-  const [templateId, setTemplateId] = useState("");
-  const [registrationId] = useState(() => crypto.randomUUID());
-  const template = templates.find((item) => item.id === templateId);
-  return <ActionForm action={importPreviousPackage} successMessage="Pacote anterior registrado sem nova receita." resetOnSuccess={false} className="grid gap-5 sm:grid-cols-2">
-    <input type="hidden" name="registrationId" value={registrationId} />
-    <p className="col-span-full rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Use para um pacote adquirido antes do registro no Aggenda. Esta ação registra somente o histórico e as sessões restantes; não gera venda, cobrança ou receita. Para uma nova aquisição, use Venda e orçamento.</p>
-    <p className="col-span-full text-sm text-muted">Campos com * são obrigatórios. Escolha o modelo correspondente às condições originais.</p>
-    <FormSection title="Identificação">
-      <label className="grid gap-2 text-sm font-bold">Cliente *<select className="field" name="clientId" required defaultValue=""><option value="">Selecione</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
-      <label className="grid gap-2 text-sm font-bold">Modelo original *<select className="field" name="packageId" required value={templateId} onChange={(event) => setTemplateId(event.target.value)}><option value="">Selecione</option>{templates.map((item) => <option key={item.id} value={item.id}>{item.name}{item.isActive ? "" : " · Modelo inativo"} · {(item.priceInCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} · {item.validityDays ? `${item.validityDays} dias` : "Sem prazo"}</option>)}</select></label>
-    </FormSection>
-    <FormSection title="Aquisição e validade">
-      <label className="grid gap-2 text-sm font-bold">Data original da aquisição *<input className="field" name="purchasedOn" type="date" max={today} required /></label>
-      <label className="grid gap-2 text-sm font-bold">Válido até<input className="field" name="expiresOn" type="date" /><span className="text-xs font-normal text-muted">Informe a validade original. Deixe vazio somente se não houver prazo.</span></label>
-      <label className="grid gap-2 text-sm font-bold">Valor original (R$) *<input className="field" name="price" key={templateId} inputMode="decimal" required defaultValue={template ? (template.priceInCents / 100).toFixed(2).replace(".", ",") : ""} /><span className="text-xs font-normal text-muted">Informativo para o histórico; não gera lançamento financeiro.</span></label>
-    </FormSection>
-    <FormSection title="Sessões restantes">{template?.items.map((item) => <label key={`${templateId}:${item.serviceId}`} className="grid gap-2 text-sm font-bold">{item.serviceName} *<input className="field" type="number" name={`remaining:${item.serviceId}`} min="0" max={item.quantity} required placeholder={`De 0 a ${item.quantity}`} /></label>)}{!template && <p className="text-sm text-muted">Selecione o modelo original para informar os saldos.</p>}</FormSection>
-    <FormSection title="Justificativa"><label className="grid gap-2 text-sm font-bold sm:col-span-2">Motivo do registro *<textarea className="field min-h-20" name="reason" required minLength={5} maxLength={2000} placeholder="Ex.: Migração de pacote adquirido antes do uso do Aggenda" /></label><label className="flex items-start gap-2 text-sm font-bold sm:col-span-2"><input type="checkbox" name="confirmPrevious" required />Confirmo que se trata de uma aquisição anterior e que este registro não deve gerar nova receita.</label></FormSection>
-    <FormActions submitLabel="Registrar pacote anterior" disabled={!template || !clients.length || !template.items.length} />
-  </ActionForm>;
-}
-
-export function PreviousPackageDialog(props: Parameters<typeof PreviousPackageForm>[0]) {
-  return <ModalShell title="Registrar pacote anterior" variant="new" secondary wide closeOnSuccess><PreviousPackageForm {...props} /></ModalShell>;
 }

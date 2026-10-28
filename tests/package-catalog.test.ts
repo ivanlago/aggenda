@@ -7,7 +7,7 @@ import { PGlite } from "@electric-sql/pglite";
 import type { db } from "../src/db";
 import * as schema from "../src/db/schema";
 import { packageAmount, packageSaleSelection, packageSituation, parsePackageTemplate } from "../src/lib/package-catalog";
-import { registerPreviousPackage, savePackageTemplate } from "../src/lib/package-catalog-repository";
+import { savePackageTemplate } from "../src/lib/package-catalog-repository";
 
 test("package input rejects invalid quantities and preserves cents", () => {
   assert.equal(packageAmount("1.234,56"), 123456);
@@ -41,7 +41,7 @@ test("package sales use only the current organization's available catalog", () =
   assert.deepEqual(packageSaleSelection(undefined, catalog).cart, []);
 });
 
-test("package versions and previous acquisitions preserve conditions without creating revenue", async () => {
+test("package versions preserve purchased conditions without creating revenue", async () => {
   const pg = new PGlite();
   const tables = { services: schema.services, clients: schema.clients, service_packages: schema.servicePackages, service_package_items: schema.servicePackageItems, client_packages: schema.clientPackages, client_package_balances: schema.clientPackageBalances, audit_logs: schema.auditLogs, financial_entries: schema.financialEntries, retail_sales: schema.retailSales, payment_charges: schema.paymentCharges };
   try {
@@ -59,10 +59,9 @@ test("package versions and previous acquisitions preserve conditions without cre
     await pg.query("INSERT INTO services(id,organization_id,name,is_active) VALUES ($1,$2,'Massagem',true),($3,$4,'Outro',true)", [service, org, otherService, outside]);
     await pg.query("INSERT INTO clients(id,organization_id,name) VALUES ($1,$2,'Cliente teste')", [client, org]);
     const original = await savePackageTemplate(database, org, { name: "Pacote original", description: "Original", priceInCents: 49900, validityDays: 30, items: [{ serviceId: service, quantity: 6 }] });
-    const input = { registrationId: randomUUID(), clientId: client, packageId: original, purchasedAt: new Date("2026-09-01T15:00:00Z"), expiresAt: new Date("2026-10-01T02:59:59.999Z"), priceInCents: 45000, reason: "Migração do sistema anterior", remaining: [{ serviceId: service, quantity: 4 }] };
-    const assigned = await registerPreviousPackage(database, org, "operator", input);
-    assert.equal(await registerPreviousPackage(database, org, "operator", input), assigned, "Retry does not duplicate sessions");
-    await assert.rejects(registerPreviousPackage(database, org, "operator", { ...input, remaining: [{ serviceId: service, quantity: 3 }] }), /já foi utilizado/);
+    const assigned = randomUUID();
+    await pg.query("INSERT INTO client_packages(id,organization_id,client_id,package_id,price_in_cents) VALUES ($1,$2,$3,$4,49900)", [assigned, org, client, original]);
+    await pg.query("INSERT INTO client_package_balances(id,organization_id,client_package_id,service_id,total_quantity,used_quantity) VALUES ($1,$2,$3,$4,6,2)", [randomUUID(), org, assigned, service]);
     const replacement = await savePackageTemplate(database, org, { id: original, name: "Pacote novo", description: "Nova condição", priceInCents: 60000, validityDays: 90, items: [{ serviceId: service, quantity: 10 }] });
     assert.notEqual(replacement, original);
     assert.deepEqual((await pg.query("SELECT name,price_in_cents,validity_days,is_active FROM service_packages WHERE id=$1", [original])).rows[0], { name: "Pacote original", price_in_cents: 49900, validity_days: 30, is_active: false });
@@ -71,11 +70,8 @@ test("package versions and previous acquisitions preserve conditions without cre
     assert.equal((await pg.query<{ total_quantity: number }>("SELECT total_quantity FROM client_package_balances WHERE client_package_id=$1", [assigned])).rows[0].total_quantity, 6);
     assert.equal((await pg.query<{ used_quantity: number }>("SELECT used_quantity FROM client_package_balances WHERE client_package_id=$1", [assigned])).rows[0].used_quantity, 2);
     await assert.rejects(savePackageTemplate(database, outside, { id: replacement, name: "Indevido", description: null, priceInCents: 100, validityDays: null, items: [{ serviceId: otherService, quantity: 1 }] }), /não está mais ativo/);
-    await assert.rejects(registerPreviousPackage(database, outside, "operator", { ...input, registrationId: randomUUID() }), /não encontrado/);
-    await assert.rejects(registerPreviousPackage(database, org, "operator", { ...input, registrationId: randomUUID(), remaining: [{ serviceId: service, quantity: 7 }] }), /sessões restantes/);
     await assert.rejects(savePackageTemplate(database, org, { name: "Inválido", description: null, priceInCents: 100, validityDays: null, items: [{ serviceId: otherService, quantity: 1 }] }), /procedimentos ativos/);
     for (const table of ["financial_entries", "retail_sales", "payment_charges"]) assert.equal((await pg.query<{ count: number }>(`SELECT count(*)::int AS count FROM ${table}`)).rows[0].count, 0);
     assert.equal((await pg.query<{ count: number }>("SELECT count(*)::int AS count FROM client_packages")).rows[0].count, 1);
-    assert.equal((await pg.query<{ count: number }>("SELECT count(*)::int AS count FROM audit_logs WHERE action='import_previous'")).rows[0].count, 1);
   } finally { await pg.close(); }
 });

@@ -983,7 +983,7 @@ export async function toggleServicePackage(formData: FormData) {
 export async function assignPackageToClient() {
   const { organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "clients.manage");
-  return { error: "As novas vendas de pacotes são realizadas em Venda e orçamento. Para migrar uma aquisição anterior, use Registrar pacote anterior em Pacotes." };
+  return { error: "As vendas de pacotes são realizadas em Venda e orçamento." };
 }
 
 export async function createFinancialEntry(formData: FormData) {

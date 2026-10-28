@@ -3,12 +3,11 @@ import { and, eq } from "drizzle-orm";
 import { PackageCheck, Power, PowerOff } from "lucide-react";
 import { toggleServicePackage } from "@/actions/app";
 import { ActionForm } from "@/components/action-form";
-import { PackageDialog, PreviousPackageDialog } from "@/components/package-form";
+import { PackageDialog } from "@/components/package-form";
 import { PageHeader } from "@/components/page-header";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { db } from "@/db";
 import { clientPackageBalances, clientPackages, clients, servicePackageItems, servicePackages, services } from "@/db/schema";
-import { organizationDate } from "@/lib/organization-time";
 import { reservedPackageQuantity } from "@/lib/package-remaining";
 import { packageSearch, packageSituation, type PackageTemplate } from "@/lib/package-catalog";
 import { hasOrganizationPermission } from "@/lib/permissions";
@@ -21,17 +20,14 @@ export default async function PackagesPage({ searchParams }: { searchParams: Pro
   const { organization } = await requireOrganization();
   const query = await searchParams;
   const canManage = hasOrganizationPermission(organization.role, "services.manage");
-  const canImport = hasOrganizationPermission(organization.role, "clients.manage");
   const canSell = hasOrganizationPermission(organization.role, "sales.sell") || hasOrganizationPermission(organization.role, "inventory.manage");
   const now = new Date();
-  const today = organizationDate(now, organization.timezone);
   const date = (value: Date) => value.toLocaleDateString("pt-BR", { timeZone: organization.timezone });
-  const [procedures, clientRows, templates, templateItems, assigned, balances] = await Promise.all([
+  const [procedures, templates, templateItems, assigned, balances] = await Promise.all([
     db.select({ id: services.id, name: services.name, isActive: services.isActive }).from(services).where(eq(services.organizationId, organization.id)).orderBy(services.name),
-    canImport ? db.select({ id: clients.id, name: clients.name }).from(clients).where(eq(clients.organizationId, organization.id)).orderBy(clients.name) : Promise.resolve([]),
     db.select().from(servicePackages).where(eq(servicePackages.organizationId, organization.id)).orderBy(servicePackages.name),
     db.select({ packageId: servicePackageItems.packageId, serviceId: servicePackageItems.serviceId, serviceName: services.name, quantity: servicePackageItems.quantity }).from(servicePackageItems).innerJoin(services, and(eq(services.id, servicePackageItems.serviceId), eq(services.organizationId, organization.id))).where(eq(servicePackageItems.organizationId, organization.id)),
-    db.select({ id: clientPackages.id, clientId: clientPackages.clientId, client: clients.name, packageName: servicePackages.name, priceInCents: clientPackages.priceInCents, status: clientPackages.status, purchasedAt: clientPackages.purchasedAt, expiresAt: clientPackages.expiresAt, notes: clientPackages.notes }).from(clientPackages).innerJoin(clients, and(eq(clients.id, clientPackages.clientId), eq(clients.organizationId, organization.id))).innerJoin(servicePackages, and(eq(servicePackages.id, clientPackages.packageId), eq(servicePackages.organizationId, organization.id))).where(eq(clientPackages.organizationId, organization.id)).orderBy(clientPackages.purchasedAt),
+    db.select({ id: clientPackages.id, clientId: clientPackages.clientId, client: clients.name, packageName: servicePackages.name, priceInCents: clientPackages.priceInCents, status: clientPackages.status, purchasedAt: clientPackages.purchasedAt, expiresAt: clientPackages.expiresAt }).from(clientPackages).innerJoin(clients, and(eq(clients.id, clientPackages.clientId), eq(clients.organizationId, organization.id))).innerJoin(servicePackages, and(eq(servicePackages.id, clientPackages.packageId), eq(servicePackages.organizationId, organization.id))).where(eq(clientPackages.organizationId, organization.id)).orderBy(clientPackages.purchasedAt),
     db.select({ clientPackageId: clientPackageBalances.clientPackageId, serviceId: clientPackageBalances.serviceId, serviceName: services.name, total: clientPackageBalances.totalQuantity, used: clientPackageBalances.usedQuantity, reserved: reservedPackageQuantity }).from(clientPackageBalances).innerJoin(services, and(eq(services.id, clientPackageBalances.serviceId), eq(services.organizationId, organization.id))).where(eq(clientPackageBalances.organizationId, organization.id)),
   ]);
   const models: PackageTemplate[] = templates.map((template) => ({ ...template, items: templateItems.filter((item) => item.packageId === template.id) }));
@@ -48,7 +44,6 @@ export default async function PackagesPage({ searchParams }: { searchParams: Pro
     <div className="mb-5 flex flex-wrap items-start gap-3">
       {canManage && <PackageDialog procedures={procedures} />}
       {canSell && <Link className="secondary-button" href="/vendas?novo=1&tipo=package#venda-form">Vender pacote</Link>}
-      {canImport && <PreviousPackageDialog templates={models} clients={clientRows} today={today} />}
     </div>
     <nav className="mb-5 flex flex-wrap gap-2" aria-label="Áreas de pacotes"><Link className={clientsTab ? "secondary-button" : "primary-button"} aria-current={!clientsTab ? "page" : undefined} href="/pacotes">Modelos de pacotes</Link><Link className={clientsTab ? "primary-button" : "secondary-button"} aria-current={clientsTab ? "page" : undefined} href="/pacotes?aba=clientes">Pacotes dos clientes</Link></nav>
     <form className="panel mb-5 flex flex-wrap items-end gap-3" method="get">
@@ -67,7 +62,6 @@ export default async function PackagesPage({ searchParams }: { searchParams: Pro
     </article>)}{!modelRows.length && <p className="empty-state">Nenhum modelo encontrado. Cadastre um pacote ou ajuste os filtros.</p>}</PaginatedCollection></section> : <section className="panel"><h2 className="text-lg font-extrabold">Pacotes dos clientes ({purchases.length})</h2><PaginatedCollection key={JSON.stringify(query)} label="Pacotes dos clientes" className="mt-4 divide-y">{purchases.map((item) => <article className="py-4" key={item.id}>
       <div className="flex flex-wrap items-center gap-2"><PackageCheck className="size-4 text-brand" /><h3 className="font-extrabold">{item.client} · {item.packageName}</h3><span className={`status-pill ${item.situation.key === "expired" ? "text-red-700" : ""}`}>{item.situation.label}</span></div>
       <p className="mt-1 text-xs text-muted">Adquirido em {date(item.purchasedAt)} · {money(item.priceInCents)}{item.expiresAt ? ` · válido até ${date(item.expiresAt)}` : " · sem prazo de validade"}</p>
-      {item.notes?.startsWith("Pacote anterior —") && <p className="mt-2 text-xs text-muted">{item.notes}</p>}
       <div className="mt-3 grid gap-2 sm:grid-cols-2">{item.balances.map((balance) => <div className="rounded-xl border p-3 text-sm" key={balance.serviceId}><p className="font-bold">{balance.serviceName}</p><p>{item.situation.available ? Math.max(0, balance.total - balance.used) : 0} sessão(ões) disponível(is) agora</p><p className="text-xs text-muted">{Math.max(0, balance.used - balance.reserved)} utilizada(s) · {balance.reserved} reservada(s) · {balance.total} registrada(s)</p>{!item.situation.available && <p className="mt-1 text-xs text-muted">Saldo registrado sem consumo: {Math.max(0, balance.total - balance.used + balance.reserved)}. Indisponível para novas utilizações.</p>}</div>)}</div>
     </article>)}{!purchases.length && <p className="empty-state">Nenhum pacote de cliente encontrado para os filtros.</p>}</PaginatedCollection></section>}
   </div>;

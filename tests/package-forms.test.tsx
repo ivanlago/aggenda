@@ -17,10 +17,10 @@ test("package and charge dialogs follow the shared lifecycle and submit only sel
   dom.window.confirm = () => true;
   const submitted: Record<string, FormDataEntryValue>[] = [];
   globals.packageTestSave = async (data: FormData) => { submitted.push(Object.fromEntries(data.entries())); };
-  const bundle = await build({ stdin: { contents: 'export { PackageDialog, PreviousPackageDialog } from "./src/components/package-form"; export { ChargeCreateDialog } from "./src/components/charge-create-form";', resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, format: "cjs", platform: "node", packages: "external", jsx: "automatic", plugins: [{ name: "forms", setup(builder) {
+  const bundle = await build({ stdin: { contents: 'export { PackageDialog } from "./src/components/package-form"; export { ChargeCreateDialog } from "./src/components/charge-create-form";', resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, format: "cjs", platform: "node", packages: "external", jsx: "automatic", plugins: [{ name: "forms", setup(builder) {
     const mocks: Record<string, string> = {
       "next/navigation": "const router={refresh(){}};export function useRouter(){return router}",
-      "@/actions/package-catalog": "export const saveServicePackage=(data)=>globalThis.packageTestSave(data);export const importPreviousPackage=(data)=>globalThis.packageTestSave(data)",
+      "@/actions/package-catalog": "export const saveServicePackage=(data)=>globalThis.packageTestSave(data)",
       "@/actions/mercado-pago": "export const createProviderCharge=(data)=>globalThis.packageTestSave(data)",
     };
     builder.onResolve({ filter: /.*/ }, (args) => mocks[args.path] ? { path: args.path, namespace: "fixture" } : undefined);

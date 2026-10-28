@@ -9,7 +9,7 @@ const tabs = [
   { id: "voucher", label: "Voucher", icon: TicketPercent },
   { id: "conversas", label: "Conversas comerciais", icon: MessageCircleMore },
   { id: "funil", label: "Funil e oportunidades", icon: KanbanSquare },
-  { id: "relatorios", label: "Relatórios", icon: ChartNoAxesCombined },
+  { id: "relatorios", label: "Indicadores", icon: ChartNoAxesCombined },
 ] as const;
 type TabId = (typeof tabs)[number]["id"];
 

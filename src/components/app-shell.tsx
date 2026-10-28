@@ -73,6 +73,9 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     { label: "CRM", items: [
       { href: "/crescimento", label: "CRM", icon: TrendingUp, permission: "crm.read" },
     ] },
+    { label: "Relatórios", items: [
+      { href: "/relatorios", label: "Relatórios", icon: ChartNoAxesCombined, permission: "organization.read" },
+    ] },
     { label: "Atendimento", items: [
       { href: "/estoque", label: "Estoque", icon: Boxes, permission: "inventory.read" },
       { href: "/servicos", label: organization.serviceLabelPlural, icon: Wrench, permission: "services.read" },

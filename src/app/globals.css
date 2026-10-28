@@ -156,8 +156,9 @@ a[href]:focus-visible {
 
 /* Internal workspace only: keep wide content inside its own scroll region. */
 .internal-app .page-wrap,
-.internal-app .panel,
+.internal-app .panel:not(dialog),
 .internal-app .field { min-width: 0; max-width: 100%; }
+.internal-app label.grid { align-content: start; }
 
 /* Institutional colors stay separate from appointment, financial and alert states. */
 .internal-app .app-sidebar {

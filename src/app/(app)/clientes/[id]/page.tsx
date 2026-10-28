@@ -1,10 +1,12 @@
+import { ClientDocumentList } from "@/components/client-document-list";
+import { ModalShell } from "@/components/modal-shell";
+import { FormActions } from "@/components/form-dialog-context";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { PortalDependents } from "@/components/portal-dependents";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { consumedPackageQuantity } from "@/lib/package-remaining";
 import Link from "next/link";
 import Image from "next/image";
-import { Pencil } from "lucide-react";
 import { ClientOptionalFields } from "@/components/client-optional-fields";
 import { EntityImageField } from "@/components/entity-image-field";
 import { PhoneInput } from "@/components/phone-input";
@@ -185,7 +187,7 @@ export default async function ClientHistoryPage({
   ].sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
   const isHealth = organization.businessType === "saude";
   const recordLabel = isHealth ? "Prontuário" : "Histórico do cliente";
-  const visibleEntries = entries.filter((entry) => !entry.electronicDocumentId || canReadDocuments);
+  const visibleEntries = entries.filter((entry) => !entry.electronicDocumentId);
   const genderLabels: Record<string, string> = { female: "Feminino", male: "Masculino", other: "Outro", not_informed: "Prefere não informar" };
   return (
     <div className="page-wrap">
@@ -218,26 +220,23 @@ export default async function ClientHistoryPage({
             <div className="min-w-0 sm:col-span-2 lg:col-span-3"><dt className="text-muted">Observações</dt><dd className="whitespace-pre-wrap break-words font-bold">{client.notes || "Não informadas"}</dd></div>
           </dl>
         </div>
-                  {canManage && <details className="mt-5 border-t pt-4">
-                    <summary className="secondary-button w-fit cursor-pointer list-none gap-2">
-                      <Pencil className="size-3" /> Editar dados
-                    </summary>
+                  {canManage && <div className="mt-5 border-t pt-4"><ModalShell title="Editar dados do cliente" triggerLabel="Editar dados" variant="edit" wide closeOnSuccess>
                     <ActionForm action={updateClient} successMessage="Cliente atualizado com sucesso." className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2">
                       <input type="hidden" name="id" value={client.id} />
-                      <input className="field py-2" aria-label="Nome completo" name="name" defaultValue={client.name} required />
-                      <PhoneInput className="field py-2" aria-label="Telefone" name="phone" defaultValue={client.phone} placeholder="Telefone: (71) 99999-9999" />
-                      <input className="field py-2" aria-label="E-mail" name="email" type="email" defaultValue={client.email ?? ""} placeholder="E-mail" />
-                      <input className="field py-2" name="birthDate" type="date" defaultValue={client.birthDate ?? ""} aria-label="Data de nascimento" />
-                      <select className="field py-2" name="gender" defaultValue={client.gender ?? ""} aria-label="Sexo">
+                      <label className="grid min-w-0 gap-2 text-sm font-bold">Nome<input className="field py-2" aria-label="Nome completo" name="name" defaultValue={client.name} required /></label>
+                      <label className="grid min-w-0 gap-2 text-sm font-bold">WhatsApp<PhoneInput className="field py-2" aria-label="Telefone" name="phone" defaultValue={client.phone} placeholder="Telefone: (71) 99999-9999" /></label>
+                      <label className="grid min-w-0 gap-2 text-sm font-bold">E-mail<input className="field py-2" aria-label="E-mail" name="email" type="email" defaultValue={client.email ?? ""} placeholder="E-mail" /></label>
+                      <label className="grid min-w-0 gap-2 text-sm font-bold">Data de nascimento<input className="field py-2" name="birthDate" type="date" defaultValue={client.birthDate ?? ""} aria-label="Data de nascimento" /></label>
+                      <label className="grid min-w-0 gap-2 text-sm font-bold">Sexo<select className="field py-2" name="gender" defaultValue={client.gender ?? ""} aria-label="Sexo">
                         <option value="">Sexo não informado</option>
                         <option value="female">Feminino</option><option value="male">Masculino</option><option value="other">Outro</option><option value="not_informed">Prefere não informar</option>
-                      </select>
+                      </select></label>
                       <div className="min-w-0 sm:col-span-2"><ClientOptionalFields client={client} /></div>
-                      <textarea className="field min-h-20 py-2" aria-label="Observações" name="notes" defaultValue={client.notes ?? ""} placeholder="Observações" />
+                      <label className="grid min-w-0 gap-2 text-sm font-bold">Observações<textarea className="field min-h-20 py-2" aria-label="Observações" name="notes" defaultValue={client.notes ?? ""} placeholder="Observações" /></label>
                       <EntityImageField currentUrl={client.imageUrl} label={`Foto do ${organization.clientLabel.toLowerCase()}`} />
-                      <button className="primary-button py-2">Salvar alterações</button>
+                      <FormActions editing />
                     </ActionForm>
-                  </details>}
+                  </ModalShell></div>}
       </section>
       {canManage && <PortalDependents organizationId={organization.id} guardianId={client.id} />}
       {canReadClinical && <ClinicalWorkspace clientId={client.id} />}
@@ -299,20 +298,7 @@ export default async function ClientHistoryPage({
       </CollapsiblePanel>}
       {canReadDocuments && <CollapsiblePanel title={`Documentos emitidos (${documents.length})`} id="documentos-emitidos">
         <p className="text-sm text-muted">Consulte os documentos do cliente ou use uma receita anterior como base para uma nova emissão.</p>
-        <PaginatedCollection label="Registros" className="mt-4 divide-y">
-          {documents.map((document) => <article key={document.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-            <div className="min-w-0">
-              <p className="break-words font-extrabold">{document.title}</p>
-              <p className="text-xs text-muted">{formatOrganizationDateTime(document.issuedAt ?? document.signedAt ?? document.createdAt, organization.timezone)}{document.professionalName ? ` · ${document.professionalName}` : ""}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Link className="secondary-button" href={`/api/documents/${document.id}/pdf`} target="_blank" rel="noopener noreferrer">Abrir PDF original</Link>
-              {canIssueDocuments && document.documentType === "prescription" && <Link className="secondary-button" href={`/documentos/receitas?reuse=${document.id}`}>Criar nova receita a partir desta</Link>}
-              {canIssueDocuments && document.documentType === "exam_request" && <Link className="secondary-button" href={`/documentos/exames?reuse=${document.id}`}>Criar nova solicitação a partir desta</Link>}
-            </div>
-          </article>)}
-          {!documents.length && <p className="empty-state">Nenhum documento emitido para este cliente.</p>}
-        </PaginatedCollection>
+                  <ClientDocumentList documents={documents} timezone={organization.timezone} canIssue={canIssueDocuments} />
       </CollapsiblePanel>}
       <CollapsiblePanel title="Pacotes e saldos">
         <div className="flex justify-end">
@@ -332,20 +318,20 @@ export default async function ClientHistoryPage({
         </PaginatedCollection>
       </CollapsiblePanel>
       {canReadClinical && <CollapsiblePanel title={recordLabel}>
-        <p className="text-sm text-muted">Registre evoluções e informações relevantes com autoria e data.</p>
+        <p className="text-sm text-muted">Registre evoluções e informações relevantes com autoria e data. Documentos emitidos estão reunidos na seção Documentos emitidos.</p>
         {canManageClinical && <ActionForm action={createClientHistoryEntry} successMessage={`${recordLabel} atualizado com sucesso.`} className="mt-5 grid gap-3">
           <input type="hidden" name="clientId" value={client.id} />
           <div className="grid gap-3 sm:grid-cols-2">
-            <select className="field" name="entryType" defaultValue={isHealth ? "evolution" : "note"}>
+            <label className="grid gap-2 text-sm font-bold">Tipo de registro<select className="field" name="entryType" defaultValue={isHealth ? "evolution" : "note"}>
               <option value="note">Anotação</option>
               {isHealth && <option value="evolution">Evolução</option>}
               {isHealth && <option value="anamnesis">Anamnese</option>}
               <option value="document">Documento/registro</option>
-            </select>
-            <input className="field" name="occurredAt" type="datetime-local" aria-label="Data e hora do registro" />
+            </select></label>
+            <label className="grid min-w-0 gap-2 text-sm font-bold">Data e hora do registro<input className="field" name="occurredAt" type="datetime-local" aria-label="Data e hora do registro" /></label>
           </div>
-          <input className="field" name="title" placeholder="Título (opcional)" />
-          <textarea className="field min-h-28" name="content" required placeholder={isHealth ? "Evolução, observações clínicas e conduta" : "Informações relevantes do atendimento"} />
+          <label className="grid min-w-0 gap-2 text-sm font-bold">Título<input className="field" name="title" placeholder="Título (opcional)" /></label>
+          <label className="grid min-w-0 gap-2 text-sm font-bold">Informações do registro<textarea className="field min-h-28" name="content" required placeholder={isHealth ? "Evolução, observações clínicas e conduta" : "Informações relevantes do atendimento"} /></label>
           <button className="primary-button sm:w-fit">Adicionar ao {recordLabel.toLowerCase()}</button>
         </ActionForm>}
         <PaginatedCollection label="Registros" className="mt-6 divide-y">

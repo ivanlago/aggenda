@@ -36,7 +36,7 @@ export function AppointmentStatusForm({
   return (
     <ActionForm action={action} successMessage="Status atualizado com sucesso.">
       <input type="hidden" name="id" value={appointmentId} />
-      <select
+      <label className="grid gap-2 text-sm font-bold">Situação<select
         className="field py-2"
         name="status"
         value={status}
@@ -48,9 +48,9 @@ export function AppointmentStatusForm({
         })}
       >
         {statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      </select>
+      </select></label>
       {status === "cancelled" && (
-        <input
+        <label className="grid min-w-0 gap-2 text-sm font-bold">Motivo do cancelamento<input
           className="field mt-2 py-2"
           name="cancellationReason"
           value={cancellationReason}
@@ -60,9 +60,10 @@ export function AppointmentStatusForm({
             status,
             cancellationReason: event.target.value,
           })}
+          aria-label="Motivo do cancelamento"
           placeholder="Motivo do cancelamento"
           required
-        />
+        /></label>
       )}
       {status === "completed" && returnSettings}
       <button className="secondary-button mt-3">Salvar situação do agendamento</button>

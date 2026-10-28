@@ -1,3 +1,4 @@
+import { roleLabels } from "@/lib/presentation-labels";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { and, eq, isNull } from "drizzle-orm";
 import { notFound } from "next/navigation";
@@ -53,8 +54,8 @@ export default async function CompanyAdminPage({ params }: { params: Promise<{ i
       <p className="mt-2 text-muted">{organization.slug} · {organization.businessType ?? "segmento não informado"}</p>
       {canStartSupport && <form action={startSupportSession} className="panel mt-6 grid gap-3 md:grid-cols-[1fr_180px_auto]">
         <input type="hidden" name="organizationId" value={id} />
-        <input className="field" name="reason" minLength={10} required placeholder="Motivo detalhado do atendimento de suporte" />
-        <select className="field" name="accessLevel" defaultValue="read_only"><option value="read_only">Somente leitura</option>{platform.role === "super_admin" && <option value="operational">Operacional</option>}</select>
+        <label className="grid min-w-0 gap-2 text-sm font-bold">Motivo<input className="field" name="reason" minLength={10} required placeholder="Motivo detalhado do atendimento de suporte" /></label>
+        <label className="grid min-w-0 gap-2 text-sm font-bold">Nível de acesso<select className="field" name="accessLevel" defaultValue="read_only"><option value="read_only">Somente leitura</option>{platform.role === "super_admin" && <option value="operational">Operacional</option>}</select></label>
         <button className="primary-button">Iniciar sessão de 1 hora</button>
       </form>}
       {activeSupport.length > 0 && <p className="mt-3 text-sm font-bold text-amber-700">Existem {activeSupport.length} sessões de suporte registradas para esta empresa.</p>}
@@ -62,9 +63,9 @@ export default async function CompanyAdminPage({ params }: { params: Promise<{ i
       <section className="panel mt-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-extrabold uppercase tracking-widest text-brand">Produtos habilitados</p>
+            <p className="text-xs font-extrabold uppercase tracking-widest text-brand">Configuração operacional</p>
             <h2 className="mt-2 text-xl font-extrabold">{corePlans[servicePlan.corePlanCode].name} + {whatsappServices[servicePlan.whatsappServiceCode].name}</h2>
-            {servicePlan.isLegacyFallback && <p className="mt-2 text-sm text-amber-700">Acesso legado preservado. Salve uma configuração para aplicar limites explícitos.</p>}
+            <p className="mt-2 text-sm text-muted">Módulos e limites operacionais. O plano comercial de cobrança é consultado na lista de empresas e em Assinaturas.</p>{servicePlan.isLegacyFallback && <p className="mt-2 text-sm text-amber-700">Acesso legado preservado. Salve uma configuração para aplicar limites explícitos.</p>}
           </div>
         </div>
         {canManagePlans && <ActionForm action={updateOrganizationServicePlan} successMessage="Serviços da empresa atualizados." className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -81,7 +82,7 @@ export default async function CompanyAdminPage({ params }: { params: Promise<{ i
         </ActionForm>}
       </section>
       <div className="mt-6 grid gap-5 lg:grid-cols-2">
-        <section className="panel"><h2 className="text-xl font-extrabold">Equipe</h2><PaginatedCollection label="Registros" className="mt-4 divide-y">{members.map((member) => <div className="py-3" key={member.email}><p className="font-bold">{member.name}</p><p className="text-sm text-muted">{member.email} · {member.role}</p></div>)}</PaginatedCollection></section>
+        <section className="panel"><h2 className="text-xl font-extrabold">Equipe</h2><PaginatedCollection label="Registros" className="mt-4 divide-y">{members.map((member) => <div className="py-3" key={member.email}><p className="font-bold">{member.name}</p><p className="text-sm text-muted">{member.email} · {roleLabels[member.role] ?? "Outro perfil"}</p></div>)}</PaginatedCollection></section>
         <section className="panel"><h2 className="text-xl font-extrabold">Serviços</h2><PaginatedCollection label="Registros" className="mt-4 divide-y">{serviceItems.map((service) => <div className="flex justify-between py-3" key={service.id}><span className="font-bold">{service.name}</span><span className="text-sm text-muted">{service.isActive ? "ativo" : "inativo"}</span></div>)}</PaginatedCollection></section>
         <section className="panel lg:col-span-2"><h2 className="text-xl font-extrabold">Clientes finais</h2><p className="mt-1 text-xs text-muted">Dados de contato mascarados no suporte global.</p><PaginatedCollection label="Registros" className="mt-4 grid gap-3 md:grid-cols-2">{clientItems.map((client) => <div className="rounded-xl border p-3" key={client.id}><p className="font-bold">{client.name}</p><p className="text-sm text-muted">{maskPhone(client.phone)} · {client.email ? client.email.replace(/(^.).*(@.*$)/, "$1•••$2") : "sem e-mail"}</p></div>)}</PaginatedCollection></section>
       </div>

@@ -1,8 +1,9 @@
-export type FinanceFilters = { status?: string; tipo?: string; conta?: string; categoria?: string };
+export type FinanceFilters = { status?: string; tipo?: string; conta?: string; categoria?: string; dia?: string };
 type Entry = { status: string; type: string; dueDate: string; realizedDate: string | null; accountId: string | null; categoryId: string | null; amountInCents: number };
 
 export function matchesFinanceFilters(entry: Entry, filters: FinanceFilters, today: string) {
-  return (!filters.status || filters.status === "all" || (filters.status === "overdue" ? entry.status === "pending" && entry.dueDate < today : entry.status === filters.status))
+  return (!filters.dia || entry.dueDate === filters.dia)
+    && (!filters.status || filters.status === "all" || (filters.status === "overdue" ? entry.status === "pending" && entry.dueDate < today : entry.status === filters.status))
     && (!filters.tipo || filters.tipo === "all" || entry.type === filters.tipo)
     && (!filters.conta || filters.conta === "all" || entry.accountId === filters.conta)
     && (!filters.categoria || filters.categoria === "all" || entry.categoryId === filters.categoria);

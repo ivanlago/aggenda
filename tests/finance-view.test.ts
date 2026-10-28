@@ -43,3 +43,16 @@ test("online charges in review, overdue, confirmed or partially refunded cannot 
   for (const status of ["pending", "overdue", "paid", "payment_review", "partially_refunded"]) assert.equal(isManagedCharge(status), true);
   for (const status of ["cancelled", "refunded"]) assert.equal(isManagedCharge(status), false);
 });
+
+test("dashboard today shortcut scopes both rows and totals without including yesterday or settled entries", () => {
+  const result = period([
+    entry({ id: "today", dueDate: today }),
+    entry({ id: "yesterday", dueDate: "2026-10-27", amountInCents: 90000 }),
+    entry({ id: "received", dueDate: today, realizedDate: today, status: "received" }),
+    entry({ id: "expense", dueDate: today, type: "payable" }),
+  ], { dia: today, tipo: "receivable", status: "pending" });
+  assert.deepEqual(result.entries.map(item => item.id), ["today"]);
+  assert.equal(result.receivable, 10000);
+  assert.equal(result.received, 0);
+  assert.equal(result.payable, 0);
+});

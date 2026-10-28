@@ -2,8 +2,8 @@
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
-export function AttendanceWorkspaceTabs({ tabs }: { tabs: Array<{ id: string; label: string; content: ReactNode }> }) {
-  const [active, setActive] = useState(tabs[0]?.id ?? "overview");
+export function AttendanceWorkspaceTabs({ tabs, initialTab }: { tabs: Array<{ id: string; label: string; content: ReactNode }>; initialTab?: string }) {
+  const [active, setActive] = useState(tabs.some(tab => tab.id === initialTab) ? initialTab! : tabs[0]?.id ?? "overview");
   const prefix = useId(); const list = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const select = (event: Event) => {

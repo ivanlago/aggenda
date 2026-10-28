@@ -1,3 +1,4 @@
+import { DocumentNavigation } from "@/components/document-navigation";
 import { and, eq } from "drizzle-orm";
 import { issueProfessionalDocument } from "@/actions/electronic-documents";
 import { ActionForm } from "@/components/action-form";
@@ -27,7 +28,7 @@ export default async function ClinicalDocumentsPage() {
  const missingTemplate = <p className="empty-state">Modelo indisponível. Confira a biblioteca em Configurações.</p>;
  const readOnly = <p className="empty-state">Seu perfil possui acesso somente para consulta de documentos.</p>;
  return <div className="page-wrap"><PageHeader eyebrow="Documentos" title="Clínicos" description="Selecione uma ferramenta para preparar e emitir o documento do paciente." />
- <ClinicalDocumentTools forms={{
+ <DocumentNavigation /><ClinicalDocumentTools forms={{
  anamnesis: <AnamnesesPage embedded />,
  certificate: <CertificatesPage embedded />,
  prescription: <PrescriptionsPage embedded searchParams={Promise.resolve({})} />,

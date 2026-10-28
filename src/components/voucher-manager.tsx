@@ -1,4 +1,6 @@
 "use client";
+import { ModalShell } from "@/components/modal-shell";
+import { FormActions } from "@/components/form-dialog-context";
 
 import { PaginatedCollection } from "@/components/paginated-collection";
 
@@ -29,7 +31,6 @@ export function VoucherManager({ organizationName, timezone, referenceTime, vouc
     const timer = window.setInterval(() => router.refresh(), 5000);
     return () => window.clearInterval(timer);
   }, [pendingCount, router]);
-  const [createOpen, setCreateOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
   const [voucherId, setVoucherId] = useState("");
   const [channel, setChannel] = useState(channels.email ? "email" : "manual");
@@ -52,14 +53,13 @@ export function VoucherManager({ organizationName, timezone, referenceTime, vouc
   function reset() { setSelected([]); }
   return <section id="vouchers" className="mt-5 grid gap-5 scroll-mt-5">
     {canCreate && <div className="grid gap-3">
-      <button type="button" className="primary-button w-fit gap-2" aria-expanded={createOpen} aria-controls="new-voucher-form" onClick={() => setCreateOpen(!createOpen)}>+ Novo voucher<ChevronDown className={`size-4 transition-transform ${createOpen ? "rotate-180" : ""}`} aria-hidden="true" /></button>
-      <div id="new-voucher-form" hidden={!createOpen}>
-      <ActionForm action={createVoucher} successMessage="Voucher criado." className="panel form-stack">
-      <h2 className="text-xl font-extrabold">Novo voucher</h2><p className="text-sm text-muted">Crie um código público de campanha ou um benefício exclusivo para um cliente. O envio é feito separadamente.</p>
+      <ModalShell title="Novo voucher" variant="new" wide closeOnSuccess>
+      <ActionForm action={createVoucher} successMessage="Voucher criado." className="form-stack">
+      <p className="text-sm text-muted">Crie um código público de campanha ou um benefício exclusivo para um cliente. O envio é feito separadamente.</p>
       <div className="grid gap-4 lg:grid-cols-2"><label className="grid gap-2 text-sm font-bold">Código<input className="field" name="code" required minLength={3} maxLength={40} placeholder="VOLTE10" /></label><label className="grid gap-2 text-sm font-bold">Descrição<input className="field" name="description" maxLength={300} placeholder="Campanha de retorno" /></label></div>
       <div className="grid gap-4 lg:grid-cols-4"><label className="grid gap-2 text-sm font-bold">Tipo de desconto<select className="field" name="discountType"><option value="fixed">Valor em reais</option><option value="percentage">Percentual</option></select></label><label className="grid gap-2 text-sm font-bold">Benefício (R$ ou %)<input className="field" name="discountValue" required inputMode="decimal" placeholder="10,00" /></label><label className="grid gap-2 text-sm font-bold">Limite total de usos<input className="field" name="maxUses" type="number" min={1} placeholder="Sem limite" /></label><label className="grid gap-2 text-sm font-bold">Válido até<input className="field" name="validUntil" type="date" /></label></div>
-      <label className="grid gap-2 text-sm font-bold">Quem pode usar?<select className="field" name="clientId" defaultValue=""><option value="">Qualquer cliente com o código</option>{clients.map((client) => <option key={client.id} value={client.id}>Exclusivo: {client.name}</option>)}</select><span className="font-normal text-muted">Um voucher exclusivo fica vinculado ao cadastro do cliente e tem um uso por padrão, se o limite não for informado.</span></label><button className="primary-button w-fit">Criar voucher</button>
-    </ActionForm></div></div>}
+      <label className="grid gap-2 text-sm font-bold">Quem pode usar?<select className="field" name="clientId" defaultValue=""><option value="">Qualquer cliente com o código</option>{clients.map((client) => <option key={client.id} value={client.id}>Exclusivo: {client.name}</option>)}</select><span className="font-normal text-muted">Um voucher exclusivo fica vinculado ao cadastro do cliente e tem um uso por padrão, se o limite não for informado.</span></label><FormActions submitLabel="Criar voucher" />
+    </ActionForm></ModalShell></div>}
     <article className="panel"><h2 className="text-xl font-extrabold">Vouchers disponíveis</h2><PaginatedCollection label="Registros" className="mt-4 grid gap-3">{vouchers.map((row) => <div key={row.id} className="grid gap-3 rounded-xl border p-4 lg:grid-cols-[1fr_auto]">
       <div><div className="flex flex-wrap items-center gap-2"><strong>{row.code}</strong><span className="status-pill">{usable(row) ? "Disponível" : !row.isActive ? "Desativado" : row.maxUses !== null && row.usedCount >= row.maxUses ? "Esgotado" : "Expirado ou ainda não iniciado"}</span></div><p className="mt-1 font-bold text-brand">{row.benefit}</p><p className="mt-1 text-sm text-muted">{row.description || "Sem descrição"} · {row.usedCount}/{row.maxUses ?? "∞"} usos · {row.validUntil ? `Válido até ${date(row.validUntil)}` : "Sem validade definida"}</p><p className="mt-1 text-sm">{row.clientId ? `Exclusivo: ${clients.find((client) => client.id === row.clientId)?.name || "Cliente vinculado"}` : "Código público de campanha"}</p></div>
       <div className="flex flex-wrap items-center gap-2"><CopyButton value={row.code} label="Copiar código" /><CopyButton value={row.bookingUrl} label="Copiar link" />{canSend && usable(row) && <button type="button" className="secondary-button" onClick={() => { setVoucherId(row.id); reset(); setSendOpen(true); window.requestAnimationFrame(() => document.getElementById("voucher-send")?.scrollIntoView({ behavior: "smooth" })); }}>Enviar</button>}{canCreate && <ActionForm action={toggleVoucher} successMessage="Voucher atualizado."><input type="hidden" name="voucherId" value={row.id} /><input type="hidden" name="isActive" value={String(!row.isActive)} /><button className="secondary-button">{row.isActive ? "Desativar" : "Reativar"}</button></ActionForm>}</div>

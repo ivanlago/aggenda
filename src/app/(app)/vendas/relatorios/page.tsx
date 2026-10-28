@@ -1,3 +1,5 @@
+import { organizationDate, zonedDate } from "@/lib/organization-time";
+import { paymentMethodLabel } from "@/lib/presentation-labels";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { and, asc, eq, gte, lt } from "drizzle-orm";
 import Link from "next/link";
@@ -8,15 +10,16 @@ import { commissionEntries, retailSaleItems, retailSalePayments, retailSales, us
 import { requireOrganization } from "@/lib/session";
 
 const money = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const labels: Record<string, string> = { cash: "Espécie", card: "Cartões", pix: "PIX" };
 
 export default async function SalesReportsPage({ searchParams }: { searchParams: Promise<{ mes?: string }> }) {
   const { organization } = await requireOrganization();
   const query = await searchParams;
-  const fallback = new Date().toISOString().slice(0, 7);
+  const fallback = organizationDate(new Date(), organization.timezone).slice(0, 7);
   const month = /^\d{4}-\d{2}$/.test(query.mes ?? "") ? query.mes! : fallback;
-  const start = new Date(`${month}-01T00:00:00`);
-  const end = new Date(start); end.setMonth(end.getMonth() + 1);
+  const start = zonedDate(`${month}-01`, "00:00", organization.timezone);
+  const [year, monthNumber] = month.split("-").map(Number);
+  const next = new Date(Date.UTC(year, monthNumber, 1)).toISOString().slice(0, 10);
+  const end = zonedDate(next, "00:00", organization.timezone);
   const sales = await db.select({ id: retailSales.id, operator: users.name, total: retailSales.totalInCents, discount: retailSales.discountInCents }).from(retailSales).leftJoin(users, eq(users.id, retailSales.createdByUserId)).where(and(eq(retailSales.organizationId, organization.id), eq(retailSales.status, "completed"), gte(retailSales.soldAt, start), lt(retailSales.soldAt, end)));
   const ids = new Set(sales.map((sale) => sale.id));
   const [items, payments] = await Promise.all([
@@ -31,9 +34,9 @@ export default async function SalesReportsPage({ searchParams }: { searchParams:
   const byPayment = new Map<string, number>(); for (const item of validPayments) byPayment.set(item.method, (byPayment.get(item.method) ?? 0) + item.amount);
   const byOperator = new Map<string, { sales: number; revenue: number; commission: number }>(); for (const sale of sales) { const name = sale.operator || "Sem operador"; const row = byOperator.get(name) ?? { sales: 0, revenue: 0, commission: 0 }; row.sales++; row.revenue += sale.total; row.commission += validItems.filter((item) => item.saleId === sale.id).reduce((sum, item) => sum + item.commission, 0); byOperator.set(name, row); }
   return <div className="page-wrap"><Link className="mb-4 inline-flex text-sm font-bold text-brand" href="/vendas">← Voltar ao PDV</Link><Link className="secondary-button mb-4 ml-3" href="/financeiro/comissoes">Gestão de comissões e quitações</Link><PageHeader eyebrow="PDV" title="Relatórios de vendas" description="Caixa, vendas, produtos, margem bruta e comissões do varejo." />
-    <form className="mb-5 flex gap-2"><input className="field" type="month" name="mes" defaultValue={month} /><button className="secondary-button">Atualizar</button></form>
+    <form className="mb-5 flex gap-2"><label className="grid gap-1 text-sm font-bold">Competência<input className="field" type="month" name="mes" defaultValue={month} /></label><button className="secondary-button">Atualizar</button></form>
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">{[["Vendas", String(sales.length)], ["Receita", money(revenue)], ["Descontos", money(discounts)], ["Margem bruta", money(revenue - cost)], ["Comissões", money(commissions)]].map(([label, value]) => <article className="panel" key={label}><p className="text-xs font-bold text-muted">{label}</p><p className="mt-2 text-2xl font-extrabold">{value}</p></article>)}</section>
-    <div className="mt-5 grid gap-5 xl:grid-cols-2"><section className="panel"><h2 className="font-extrabold">Caixa por pagamento</h2><div className="mt-3 divide-y">{[...byPayment].map(([method, value]) => <p className="flex justify-between py-3 text-sm" key={method}><span>{labels[method] ?? method}</span><strong>{money(value)}</strong></p>)}</div></section><section className="panel"><h2 className="font-extrabold">Operadores de venda</h2><PaginatedCollection label="Registros" className="mt-3 divide-y">{[...byOperator].map(([name, row]) => <div className="grid grid-cols-3 gap-2 py-3 text-sm" key={name}><strong>{name}</strong><span>{row.sales} vendas · {money(row.revenue)}</span><span className="text-right text-muted">Operador do caixa</span></div>)}</PaginatedCollection></section></div>
+    <div className="mt-5 grid gap-5 xl:grid-cols-2"><section className="panel"><h2 className="font-extrabold">Caixa por pagamento</h2><div className="mt-3 divide-y">{[...byPayment].map(([method, value]) => <p className="flex justify-between py-3 text-sm" key={method}><span>{paymentMethodLabel(method)}</span><strong>{money(value)}</strong></p>)}</div></section><section className="panel"><h2 className="font-extrabold">Operadores de venda</h2><PaginatedCollection label="Registros" className="mt-3 divide-y">{[...byOperator].map(([name, row]) => <div className="grid grid-cols-3 gap-2 py-3 text-sm" key={name}><strong>{name}</strong><span>{row.sales} vendas · {money(row.revenue)}</span><span className="text-right text-muted">Operador do caixa</span></div>)}</PaginatedCollection></section></div>
     <section className="panel mt-5"><h2 className="font-extrabold">Produtos e margem</h2><div className="mt-3 overflow-x-auto max-h-[40rem] overflow-y-auto"><table className="w-full min-w-[650px] text-left text-sm"><thead><tr className="border-b text-xs text-muted"><th className="py-3">Produto/variação</th><th>Quantidade</th><th>Receita</th><th>Margem bruta</th><th>Comissão estimada no produto</th></tr></thead><PaginatedCollection as="tbody" pageSize={20} label="Registros">{[...products].map(([name, row]) => <tr className="border-b" key={name}><td className="py-3 font-bold">{name}</td><td>{row.quantity}</td><td>{money(row.revenue)}</td><td>{money(row.margin)}</td><td>{money(row.commission)}</td></tr>)}</PaginatedCollection></table></div></section>
   </div>;
 }

@@ -1,3 +1,4 @@
+import { ModalShell } from "@/components/modal-shell";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { and, eq } from "drizzle-orm";
 
@@ -50,8 +51,8 @@ export default async function TeamPage() {
   return (
     <div className="page-wrap">
       <PageHeader eyebrow={organization.name} title="Equipe e acesso" description="Cadastre a equipe, defina os acessos e configure quem realiza atendimentos." />
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(360px,0.85fr)_minmax(520px,1.15fr)]">
-        {canManage && <section className="panel xl:sticky xl:top-5"><h2 className="mb-5 text-xl font-extrabold">Cadastrar membro da equipe</h2><TeamCreateForm professions={professionOptions} specialties={specialtyOptions} /></section>}
+      <div className="grid items-start gap-5">
+        {canManage && <div><ModalShell title="Novo membro da equipe" variant="new" wide closeOnSuccess><TeamCreateForm professions={professionOptions} specialties={specialtyOptions} /></ModalShell></div>}
         <section className="panel">
           <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-extrabold">Equipe cadastrada</h2><span className="status-pill">{memberCards.length} {memberCards.length === 1 ? "membro" : "membros"}</span></div>
           <PaginatedCollection label="Registros" className="mt-5 grid gap-3">

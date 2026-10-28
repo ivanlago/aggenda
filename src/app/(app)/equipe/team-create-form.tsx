@@ -1,4 +1,5 @@
 "use client";
+import { FormActions } from "@/components/form-dialog-context";
 
 import { useMemo, useState } from "react";
 
@@ -66,7 +67,7 @@ export function TeamCreateForm({ professions, specialties }: { professions: Prof
         </div>
       )}
       <p className="text-xs text-muted">Após o cadastro, o Aggenda enviará um link de criação de senha válido por 24 horas.</p>
-      <button className="primary-button w-fit">Cadastrar membro da equipe</button>
+      <FormActions submitLabel="Cadastrar e enviar convite" />
     </ActionForm>
   );
 }

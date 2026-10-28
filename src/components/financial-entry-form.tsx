@@ -9,7 +9,7 @@ import { ModalShell } from "@/components/modal-shell";
 import { ReferenceManager, ReferenceSelect } from "@/components/reference-records";
 import type { ReferenceRecord } from "@/lib/reference-records";
 
-type Props = { accounts: ReferenceRecord[]; categories: ReferenceRecord[]; costCenters: ReferenceRecord[]; today: string; initialType?: string };
+type Props = { accounts: ReferenceRecord[]; categories: ReferenceRecord[]; costCenters: ReferenceRecord[]; today: string; initialType?: string; openReferences?: boolean };
 
 function EntryFields({ accounts, categories, costCenters, today, initialType }: Props) {
   const [type, setType] = useState(initialType === "payable" ? "payable" : "receivable");
@@ -41,6 +41,6 @@ function EntryFields({ accounts, categories, costCenters, today, initialType }: 
 export function FinancialEntryControls(props: Props) {
   return <div className="mb-5 flex flex-wrap items-start gap-3" id="novo-lancamento">
     <ModalShell key={props.initialType ?? "new"} title="Novo lançamento" variant="new" wide closeOnSuccess defaultOpen={props.initialType === "payable" || props.initialType === "receivable"}><EntryFields {...props} /></ModalShell>
-    <ReferenceManager title="Cadastros financeiros" groups={[{ kind: "financial_account", records: props.accounts }, { kind: "financial_category", records: props.categories }, { kind: "cost_center", records: props.costCenters }]} />
+    <ReferenceManager defaultOpen={props.openReferences} title="Cadastros financeiros" groups={[{ kind: "financial_account", records: props.accounts }, { kind: "financial_category", records: props.categories }, { kind: "cost_center", records: props.costCenters }]} />
   </div>;
 }

@@ -80,7 +80,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       { href: "/documentos", label: "Documentos", icon: FileSignature, permission: "documents.read", children: [
         { href: "/documentos/clinicos", label: "Clínicos", icon: FileCheck2, permission: "documents.read", secondary: true },
         { href: "/documentos/juridicos", label: "Jurídicos", icon: ScrollText, permission: "documents.read", secondary: true },
-        { href: "/documentos", label: "Criar documentos", icon: FileSignature, permission: "documents.read", secondary: true },
+        { href: "/documentos", label: "Modelos", icon: FileSignature, permission: "documents.read", secondary: true },
         { href: "/documentos/historico", label: "Histórico", icon: ReceiptText, permission: "documents.read", secondary: true },
       ] },
       { href: "/documentos/assinatura-profissional", label: "Assinatura profissional", icon: FileSignature, permission: "documents.sign" },

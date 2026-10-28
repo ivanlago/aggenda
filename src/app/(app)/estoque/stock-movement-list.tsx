@@ -48,7 +48,7 @@ export function StockMovementList({ movements }: { movements: StockMovementRow[]
         <h2 className="text-lg font-extrabold">Entradas/Saídas</h2>
         <p className="text-sm text-muted">Histórico de entradas, saídas, transferências para consumo, retiradas para uso, vendas e estornos.</p>
       </div>
-      <label className="relative w-full sm:max-w-sm">
+      <label className="relative w-full sm:max-w-sm"><span className="sr-only">Buscar produto ou motivo</span>
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
         <input className="field w-full pl-9" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar produto ou motivo" />
       </label>

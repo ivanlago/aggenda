@@ -1,4 +1,6 @@
 "use client";
+import Link from "next/link";
+import { FormActions } from "@/components/form-dialog-context";
 
 import { useState } from "react";
 
@@ -13,9 +15,9 @@ export function AppointmentPaymentForm({ appointmentId, client, description, def
     <label className="grid gap-2 text-sm font-bold">Descrição do atendimento<input className="field" value={description} readOnly /></label>
     {packages.length > 0 && <div className="rounded-2xl bg-emerald-50 p-4 text-sm sm:col-span-2"><p className="font-extrabold text-emerald-900">Saldo de pacote disponível para este procedimento</p>{packages.map((item) => <p className="mt-1 text-emerald-800" key={item.id}>{item.name}: <strong>{item.current ? "já vinculado a este atendimento" : `${item.remaining} ${item.remaining === 1 ? "sessão" : "sessões"}`}</strong></p>)}</div>}
     <label className="grid gap-2 text-sm font-bold">Valor<input className="field" name={method === "package" ? undefined : "amount"} inputMode="decimal" defaultValue={defaultAmount} readOnly={method === "package"} required={method !== "package"} /></label>
-    <label className="grid gap-2 text-sm font-bold">Forma de pagamento<select className="field" name="paymentMethod" value={method} onChange={(event) => setMethod(event.target.value)} required><option value="">Selecione</option>{packages.length > 0 && <option value="package">Saldo de pacote</option>}<option value="cash">Espécie</option><option value="credit_card">Cartão de crédito</option><option value="debit_card">Cartão de débito</option><option value="pix">PIX</option><option value="bank_transfer">Transferência</option><option value="boleto">Boleto</option><option value="other">Outros</option></select></label>
+    <label className="grid gap-2 text-sm font-bold">Forma de pagamento<select className="field" name="paymentMethod" value={method} onChange={(event) => setMethod(event.target.value)} required><option value="">Selecione</option>{packages.length > 0 && <option value="package">Saldo de pacote</option>}<option value="cash">Dinheiro</option><option value="credit_card">Cartão de crédito</option><option value="debit_card">Cartão de débito</option><option value="pix">Pix</option><option value="bank_transfer">Transferência</option><option value="boleto">Boleto</option><option value="other">Outros</option></select></label>
     {method === "package" && <label className="grid gap-2 text-sm font-bold sm:col-span-2">Pacote<select className="field" name="clientPackageId" required defaultValue=""><option value="" disabled>Selecione o pacote</option>{packages.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.current ? "já vinculado" : `${item.remaining} disponível(is)`}</option>)}</select></label>}
     {method === "other" && <label className="grid gap-2 text-sm font-bold sm:col-span-2">Descrição da forma de pagamento<input className="field" name="otherPaymentMethod" required /></label>}
-    <button className="primary-button sm:col-span-2 sm:w-fit">Registrar pagamento</button>
+    <p className="text-sm text-muted sm:col-span-2">Registre somente um pagamento já recebido ou use o saldo de pacote. Para cobrar online, abra o financeiro do atendimento.</p><Link className="font-bold text-brand underline sm:col-span-2" href={`/atendimento/${appointmentId}?tab=finance`}>Abrir recebimento do atendimento</Link><FormActions submitLabel="Registrar pagamento" />
   </ActionForm>;
 }

@@ -1,3 +1,4 @@
+import { FormActions } from "@/components/form-dialog-context";
 import { createAvailabilityException } from "@/actions/schedule";
 import { ActionForm } from "@/components/action-form";
 import { ModalShell } from "@/components/modal-shell";
@@ -9,6 +10,6 @@ export function ScheduleBlockForm({ professionals, defaultOpen = false }: { prof
   <label className="grid gap-2 text-sm font-bold">Fim do bloqueio<input className="field" type="datetime-local" name="endsAt" required /></label>
   <label className="grid gap-2 text-sm font-bold sm:col-span-2">Motivo<textarea className="field min-h-20" name="reason" maxLength={500} placeholder="Ex.: férias, reunião, almoço ou ausência" required /></label>
   <p className="text-sm text-muted sm:col-span-2">Informe o horário local da clínica. O bloqueio impede novos agendamentos nesse período. Os agendamentos existentes serão sinalizados para revisão.</p>
-  <button className="primary-button sm:col-span-2 sm:w-fit" disabled={!professionals.length}>Salvar bloqueio</button>
+  <FormActions submitLabel="Salvar bloqueio" disabled={!professionals.length} />
  </ActionForm></ModalShell>;
 }

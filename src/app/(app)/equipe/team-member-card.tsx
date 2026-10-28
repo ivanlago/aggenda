@@ -1,6 +1,8 @@
 "use client";
+import { ModalShell } from "@/components/modal-shell";
+import { FormActions } from "@/components/form-dialog-context";
 
-import { CalendarClock, Pencil, Save, Trash2, X } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { deleteUnifiedTeamMember, replaceTeamMemberAvailability, updateUnifiedTeamMember } from "@/actions/team";
@@ -26,8 +28,6 @@ export type TeamMemberCardData = {
 export function TeamMemberCard({ member, professions, specialties, canEdit, canDelete }: {
   member: TeamMemberCardData; professions: Profession[]; specialties: Specialty[]; canEdit: boolean; canDelete: boolean;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [availabilityOpen, setAvailabilityOpen] = useState(false);
   const [professionId, setProfessionId] = useState(member.professionId ?? "");
   const availableSpecialties = useMemo(() => specialties.filter((item) => item.professionId === professionId), [professionId, specialties]);
   const availabilityByDay = new Map(member.availability.map((item) => [item.dayOfWeek, item]));
@@ -42,19 +42,16 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
           <div className="mt-2 flex flex-wrap gap-2">
             <span className="status-pill">{roleLabels[member.role] ?? member.role}</span>
             {member.professionName && <span className="status-pill">{member.professionName}</span>}
-            {member.professionalId && (
-              <button type="button" onClick={() => setAvailabilityOpen(true)} className={`rounded-full px-3 py-1 text-xs font-extrabold ${member.availability.length ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-700"}`}>
-                <CalendarClock className="mr-1 inline size-3" />{member.availability.length ? "Disponibilidade cadastrada" : "Cadastrar disponibilidade"}
-              </button>
-            )}
+
           </div>
         </div>
-        {canEdit && <button className="icon-button" type="button" onClick={() => setEditing((value) => !value)} aria-label="Editar membro"><Pencil className="size-4" /></button>}
+
         {canDelete && <ActionForm action={deleteUnifiedTeamMember} successMessage="Membro excluído."><input type="hidden" name="userId" value={member.userId} /><button className="icon-button" aria-label="Excluir membro"><Trash2 className="size-4" /></button></ActionForm>}
       </div>
 
-      {editing && (
-        <ActionForm action={updateUnifiedTeamMember} successMessage="Dados e acesso atualizados." className="mt-4 grid items-start gap-3 rounded-2xl bg-[#f7faf7] p-4 md:grid-cols-2" onSuccess={() => setEditing(false)}>
+      {canEdit && (
+        <ModalShell title={`Editar membro: ${member.shortName}`} triggerLabel="Editar membro" variant="edit" wide closeOnSuccess>
+        <ActionForm action={updateUnifiedTeamMember} successMessage="Dados e acesso atualizados." className="mt-4 grid items-start gap-3 rounded-2xl bg-[#f7faf7] p-4 md:grid-cols-2">
           <input type="hidden" name="userId" value={member.userId} /><input type="hidden" name="professionalId" value={member.professionalId ?? ""} />
           <label className="grid gap-1 text-sm font-bold">Nome completo<input className="field" name="fullName" defaultValue={member.fullName} required /></label>
           <label className="grid gap-1 text-sm font-bold">Nome curto<input className="field" name="shortName" defaultValue={member.shortName} required /></label>
@@ -69,21 +66,18 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
             <label className="grid gap-1 text-sm font-bold md:col-span-2">Apresentação breve<textarea className="field min-h-20" name="bio" defaultValue={member.bio ?? ""} /></label>
             <EntityImageField currentUrl={member.imageUrl} label="Foto do profissional" />
           </>}
-          <button className="primary-button md:col-span-2"><Save className="mr-2 inline size-4" />Salvar</button>
-        </ActionForm>
+          <FormActions editing />
+        </ActionForm></ModalShell>
       )}
 
-      {availabilityOpen && member.professionalId && (
-        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-label={`Disponibilidade de ${member.shortName}`}>
-          <div className="my-6 w-full max-w-2xl rounded-3xl bg-white p-5 shadow-2xl">
-            <div className="flex items-center justify-between"><div><p className="eyebrow">Disponibilidade semanal</p><h2 className="text-xl font-extrabold">{member.shortName}</h2></div><button className="icon-button" type="button" onClick={() => setAvailabilityOpen(false)}><X className="size-5" /></button></div>
-            <ActionForm action={replaceTeamMemberAvailability} successMessage="Disponibilidade atualizada." className="mt-5 grid gap-3" onSuccess={() => setAvailabilityOpen(false)}>
+      {canEdit && member.professionalId && (
+        <ModalShell title={`Disponibilidade de ${member.shortName}`} triggerLabel={member.availability.length ? "Disponibilidade cadastrada" : "Cadastrar disponibilidade"} variant="edit" wide closeOnSuccess>
+            <ActionForm action={replaceTeamMemberAvailability} successMessage="Disponibilidade atualizada." className="mt-5 grid gap-3">
               <input type="hidden" name="professionalId" value={member.professionalId} />
               {days.map((day, index) => { const current = availabilityByDay.get(index); return <div className="grid items-center gap-2 rounded-xl border p-3 sm:grid-cols-[1fr_130px_130px]" key={day}><label className="flex items-center gap-2 font-bold"><input type="checkbox" name={`day-${index}`} defaultChecked={Boolean(current)} />{day}</label><input className="field py-2" type="time" name={`starts-${index}`} defaultValue={current?.startsAt ?? "09:00"} aria-label={`Início ${day}`} /><input className="field py-2" type="time" name={`ends-${index}`} defaultValue={current?.endsAt ?? "18:00"} aria-label={`Fim ${day}`} /></div>; })}
-              <button className="primary-button">Salvar disponibilidade</button>
+              <FormActions submitLabel="Salvar disponibilidade" />
             </ActionForm>
-          </div>
-        </div>
+        </ModalShell>
       )}
     </article>
   );

@@ -104,7 +104,7 @@ export function StockProductList({
             Consulte saldos, custos e valores de venda.
           </p>
         </div>
-        <label className="relative w-full sm:max-w-sm">
+        <label className="relative w-full sm:max-w-sm"><span className="sr-only">Buscar produto</span>
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
           <input
             className="field w-full pl-9"
@@ -116,7 +116,7 @@ export function StockProductList({
         </label>
       </div>
       <div className="mt-4 grid gap-2 sm:grid-cols-3">
-        <select
+        <label className="grid gap-1 text-sm font-bold">Situação do estoque<select
           className="field"
           value={status}
           onChange={(event) => setStatus(event.target.value)}
@@ -124,8 +124,8 @@ export function StockProductList({
           <option value="all">Todos no estoque</option>
           <option value="stock">Com saldo disponível</option>
           <option value="low">Abaixo do estoque mínimo</option>
-        </select>
-        <select
+        </select></label>
+        <label className="grid gap-1 text-sm font-bold">Categoria<select
           className="field"
           value={categoryId}
           onChange={(event) => {
@@ -139,8 +139,8 @@ export function StockProductList({
               {item.name}
             </option>
           ))}
-        </select>
-        <select
+        </select></label>
+        <label className="grid gap-1 text-sm font-bold">Subcategoria<select
           className="field"
           value={subcategoryId}
           onChange={(event) => setSubcategoryId(event.target.value)}
@@ -152,7 +152,7 @@ export function StockProductList({
               {item.name}
             </option>
           ))}
-        </select>
+        </select></label>
       </div>
       <div className="mt-4 overflow-x-auto max-h-[40rem] overflow-y-auto">
         <table className="w-full min-w-[1100px] text-left text-sm">

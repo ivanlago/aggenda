@@ -1,6 +1,8 @@
+import { ModalShell } from "@/components/modal-shell";
+import { FormActions } from "@/components/form-dialog-context";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
-import { CheckCircle2, CircleDollarSign, Clock3, KanbanSquare, Plus, Target, UsersRound } from "lucide-react";
+import { CheckCircle2, CircleDollarSign, Clock3, KanbanSquare, Target, UsersRound } from "lucide-react";
 import Link from "next/link";
 
 import {
@@ -84,25 +86,24 @@ export async function CrmPipelinePanel({ organizationId, timezone }: { organizat
             <article className="panel"><UsersRound className="size-5 text-brand" /><p className="mt-5 text-3xl font-extrabold">{overdue}</p><p className="text-sm text-muted">atividades atrasadas</p></article>
           </section>
 
-          <details className="panel mt-5">
-            <summary className="flex cursor-pointer items-center gap-2 font-extrabold text-brand"><Plus className="size-4" /> Nova oportunidade</summary>
-            <ActionForm action={createCrmLead} successMessage="Lead e oportunidade criados." className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-5"><ModalShell title="Nova oportunidade" variant="new" wide closeOnSuccess>
+            <ActionForm action={createCrmLead} successMessage="Lead e oportunidade criados." className="mt-5 grid gap-3 md:grid-cols-2">
               <input type="hidden" name="pipelineId" value={pipeline.id} />
               <input type="hidden" name="stageId" value={pipelineStages[0]?.id} />
-              <input className="field" name="name" required placeholder="Nome do contato" />
-              <input className="field" name="company" placeholder="Empresa (opcional)" />
-              <PhoneInput name="phone" placeholder="WhatsApp: (71) 99999-9999" />
-              <input className="field" name="email" type="email" placeholder="E-mail" />
-              <input className="field md:col-span-2" name="title" placeholder="Título da oportunidade" />
-              <input className="field" name="value" inputMode="decimal" placeholder="Valor estimado (R$)" />
-              <select className="field" name="source" defaultValue="manual"><option value="manual">Cadastro manual</option><option value="whatsapp">WhatsApp</option><option value="indicacao">Indicação</option><option value="instagram">Instagram</option><option value="google">Google</option><option value="site">Site</option><option value="outro">Outro</option></select>
-              <select className="field" name="assignedUserId" defaultValue={members[0]?.id}>{members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select>
+              <label className="grid min-w-0 gap-2 text-sm font-bold">Nome<input className="field" name="name" required placeholder="Nome do contato" /></label>
+              <label className="grid min-w-0 gap-2 text-sm font-bold">Empresa (opcional)<input className="field" name="company" placeholder="Empresa (opcional)" /></label>
+              <label className="grid min-w-0 gap-2 text-sm font-bold">WhatsApp<PhoneInput name="phone" placeholder="WhatsApp: (71) 99999-9999" /></label>
+              <label className="grid min-w-0 gap-2 text-sm font-bold">E-mail<input className="field" name="email" type="email" placeholder="E-mail" /></label>
+              <label className="grid min-w-0 gap-2 text-sm font-bold">Título<input className="field md:col-span-2" name="title" placeholder="Título da oportunidade" /></label>
+              <label className="grid min-w-0 gap-2 text-sm font-bold">Valor estimado (R$)<input className="field" name="value" inputMode="decimal" placeholder="Valor estimado (R$)" /></label>
+              <label className="grid min-w-0 gap-2 text-sm font-bold">Origem<select className="field" name="source" defaultValue="manual"><option value="manual">Cadastro manual</option><option value="whatsapp">WhatsApp</option><option value="indicacao">Indicação</option><option value="instagram">Instagram</option><option value="google">Google</option><option value="site">Site</option><option value="outro">Outro</option></select></label>
+              <label className="grid min-w-0 gap-2 text-sm font-bold">Responsável<select className="field" name="assignedUserId" defaultValue={members[0]?.id}>{members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
               <label className="grid gap-1 text-xs font-bold text-muted">Previsão de fechamento<input className="field" name="expectedCloseDate" type="date" /></label>
               <label className="grid gap-1 text-xs font-bold text-muted">Próxima ação<input className="field" name="nextActionAt" type="datetime-local" /></label>
-              <textarea className="field min-h-20 md:col-span-2" name="notes" placeholder="Contexto e necessidade do lead" />
-              <button className="primary-button md:self-end">Adicionar ao funil</button>
+              <label className="grid min-w-0 gap-2 text-sm font-bold">Observações<textarea className="field min-h-20 md:col-span-2" name="notes" placeholder="Contexto e necessidade do lead" /></label>
+              <FormActions submitLabel="Adicionar ao funil" />
             </ActionForm>
-          </details>
+          </ModalShell></div>
 
           <section className="mt-5 overflow-x-auto pb-3">
             <div className="grid min-w-[1100px] gap-4" style={{ gridTemplateColumns: `repeat(${pipelineStages.length}, minmax(220px, 1fr))` }}>

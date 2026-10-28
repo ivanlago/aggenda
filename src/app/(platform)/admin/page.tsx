@@ -18,8 +18,8 @@ export default async function PlatformAdminPage() {
   const cards = [
     ["Empresas", companyCount.value, "/admin/empresas"],
     ["Usuários", userCount.value, "/admin/usuarios"],
-    ["Clientes finais", clientCount.value, "/admin/empresas"],
-    ["Serviços", serviceCount.value, "/admin/empresas"],
+    ["Clientes finais — consultar por empresa", clientCount.value, "/admin/empresas"],
+    ["Procedimentos — consultar por empresa", serviceCount.value, "/admin/empresas"],
   ] as const;
   return (
     <div>

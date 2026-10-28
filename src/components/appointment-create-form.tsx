@@ -1,4 +1,5 @@
 "use client";
+import { FormActions } from "@/components/form-dialog-context";
 
 import { useMemo, useRef, useState } from "react";
 
@@ -82,9 +83,9 @@ export function AppointmentCreateForm({
   const availabilityReady = Boolean(serviceId && professionalId && date);
 
   return (
-    <ActionForm action={action} successMessage={`${labels.appointment} criado com sucesso.`} className={embedded ? "form-stack" : "panel form-stack"}>
+    <ActionForm action={action} successMessage={`${labels.appointment} criado com sucesso.`} className={embedded ? "grid gap-4 sm:grid-cols-2" : "panel grid gap-4 sm:grid-cols-2"}>
       {!embedded && <h2 className="text-lg font-extrabold">Novo {labels.appointment.toLowerCase()}</h2>}
-      <p className="text-sm text-muted">Campos com * são obrigatórios.</p>
+      <p className="col-span-full text-sm text-muted">Campos com * são obrigatórios.</p>
       <label className="grid min-w-0 gap-2 text-sm font-bold">{labels.client} *<select className="field" name="clientId" required value={clientId} onChange={(event) => setClientId(event.target.value)}>
         <option value="" disabled>Selecione o {labels.client.toLowerCase()}</option>
         {clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -118,7 +119,7 @@ export function AppointmentCreateForm({
       {availabilityError && <p className="text-sm font-bold text-red-700" role="alert">{availabilityError}</p>}
       <label className="grid gap-2 text-sm font-bold">Preço em reais (opcional)<input className="field" name="price" inputMode="decimal" placeholder="Ex.: 150,00" /></label>
       <label className="grid gap-2 text-sm font-bold">Observações administrativas (opcional)<textarea className="field min-h-20" name="notes" placeholder="Informações sobre o agendamento" /></label>
-      <button className="primary-button" disabled={!clients.length || !services.length || !professionals.length || !times.length}>Criar {labels.appointment.toLowerCase()}</button>
+      <FormActions submitLabel={`Criar ${labels.appointment.toLowerCase()}`} disabled={!clients.length || !services.length || !professionals.length || !times.length} />
     </ActionForm>
   );
 }

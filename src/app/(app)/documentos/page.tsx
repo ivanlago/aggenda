@@ -1,3 +1,6 @@
+import { DocumentNavigation } from "@/components/document-navigation";
+import { ModalShell } from "@/components/modal-shell";
+import { FormActions } from "@/components/form-dialog-context";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { desc, eq } from "drizzle-orm";
 
@@ -11,11 +14,12 @@ import { clients, documentTemplates, professionals } from "@/db/schema";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireDocumentOrganization } from "@/lib/document-session";
 
-export const metadata = { title: "Criar documentos" };
+export const metadata = { title: "Documentos e modelos" };
 
 const typeLabels: Record<string, string> = { consent: "Consentimento", contract: "Contrato", anamnesis: "Anamnese", term: "Termo", prescription: "Receituário", report: "Relatório", certificate: "Atestado", declaration: "Declaração", referral: "Encaminhamento", exam_request: "Solicitação de exame", guidance: "Orientações", companion_declaration: "Declaração de acompanhante", quote: "Orçamento" };
 
-export default async function DocumentsPage() {
+export default async function DocumentsPage({ searchParams }: { searchParams: Promise<{ aba?: string }> }) {
+  const showModels = (await searchParams).aba !== "emissao";
   const { organization } = await requireDocumentOrganization();
   const canManage = hasOrganizationPermission(organization.role, "documents.manage");
   const [templates, clientRows, professionalRows] = await Promise.all([
@@ -25,31 +29,31 @@ export default async function DocumentsPage() {
   ]);
   const activeTemplates = templates.filter((item) => item.isActive);
   const professionalTemplates = activeTemplates.filter((item) => item.workflowType === "professional_issue");
-  const otherProfessionalTemplates = professionalTemplates.filter((item) => !["prescription", "exam_request", "certificate"].includes(item.documentType));
+  const otherProfessionalTemplates = professionalTemplates.filter((item) => !["prescription", "exam_request", "certificate"].includes(item.documentType) && !(item.documentType === "companion_declaration" && item.isSystemPreset));
 
   return <div className="page-wrap">
-    <PageHeader eyebrow="Documentos digitais" title="Criar documentos" description="Emita documentos clínicos, colete anamneses estruturadas e acompanhe assinaturas em um único fluxo." />
-    <div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900"><p className="font-extrabold">Documentos profissionais</p><p className="mt-1">Receituários simples, laudos, atestados e encaminhamentos podem ser emitidos em PDF. Documentos sujeitos a controle especial ou assinatura qualificada devem usar o fluxo regulatório apropriado.</p></div>
+    <PageHeader eyebrow="Documentos digitais" title={showModels ? "Modelos de documentos" : "Outros documentos profissionais"} description="Emita documentos clínicos, colete anamneses estruturadas e acompanhe assinaturas em um único fluxo." />
+    <DocumentNavigation /><div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900"><p className="font-extrabold">Documentos profissionais</p><p className="mt-1">Receituários simples, laudos, atestados e encaminhamentos podem ser emitidos em PDF. Documentos sujeitos a controle especial ou assinatura qualificada devem usar o fluxo regulatório apropriado.</p></div>
 
-    {canManage && <div className="grid gap-5 xl:grid-cols-2">
-      <ActionForm action={createDocumentTemplate} successMessage="Modelo criado." className="panel form-stack">
-        <h2 className="text-lg font-extrabold">Novo modelo personalizado</h2>
-        <input className="field" name="name" required maxLength={120} placeholder="Nome interno do modelo" />
-        <select className="field" name="documentType" defaultValue="consent">{Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-        <input className="field" name="title" required maxLength={180} placeholder="Título exibido no documento" />
-        <textarea className="field min-h-64" name="content" required maxLength={30000} placeholder="Conteúdo integral do documento" />
+    {canManage && <div className="grid gap-5">
+      {showModels && <ModalShell title="Novo modelo personalizado" variant="new" wide closeOnSuccess>
+      <ActionForm action={createDocumentTemplate} successMessage="Modelo criado." className="form-stack">
+        <label className="grid min-w-0 gap-2 text-sm font-bold">Nome<input className="field" name="name" required maxLength={120} placeholder="Nome interno do modelo" /></label>
+        <label className="grid min-w-0 gap-2 text-sm font-bold">Tipo de documento<select className="field" name="documentType" defaultValue="consent">{Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label className="grid min-w-0 gap-2 text-sm font-bold">Título<input className="field" name="title" required maxLength={180} placeholder="Título exibido no documento" /></label>
+        <label className="grid min-w-0 gap-2 text-sm font-bold">Conteúdo do documento<textarea className="field min-h-64" name="content" required maxLength={30000} placeholder="Conteúdo integral do documento" /></label>
         <p className="text-xs text-muted">Variáveis disponíveis: {"{{cliente}}"}, {"{{clinica}}"}, {"{{profissional}}"} e {"{{data}}"}. O conteúdo é congelado na emissão.</p>
-        <button className="primary-button sm:w-fit">Criar modelo</button>
-      </ActionForm>
+        <FormActions submitLabel="Criar modelo" />
+      </ActionForm></ModalShell>}
 
-      <ActionForm action={issueProfessionalDocument} successMessage="Documento profissional emitido." className="panel form-stack">
+      {!showModels && <ActionForm action={issueProfessionalDocument} successMessage="Documento profissional emitido." className="panel form-stack">
         <h2 className="text-lg font-extrabold">Outros documentos profissionais</h2>
         <ProfessionalDocumentComposer templates={otherProfessionalTemplates.map(({ id, name, title, content, documentType }) => ({ id, name, title, content, documentType }))} organizationName={organization.name} clients={clientRows} professionals={professionalRows} typeLabels={typeLabels} />
         <p className="text-xs text-muted">A TUSS 20 é apenas uma referência de identificação. Indicação e posologia permanecem sob responsabilidade do profissional habilitado.</p>
-      </ActionForm>
+      </ActionForm>}
     </div>}
 
-    <section className="panel mt-5"><h2 className="text-lg font-extrabold">Modelos</h2><PaginatedCollection label="Registros" className="mt-4 divide-y">{templates.map((item) => <article className="grid gap-3 py-3 lg:grid-cols-[1fr_auto] lg:items-start" key={item.id}><div><div className="flex flex-wrap items-center gap-2"><p className="font-bold">{item.name}</p>{item.isSystemPreset ? <span className="status-pill">Nativo</span> : null}</div><p className="text-xs text-muted">{typeLabels[item.documentType] ?? item.documentType} · {item.workflowType === "professional_issue" ? "emissão profissional" : "assinatura do paciente"} · {item.isActive ? "ativo" : "inativo"}</p>{canManage && !item.isSystemPreset && <details className="mt-3"><summary className="cursor-pointer text-sm font-extrabold text-brand">Editar modelo</summary><ActionForm action={updateDocumentTemplate} successMessage="Modelo atualizado." className="mt-3 grid gap-2 rounded-xl border p-3"><input type="hidden" name="id" value={item.id} /><input className="field" name="name" defaultValue={item.name} required /><input className="field" name="title" defaultValue={item.title} required /><textarea className="field min-h-48" name="content" defaultValue={item.content} required /><button className="primary-button sm:w-fit">Salvar conteúdo</button></ActionForm></details>}</div>{canManage && (item.isSystemPreset ? <ActionForm action={duplicateDocumentTemplate} successMessage="Cópia criada e pronta para personalização."><input type="hidden" name="id" value={item.id} /><button className="secondary-button py-2">Duplicar e personalizar</button></ActionForm> : <div className="flex flex-wrap gap-2"><ActionForm action={setDocumentTemplateActive} successMessage="Modelo atualizado."><input type="hidden" name="id" value={item.id} /><input type="hidden" name="active" value={String(!item.isActive)} /><button className="secondary-button py-2">{item.isActive ? "Desativar" : "Ativar"}</button></ActionForm><DeleteDocumentTemplateForm id={item.id} name={item.name} /></div>)}</article>)}{!templates.length && <p className="empty-state">Nenhum modelo criado.</p>}</PaginatedCollection></section>
+    {showModels && <section className="panel mt-5"><h2 className="text-lg font-extrabold">Modelos</h2><PaginatedCollection label="Registros" className="mt-4 divide-y">{templates.map((item) => <article className="grid gap-3 py-3 lg:grid-cols-[1fr_auto] lg:items-start" key={item.id}><div><div className="flex flex-wrap items-center gap-2"><p className="font-bold">{item.name}</p>{item.isSystemPreset ? <span className="status-pill">Nativo</span> : null}</div><p className="text-xs text-muted">{typeLabels[item.documentType] ?? item.documentType} · {item.workflowType === "professional_issue" ? "emissão profissional" : "assinatura do paciente"} · {item.isActive ? "ativo" : "inativo"}</p>{canManage && !item.isSystemPreset && <ModalShell title={`Editar modelo: ${item.name}`} triggerLabel="Editar modelo" variant="edit" wide closeOnSuccess><ActionForm action={updateDocumentTemplate} successMessage="Modelo atualizado." className="mt-3 grid gap-2 rounded-xl border p-3"><input type="hidden" name="id" value={item.id} /><label className="grid min-w-0 gap-2 text-sm font-bold">Nome<input className="field" name="name" defaultValue={item.name} required /></label><label className="grid min-w-0 gap-2 text-sm font-bold">Título<input className="field" name="title" defaultValue={item.title} required /></label><label className="grid min-w-0 gap-2 text-sm font-bold">Conteúdo do documento<textarea className="field min-h-48" name="content" defaultValue={item.content} required /></label><FormActions editing /></ActionForm></ModalShell>}</div>{canManage && (item.isSystemPreset ? <ActionForm action={duplicateDocumentTemplate} successMessage="Cópia criada e pronta para personalização."><input type="hidden" name="id" value={item.id} /><button className="secondary-button py-2">Duplicar e personalizar</button></ActionForm> : <div className="flex flex-wrap gap-2"><ActionForm action={setDocumentTemplateActive} successMessage="Modelo atualizado."><input type="hidden" name="id" value={item.id} /><input type="hidden" name="active" value={String(!item.isActive)} /><button className="secondary-button py-2">{item.isActive ? "Desativar" : "Ativar"}</button></ActionForm><DeleteDocumentTemplateForm id={item.id} name={item.name} /></div>)}</article>)}{!templates.length && <p className="empty-state">Nenhum modelo criado.</p>}</PaginatedCollection></section>}
 
   </div>;
 }

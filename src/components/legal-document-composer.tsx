@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
 import { X } from "lucide-react";
 import { ActionForm } from "@/components/action-form";
@@ -32,6 +33,7 @@ export function LegalDocumentComposer({ templates, clients, professionals, proce
  try { const values = legalFieldValues(definition, fields); setPreview(renderLegalDocument(template.content, { ...legalContextValues(organization, client, professional, service, today.split("-").reverse().join("/")), ...values })); setError(""); } catch (failure) { setError(failure instanceof Error ? failure.message : "Revise os campos."); }
  }
  return <section className="panel form-stack"><div><h2 className="text-xl font-extrabold">Gerar documento jurídico</h2><p className="mt-1 text-sm text-muted">Os dados cadastrais serão preenchidos automaticamente. Revise os campos específicos antes de enviar para assinatura.</p></div>
+ {definition?.key === "budget" && <p className="rounded-xl bg-blue-50 p-3 text-sm">Este documento formaliza o plano de tratamento e coleta a assinatura. Para montar itens do catálogo e converter em venda, use <Link className="font-bold underline" href="/vendas?modo=orcamento">Orçamento comercial</Link>. A assinatura deste documento não registra uma venda nem um pagamento.</p>}
  <ActionForm action={issueElectronicDocument} successMessage="Documento criado e enviado para assinatura." className="form-stack" onSuccess={() => setPreview(null)}>
  <input type="hidden" name="legalFields" value={JSON.stringify(fields)} />
  <div className="grid gap-3 md:grid-cols-2">

@@ -1,4 +1,5 @@
 "use client";
+import { organizationDate } from "@/lib/organization-time";
 
 import { useRef, useState } from "react";
 
@@ -27,7 +28,7 @@ export function AppointmentRescheduleForm({
   const [loading, setLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState("");
   const requestController = useRef<AbortController | null>(null);
-  const minimumDate = new Date().toISOString().slice(0, 10);
+  const minimumDate = organizationDate(new Date(), timezone);
 
   function loadAvailability(date: string, nextRoomId = roomId) {
     requestController.current?.abort();
@@ -64,14 +65,14 @@ export function AppointmentRescheduleForm({
     <ActionForm action={action} successMessage="Agendamento remarcado com sucesso." className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
       <input type="hidden" name="id" value={appointmentId} />
       {rooms.length > 0 && <label className="grid gap-2 text-sm font-bold sm:col-span-3">Sala<select className="field" name="roomId" value={roomId} onChange={event => { const next = event.target.value; setRoomId(next); loadAvailability(date, next); }}><option value="">Selecionar automaticamente</option>{rooms.filter(room => room.isActive || room.id === initialRoomId).map(room => <option key={room.id} value={room.id}>{room.name}{!room.isActive ? " (inativa)" : ""}</option>)}</select></label>}
-      <input
+      <label className="grid gap-2 text-sm font-bold">Nova data<input
         className="field py-2"
         type="date"
         min={minimumDate}
         onChange={(event) => { setDate(event.target.value); loadAvailability(event.target.value); }}
         required
-      />
-      <select key={`${date}:${roomId}`} className="field py-2" name="startsAt" required defaultValue="" disabled={loading || !times.length}>
+      /></label>
+      <label className="grid gap-2 text-sm font-bold">Novo horário<select key={`${date}:${roomId}`} className="field py-2" name="startsAt" required defaultValue="" disabled={loading || !times.length}>
         <option value="">
           {loading ? "Consultando horários…" : times.length ? "Selecione o horário" : "Nenhum horário disponível"}
         </option>
@@ -80,8 +81,8 @@ export function AppointmentRescheduleForm({
             {new Date(time).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: timezone })}
           </option>
         ))}
-      </select>
-      <button className="primary-button py-2" disabled={loading || !times.length}>Salvar</button>
+      </select></label>
+      <button className="primary-button py-2" disabled={loading || !times.length}>Reagendar</button>
       {availabilityError && <p className="text-sm font-bold text-red-700 sm:col-span-3" role="alert">{availabilityError}</p>}
     </ActionForm>
   );

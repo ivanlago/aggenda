@@ -1,3 +1,5 @@
+import { getOrganizationServicePlan, corePlans, whatsappServices } from "@/lib/service-plans";
+import { subscriptionStatusLabels } from "@/lib/presentation-labels";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { createHash } from "node:crypto";
@@ -24,13 +26,14 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
   const [invitation] = pilotToken ? await db.select().from(pilotInvitations).where(eq(pilotInvitations.tokenHash, createHash("sha256").update(pilotToken).digest("hex"))) : [];
   const hasPilot = Boolean(invitation && !invitation.revokedAt && !invitation.redeemedAt && invitation.expiresAt > new Date()
     && invitation.email === session.user.email.toLowerCase() && (!invitation.organizationId || invitation.organizationId === organization.id));
-  const initialProduct = query.product === "complete" || query.product === "professional" ? query.product : "essential";
   const initialCycle = query.cycle === "annual" || query.cycle === "semiannual" ? query.cycle : "monthly";
   const [[subscription], payments, usage, platform] = await Promise.all([
     db.select().from(organizationSubscriptions).where(eq(organizationSubscriptions.organizationId, organization.id)).limit(1),
     db.select().from(billingPayments).where(eq(billingPayments.organizationId, organization.id)).orderBy(desc(billingPayments.createdAt)).limit(10),
     commercialUsageSummary(organization.id), getPlatformMembership(session.user.id),
   ]);
+  const initialProduct: "essential" | "professional" | "complete" = query.product === "complete" || query.product === "professional" || query.product === "essential" ? query.product : usage?.contract.product === "complete" || usage?.contract.product === "professional" ? usage.contract.product : "essential";
+  const servicePlan = await getOrganizationServicePlan(organization.id);
   const [returnOrder] = query.pedido && /^[a-f0-9-]{36}$/i.test(query.pedido) ? await db.select().from(commercialOrders).where(and(eq(commercialOrders.id, query.pedido), eq(commercialOrders.organizationId, organization.id))).limit(1) : [];
   const checkoutConfirmed = query.pedido ? returnOrder?.status === "active" : Boolean(usage && usage.contract.kind !== "trial" && usage.contract.endsAt > new Date());
   const paid = usage?.contract.kind !== "trial" && Boolean(usage && usage.contract.endsAt > new Date());
@@ -39,9 +42,10 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
   const trial = subscription?.status === "trialing" && subscription.trialEndsAt && subscription.trialEndsAt > new Date();
   return <main className="mx-auto min-h-screen max-w-5xl px-6 py-12">
     <SubscriptionRefresh enabled={query.checkout === "sucesso" && !checkoutConfirmed} confirmed={query.checkout === "sucesso" && checkoutConfirmed} />
-    <Link href="/dashboard" className="font-extrabold text-brand">← Aggenda</Link>
+    <Link href="/dashboard" className="font-extrabold text-brand">← Voltar ao Dashboard</Link>
     <h1 className="mt-8 text-4xl font-extrabold">Assinaturas</h1>
     <p className="mt-3 text-muted">Gerencie os planos e serviços complementares do Aggenda para {organization.name}.</p>
+    <section className="panel mt-6" aria-label="Situação atual da assinatura"><h2 className="text-xl font-extrabold">Sua contratação atual</h2><p className="mt-2">{usage ? `${usage.contract.kind === "pilot" ? "Piloto anual — " : ""}${commercialProducts[usage.contract.product as keyof typeof commercialProducts]?.name ?? "Avaliação"} · acesso até ${usage.contract.endsAt.toLocaleDateString("pt-BR", { timeZone: organization.timezone })}` : "Nenhum contrato comercial vigente identificado."}</p><p className="mt-2 text-sm">Situação de cobrança: {subscriptionStatusLabels[subscription?.status ?? ""] ?? "Não configurada"}.</p><p className="mt-2 text-sm text-muted">Configuração operacional: {corePlans[servicePlan.corePlanCode].name} + {whatsappServices[servicePlan.whatsappServiceCode].name}. São módulos habilitados; o plano comercial e a vigência estão indicados acima.</p></section>
     {platform && ["super_admin", "billing"].includes(platform.role) && <Link href="/plataforma/convites-piloto" className="mt-4 inline-block font-bold text-brand underline">Gerenciar convites do piloto anual</Link>}
     {query.checkout === "sucesso" && <p role="status" className="mt-6 rounded-2xl bg-brand/5 p-5 font-bold">{checkoutConfirmed ? "Pagamento confirmado. A contratação está ativa!" : "Aguardando confirmação do pagamento pelo Asaas. A página será atualizada automaticamente."}</p>}
     {query.checkout === "erro" && <p role="alert" className="mt-6 rounded-2xl bg-red-50 p-5 text-red-800">{query.message ?? "Não foi possível preparar seu pagamento."}</p>}
@@ -64,7 +68,7 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
     </section>}
     {subscription?.billingSubscriptionId && !subscription.cancelAtPeriodEnd && <form action={cancelSubscription} className="mt-5"><button className="secondary-button">Cancelar renovação mensal</button></form>}
     {query.piloto === "1" && !hasPilot && !paid && <p role="alert" className="mt-5 rounded-xl bg-amber-50 p-4">Abra um convite válido usando o e-mail do proprietário indicado para acessar o piloto anual.</p>}
-    {!paid && <section id={!hasPilot ? "planos" : undefined} className="panel mt-8"><h2 className="mb-6 text-2xl font-extrabold">{hasPilot ? "Condições do seu convite" : "Escolha sua contratação"}</h2><CommercialCheckout pilot={hasPilot} disabled={!process.env.ASAAS_API_KEY} initialProduct={initialProduct} initialCycle={initialCycle} />
+    {!paid && <section id={!hasPilot ? "planos" : undefined} className="panel mt-8"><h2 className="mb-6 text-2xl font-extrabold">{hasPilot ? "Condições do seu convite" : "Nova contratação"}</h2><p className="mb-5 text-sm text-muted">Este formulário inicia uma nova contratação paga. Confira o plano e a vigência atuais acima antes de continuar.</p><CommercialCheckout pilot={hasPilot} disabled={!process.env.ASAAS_API_KEY} initialProduct={initialProduct} initialCycle={initialCycle} />
       {!process.env.ASAAS_API_KEY && <p className="mt-4 text-amber-800">Pagamento aguardando configuração do Asaas.</p>}
     </section>}
     {usage && usage.contract.endsAt > new Date() && <details className="panel mt-8"><summary className="cursor-pointer font-extrabold">Comprar respostas ou documentos adicionais</summary><div className="mt-6"><CommercialCheckout extras disabled={!process.env.ASAAS_API_KEY} /></div></details>}

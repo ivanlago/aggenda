@@ -1,3 +1,4 @@
+import { FormActions } from "@/components/form-dialog-context";
 import { count } from "drizzle-orm";
 import { ListPagination } from "@/components/list-pagination";
 import { DEFAULT_PAGE_SIZE, parseListPage } from "@/lib/list-pagination";
@@ -50,13 +51,11 @@ export default async function ClientsPage({
       />
       <div className="grid min-w-0 gap-5">
         {canManage && <NewClientForm clientLabel={organization.clientLabel}>
-          <h2 className="text-lg font-extrabold sm:col-span-2 lg:col-span-3">
-            Novo {organization.clientLabel.toLowerCase()}
-          </h2>
+
           <label className="grid min-w-0 gap-2 text-sm font-bold">Nome completo<input className="field" name="name" required placeholder="Nome completo" autoComplete="name" /></label>
           <label className="grid min-w-0 gap-2 text-sm font-bold">Telefone<PhoneInput name="phone" placeholder="(71) 99999-9999" /></label>
           <label className="grid min-w-0 gap-2 text-sm font-bold">E-mail<input className="field" name="email" type="email" placeholder="E-mail" /></label>
-          <details className="min-w-0 sm:col-span-2 lg:col-span-3"><summary className="cursor-pointer font-bold text-brand">Informações complementares (opcional)</summary><div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2">
+          <details className="min-w-0 col-span-full"><summary className="cursor-pointer font-bold text-brand">Informações complementares (opcional)</summary><div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2">
           <label className="grid gap-2 text-sm font-bold">Data de nascimento<input className="field" name="birthDate" type="date" /></label>
           <label className="grid min-w-0 gap-2 text-sm font-bold">Sexo<select className="field" name="gender" defaultValue="">
             <option value="">Sexo não informado</option>
@@ -69,9 +68,7 @@ export default async function ClientsPage({
           <label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Observações<textarea className="field min-h-24" name="notes" placeholder="Observações" /></label>
           <div className="min-w-0 sm:col-span-2"><EntityImageField label={`Foto do ${organization.clientLabel.toLowerCase()}`} /></div>
           </div></details>
-          <button className="primary-button justify-self-start sm:col-span-2 lg:col-span-3">
-            Adicionar {organization.clientLabel.toLowerCase()}
-          </button>
+          <FormActions />
         </NewClientForm>}
         <section className="panel">
           <div className="flex flex-col gap-4">

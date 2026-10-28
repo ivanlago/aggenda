@@ -1,3 +1,4 @@
+import { ClientDocumentList } from "@/components/client-document-list";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { AppointmentRoomForm } from "@/components/appointment-room-form";
 import { ClinicalWorkspace } from "@/components/clinical-workspace";
@@ -40,8 +41,9 @@ function calculateAge(birthDate: string | null) {
   return age >= 0 ? age : null;
 }
 
-export default async function AttendancePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function AttendancePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
   const { id } = await params;
+  const { tab } = await searchParams;
   const { appointment, organization, session } = await requireAttendance(id);
   const canWrite = hasOrganizationPermission(organization.role, "appointments.manage");
   const canReadClinical = hasOrganizationPermission(organization.role, "clinical.read");
@@ -82,7 +84,7 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
     <PageHeader eyebrow={dateTime} title={client.name} description={`${service.name} · ${professional?.name ?? "Profissional a definir"}`} />
     <nav aria-label="Navegação do atendimento" className="mb-5 flex flex-wrap gap-2"><Link className="secondary-button" href="/agenda">Voltar à agenda</Link><Link className="secondary-button" href={historyUrl}>Cadastro e prontuário</Link></nav>
     <ClinicalWorkspace clientId={client.id} summaryOnly />
-    <AttendanceWorkspaceTabs tabs={[
+    <AttendanceWorkspaceTabs initialTab={tab} tabs={[
       { id: "overview", label: "Visão geral", content: <>
     <div className="grid gap-5 lg:grid-cols-3">
       <section className="panel lg:col-span-2">
@@ -112,7 +114,7 @@ export default async function AttendancePage({ params }: { params: Promise<{ id:
           orcamento: <AttendancePos appointmentId={id} />,
         }} />
       </div>
-      {canReadDocuments && <details className="panel mt-4"><summary className="cursor-pointer font-extrabold">Documentos do cliente</summary>{documents.filter((document) => ["issued", "signed"].includes(document.status)).map((document) => <div key={document.id} className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3"><div><p className="font-bold">{document.title}</p><p className="text-xs text-muted">{formatOrganizationDateTime(document.createdAt, organization.timezone)}{document.structuredData?.appointmentId === id ? " · Neste atendimento" : ""}</p></div><Link className="secondary-button" href={`/api/documents/${document.id}/pdf`}>Abrir PDF</Link></div>)}</details>}
+      {canReadDocuments && <details className="panel mt-4"><summary className="cursor-pointer font-extrabold">Documentos do cliente</summary><ClientDocumentList documents={documents.filter(document => ["issued", "signed"].includes(document.status))} timezone={organization.timezone} canIssue={canIssue} /></details>}
     </section>
 </> },
       { id: "finance", label: "Financeiro", content: <><AttendanceItems appointmentId={id} /><AttendanceClientPackages appointmentId={id} /><AttendancePos appointmentId={id} /></> },

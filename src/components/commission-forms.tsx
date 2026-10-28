@@ -1,3 +1,4 @@
+import { FormActions } from "@/components/form-dialog-context";
 import { randomUUID } from "node:crypto";
 import { payCommissions, saveCommissionRule } from "@/actions/commissions";
 import type { CommissionBeneficiaryOption } from "@/lib/commission-beneficiary";
@@ -32,7 +33,7 @@ export function CommissionPaymentForm({beneficiary,label,amount,accounts,today,e
       {!accounts.length&&<p className="text-sm text-amber-800">Cadastre uma conta ativa no financeiro antes de quitar.</p>}
       <label className="grid gap-2 text-sm font-bold">Forma de pagamento<select className="field" name="method"><option value="pix">Pix</option><option value="bank_transfer">Transferência</option><option value="cash">Dinheiro</option><option value="other">Outra</option></select></label>
       <label className="grid gap-2 text-sm font-bold">Observação ou referência do comprovante<textarea className="field" name="notes" maxLength={2000}/></label>
-      <button className="primary-button" disabled={!accounts.length}>Registrar {commissionMoney(amount)} como pagos</button>
+      <FormActions disabled={!accounts.length} submitLabel={`Registrar ${commissionMoney(amount)} como pagos`} />
     </ActionForm>
   </ModalShell>;
 }

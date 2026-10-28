@@ -24,7 +24,7 @@ export default async function ImplantationPage() {
     db.select({ isActive: whatsappChannels.isActive, connectionStatus: whatsappChannels.connectionStatus }).from(whatsappChannels).where(eq(whatsappChannels.organizationId, organization.id)),
   ]);
   const steps = [
-    { title: "Confira os dados do negócio", description: "Revise nome, segmento e telefone de contato.", done: Boolean(organization.name && organization.businessType && organization.phone), href: "/configuracoes", action: "Revisar dados", icon: Building2 },
+    { title: "Confira os dados do negócio", description: "Revise nome, segmento e telefone de contato.", done: Boolean(organization.name && organization.businessType && organization.phone), href: "/configuracoes?aba=identity", action: "Revisar dados", icon: Building2 },
     { title: `Cadastre ${organization.serviceLabelPlural.toLowerCase()}`, description: "Informe os serviços oferecidos, a duração e os preços.", done: serviceTotal.value > 0, href: "/servicos", action: "Revisar serviços", icon: Wrench },
     { title: "Organize a equipe e os horários", description: "Cadastre os profissionais e defina os dias e horários de atendimento.", done: professionalTotal.value > 0 && availabilityTotal.value > 0, href: professionalTotal.value > 0 ? "/disponibilidade" : "/profissionais", action: professionalTotal.value > 0 ? "Definir horários" : "Cadastrar profissional", icon: CalendarClock },
   ];
@@ -68,7 +68,7 @@ export default async function ImplantationPage() {
       <h2 id="booking-setup-title" className="text-xl font-extrabold">Receba agendamentos online</h2>
       <p className="mt-2 text-sm text-muted">Se quiser receber reservas pela internet, habilite a página pública e teste a escolha de serviço, profissional e horário pelo celular antes de divulgar o link.</p>
       <div className="mt-4 flex flex-wrap gap-3">
-        <Link className="secondary-button" href="/configuracoes">{organization.bookingEnabled ? "Revisar agendamento online" : "Habilitar agendamento online"}</Link>
+        <Link className="secondary-button" href="/configuracoes?aba=booking">{organization.bookingEnabled ? "Revisar agendamento online" : "Habilitar agendamento online"}</Link>
         {organization.bookingEnabled && <Link className="secondary-button" href={`/agendar/${encodeURIComponent(organization.slug)}`} target="_blank" rel="noopener noreferrer">Ver página pública</Link>}
         <Link className="secondary-button" href="/agenda">Abrir agenda</Link>
       </div>
@@ -79,7 +79,7 @@ export default async function ImplantationPage() {
       <p className="mt-2 text-sm text-muted">{plan.whatsappServiceCode === "core_ai" ? "O Completo inclui o Aggenda Secretária para atendimento e operações de agenda pelo WhatsApp." : "O Profissional inclui o Aggenda Atendimento para informar sobre os serviços e encaminhar ao agendamento."} Revise as descrições dos serviços, conecte o canal e faça um teste antes de divulgar.</p>
       <p className="mt-3 text-sm font-bold">{channelConnected ? "Canal conectado. Confira as configurações e teste o atendimento." : "Canal ainda não conectado. A equipe pode orientar essa configuração."}</p>
       <p className="mt-2 text-xs text-muted">A conexão do canal não confirma a ativação do agente. O uso segue a configuração, as franquias do plano e as tarifas externas aplicáveis.</p>
-      <Link className="mt-4 inline-flex text-sm font-bold text-brand" href="/configuracoes">Abrir configurações e selecionar WhatsApp →</Link>
+      <Link className="mt-4 inline-flex text-sm font-bold text-brand" href="/configuracoes?aba=whatsapp">Configurar WhatsApp →</Link>
     </section>}
 
     <section className="panel mt-5" aria-labelledby="setup-help-title">

@@ -50,17 +50,17 @@ export function ProfessionalDocumentComposer({ templates, organizationName, clie
 
   return <>
     <input type="hidden" name="structuredDocumentData" value={JSON.stringify({ selections: references.map(catalogReference => ({ catalogReference })) })} />
-    <select className="field" name="templateId" required value={templateId} onChange={(event) => chooseTemplate(event.target.value)}>
+    <label className="grid min-w-0 gap-2 text-sm font-bold">Modelo<select className="field" name="templateId" required value={templateId} onChange={(event) => chooseTemplate(event.target.value)}>
       <option value="" disabled>Modelo profissional</option>
       {templates.map((item) => <option key={item.id} value={item.id}>{item.name} · {typeLabels[item.documentType] ?? item.documentType}</option>)}
-    </select>
-    <select className="field" name="clientId" required value={clientId} onChange={(event) => setClientId(event.target.value)}><option value="" disabled>Paciente</option>{clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
-    <select className="field" name="professionalId" required value={professionalId} onChange={(event) => setProfessionalId(event.target.value)}><option value="" disabled>Profissional emissor</option>{professionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
-    <input className="field" name="title" value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={180} placeholder="Título do documento" />
+    </select></label>
+    <label className="grid min-w-0 gap-2 text-sm font-bold">Cliente<select className="field" name="clientId" required value={clientId} onChange={(event) => setClientId(event.target.value)}><option value="" disabled>Paciente</option>{clients.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+    <label className="grid min-w-0 gap-2 text-sm font-bold">Profissional emissor<select className="field" name="professionalId" required value={professionalId} onChange={(event) => setProfessionalId(event.target.value)}><option value="" disabled>Profissional emissor</option>{professionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+    <label className="grid min-w-0 gap-2 text-sm font-bold">Título<input className="field" name="title" value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={180} placeholder="Título do documento" /></label>
     {selectedTemplate?.documentType === "certificate" && <CidAutocomplete onSelect={addCid} />}
     <TussAutocomplete table="20" label="Guia de medicamentos TUSS 20 (opcional)" nameField="medicationTussCode" onSelect={addMedication} />
-    <textarea className="field min-h-72" name="content" value={content} onChange={(event) => setContent(event.target.value)} required maxLength={30000} placeholder="Selecione um modelo e revise todo o conteúdo antes da emissão." />
-    <input className="field" name="patientEmail" type="email" placeholder="E-mail do paciente (opcional; usa o cadastro). Sem e-mail, o PDF fica disponível para impressão." />
+    <label className="grid min-w-0 gap-2 text-sm font-bold">Conteúdo do documento<textarea className="field min-h-72" name="content" value={content} onChange={(event) => setContent(event.target.value)} required maxLength={30000} placeholder="Selecione um modelo e revise todo o conteúdo antes da emissão." /></label>
+    <label className="grid min-w-0 gap-2 text-sm font-bold">E-mail do paciente (opcional)<input className="field" name="patientEmail" type="email" placeholder="E-mail do paciente (opcional; usa o cadastro). Sem e-mail, o PDF fica disponível para impressão." /></label>
     <button type="button" className="primary-button w-fit" onClick={(event) => { const form = event.currentTarget.closest("form"); if (form?.reportValidity()) setPreviewOpen(true); }}>Visualizar documento</button>
     {previewOpen ? <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="document-preview-title"><div className="my-6 w-full max-w-3xl rounded-3xl bg-white p-5 shadow-2xl sm:p-8">
       <div className="flex items-start justify-between gap-4"><div><p className="eyebrow">Pré-visualização</p><h2 className="text-2xl font-extrabold" id="document-preview-title">Revise antes de emitir</h2></div><button type="button" className="rounded-xl p-2 hover:bg-slate-100" onClick={() => setPreviewOpen(false)} aria-label="Fechar pré-visualização"><X className="size-5" /></button></div>

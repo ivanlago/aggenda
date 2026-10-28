@@ -1,7 +1,8 @@
 "use client";
 
-import { ArrowLeftRight } from "lucide-react";
-import { useId, useMemo, useRef, useState } from "react";
+import { ModalShell } from "@/components/modal-shell";
+import { FormActions } from "@/components/form-dialog-context";
+import { useMemo, useRef, useState } from "react";
 import { getInventoryMovementContext, saveInventoryMovement } from "@/actions/stock-movement";
 import { activateInventoryLots } from "@/actions/inventory-lots";
 import { ActionForm } from "@/components/action-form";
@@ -11,9 +12,7 @@ const qty = (value: number) => (value / 1000).toLocaleString("pt-BR", { maximumF
 const unitLabel = (value?: string) => value === "unit" ? "unidade" : value?.toLowerCase() === "ml" ? "mL" : value;
 
 export function StockMovementForm({ products, initialProductId = "", initialLotId = "" }: { products: Array<{ id: string; name: string }>; initialProductId?: string; initialLotId?: string }) {
-  const dialog = useRef<HTMLDialogElement>(null);
   const request = useRef(0);
-  const id = useId();
   const [type, setType] = useState("entry");
   const [query, setQuery] = useState("");
   const [productId, setProductId] = useState(initialProductId);
@@ -32,7 +31,7 @@ export function StockMovementForm({ products, initialProductId = "", initialLotI
     catch (cause) { if (current === request.current) setError(cause instanceof Error ? cause.message : "Não foi possível consultar os lotes. Tente novamente."); }
     finally { if (current === request.current) setLoading(false); }
   }
-  function open() { dialog.current?.showModal(); if (productId) void loadProduct(productId); }
+  function open() { if (productId) void loadProduct(productId); }
   const requiresLots = Boolean(context?.product.tracked || context?.lots.length);
   const usesLots = requiresLots || (type === "entry" && Boolean(code.trim() || expiresOn || mode === "existing"));
   const isExit = ["exit", "expired", "recall"].includes(type);
@@ -42,10 +41,7 @@ export function StockMovementForm({ products, initialProductId = "", initialLotI
   const ready = !loading && Boolean(context);
   const label = (lot: Context["lots"][number]) => `${lot.code} · validade ${lot.expiresOn?.split("-").reverse().join("/") ?? "não comprovada"} · venda ${qty(lot.sale)} / consumo ${qty(lot.consumption)}${lot.status === "recalled" ? " · recolhido" : lot.status === "quarantine" ? " · quarentena" : !lot.expiresOn || lot.expiresOn < (context?.today ?? "") ? " · vencido / bloqueado" : ""}`;
   function isUsable(lot: Context["lots"][number]) { return lot.status === "active" && Boolean(lot.expiresOn && lot.expiresOn >= (context?.today ?? "")); }
-  return <>
-    <button className="secondary-button" type="button" onClick={open}><ArrowLeftRight className="mr-2 inline size-4" />Entrada/Saída</button>
-    <dialog ref={dialog} aria-labelledby={`${id}-title`} className="m-auto max-h-[90dvh] w-[calc(100%_-_2rem)] max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl backdrop:bg-slate-950/60" onClose={() => { request.current++; setLoading(false); }}>
-      <div className="flex items-start justify-between gap-4"><h2 id={`${id}-title`} className="text-xl font-extrabold">Entrada/Saída de estoque</h2><button className="secondary-button" type="button" onClick={() => dialog.current?.close()}>Fechar</button></div>
+  return <ModalShell title="Entrada/Saída de estoque" triggerLabel="Entrada/Saída" variant="new" secondary onOpen={open}>
       <div><div className="mt-4 grid gap-3"><label className="grid gap-1 text-sm font-bold">Buscar produto<input className="field" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Digite o nome do produto" /></label><label className="grid gap-1 text-sm font-bold">Produto<select className="field" value={productId} onChange={event => { const value = event.target.value; setProductId(value); setLotId(""); setCode(""); setExpiresOn(""); setMode("entry"); void loadProduct(value); }}><option value="" disabled>Selecione o produto</option>{filteredProducts.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></div>
       {loading && <p className="mt-4 text-sm" role="status">Consultando saldos e lotes…</p>}
       {error && <div className="mt-4 text-sm text-red-700" role="alert">{error}<button className="secondary-button ml-2" type="button" onClick={() => void loadProduct(productId)}>Tentar novamente</button></div>}
@@ -72,7 +68,7 @@ export function StockMovementForm({ products, initialProductId = "", initialLotI
         </>}
         <label className="grid gap-1 text-sm font-bold">Motivo{usesLots || ["entry", "exit", "expired", "recall"].includes(type) ? "" : " (opcional)"}<input className="field" name="notes" minLength={usesLots || ["entry", "exit", "expired", "recall"].includes(type) ? 3 : undefined} required={usesLots || ["entry", "exit", "expired", "recall"].includes(type)} maxLength={1000} placeholder={type === "entry" ? "Ex.: Compra de mercadorias" : "Informe a finalidade ou o destino"} /></label>
         {type === "recall" && !requiresLots && <p className="text-xs text-muted">Sem lote cadastrado, o motivo será registrado na saída, sem identificação automática de pacientes ou outras unidades afetadas.</p>}
-        <button className="primary-button" disabled={!ready}>Registrar entrada/saída</button>
+        <FormActions submitLabel="Registrar entrada/saída" disabled={!ready} />
       </ActionForm></div>
       <div><section className="mt-4 grid gap-3" aria-label="Lotes do produto">
         <details className="rounded-xl border p-3"><summary className="cursor-pointer text-sm font-bold">Preparar controle do produto selecionado</summary>
@@ -82,6 +78,5 @@ export function StockMovementForm({ products, initialProductId = "", initialLotI
         </>}
         </details>
       </section></div>
-    </dialog>
-  </>;
+    </ModalShell>;
 }

@@ -22,7 +22,7 @@ export default async function PaymentConnectionGuidePage({ params }: Props) {
   const backUrl = `/configuracoes?aba=payments&instituicao=${guide.tabId}`;
 
   return <div className="page-wrap max-w-4xl">
-    <Link className="mb-4 inline-flex text-sm font-bold text-brand" href={backUrl}>← Voltar para {guide.name} em Cobranças</Link>
+    <Link className="mb-4 inline-flex text-sm font-bold text-brand" href={backUrl}>← Voltar para {guide.name} nas configurações de pagamento</Link>
     <PageHeader eyebrow="Guia de pagamentos" title={`${guide.name}: passo a passo`} description={guide.intro} />
     <p className="mb-5 text-xs text-muted">Atualizado em 22/10/2026 · Os nomes dos menus da instituição podem mudar.</p>
     <section className="panel mb-5">

@@ -1,12 +1,12 @@
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { commissionBeneficiaries } from "@/lib/commission-beneficiaries";
 import { attendancePendingItems } from "@/lib/attendance-pending-items";
-import { getPosOfferings } from "@/lib/pos-catalog";
+import { getPosOfferings, getPosProducts } from "@/lib/pos-catalog";
 import { getPosPackageBalances } from "@/lib/pos-package-balances";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db";
-import { clients, services, financialEntries, packageUsages, retailProductVariants, retailProducts, inventoryProducts, retailSales } from "@/db/schema";
+import { clients, services, financialEntries, packageUsages, retailSales } from "@/db/schema";
 import { requireAttendance } from "@/lib/attendance";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { formatOrganizationDateTime } from "@/lib/appointment-safety";
@@ -29,7 +29,7 @@ export async function AttendancePos({ appointmentId }: { appointmentId: string }
     db.select({ name: services.name, imageUrl: services.imageUrl, price: services.priceInCents }).from(services).where(and(eq(services.id, appointment.serviceId), eq(services.organizationId, organization.id))).limit(1),
     canReadFinance ? db.select().from(financialEntries).where(and(eq(financialEntries.appointmentId, appointment.id), eq(financialEntries.organizationId, organization.id))).limit(1) : Promise.resolve([]),
     canReadFinance ? db.select().from(packageUsages).where(and(eq(packageUsages.appointmentId, appointment.id), eq(packageUsages.organizationId, organization.id), inArray(packageUsages.status, ["reserved", "consumed"]))) : Promise.resolve([]),
-    canSell ? db.select({ id: retailProductVariants.id, product: retailProducts.name, imageUrl: retailProducts.imageUrl, variant: retailProductVariants.name, barcode: retailProductVariants.barcode, priceInCents: retailProductVariants.salePriceInCents, stock: inventoryProducts.currentQuantityMillis }).from(retailProductVariants).innerJoin(retailProducts, eq(retailProducts.id, retailProductVariants.productId)).innerJoin(inventoryProducts, eq(inventoryProducts.id, retailProductVariants.inventoryProductId)).where(and(eq(retailProductVariants.organizationId, organization.id), eq(retailProductVariants.isForSale, true), eq(retailProductVariants.isActive, true), eq(retailProducts.isActive, true), eq(inventoryProducts.isActive, true))).orderBy(asc(retailProducts.name)) : Promise.resolve([]),
+    canSell ? getPosProducts(organization.id) : Promise.resolve([]),
     db.select({ id: retailSales.id, total: retailSales.totalInCents, status: retailSales.status, receiptToken: retailSales.receiptToken, soldAt: retailSales.soldAt, paymentStatus: financialEntries.status }).from(retailSales).leftJoin(financialEntries, eq(financialEntries.id, retailSales.financialEntryId)).where(and(eq(retailSales.organizationId, organization.id), eq(retailSales.attendanceId, appointment.id))).orderBy(desc(retailSales.soldAt)),
     canReadFinance ? db.select().from(financialEntries).where(and(eq(financialEntries.organizationId, organization.id), eq(financialEntries.attendanceId, appointment.id), eq(financialEntries.source, "attendance_extra"))).orderBy(desc(financialEntries.createdAt)) : Promise.resolve([]),
   ]);
@@ -44,7 +44,7 @@ export async function AttendancePos({ appointmentId }: { appointmentId: string }
   const prefillProcedure = appointment.metadata?.primaryProcedureRemoved !== true && shouldPrefillAttendanceCart(paymentState, appointment.serviceId, packageBalances);
   const initialCart = prefillProcedure ? [{ variantId: `appointment:${appointment.id}`, quantity: 1, discountInCents: 0 }] : [];
   const offerings = [...catalog, ...(paymentState === "pending" && appointment.metadata?.primaryProcedureRemoved !== true ? [{ id: `appointment:${appointment.id}`, label: `${service.name} · Procedimento realizado`, imageUrl: service.imageUrl, barcode: null, priceInCents: amount, stock: 1, kind: "service" as const }] : [])];
-  const variants = variantRows.map((variant) => ({ id: variant.id, label: `${variant.product} · ${variant.variant}`, imageUrl: variant.imageUrl, barcode: variant.barcode, priceInCents: variant.priceInCents, stock: Math.floor(variant.stock / 1000) })).filter((variant) => variant.stock > 0);
+  const variants = variantRows;
   const pending = attendancePendingItems(appointment.metadata);
   for (const item of pending) {
     if (![...offerings, ...variants].some((entry) => entry.id === item.catalogId)) continue;
@@ -54,7 +54,9 @@ export async function AttendancePos({ appointmentId }: { appointmentId: string }
   }
   return <section id="pdv" className="mt-5 scroll-mt-6">
     {paymentState === "blocked" && <p className="mb-4 text-sm text-muted">Revise a situação do atendimento antes de cobrar o procedimento.</p>}
-    {canSell && <SalesWorkspace sale={<RetailSaleForm commissionChoices={commissionChoices} key={`${appointment.id}:${paymentState}:${prefillProcedure}:${pending.map((item) => item.id).join(",")}`} offerings={offerings} attendanceId={appointment.id} initialClientId={client.id} initialCart={initialCart} pendingAttendanceItems={pending} clients={[client]} variants={variants} canDiscount={hasOrganizationPermission(organization.role, "sales.discount")} />} quote={<AttendanceQuote appointmentId={appointmentId} />} />}
+    {canSell && <p className="panel mb-4 text-sm text-muted">Este recebimento fica vinculado ao atendimento e aceita pagamento manual ou saldo de pacote. Produtos e pacotes avulsos com pagamento integrado são vendidos em <Link className="font-bold text-brand underline" href="/vendas">Venda e orçamento</Link>.</p>}
+    {canPay && paymentState === "pending" && payment?.id && <p className="mb-4 text-sm">Para cobrar online o procedimento, <Link className="font-bold text-brand underline" href={`/financeiro/cobrancas?lancamento=${payment.id}#nova-cobranca`}>abra a cobrança vinculada à conta a receber</Link>. A confirmação do provedor registra o recebimento automaticamente.</p>}
+    {canSell && <SalesWorkspace sale={<RetailSaleForm commissionChoices={commissionChoices} key={`${appointment.id}:${paymentState}:${prefillProcedure}:${pending.map((item) => item.id).join(",")}`} offerings={offerings} attendanceId={appointment.id} initialClientId={client.id} initialCart={initialCart} pendingAttendanceItems={pending} clients={[client]} variants={variants} timezone={organization.timezone} packageBalances={packageBalances} canDiscount={hasOrganizationPermission(organization.role, "sales.discount")} />} quote={<AttendanceQuote appointmentId={appointmentId} />} />}
     <section className="panel mt-4"><h3 className="font-extrabold">Vendas e adicionais deste atendimento</h3>
       <PaginatedCollection label="Registros" className="mt-4">{sales.map((sale) => <div key={sale.id} className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t pt-3"><div><p className="font-bold">Venda · {currency(sale.total)}</p><p className="text-xs text-muted">{formatOrganizationDateTime(sale.soldAt, organization.timezone)} · {sale.status !== "completed" ? "Cancelada / estornada" : sale.paymentStatus === "received" ? "Pagamento recebido" : "Pagamento pendente"}</p></div><Link className="secondary-button" href={`/recibo/${sale.receiptToken}`} target="_blank">Abrir recibo</Link></div>)}</PaginatedCollection>
       <PaginatedCollection label="Registros" className="mt-4">{extras.map((extra) => <div key={extra.id} className="mt-3 border-t pt-3"><p className="font-bold">{extra.description} · {currency(extra.amountInCents)}</p><p className="text-xs text-muted">{formatOrganizationDateTime(extra.createdAt, organization.timezone)} · {extra.status === "received" ? "Pagamento recebido" : extra.status}</p></div>)}</PaginatedCollection>

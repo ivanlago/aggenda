@@ -1,3 +1,5 @@
+import { ModalShell } from "@/components/modal-shell";
+import { FormActions } from "@/components/form-dialog-context";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import Link from "next/link";
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
@@ -16,10 +18,11 @@ import { prepareProfessionalSignature, completeProfessionalSignature, cancelProf
 export const metadata = { title: "Assinatura do profissional" };
 export const maxDuration = 120;
 
-export default async function ProfessionalSignaturePage({ searchParams }: { searchParams: Promise<{ documentId?: string }> }) {
+export default async function ProfessionalSignaturePage({ searchParams }: { searchParams: Promise<{ documentId?: string; busca?: string }> }) {
   const { organization, session } = await requireOrganization();
   assertOrganizationPermission(organization.role, "documents.sign");
-  const { documentId } = await searchParams;
+  const { documentId, busca = "" } = await searchParams;
+  const identitySearch = busca.trim().slice(0, 100);
   const ready = localSignatureReadiness(organization.id);
   const canManage = hasOrganizationPermission(organization.role, "team.manage");
   const schemaReady = await signatureDatabaseReady();
@@ -67,6 +70,6 @@ export default async function ProfessionalSignaturePage({ searchParams }: { sear
         </>}
       </> : null}
     </section>}
-    {ready.ready && canManage && <section className="panel mt-5"><h2 className="text-lg font-extrabold">Identidade dos profissionais</h2><p className="mt-2 text-sm text-muted">Confira o CPF com o titular e o cadastro profissional antes de autorizar. Cada profissional deve ter seu próprio usuário e CRM/UF cadastrados.</p><div className="mt-4 space-y-4">{identityRows.map(item => <ActionForm key={item.id} action={registerProfessionalSigningIdentity} successMessage="Identidade registrada." className="form-stack"><p className="font-bold">{item.name}{item.cpf ? ` · CPF cadastrado com final ${item.cpf.slice(-2)}` : " · CPF pendente"}</p><input type="hidden" name="professionalId" value={item.id} /><label className="grid gap-2 text-sm">CPF do profissional<input className="field" name="cpf" inputMode="numeric" maxLength={14} required autoComplete="off" /></label><label className="flex gap-2 text-sm"><input type="checkbox" name="verified" required />Conferi a identidade e o vínculo deste CPF ao profissional.</label><button className="secondary-button w-fit">Registrar identidade conferida</button></ActionForm>)}</div></section>}
+    {ready.ready && canManage && <section className="panel mt-5"><h2 className="text-lg font-extrabold">Identidade dos profissionais</h2><p className="mt-2 text-sm text-muted">Confira o CPF com o titular e o cadastro profissional antes de autorizar. Cada profissional deve ter seu próprio usuário e CRM/UF cadastrados.</p><form method="get" className="mt-4 flex flex-wrap gap-3">{documentId && <input type="hidden" name="documentId" value={documentId} />}<label className="grid gap-1 text-sm font-bold">Buscar profissional<input className="field" name="busca" defaultValue={identitySearch} /></label><button className="secondary-button self-end">Buscar</button></form><PaginatedCollection label="Identidade dos profissionais" className="mt-4 space-y-4">{identityRows.filter(item => item.name.toLocaleLowerCase("pt-BR").includes(identitySearch.toLocaleLowerCase("pt-BR"))).map(item => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 border-b py-3"><p className="font-bold">{item.name} · {item.cpf ? "Identidade cadastrada" : "CPF pendente"}</p><ModalShell title={`Conferir identidade: ${item.name}`} triggerLabel="Conferir identidade" variant="edit" closeOnSuccess><ActionForm action={registerProfessionalSigningIdentity} successMessage="Identidade registrada." className="form-stack"><p className="font-bold">{item.name}{item.cpf ? ` · CPF cadastrado com final ${item.cpf.slice(-2)}` : " · CPF pendente"}</p><input type="hidden" name="professionalId" value={item.id} /><label className="grid gap-2 text-sm">CPF do profissional<input className="field" name="cpf" inputMode="numeric" maxLength={14} required autoComplete="off" /></label><label className="flex gap-2 text-sm"><input type="checkbox" name="verified" required />Conferi a identidade e o vínculo deste CPF ao profissional.</label><FormActions submitLabel="Registrar identidade conferida" /></ActionForm></ModalShell></div>)}</PaginatedCollection></section>}
   </div>;
 }

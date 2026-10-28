@@ -77,6 +77,6 @@ function ReferenceManagerContent({ groups }: { groups: ReferenceGroup[] }) {
   </div>;
 }
 
-export function ReferenceManager({ title = "Categorias", groups }: { title?: string; groups: ReferenceGroup[] }) {
-  return <ModalShell title={title} variant="new" secondary triggerLabel={title} triggerIcon={<Tags className="size-4" aria-hidden="true" />} wide={groups.length > 1} description="Cadastre e organize as opções disponíveis nos formulários."><ReferenceManagerContent groups={groups} /></ModalShell>;
+export function ReferenceManager({ title = "Categorias", groups, defaultOpen = false }: { title?: string; groups: ReferenceGroup[]; defaultOpen?: boolean }) {
+  return <ModalShell title={title} variant="new" defaultOpen={defaultOpen} secondary triggerLabel={title} triggerIcon={<Tags className="size-4" aria-hidden="true" />} wide={groups.length > 1} description="Cadastre e organize as opções disponíveis nos formulários."><ReferenceManagerContent groups={groups} /></ModalShell>;
 }

@@ -108,8 +108,8 @@ export default async function InventoryPage() {
     direction: item.quantity >= 0 ? "entry" : "exit",
     quantity: quantity(Math.abs(item.quantity)), balance: quantity(item.balance), notes: item.notes ?? "",
     occurredAt: item.createdAt.toISOString(),
-    occurredOn: new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Bahia", year: "numeric", month: "2-digit", day: "2-digit" }).format(item.createdAt),
-    occurredAtLabel: item.createdAt.toLocaleString("pt-BR", { timeZone: "America/Bahia", dateStyle: "short", timeStyle: "short" }),
+    occurredOn: new Intl.DateTimeFormat("sv-SE", { timeZone: organization.timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(item.createdAt),
+    occurredAtLabel: item.createdAt.toLocaleString("pt-BR", { timeZone: organization.timezone, dateStyle: "short", timeStyle: "short" }),
   }));
 
   return <div className="page-wrap">

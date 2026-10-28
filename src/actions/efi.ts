@@ -17,7 +17,7 @@ import { efiPosSecret } from "@/lib/pos-efi";
 const text = (data: FormData, key: string) => String(data.get(key) ?? "").trim();
 const digits = (value: string) => value.replace(/\D/g, "");
 const appUrl = () => process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "http://localhost:3000";
-const refresh = () => { revalidatePath("/financeiro/cobrancas"); revalidatePath("/financeiro"); };
+const refresh = () => { revalidatePath("/financeiro/cobrancas"); revalidatePath("/configuracoes"); revalidatePath("/financeiro"); };
 const message = (error: unknown, fallback: string) => error instanceof Error ? error.message.slice(0, 500) : fallback;
 type Cob = { txid: string; loc?: { id?: number; location?: string }; status?: string };
 type QrCode = { qrcode?: string; imagemQrcode?: string; linkVisualizacao?: string };

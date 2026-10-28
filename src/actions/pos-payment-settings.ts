@@ -23,5 +23,5 @@ export async function setPosPaymentDefault(data: FormData) {
       eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, provider), eq(organizationFinancialIntegrations.status, "active")));
   });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "set_pos_default", entityType: "financial_integration", details: { provider, enabled } });
-  revalidatePath("/vendas"); revalidatePath("/financeiro/cobrancas");
+  revalidatePath("/vendas"); revalidatePath("/financeiro/cobrancas"); revalidatePath("/configuracoes");
 }

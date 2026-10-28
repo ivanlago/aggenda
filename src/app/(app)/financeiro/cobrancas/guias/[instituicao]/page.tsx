@@ -19,7 +19,7 @@ export default async function PaymentConnectionGuidePage({ params }: Props) {
   const guide = getGuide((await params).instituicao);
   if (!guide) notFound();
   const webhookUrl = `${(process.env.NEXT_PUBLIC_APP_URL || "https://www.aggenda.app.br").replace(/\/$/, "")}/api/webhooks/mercado-pago?organizationId=${organization.id}`;
-  const backUrl = `/financeiro/cobrancas?instituicao=${guide.tabId}`;
+  const backUrl = `/configuracoes?aba=payments&instituicao=${guide.tabId}`;
 
   return <div className="page-wrap max-w-4xl">
     <Link className="mb-4 inline-flex text-sm font-bold text-brand" href={backUrl}>← Voltar para {guide.name} em Pagamentos</Link>

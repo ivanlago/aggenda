@@ -16,11 +16,14 @@ import { requireOrganization } from "@/lib/session";
 import { socialPlatforms } from "@/lib/social-links";
 
 import { SettingsTabs } from "./settings-tabs";
-import { AutomationAndAiSettingsContent, WhatsAppSettingsContent } from "./automation-settings-content";
+import { PaymentProvidersSettingsContent } from "./payment-providers-content";
+import { WhatsAppSettingsContent } from "./automation-settings-content";
 
 export const metadata = { title: "Configurações" };
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ aba?: string; instituicao?: string }> }) {
+  const query = await searchParams;
+  const selectedTab = query.aba === "automation" ? "whatsapp" : query.aba;
   const { organization } = await requireOrganization();
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
@@ -115,7 +118,7 @@ export default async function SettingsPage() {
 
   return <div className="page-wrap">
     <PageHeader eyebrow={organization.name} title="Configurações" description="Configure cada área do negócio em uma seção própria." />
-    <SettingsTabs tabs={[
+    <SettingsTabs key={selectedTab} defaultTab={selectedTab} tabs={[
       { id: "terminology", label: "Terminologia", content: terminology },
       { id: "booking", label: "Agendamento", content: booking },
       { id: "rooms", label: "Salas", content: <RoomSettings organizationId={organization.id} canManage={canManage} /> },
@@ -124,8 +127,8 @@ export default async function SettingsPage() {
       { id: "documents", label: "Documentos", content: documents },
       { id: "catalogs", label: "Catálogos", content: <ReferenceCatalogStatus /> },
       { id: "policies", label: "Políticas", content: policies },
-      { id: "whatsapp", label: "WhatsApp", content: <WhatsAppSettingsContent /> },
-      { id: "automation", label: "Automações e IA", content: <AutomationAndAiSettingsContent /> },
+      { id: "whatsapp", label: "WhatsApp e IA", content: <WhatsAppSettingsContent /> },
+      { id: "payments", label: "Provedores de pagamento", content: <PaymentProvidersSettingsContent institution={query.instituicao} /> },
     ]} />
   </div>;
 }

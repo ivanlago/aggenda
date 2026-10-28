@@ -16,7 +16,7 @@ import { requireOrganization } from "@/lib/session";
 
 const text = (data: FormData, key: string) => String(data.get(key) ?? "").trim();
 const appUrl = () => process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "http://localhost:3000";
-const refresh = () => { revalidatePath("/financeiro/cobrancas"); revalidatePath("/financeiro"); };
+const refresh = () => { revalidatePath("/financeiro/cobrancas"); revalidatePath("/configuracoes"); revalidatePath("/financeiro"); };
 type MpUser = { id: number; nickname?: string; email?: string; site_id?: string };
 type MpPreference = { id: string; init_point?: string; sandbox_init_point?: string };
 

@@ -29,6 +29,7 @@ export class NfseService {
       const [external] = await tx.select({ id: fiscalDocuments.id }).from(fiscalDocuments).where(and(eq(fiscalDocuments.organizationId, organizationId), eq(fiscalDocuments.financialEntryId, entryId), eq(fiscalDocuments.status, "issued"))).limit(1);
       if (external) throw new Error("Já existe uma nota externa vinculada a este recebimento.");
       const [existing] = await tx.select().from(nfseRequests).where(and(eq(nfseRequests.organizationId, organizationId), eq(nfseRequests.financialEntryId, entryId), eq(nfseRequests.environment, environment), sql`${nfseRequests.status} <> 'rejected'`));
+      if (existing?.dpsId.startsWith("SSA_")) throw new Error("Este recebimento possui uma solicitação municipal de Salvador. Utilize o conector original.");
       if (existing && existing.status !== "draft") return existing;
       if (existing) {
         const built = buildDps(profile, environment, profile.dpsSeries ?? "1", String(existing.sequence), draft);
@@ -49,6 +50,7 @@ export class NfseService {
   async get(organizationId: string, id: string) {
     const [row] = await this.database.select().from(nfseRequests).where(and(eq(nfseRequests.id, id), eq(nfseRequests.organizationId, organizationId))).limit(1);
     if (!row) throw new Error("Solicitação fiscal não encontrada.");
+    if (row.dpsId.startsWith("SSA_")) throw new Error("Utilize o conector municipal de Salvador para esta solicitação.");
     return row;
   }
 

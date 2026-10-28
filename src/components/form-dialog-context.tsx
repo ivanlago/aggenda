@@ -14,11 +14,11 @@ export function useFormDialog() {
   return context;
 }
 
-export function FormActions({ editing = false }: { editing?: boolean }) {
+export function FormActions({ editing = false, submitLabel, disabled = false }: { editing?: boolean; submitLabel?: string; disabled?: boolean }) {
   const { close } = useFormDialog();
   return <div className="col-span-full flex flex-wrap justify-end gap-3 border-t pt-5">
     <button type="button" className="secondary-button" onClick={close}>Cancelar</button>
-    <button type="submit" className="primary-button">{editing ? "Salvar alterações" : "Salvar"}</button>
+    <button type="submit" className="primary-button" disabled={disabled}>{submitLabel ?? (editing ? "Salvar alterações" : "Salvar")}</button>
   </div>;
 }
 

@@ -1,6 +1,6 @@
 # Padrão de cadastros
 
-Aplicado a produtos, procedimentos e lançamentos financeiros.
+Aplicado a produtos, procedimentos, lançamentos financeiros, pacotes e cobranças.
 
 ## Página
 
@@ -37,3 +37,12 @@ Use `ReferenceManager` para listar, buscar, criar e renomear os cadastros auxili
 - As ações verificam a permissão do módulo e restringem cada operação à empresa autenticada.
 
 Não é necessária migração de banco para esse padrão.
+
+## Cobranças e pacotes
+
+- Nova cobrança usa o mesmo diálogo, com Conta a receber, Pagador e Provedor e condições. A confirmação usa o verbo Gerar cobrança, pois emite uma cobrança externa.
+- Pacotes separa Modelos de pacotes de Pacotes dos clientes. O cadastro usa busca e seleção de procedimentos; somente os itens escolhidos participam da composição.
+- A edição de um modelo cria outro registro e desativa o anterior. Compras e assinaturas anteriores mantêm seu modelo, preço, validade e composição. Orçamentos que referenciem o modelo desativado precisam ser revistos.
+- Vender este pacote direciona a Venda e orçamento com o pacote no carrinho e Tipo de item em Pacotes. Não há outro fluxo de venda na página de pacotes.
+- Registrar pacote anterior é uma operação administrativa com permissão para gerenciar clientes, justificativa, data original, validade e saldos. Preserva os totais originais e importa os contadores históricos; não cria atendimentos fictícios, receita, venda ou cobrança. A operação é auditada e a repetição da mesma solicitação não duplica as sessões.
+- A consulta de pacotes distingue sessões disponíveis agora, reservadas e utilizadas. Pacotes vencidos, cancelados ou aguardando pagamento não apresentam saldo disponível para novas utilizações.

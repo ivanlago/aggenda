@@ -395,7 +395,7 @@ export async function registerRetailSale(data: FormData) {
       return { ...variant, quantity: requested, balance, discount: requestedLine.discountInCents, cost, total, commission: Math.round(total * variant.commissionRateBasisPoints / 10_000) };
     });
     const procedureRows = serviceIds.length ? await tx.select().from(services).where(and(eq(services.organizationId, organization.id), eq(services.isActive, true), inArray(services.id, serviceIds))) : [];
-    const packageRows = packageIds.length ? await tx.select().from(servicePackages).where(and(eq(servicePackages.organizationId, organization.id), eq(servicePackages.isActive, true), inArray(servicePackages.id, packageIds))) : [];
+    const packageRows = packageIds.length ? await tx.select().from(servicePackages).where(and(eq(servicePackages.organizationId, organization.id), eq(servicePackages.isActive, true), inArray(servicePackages.id, packageIds))).for("share") : [];
     if (procedureRows.length !== serviceIds.length || packageRows.length !== packageIds.length) throw new Error("Procedimento ou pacote indisponível.");
     const additionalLines = [
       ...(appointmentLine ? [appointmentLine] : []),

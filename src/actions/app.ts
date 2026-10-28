@@ -18,8 +18,6 @@ import {
   clients,
   crmPipelines,
   crmStages,
-  clientPackageBalances,
-  clientPackages,
   packageUsages,
   financialEntries,
   paymentCharges,
@@ -63,7 +61,6 @@ import {
 import { deleteCatalogImage, deleteClinicalImage, uploadClinicalImage } from "@/lib/cloudinary";
 import { reconcilePackageUsage, reservePackageSession } from "@/lib/package-balance";
 import {
-  createClientPackageFinancialEntry,
   syncAppointmentFinancialEntry,
 } from "@/lib/finance";
 import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
@@ -980,70 +977,13 @@ export async function toggleServicePackage(formData: FormData) {
     eq(servicePackages.organizationId, organization.id)
   ));
   revalidatePath("/pacotes");
+  revalidatePath("/vendas");
 }
 
-export async function assignPackageToClient(formData: FormData) {
-  const { session, organization } = await requireOrganization();
+export async function assignPackageToClient() {
+  const { organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "clients.manage");
-  const clientId = textValue(formData, "clientId");
-  const packageId = textValue(formData, "packageId");
-  const [[client], [template], items] = await Promise.all([
-    db.select({ id: clients.id }).from(clients).where(and(
-      eq(clients.id, clientId), eq(clients.organizationId, organization.id)
-    )).limit(1),
-    db.select().from(servicePackages).where(and(
-      eq(servicePackages.id, packageId),
-      eq(servicePackages.organizationId, organization.id),
-      eq(servicePackages.isActive, true)
-    )).limit(1),
-    db.select().from(servicePackageItems).where(and(
-      eq(servicePackageItems.packageId, packageId),
-      eq(servicePackageItems.organizationId, organization.id)
-    )),
-  ]);
-  if (!client || !template || !items.length) throw new Error("Cliente ou pacote inválido.");
-  const purchasedAt = new Date();
-  const expiresAt = template.validityDays
-    ? new Date(purchasedAt.getTime() + template.validityDays * 86_400_000)
-    : null;
-  const priceInCents = optionalMoneyInCents(formData, "price") ?? template.priceInCents;
-  const [assigned] = await db.transaction(async (tx) => {
-    const [created] = await tx.insert(clientPackages).values({
-      organizationId: organization.id,
-      clientId,
-      packageId,
-      priceInCents,
-      purchasedAt,
-      expiresAt,
-      notes: optionalText(formData, "notes"),
-    }).returning({ id: clientPackages.id });
-    await tx.insert(clientPackageBalances).values(items.map((item) => ({
-      organizationId: organization.id,
-      clientPackageId: created.id,
-      serviceId: item.serviceId,
-      totalQuantity: item.quantity,
-    })));
-    return [created];
-  });
-  await writeAuditLog({
-    organizationId: organization.id,
-    userId: session.user.id,
-    action: "assign",
-    entityType: "client_package",
-    entityId: assigned.id,
-    details: { clientId, packageId, priceInCents },
-  });
-  const dueDate = optionalText(formData, "dueDate") ?? organizationDate(new Date(), organization.timezone);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) throw new Error("Data de vencimento inválida.");
-  await createClientPackageFinancialEntry({
-    clientPackageId: assigned.id,
-    dueDate,
-    received: formData.get("received") === "on",
-    paymentMethod: optionalText(formData, "paymentMethod"),
-  });
-  revalidatePath("/pacotes");
-  revalidatePath(`/clientes/${clientId}`);
-  revalidatePath("/financeiro");
+  return { error: "As novas vendas de pacotes são realizadas em Venda e orçamento. Para migrar uma aquisição anterior, use Registrar pacote anterior em Pacotes." };
 }
 
 export async function createFinancialEntry(formData: FormData) {

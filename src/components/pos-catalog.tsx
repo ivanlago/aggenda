@@ -8,8 +8,8 @@ export type CatalogItem = { id: string; label: string; barcode: string | null; p
 const currency = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
 
-export function PosCatalog({ variants, cart, addToCart, quoteMode = false }: { variants: CatalogItem[]; cart: { variantId: string; quantity: number }[]; addToCart: (id: string) => void; quoteMode?: boolean }) {
-  const [category, setCategory] = useState("all");
+export function PosCatalog({ variants, cart, addToCart, quoteMode = false, initialType = "all" }: { variants: CatalogItem[]; cart: { variantId: string; quantity: number }[]; addToCart: (id: string) => void; quoteMode?: boolean; initialType?: "all" | "product" | "service" | "package" }) {
+  const [category, setCategory] = useState<string>(initialType);
   const [query, setQuery] = useState("");
   const [barcode, setBarcode] = useState("");
   const [barcodeMessage, setBarcodeMessage] = useState("");
@@ -27,7 +27,7 @@ export function PosCatalog({ variants, cart, addToCart, quoteMode = false }: { v
   };
   return (      <section className="panel form-stack">
         <div><h2 className="text-lg font-extrabold">Produtos, procedimentos e pacotes</h2><p className="text-sm text-muted">{description}</p></div>
-        <label className="grid gap-1 text-sm font-bold">Categoria<select className="field" value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">Todos os itens</option><option value="product">Produtos</option><option value="service">Procedimentos</option><option value="package">Pacotes</option></select></label>
+        <label className="grid gap-1 text-sm font-bold">Tipo de item<select className="field" value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">Todos os itens</option><option value="product">Produtos</option><option value="service">Procedimentos</option><option value="package">Pacotes</option></select></label>
         <div className="grid gap-2 sm:grid-cols-2"><label className="relative block"><span className="sr-only">Buscar item</span><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" /><input className="field w-full pl-9" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar item" /></label><label className="relative block"><span className="sr-only">Ler código de barras</span><ScanBarcode className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" /><input className="field w-full pl-9" value={barcode} onChange={(event) => setBarcode(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); readBarcode(); } }} placeholder="Leia o código e pressione Enter" /></label></div>{barcodeMessage && <p className="text-xs font-bold text-brand" role="status">{barcodeMessage}</p>}
         <div className="grid max-h-[560px] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
           {visibleVariants.map((variant) => {

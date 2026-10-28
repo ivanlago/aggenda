@@ -7,6 +7,7 @@ import { SalesHistoryTabs } from "@/components/sales-history-tabs";
 import { requireRetailQuote } from "@/lib/retail-quotes";
 import { organizationDate, organizationDayRange } from "@/lib/appointment-safety";
 import { getPosOfferings } from "@/lib/pos-catalog";
+import { packageSaleSelection } from "@/lib/package-catalog";
 import { getPosPackageBalances } from "@/lib/pos-package-balances";
 import { posPaymentSettings } from "@/lib/pos-payment-settings";
 import { retailSaleStatusLabels } from "@/lib/retail-sale-status";
@@ -28,7 +29,7 @@ const currency = (value: number) => (value / 100).toLocaleString("pt-BR", { styl
 const paymentLabels: Record<string, string> = { pix: "PIX", card: "Cartões", cash: "Espécie", credit_card: "Crédito", debit_card: "Débito" };
 export const metadata = { title: "Venda e orçamento" };
 
-export default async function SalesPage({ searchParams }: { searchParams: Promise<{ inicio?: string; novo?: string; convert?: string; quote?: string; search?: string; page?: string; history?: string }> }) {
+export default async function SalesPage({ searchParams }: { searchParams: Promise<{ inicio?: string; novo?: string; convert?: string; quote?: string; search?: string; page?: string; history?: string; pacote?: string; tipo?: string }> }) {
   const params = await searchParams;
   const { organization } = await requireOrganization();
   const commissionChoices = await commissionBeneficiaries(db, organization.id);
@@ -56,6 +57,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
   const variants = variantRows.map((item) => ({ id: item.id, label: `${item.productName} · ${item.variantName}`, imageUrl: item.imageUrl, barcode: item.barcode, priceInCents: item.priceInCents, stock: Math.floor(item.stockMillis / 1000) })).filter((item) => item.stock > 0);
   const quoteProducts = variantRows.map((item) => ({ id: item.id, label: `${item.productName} · ${item.variantName}`, imageUrl: item.imageUrl, barcode: item.barcode, priceInCents: item.priceInCents, stock: Math.floor(item.stockMillis / 1000), kind: "product" as const }));
   const sourceQuote = params.convert && canSell ? (await requireRetailQuote(params.convert)).quote : null;
+  const packageSelection = packageSaleSelection(params.pacote, offerings);
   const today = organizationDate(new Date(), organization.timezone);
   const conversionBlocked = sourceQuote?.saleId ? "Este orçamento já foi convertido em venda." : sourceQuote && sourceQuote.validUntil < today ? "Este orçamento está vencido." : null;
   const saleCatalog = sourceQuote ? sourceQuote.items.map((line) => {
@@ -81,7 +83,8 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
       <article className="panel"><PackageCheck className="size-5 text-brand" /><p className="mt-4 text-3xl font-extrabold">{unitsSold}</p><p className="text-sm text-muted">unidades vendidas</p></article>
       <article className="panel"><BadgeDollarSign className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{currency(totalSold)}</p><p className="text-sm text-muted">nas vendas exibidas</p></article>
     </section>
-    {canSell && <SalesWorkspace key={sourceQuote?.id ?? `new-${params.inicio ?? (params.novo === "1" ? "sale" : "default")}`} sale={conversionBlocked || missingStock ? <p className="panel text-sm text-amber-800">{conversionBlocked || "Há itens indisponíveis ou sem estoque suficiente. Atualize o catálogo/estoque antes de converter este orçamento."}</p> : <RetailSaleForm paymentProviders={posSettings.providers} defaultPaymentProvider={posSettings.defaultProvider} commissionChoices={commissionChoices} quoteId={sourceQuote?.id} initialClientId={sourceQuote?.clientId ?? undefined} initialCart={sourceQuote?.items} offerings={sourceQuote ? [] : offerings} variants={saleCatalog} clients={clientRows} canDiscount={canDiscount} packageBalances={packageBalances} timezone={organization.timezone} />} quote={<RetailQuoteForm catalog={[...quoteProducts, ...offerings]} clients={clientRows} canDiscount={canDiscount} defaultValidity={organizationDate(new Date(new Date().getTime() + 30 * 86400000), organization.timezone)} />} />}
+    {params.pacote && !sourceQuote && <p className={`panel mt-5 text-sm ${packageSelection.error ? "text-amber-800" : "text-brand"}`}>{packageSelection.error ?? "Pacote adicionado ao carrinho. Selecione o cliente e confira o recebimento para concluir a venda."}</p>}
+    {canSell && <SalesWorkspace key={sourceQuote?.id ?? `new-${params.pacote ?? params.inicio ?? (params.novo === "1" ? "sale" : "default")}-${params.tipo ?? "all"}`} sale={conversionBlocked || missingStock ? <p className="panel text-sm text-amber-800">{conversionBlocked || "Há itens indisponíveis ou sem estoque suficiente. Atualize o catálogo/estoque antes de converter este orçamento."}</p> : <RetailSaleForm initialItemType={params.pacote || params.tipo === "package" ? "package" : "all"} paymentProviders={posSettings.providers} defaultPaymentProvider={posSettings.defaultProvider} commissionChoices={commissionChoices} quoteId={sourceQuote?.id} initialClientId={sourceQuote?.clientId ?? undefined} initialCart={sourceQuote?.items ?? packageSelection.cart} offerings={sourceQuote ? [] : offerings} variants={saleCatalog} clients={clientRows} canDiscount={canDiscount} packageBalances={packageBalances} timezone={organization.timezone} />} quote={<RetailQuoteForm catalog={[...quoteProducts, ...offerings]} clients={clientRows} canDiscount={canDiscount} defaultValidity={organizationDate(new Date(new Date().getTime() + 30 * 86400000), organization.timezone)} />} />}
     <SalesHistoryTabs initialTab={params.quote ? "quotes" : "sales"} quotes={<RetailQuoteLibrary selectedId={params.quote} search={params.search} page={Number(params.page ?? 1)} showAll={showAllHistory} />} sales={<section className="panel mt-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-extrabold">Vendas {showAllHistory ? "salvas" : "de hoje"}</h2><Link className="secondary-button" href={`/vendas?history=${showAllHistory ? "today" : "all"}#historico-vendas`}>{showAllHistory ? "Mostrar somente hoje" : "Ver anteriores"}</Link></div><PaginatedCollection label="Registros" className="mt-4 divide-y">
       {sales.length === 0 && <p className="py-6 text-center text-sm text-muted">Nenhuma venda registrada.</p>}
       {sales.map((sale) => <article className="grid gap-3 py-4 lg:grid-cols-[1fr_auto]" key={sale.id}>

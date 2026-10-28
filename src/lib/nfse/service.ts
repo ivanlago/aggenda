@@ -3,7 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { db } from "../../db";
 import { financialEntries, fiscalDocuments, nfseRequests, nfseRequestEvents } from "../../db/schema";
 import type { NfseFiscalProfile } from "../nfse-routing";
-import { authorizedInvoice, buildDps, buildCancellation, confirmedCancellation, fiscalDraftSchema, type FiscalDraft } from "./xml";
+import { authorizedInvoice, buildDps, buildCancellation, confirmedCancellation, fiscalDraftSchema, normalizeFiscalDraft, type FiscalDraft } from "./xml";
 import { compressFiscalXml, decompressFiscalXml, definitiveFiscalRejection, fiscalRejection, type FiscalEnvironment, type FiscalTransport } from "./government";
 import { nfseVault, readStoredNfseValue, type NfseVault } from "./vault";
 
@@ -21,7 +21,7 @@ export class NfseService {
   }
 
   async draft(organizationId: string, entryId: string, profile: NfseFiscalProfile, environment: FiscalEnvironment, input: FiscalDraft) {
-    const draft = fiscalDraftSchema.parse(input);
+    const draft = normalizeFiscalDraft(profile, input);
     if (environment !== "sandbox") throw new Error("Emissão em produção aguarda homologação fiscal do Aggenda.");
     return this.database.transaction(async (tx) => {
       const [entry] = await tx.select({ id: financialEntries.id, type: financialEntries.type, status: financialEntries.status, amountInCents: financialEntries.amountInCents }).from(financialEntries).where(and(eq(financialEntries.id, entryId), eq(financialEntries.organizationId, organizationId))).for("update");

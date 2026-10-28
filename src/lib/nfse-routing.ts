@@ -23,7 +23,7 @@ export function readNfseProfile(metadata: Record<string, unknown> | null | undef
   const profile = metadata?.fiscalProfile;
   if (!profile || typeof profile !== "object") return null;
   const value = profile as Partial<NfseFiscalProfile>;
-  if (!value.cnpj || !value.municipalityCode || !value.municipalRegistration || !value.taxRegime) return null;
+  if (!value.cnpj || !value.municipalityCode || typeof value.municipalRegistration !== "string" || !value.taxRegime) return null;
   return {
     cnpj: value.cnpj,
     municipalRegistration: value.municipalRegistration,

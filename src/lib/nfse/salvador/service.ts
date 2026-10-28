@@ -10,7 +10,7 @@ import { acceptedSalvadorBatch, assertSalvadorIssuer, authorizedSalvadorInvoice,
 export const isSalvadorRequest = (id: string) => id.startsWith("SSA_");
 export const salvadorStoredDraftSchema = z.object({
   channel: z.literal("salvador"), input: salvadorDraftSchema,
-  issuer: z.object({ cnpj: z.string().regex(/^\d{14}$/), municipalRegistration: z.string().regex(/^\d{1,15}$/), municipalityCode: z.literal("2927408"), taxRegime: z.literal("lucro_presumido") }).strict(),
+  issuer: z.object({ cnpj: z.string().regex(/^\d{14}$/), municipalRegistration: z.string().regex(/^\d{1,15}$/), municipalityCode: z.literal("2927408"), taxRegime: z.enum(["lucro_presumido", "lucro_real"]) }).strict(),
 }).strict();
 type Database = typeof db;
 type Row = typeof nfseRequests.$inferSelect;

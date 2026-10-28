@@ -12,6 +12,7 @@ import { readFiscalCertificate } from "@/lib/nfse/certificate";
 import { governmentTransport } from "@/lib/nfse/government";
 import { NfseService } from "@/lib/nfse/service";
 import { signFiscalXml } from "@/lib/nfse/xml";
+import { fiscalChannelFor, ibsCbsSchema, readNationalTaxForm } from "@/lib/nfse/tax-regimes";
 
 async function context() {
   const { session, organization } = await requireOrganization();
@@ -19,6 +20,7 @@ async function context() {
   const [integration] = await db.select().from(organizationFinancialIntegrations).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "nfse"))).limit(1);
   const profile = readNfseProfile(integration?.metadata);
   if (!integration || !profile) throw new Error("Conclua o cadastro fiscal.");
+  if (fiscalChannelFor(profile.municipalityCode, profile.taxRegime) !== "national") throw new Error("Para este perfil de Salvador, utilize o conector municipal de RPS.");
   if (integration.status === "revoked") throw new Error("O uso do certificado foi revogado. Cadastre um A1 autorizado para continuar.");
   const consent = integration.metadata?.certificateConsent as { authorizedAt?: string; revokedAt?: string | null } | undefined;
   if (!consent?.authorizedAt || consent.revokedAt) throw new Error("Atualize o cadastro fiscal e autorize o uso do certificado antes de emitir.");
@@ -31,12 +33,16 @@ async function context() {
 export async function saveNfseDraft(data: FormData) {
   const ctx = await context();
   const field = (key: string) => String(data.get(key) ?? "").trim();
-  if (data.get("fiscalScenarioConfirmed") !== "on") return { error: "Confirme o enquadramento fiscal do piloto com seu contador." };
+  if (data.get("fiscalScenarioConfirmed") !== "on") return { error: "Confirme o enquadramento fiscal e a ausência de retenções, benefícios ou regime especial com seu contador." };
+  const tax = readNationalTaxForm(data, ctx.profile.taxRegime);
+  const hasIbs = ["ibsCst", "ibsClassification", "ibsOperation", "ibsFinalConsumer"].some((key) => field(key));
+  const ibsCbs = hasIbs ? ibsCbsSchema.parse({ cst: field("ibsCst"), classification: field("ibsClassification"), operationIndicator: field("ibsOperation"), finalConsumer: field("ibsFinalConsumer") }) : undefined;
   const row = await ctx.service.draft(ctx.organization.id, field("financialEntryId"), ctx.profile, "sandbox", {
     payerDocument: field("payerDocument").replace(/\D/g, ""), payerName: field("payerName"), description: field("description"),
     serviceCode: field("serviceCode"), municipalServiceCode: field("municipalServiceCode") || undefined, nbs: field("nbs") || undefined,
     competence: field("competence"), amountInCents: Math.round(Number(field("amount").replace(/\./g, "").replace(",", ".")) * 100),
-    totalTaxPercent: Number(field("totalTaxPercent").replace(",", ".")),
+    tax, ibsCbs,
+    address: { street: field("street"), number: field("addressNumber"), district: field("district"), municipalityCode: field("payerMunicipality"), zip: field("zip").replace(/\D/g, "") },
   });
   revalidatePath("/financeiro/nfse");
   if (row.status !== "draft") return { warning: "Já existe uma solicitação para este recebimento. Consulte seu status na lista." };

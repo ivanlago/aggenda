@@ -2,10 +2,12 @@
 
 Implementado localmente, ainda sem transmissão real ou homologação com a Sefaz. Não exige contratação da Focus. O catálogo Focus continua sendo referência comercial de classificação; o transporte deste conector é direto para a prefeitura.
 
+MEI e Simples ME/EPP seguem o canal nacional, sujeito à habilitação e transição. A matriz de cobertura e limites está em `nfse-regimes-tributarios.md`.
+
 ## Escopo implementado
 
 - Geração de XML de lote com um RPS, identificação e numeração informadas pelo operador e assinatura XMLDSig no RPS e no lote.
-- Primeiro cenário: CNPJ de Salvador no Lucro Presumido, operação tributável no município, ISS explicitamente informado entre 2% e 5%, sem retenções, descontos, deduções, incentivos, regime especial, construção civil ou atividade portuária. Não presumir que esse cenário atende todos os serviços de uma clínica.
+- Primeiro cenário: CNPJ de Salvador no Lucro Presumido ou Lucro Real, operação tributável no município, ISS explicitamente informado entre 2% e 5%, sem retenções, descontos, deduções, incentivos, regime especial, construção civil ou atividade portuária. Não presumir que esse cenário atende todos os serviços de uma clínica.
 - O gerador inclui os três campos do schema IBS/CBS atual: `NBS`, `cClassTrib` e `INDOP`, informados explicitamente pelo operador. Não calcula ou presume códigos de classificação pelo regime/CNAE. A aceitação das combinações e a tributação efetiva dependem da conferência fiscal e homologação.
 - SOAP 1.1/1.2, mTLS com A1, tempo e tamanho de resposta limitados, destino de rede fixo no host oficial de homologação. A ação, namespace, operação, parâmetro e resultado devem vir do WSDL conferido; nenhum contrato WCF foi inventado como padrão funcional.
 - Envio do lote e consulta da nota por RPS. Também há geração de consulta de lote/situação por protocolo e operações correspondentes no transporte, para integração após validação do contrato.

@@ -25,7 +25,7 @@ Fontes:
 1. Confirmar o canal efetivo de cada CNPJ, seu credenciamento e o regime com a prefeitura/provedor; revisar as fontes, especialmente a mudança da referência de Lauro de Freitas.
 2. Escolher integração direta ou fornecedor. Para usar a Focus, ainda é necessário contratar/configurar conta, credenciais de API, empresas e ambientes. O catálogo não envia dados à Focus.
 3. O conector direto de Salvador agora tem uma implementação inicial restrita de RPS, assinatura, envio/consulta e cancelamento externo. Ainda exige validar WSDL e leiaute, configurar acesso e homologar. Consulte `nfse-salvador-conector.md`. Para o canal nacional, validar a DPS e as particularidades do contribuinte.
-4. Implementar os enquadramentos ainda ausentes: MEI, Lucro Presumido e Lucro Real, incluindo tributação, retenções e IBS/CBS aplicáveis. O gerador atual continua restrito ao cenário inicial de ME/EPP do Simples.
+4. Os quatro regimes possuem tratamento nacional no cenário local sem retenções; Salvador municipal aceita Presumido/Real e encaminha MEI/Simples ao nacional. Consulte `nfse-regimes-tributarios.md`. Ainda falta implementar operações especiais e homologar as combinações fiscais.
 5. Homologar assinatura, envio, rejeição, recuperação após timeout, consulta, XML/DANFSe e cancelamento no canal permitido. Só então liberar a contratação e a emissão real.
 
 Nenhuma migração nova é necessária para o cadastro preparatório. Nenhuma chamada de emissão ou contratação externa é realizada ao salvá-lo.

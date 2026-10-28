@@ -37,10 +37,10 @@ export function nfseMunicipalityReference(code: string, regime: string) {
     suggestedChannel: regimeTransition ? "national" as const : municipality.channel,
     providerForRegime: regimeTransition ? "Ambiente Nacional — habilitação e transição a confirmar" : municipality.provider,
     regimeNotice: regime === "mei"
-      ? "MEI: a referência é o Emissor Nacional. O piloto do Aggenda ainda não contempla a tributação do MEI."
+      ? "MEI: emissão pelo canal nacional, com indicador próprio e sem totalização percentual do Simples. Fluxo em homologação."
       : regime === "simples_nacional"
         ? "Simples Nacional: confira a transição ao Emissor Nacional e a habilitação do CNPJ. A referência não muda automaticamente o emissor cadastrado."
-        : "Lucro Presumido/Real: cálculo, retenções e campos de IBS/CBS precisam de implementação e homologação no Aggenda.",
+        : "Lucro Presumido/Real: cenários locais sem retenções implementados nos respectivos canais. Combinações fiscais e habilitação do CNPJ ainda exigem homologação.",
     authentication: "Certificado digital; na integração da Focus, modelo A1 da empresa emissora.",
     automaticIssuanceAvailable: false as const,
     reviewedAt: nfseReferenceReviewedAt,

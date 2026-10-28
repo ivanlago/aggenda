@@ -22,7 +22,7 @@ O registro externo guarda os dados de uma nota já emitida e permite abrir seu e
 
 ## Cenário suportado pelo piloto
 
-Simples Nacional ME/EPP com tributos federais e municipais dentro do Simples; operação tributável; prestação no município da clínica; sem retenções, descontos, deduções, benefícios ou regime especial. O usuário informa código nacional, código municipal e NBS quando exigidos, competência e percentual aproximado total dos tributos conforme orientação contábil. O pagador pode diferir do paciente; os campos devem ser revisados.
+MEI, Simples Nacional ME/EPP com tributos federais e municipais dentro do Simples, Lucro Presumido e Lucro Real; operação tributável local, sem retenções, descontos, deduções, benefícios ou regime especial. A matriz e os campos por regime estão em `nfse-regimes-tributarios.md`. O usuário informa código nacional, código municipal e NBS quando exigidos, competência, endereço, códigos e totalização própria de cada regime conforme orientação contábil. O pagador pode diferir do paciente; os campos devem ser revisados.
 
 O grupo IBS/CBS não é gerado. Operações que o exijam, outros regimes e regras municipais específicas dependem de implementação e homologação próprias. Não usar o piloto para presumir o enquadramento fiscal de uma clínica. A série de DPS é configurável entre 1 e 49999, faixa para aplicativos próprios; valor inicial 1. O contador deve confirmar uma série exclusiva para evitar colisões com outros emissores. A antiga série 80001 não deve ser usada pelo aplicativo próprio.
 

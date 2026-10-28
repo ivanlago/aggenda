@@ -1,13 +1,15 @@
 import { saveSalvadorDraft } from "@/actions/nfse-salvador";
 import { ActionForm } from "@/components/action-form";
+import { fiscalRegimeLabels, type FiscalRegime } from "@/lib/nfse/tax-regimes";
 
 type Entry = { id: string; description: string; amount: number; name: string | null; cpf: string | null };
-export function NfseSalvadorPanel({ ready, transportReady, entries, selected }: { ready: boolean; transportReady: boolean; entries: Entry[]; selected?: Entry }) {
+export function NfseSalvadorPanel({ ready, transportReady, entries, selected, regime }: { ready: boolean; transportReady: boolean; entries: Entry[]; selected?: Entry; regime?: FiscalRegime }) {
   return <article className="panel mt-5" aria-labelledby="salvador-pilot-title">
     <h2 id="salvador-pilot-title" className="text-lg font-extrabold">Salvador — piloto municipal de RPS</h2>
-    <p className="mt-2 text-sm text-muted">Primeiro cenário: Lucro Presumido, serviço tributado em Salvador, sem retenções, descontos, deduções, benefícios ou regime especial. Não contempla serviços que exijam dados complementares, como construção civil e atividade portuária.</p>
+    <p className="mt-2 text-sm text-muted">Lucro Presumido e Lucro Real: serviço tributado em Salvador, sem retenções, descontos, deduções, benefícios ou regime especial. MEI e Simples seguem o canal nacional, conforme habilitação e transição do CNPJ. Não contempla serviços que exijam dados complementares, como construção civil e atividade portuária.</p>
+    {regime && <p className="mt-2 text-sm font-bold">Regime do cadastro: {fiscalRegimeLabels[regime]}</p>}
     <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-950">O rascunho inclui NBS, classificação tributária e indicador da operação do XSD IBS/CBS publicado pelo município. Os códigos precisam ser conferidos com o contador. {transportReady ? "Contrato SOAP configurado para homologação; produção continua bloqueada." : "É possível preparar o rascunho com o A1 cadastrado. O envio e as consultas ficam bloqueados até a configuração do WSDL revisado e a confirmação do leiaute em homologação."}</p>
-    {!ready ? <p className="mt-4 text-sm font-bold">Cadastre e autorize um A1 com perfil de Salvador e regime Lucro Presumido para preparar o teste.</p> : <>
+    {!ready ? <p className="mt-4 text-sm font-bold">O RPS municipal exige perfil de Salvador no Lucro Presumido ou Lucro Real e A1 autorizado. Para MEI ou Simples, selecione o piloto nacional.</p> : <>
       <form action="/financeiro/nfse" method="get" className="mt-4 flex flex-wrap items-end gap-3"><input type="hidden" name="modo" value="municipal" /><label className="grid flex-1 gap-2 text-sm font-bold">Recebimento confirmado<select className="field" name="recebimento" defaultValue={selected?.id ?? ""} required><option value="">Selecione</option>{entries.map((entry) => <option key={entry.id} value={entry.id}>{entry.description} · {(entry.amount / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</option>)}</select></label><button className="secondary-button">Preparar RPS</button></form>
       {selected && <ActionForm key={selected.id} action={saveSalvadorDraft} successMessage="Rascunho municipal salvo. Revise a solicitação antes de qualquer envio." resetOnSuccess={false} className="mt-5 grid gap-5">
         <input type="hidden" name="financialEntryId" value={selected.id} />

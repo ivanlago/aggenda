@@ -3,6 +3,7 @@ import { SignedXml } from "xml-crypto";
 import { z } from "zod";
 import type { NfseFiscalProfile } from "../../nfse-routing";
 import { escapeXml } from "../xml";
+import { fiscalChannelFor, fiscalRegimeSchema } from "../tax-regimes";
 
 export const salvadorNamespace = "http://www.abrasf.org.br/ABRASF/arquivos/nfse.xsd";
 const digits = (length: number) => z.string().regex(new RegExp(`^\\d{${length}}$`));
@@ -24,13 +25,15 @@ export const salvadorDraftSchema = z.object({
   amountInCents: z.number().int().positive().max(2_000_000_000),
   // Hundredths of a percentage point, entered explicitly; never infer taxes from regime.
   issRateBasisPoints: z.number().int().min(200).max(500),
-  scenario: z.literal("presumido_local_sem_retencoes"),
+  scenario: z.enum(["presumido_local_sem_retencoes", "local_tributavel_sem_retencoes"]),
+  taxRegime: fiscalRegimeSchema.optional(),
 }).strict();
 export type SalvadorDraft = z.infer<typeof salvadorDraftSchema>;
 export type SalvadorIssuer = Pick<NfseFiscalProfile, "cnpj" | "municipalRegistration" | "municipalityCode" | "taxRegime">;
 
 export function assertSalvadorIssuer(profile: SalvadorIssuer) {
-  if (profile.municipalityCode !== "2927408" || profile.taxRegime !== "lucro_presumido") throw new Error("O conector municipal inicial atende Salvador e Lucro Presumido.");
+  if (profile.municipalityCode !== "2927408") throw new Error("Use o conector municipal somente para Salvador.");
+  if (fiscalChannelFor(profile.municipalityCode, profile.taxRegime) !== "salvador") throw new Error("MEI e Simples Nacional devem seguir o canal nacional, conforme habilitação e transição do CNPJ.");
   if (!/^\d{14}$/.test(profile.cnpj) || !/^\d{1,15}$/.test(profile.municipalRegistration)) throw new Error("Confira CNPJ e inscrição municipal numérica de Salvador.");
 }
 export function salvadorRpsId(profile: SalvadorIssuer, draft: SalvadorDraft) {
@@ -45,6 +48,7 @@ export function rpsIdentity(draft: SalvadorDraft) {
 export function buildSalvadorBatch(profile: SalvadorIssuer, sequence: string, input: SalvadorDraft) {
   assertSalvadorIssuer(profile);
   const draft = salvadorDraftSchema.parse(input);
+  if ((draft.scenario === "presumido_local_sem_retencoes" && profile.taxRegime !== "lucro_presumido") || (draft.scenario === "local_tributavel_sem_retencoes" && draft.taxRegime !== profile.taxRegime) || (draft.taxRegime && draft.taxRegime !== profile.taxRegime)) throw new Error("O regime fiscal do RPS mudou. Atualize o rascunho antes de emitir.");
   if (!/^[1-9]\d{0,14}$/.test(sequence)) throw new Error("Número do lote inválido.");
   const id = salvadorRpsId(profile, draft);
   const amount = (draft.amountInCents / 100).toFixed(2);

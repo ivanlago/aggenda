@@ -3,6 +3,10 @@ import { SignedXml } from "xml-crypto";
 import { z } from "zod";
 import type { NfseFiscalProfile } from "../nfse-routing";
 import type { FiscalEnvironment } from "./government";
+import { fiscalRegimeSchema, nationalTaxSchema, nationalTaxXml, ibsCbsSchema } from "./tax-regimes";
+
+export const fiscalIssuerSchema = z.object({ cnpj: z.string().regex(/^\d{14}$/), municipalityCode: z.string().regex(/^\d{7}$/), municipalRegistration: z.string().max(15), taxRegime: fiscalRegimeSchema }).strict();
+export const payerAddressSchema = z.object({ street: z.string().trim().min(1).max(125), number: z.string().trim().min(1).max(10), district: z.string().trim().min(1).max(60), municipalityCode: z.string().regex(/^\d{7}$/), zip: z.string().regex(/^\d{8}$/) }).strict();
 
 export const fiscalDraftSchema = z.object({
   payerDocument: z.string().regex(/^(\d{11}|\d{14})$/),
@@ -13,9 +17,29 @@ export const fiscalDraftSchema = z.object({
   nbs: z.string().regex(/^\d{9}$/).optional(),
   competence: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((v) => !Number.isNaN(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v),
   amountInCents: z.number().int().positive().max(2_000_000_000),
-  totalTaxPercent: z.number().min(0).max(99.99),
-});
+  totalTaxPercent: z.number().min(0).max(99.99).optional(),
+  tax: nationalTaxSchema.optional(),
+  issuer: fiscalIssuerSchema.optional(),
+  address: payerAddressSchema.optional(),
+  ibsCbs: ibsCbsSchema.optional(),
+}).strict();
 export type FiscalDraft = z.infer<typeof fiscalDraftSchema>;
+export function normalizeFiscalDraft(profile: NfseFiscalProfile, input: FiscalDraft): FiscalDraft {
+  const draft = fiscalDraftSchema.parse(input);
+  let tax = draft.tax;
+  if (!tax) {
+    if (profile.taxRegime !== "simples_nacional" || draft.totalTaxPercent === undefined) throw new Error("Revise o piloto: informe os dados fiscais específicos do regime antes de emitir.");
+    tax = nationalTaxSchema.parse({ regime: "simples_nacional", scenario: "local_tributavel_sem_retencoes", assessment: "1", simpleRateBasisPoints: Math.round(draft.totalTaxPercent * 100) });
+  }
+  if (tax.regime !== profile.taxRegime) throw new Error("O regime fiscal mudou. Atualize o rascunho; o Aggenda não reclassifica a tributação automaticamente.");
+  const issuer = fiscalIssuerSchema.parse({ cnpj: profile.cnpj, municipalityCode: profile.municipalityCode, municipalRegistration: profile.municipalRegistration, taxRegime: profile.taxRegime });
+  if (draft.issuer && Object.keys(issuer).some((key) => draft.issuer![key as keyof typeof issuer] !== issuer[key as keyof typeof issuer])) throw new Error("O cadastro fiscal mudou. Atualize o rascunho antes de emitir.");
+  if (profile.taxRegime !== "simples_nacional" && !draft.address) throw new Error("Informe o endereço nacional do pagador.");
+  if ((profile.taxRegime === "lucro_presumido" || profile.taxRegime === "lucro_real") && draft.competence >= "2026-01-01" && !draft.ibsCbs) throw new Error("Informe os códigos IBS/CBS para o cenário de 2026.");
+  if (draft.ibsCbs && (draft.competence < "2026-01-01" || !draft.nbs)) throw new Error("IBS/CBS exige competência a partir de 2026 e NBS conferido.");
+  nationalTaxXml(tax, draft.amountInCents);
+  return { ...draft, tax, issuer };
+}
 const ns = "http://www.sped.fazenda.gov.br/nfse";
 export const escapeXml = (s: string) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[c]!).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
 
@@ -25,11 +49,14 @@ export function dpsId(profile: NfseFiscalProfile, series: string, number: string
 }
 
 export function buildDps(profile: NfseFiscalProfile, environment: FiscalEnvironment, series: string, number: string, input: FiscalDraft, now = new Date()) {
-  const draft = fiscalDraftSchema.parse(input);
-  // Initial supported fiscal scenario is explicit. Other regimes require dedicated rules.
-  if (profile.taxRegime !== "simples_nacional") throw new Error("O piloto atende Simples Nacional, sem retenções, benefícios ou regime especial. Outros enquadramentos precisam de análise fiscal.");
+  const draft = normalizeFiscalDraft(profile, input);
+  const taxation = nationalTaxXml(draft.tax!, draft.amountInCents);
   const id = dpsId(profile, series, number);
-  const xml = `<DPS xmlns="${ns}" versao="1.01"><infDPS Id="${id}"><tpAmb>${environment === "production" ? 1 : 2}</tpAmb><dhEmi>${now.toISOString().replace(/\.\d{3}Z$/, "+00:00")}</dhEmi><verAplic>Aggenda_1.0</verAplic><serie>${Number(series)}</serie><nDPS>${number}</nDPS><dCompet>${draft.competence}</dCompet><tpEmit>1</tpEmit><cLocEmi>${profile.municipalityCode}</cLocEmi><prest><CNPJ>${profile.cnpj}</CNPJ><IM>${escapeXml(profile.municipalRegistration)}</IM><regTrib><opSimpNac>3</opSimpNac><regApTribSN>1</regApTribSN><regEspTrib>0</regEspTrib></regTrib></prest><toma><${draft.payerDocument.length === 11 ? "CPF" : "CNPJ"}>${draft.payerDocument}</${draft.payerDocument.length === 11 ? "CPF" : "CNPJ"}><xNome>${escapeXml(draft.payerName)}</xNome></toma><serv><locPrest><cLocPrestacao>${profile.municipalityCode}</cLocPrestacao></locPrest><cServ><cTribNac>${draft.serviceCode}</cTribNac>${draft.municipalServiceCode ? `<cTribMun>${draft.municipalServiceCode}</cTribMun>` : ""}<xDescServ>${escapeXml(draft.description)}</xDescServ>${draft.nbs ? `<cNBS>${draft.nbs}</cNBS>` : ""}</cServ></serv><valores><vServPrest><vServ>${(draft.amountInCents / 100).toFixed(2)}</vServ></vServPrest><trib><tribMun><tribISSQN>1</tribISSQN><tpRetISSQN>1</tpRetISSQN></tribMun><totTrib><pTotTribSN>${draft.totalTaxPercent.toFixed(2)}</pTotTribSN></totTrib></trib></valores></infDPS></DPS>`;
+  const registration = profile.taxRegime !== "mei" && profile.municipalRegistration ? '<IM>' + escapeXml(profile.municipalRegistration) + '</IM>' : '';
+  const address = draft.address ? '<end><endNac><cMun>' + draft.address.municipalityCode + '</cMun><CEP>' + draft.address.zip + '</CEP></endNac><xLgr>' + escapeXml(draft.address.street) + '</xLgr><nro>' + escapeXml(draft.address.number) + '</nro><xBairro>' + escapeXml(draft.address.district) + '</xBairro></end>' : '';
+  const ibs = draft.ibsCbs ? '<IBSCBS><finNFSe>0</finNFSe><indFinal>' + draft.ibsCbs.finalConsumer + '</indFinal><cIndOp>' + draft.ibsCbs.operationIndicator + '</cIndOp><indDest>0</indDest><valores><trib><gIBSCBS><CST>' + draft.ibsCbs.cst + '</CST><cClassTrib>' + draft.ibsCbs.classification + '</cClassTrib></gIBSCBS></trib></valores></IBSCBS>' : '';
+  const xml = `<DPS xmlns="${ns}" versao="1.01"><infDPS Id="${id}"><tpAmb>${environment === "production" ? 1 : 2}</tpAmb><dhEmi>${now.toISOString().replace(/\.\d{3}Z$/, "+00:00")}</dhEmi><verAplic>Aggenda_1.0</verAplic><serie>${Number(series)}</serie><nDPS>${number}</nDPS><dCompet>${draft.competence}</dCompet><tpEmit>1</tpEmit><cLocEmi>${profile.municipalityCode}</cLocEmi><prest><CNPJ>${profile.cnpj}</CNPJ>${registration}<regTrib>${taxation.issuer}</regTrib></prest><toma><${draft.payerDocument.length === 11 ? "CPF" : "CNPJ"}>${draft.payerDocument}</${draft.payerDocument.length === 11 ? "CPF" : "CNPJ"}><xNome>${escapeXml(draft.payerName)}</xNome>${address}</toma><serv><locPrest><cLocPrestacao>${profile.municipalityCode}</cLocPrestacao></locPrest><cServ><cTribNac>${draft.serviceCode}</cTribNac>${draft.municipalServiceCode ? `<cTribMun>${draft.municipalServiceCode}</cTribMun>` : ""}<xDescServ>${escapeXml(draft.description)}</xDescServ>${draft.nbs ? `<cNBS>${draft.nbs}</cNBS>` : ""}</cServ></serv><valores><vServPrest><vServ>${(draft.amountInCents / 100).toFixed(2)}</vServ></vServPrest>${taxation.values}</valores>${ibs}</infDPS></DPS>`;
+
   return { id, xml };
 }
 

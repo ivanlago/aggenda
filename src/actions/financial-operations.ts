@@ -57,7 +57,7 @@ export async function saveNfseFiscalProfile(data: FormData) {
   if (data.get("authorizeCertificate") !== "on") return { error: "Autorize a custódia e o uso do A1 para as operações fiscais desta clínica." };
   if (value(data, "environment") === "production") throw new Error("Produção aguarda homologação fiscal do Aggenda. Configure o ambiente de testes.");
   if (cnpj.length !== 14) throw new Error("Informe um CNPJ válido.");
-  if (!municipalRegistration) throw new Error("Informe a inscrição municipal.");
+  if (!municipalRegistration && municipalityCode === "2927408" && (taxRegime === "lucro_presumido" || taxRegime === "lucro_real")) throw new Error("Informe a inscrição municipal para o conector municipal de Salvador.");
   if (municipalityCode.length !== 7) throw new Error("Informe o código IBGE do município com 7 dígitos.");
   if (!["simples_nacional", "lucro_presumido", "lucro_real", "mei"].includes(taxRegime)) throw new Error("Regime tributário inválido.");
   if (!(certificate instanceof File) || !certificate.size || certificate.size > 5_000_000 || !/\.(pfx|p12)$/i.test(certificate.name)) throw new Error("Envie um certificado A1 .pfx ou .p12 de até 5 MB.");

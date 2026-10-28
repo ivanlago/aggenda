@@ -1,6 +1,9 @@
 import { NfseEmissionOptions } from "@/components/nfse-emission-options";
 import { NfseRegionalOnboarding } from "@/components/nfse-regional-onboarding";
 import { NfseSalvadorPanel } from "@/components/nfse-salvador-panel";
+import { NfseTaxFields } from "@/components/nfse-tax-fields";
+import { NfseTaxReview } from "@/components/nfse-tax-review";
+import { fiscalChannelFor, fiscalRegimeLabels } from "@/lib/nfse/tax-regimes";
 import { consultSalvadorNfse, submitSalvadorNfse } from "@/actions/nfse-salvador";
 import { isSalvadorRequest, salvadorStoredDraftSchema } from "@/lib/nfse/salvador/service";
 import { readSalvadorSandboxContract } from "@/lib/nfse/salvador/transport";
@@ -44,15 +47,15 @@ export default async function NfsePage({ searchParams }: { searchParams: Promise
   const integration = integrations[0];
   const onboarding = readNfseOnboarding(integration?.metadata);
   const profile = readNfseProfile(integration?.metadata);
-  const mode = nfseEmissionMode(query.modo ?? (profile?.municipalityCode === "2927408" && profile.taxRegime === "lucro_presumido" ? "municipal" : undefined), Boolean(profile));
+  const mode = nfseEmissionMode(query.modo ?? (profile && fiscalChannelFor(profile.municipalityCode, profile.taxRegime) === "salvador" ? "municipal" : undefined), Boolean(profile));
   const selected = entries.find((entry) => entry.id === query.recebimento);
   const daysLeft = profile?.certificateExpiresAt ? Math.ceil((Date.parse(profile.certificateExpiresAt) - new Date().getTime()) / 86400000) : null;
   const vaultConfigured = Boolean(process.env.NFSE_STORAGE_KEYS && process.env.NFSE_STORAGE_ACTIVE_KEY);
   const consent = integration?.metadata?.certificateConsent as { authorizedAt?: string; revokedAt?: string | null } | undefined;
   const pilotReady = profile && integration?.status !== "revoked" && integration?.environment === "sandbox" && daysLeft !== null && daysLeft > 0 && vaultConfigured && consent?.authorizedAt && !consent.revokedAt;
   const salvadorTransportReady = Boolean(readSalvadorSandboxContract());
-  const salvadorReady = Boolean(pilotReady && integration?.status === "configured" && profile?.municipalityCode === "2927408" && profile.taxRegime === "lucro_presumido");
-  const nationalReady = Boolean(pilotReady && profile?.taxRegime === "simples_nacional");
+  const salvadorReady = Boolean(pilotReady && integration?.status === "configured" && profile && fiscalChannelFor(profile.municipalityCode, profile.taxRegime) === "salvador");
+  const nationalReady = Boolean(pilotReady && profile && fiscalChannelFor(profile.municipalityCode, profile.taxRegime) === "national");
   return <div className="page-wrap">
     <Link className="mb-4 inline-flex text-sm font-bold text-brand" href="/financeiro">← Voltar ao financeiro</Link>
     <PageHeader eyebrow="Financeiro" title="Emissão de NFS-e" description="Configure a clínica, revise os dados e acompanhe cada solicitação fiscal." />
@@ -74,10 +77,10 @@ export default async function NfsePage({ searchParams }: { searchParams: Promise
       </div>}
       {integration && configure && <details className="mt-5" open={!profile}><summary className="cursor-pointer font-bold">{profile ? "Atualizar dados ou renovar certificado" : "Cadastrar dados fiscais e A1"}</summary><ActionForm action={saveNfseFiscalProfile} successMessage="Certificado conferido e cadastro salvo." className="mt-4 grid gap-3 md:grid-cols-2">
         <fieldset disabled={!vaultConfigured} className="contents"><label className="grid gap-2 text-sm font-bold">CNPJ<input className="field" name="cnpj" defaultValue={profile?.cnpj ?? onboarding?.cnpj} required /></label>
-        <label className="grid gap-2 text-sm font-bold">Inscrição municipal<input className="field" name="municipalRegistration" defaultValue={profile?.municipalRegistration ?? onboarding?.municipalRegistration} required /></label>
+        <label className="grid gap-2 text-sm font-bold">Inscrição municipal<input className="field" name="municipalRegistration" maxLength={15} defaultValue={profile?.municipalRegistration ?? onboarding?.municipalRegistration} /><span className="text-xs font-normal text-muted">Obrigatória no RPS municipal de Salvador. No nacional, informe somente se cadastrada no CNC; para MEI o XML não envia IM.</span></label>
         <label className="grid gap-2 text-sm font-bold">Código IBGE do município<input className="field" name="municipalityCode" list="pilot-municipalities" defaultValue={profile?.municipalityCode ?? onboarding?.municipalityCode} required pattern="[0-9]{7}" /><datalist id="pilot-municipalities"><option value="2927408">Salvador — BA</option><option value="2919207">Lauro de Freitas — BA</option></datalist><span className="text-xs font-normal text-muted">A habilitação precisa ser validada para cada clínica.</span></label>
         {mode === "municipal" ? <input type="hidden" name="dpsSeries" value={profile?.dpsSeries ?? "1"} /> : <label className="grid gap-2 text-sm font-bold">Série da DPS<input className="field" name="dpsSeries" defaultValue={profile?.dpsSeries ?? "1"} required type="number" min={1} max={49999} /><span className="text-xs font-normal text-muted">Confirme com o contador uma série exclusiva para o Aggenda.</span></label>}
-        <label className="grid gap-2 text-sm font-bold">Regime tributário<select className="field" name="taxRegime" defaultValue={profile?.taxRegime ?? onboarding?.taxRegime ?? "simples_nacional"}><option value="simples_nacional">Simples Nacional</option><option value="lucro_presumido">Lucro Presumido — piloto restrito de Salvador</option><option value="lucro_real">Lucro Real (sob análise)</option><option value="mei">MEI (sob análise)</option></select></label>
+        <label className="grid gap-2 text-sm font-bold">Regime tributário<select className="field" name="taxRegime" defaultValue={profile?.taxRegime ?? onboarding?.taxRegime ?? "simples_nacional"}>{Object.entries(fiscalRegimeLabels).map(([key, label]) => <option key={key} value={key}>{label} — homologação</option>)}</select></label>
         <input type="hidden" name="environment" value="sandbox" />
         <label className="grid gap-2 text-sm font-bold">Certificado A1 da clínica (.pfx ou .p12)<input className="field" name="certificate" type="file" accept=".pfx,.p12" required /></label>
         <label className="grid gap-2 text-sm font-bold">Senha do A1<input className="field" name="certificatePassword" type="password" autoComplete="off" required /></label>
@@ -85,7 +88,7 @@ export default async function NfsePage({ searchParams }: { searchParams: Promise
       </ActionForm></details>}
       {configure && profile && integration?.status !== "revoked" && <details className="mt-4"><summary className="cursor-pointer font-bold">Interromper o uso e remover o A1</summary><ActionForm action={revokeNfseCertificate} successMessage="Certificado removido do cadastro ativo. Novas operações foram interrompidas." className="mt-3 grid gap-3"><p className="text-sm text-muted">Isso não cancela notas nem revoga o certificado na certificadora. Solicitações já iniciadas podem concluir. Cópias de backup seguem a política de retenção.</p><label className="flex gap-2 text-sm"><input name="confirmRevocation" type="checkbox" required />Confirmo a remoção do A1 e a interrupção de novas operações.</label><button className="secondary-button">Remover A1 do cadastro ativo</button></ActionForm></details>}
     </article>}
-    {mode === "municipal" && manage && <NfseSalvadorPanel ready={salvadorReady} transportReady={salvadorTransportReady} entries={entries} selected={selected} />}
+    {mode === "municipal" && manage && <NfseSalvadorPanel ready={salvadorReady} transportReady={salvadorTransportReady} entries={entries} selected={selected} regime={profile?.taxRegime} />}
     {mode === "a1" && nationalReady && manage && <article className="panel mt-5"><h2 className="text-lg font-extrabold">Preparar nota de teste</h2><p className="mt-1 text-sm text-muted">Escolha um recebimento para aproveitar os dados do paciente. Confira quem é o pagador antes de emitir.</p>
       <form className="mt-4 flex flex-wrap items-end gap-3" action="/financeiro/nfse" method="get"><input type="hidden" name="modo" value="a1" /><label className="grid flex-1 gap-2 text-sm font-bold">Recebimento<select className="field" name="recebimento" defaultValue={selected?.id ?? ""} required><option value="">Selecione um recebimento confirmado</option>{entries.map((entry) => <option key={entry.id} value={entry.id}>{entry.description} · {money(entry.amount)}</option>)}</select></label><button className="secondary-button">Preparar nota deste recebimento</button></form>
       {!entries.length && <p className="mt-3 text-sm text-muted">Nenhum recebimento confirmado disponível.</p>}
@@ -97,10 +100,17 @@ export default async function NfsePage({ searchParams }: { searchParams: Promise
         <label className="grid gap-2 text-sm font-bold">Competência<input className="field" name="competence" type="date" defaultValue={organizationDate(new Date(), organization.timezone)} required /></label>
         <label className="grid gap-2 text-sm font-bold">Código nacional do serviço<input className="field" name="serviceCode" pattern="[0-9]{6}" required placeholder="6 dígitos · confirme com o contador" /></label>
         <label className="grid gap-2 text-sm font-bold">Código municipal (quando exigido)<input className="field" name="municipalServiceCode" pattern="[0-9]{3}" /></label>
-        <label className="grid gap-2 text-sm font-bold">Código NBS (quando exigido)<input className="field" name="nbs" pattern="[0-9]{9}" /></label>
-        <label className="grid gap-2 text-sm font-bold">Total aproximado de tributos do Simples (%)<input className="field" name="totalTaxPercent" inputMode="decimal" required placeholder="Informe conforme orientação contábil" /></label>
+        <label className="grid gap-2 text-sm font-bold">Código NBS (obrigatório com IBS/CBS)<input className="field" name="nbs" pattern="[0-9]{9}" required={profile?.taxRegime === "lucro_presumido" || profile?.taxRegime === "lucro_real"} /></label>
+        <fieldset className="grid gap-3 rounded-xl border p-4 md:col-span-2 md:grid-cols-2"><legend className="px-1 font-bold">Endereço nacional do pagador</legend>
+          <label className="grid gap-2 text-sm font-bold">Logradouro<input className="field" name="street" maxLength={125} required /></label>
+          <label className="grid gap-2 text-sm font-bold">Número<input className="field" name="addressNumber" maxLength={10} required /></label>
+          <label className="grid gap-2 text-sm font-bold">Bairro<input className="field" name="district" maxLength={60} required /></label>
+          <label className="grid gap-2 text-sm font-bold">Município (IBGE)<input className="field" name="payerMunicipality" pattern="[0-9]{7}" required /></label>
+          <label className="grid gap-2 text-sm font-bold">CEP<input className="field" name="zip" maxLength={9} required /></label>
+        </fieldset>
+        <NfseTaxFields regime={profile!.taxRegime} />
         <label className="grid gap-2 text-sm font-bold md:col-span-2">Descrição fiscal do serviço<textarea className="field" name="description" required minLength={3} maxLength={2000} placeholder="Descreva o serviço sem dados clínicos do paciente." /></label>
-        <label className="flex items-start gap-2 text-sm md:col-span-2"><input type="checkbox" name="fiscalScenarioConfirmed" required /><span>Confirmei com o contador: Simples Nacional sem sublimites excedidos, serviço prestado no município da clínica, operação tributável, sem retenções, descontos, benefícios ou regime especial. Este piloto não contempla operações que exijam informações adicionais de IBS/CBS.</span></label><button className="primary-button">Preparar rascunho para revisão</button>
+        <label className="flex items-start gap-2 text-sm md:col-span-2"><input type="checkbox" name="fiscalScenarioConfirmed" required /><span>Confirmei com o contador o regime do cadastro, os valores e códigos. Serviço local tributável, sem retenções, descontos, deduções, benefícios ou regime especial. No Simples, tributos federais e ISS são apurados pelo regime 1. Os grupos especiais de IBS/CBS ainda não estão contemplados.</span></label><button className="primary-button">Preparar rascunho para revisão</button>
       </ActionForm>}
     </article>}
     <article className="panel mt-5"><h2 className="text-lg font-extrabold">Solicitações recentes</h2><p className="mt-1 text-sm text-muted">Homologação não consome a franquia de produção. Em caso de falha, consulte a mesma solicitação.</p>
@@ -113,8 +123,9 @@ export default async function NfsePage({ searchParams }: { searchParams: Promise
         const canOperate = manage && (municipal ? salvadorReady && salvadorTransportReady : nationalReady);
         return <section className="rounded-2xl border p-4" key={request.id}>
           <div className="flex flex-wrap justify-between gap-2"><strong>{labels[request.status] ?? "Em análise"}{request.number ? ` · Nota ${request.number}` : ""}</strong><span>{money(request.amountInCents)} · {request.environment === "sandbox" ? "Teste" : "Produção"}</span></div>
-          <p className="mt-2 text-sm">{draft.payerName} · documento final {draft.payerDocument.slice(-4)} · {"issuedAt" in draft ? `emissão ${draft.issuedAt}` : `competência ${draft.competence}`}</p><p className="mt-1 text-sm">{draft.description}</p><p className="mt-1 text-xs text-muted">{"itemList" in draft ? `Serviço ${draft.itemList} · ISS ${draft.issRateBasisPoints / 100}% · Salvador municipal` : `Serviço ${draft.serviceCode} · tributos aproximados ${draft.totalTaxPercent}%`}</p><p className="mt-2 break-all text-xs text-muted">{municipal ? "RPS municipal" : "DPS"}: {request.dpsId}</p>
+          <p className="mt-2 text-sm">{draft.payerName} · documento final {draft.payerDocument.slice(-4)} · {"issuedAt" in draft ? `emissão ${draft.issuedAt}` : `competência ${draft.competence}`}</p><p className="mt-1 text-sm">{draft.description}</p><p className="mt-1 text-xs text-muted">{"itemList" in draft ? `Serviço ${draft.itemList} · ISS ${draft.issRateBasisPoints / 100}% · Salvador municipal` : `Serviço ${draft.serviceCode} · ${draft.tax ? fiscalRegimeLabels[draft.tax.regime] : "Simples — rascunho anterior"}`}</p><p className="mt-2 break-all text-xs text-muted">{municipal ? "RPS municipal" : "DPS"}: {request.dpsId}</p>
           {request.message && <p className="mt-2 text-sm" role="status">{request.message}</p>}
+          {!("itemList" in draft) && <NfseTaxReview draft={draft} />}
           {request.status === "rejected" && <p className="mt-2 text-sm">Revise os dados e prepare um novo rascunho a partir do recebimento. A tentativa rejeitada será preservada.</p>}
           {municipal && !salvadorTransportReady && <p className="mt-3 text-sm text-amber-900">Envio e consulta aguardam configuração do contrato SOAP e confirmação do leiaute municipal.</p>}
           {canOperate && request.status === "draft" && <ActionForm action={municipal ? submitSalvadorNfse : submitNfse} successMessage="Envio processado. Confira o status da solicitação." className="mt-3 grid gap-3"><input type="hidden" name="id" value={request.id} /><label className="flex gap-2 text-sm"><input type="checkbox" name="confirmIssue" required />Revisei o pagador, serviço, valor e tributação. Confirmo a emissão em homologação, sem validade fiscal.</label><button className="primary-button">Assinar e emitir nota de teste</button></ActionForm>}

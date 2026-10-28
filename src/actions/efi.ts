@@ -1,7 +1,9 @@
 "use server";
 
+import { managedChargeStatuses } from "@/lib/finance-view";
+
 import { randomBytes } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/db";
@@ -66,7 +68,7 @@ export async function createEfiCharge(data: FormData) {
   if (customerName.length < 2 || ![11, 14].includes(customerDocument.length)) return { error: "Informe nome e CPF/CNPJ do pagador." };
   const [entry] = await db.select({ id: financialEntries.id, description: financialEntries.description, amountInCents: financialEntries.amountInCents, dueDate: financialEntries.dueDate, clientId: financialEntries.clientId, clientEmail: clients.email, clientPhone: clients.phone }).from(financialEntries).leftJoin(clients, eq(clients.id, financialEntries.clientId)).where(and(eq(financialEntries.id, financialEntryId), eq(financialEntries.organizationId, organization.id), eq(financialEntries.type, "receivable"), eq(financialEntries.status, "pending"))).limit(1);
   if (!entry) return { error: "Selecione uma conta a receber pendente." };
-  const [active] = await db.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.financialEntryId, entry.id), eq(paymentCharges.status, "pending"))).orderBy(desc(paymentCharges.createdAt)).limit(1); if (active) return { error: "Este lançamento já possui um pagamento pendente." };
+  const [active] = await db.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.financialEntryId, entry.id), inArray(paymentCharges.status, managedChargeStatuses))).orderBy(desc(paymentCharges.createdAt)).limit(1); if (active) return { error: "Este lançamento já possui uma cobrança online vinculada. Acompanhe-a em Cobranças." };
   const credential = await getEfiCredential(organization.id); const chargeId = crypto.randomUUID(); const txid = chargeId.replace(/-/g, "").slice(0, 32); const expiration = Math.max(60, Math.floor((new Date(`${entry.dueDate}T23:59:59-03:00`).getTime() - Date.now()) / 1000));
   let cob: Cob; let qr: QrCode;
   try { cob = await efiRequest<Cob>(`/v2/cob/${txid}`, credential, { method: "PUT", body: { calendario: { expiracao: expiration }, devedor: customerDocument.length === 11 ? { cpf: customerDocument, nome: customerName } : { cnpj: customerDocument, nome: customerName }, valor: { original: (entry.amountInCents / 100).toFixed(2) }, chave: credential.pixKey, solicitacaoPagador: entry.description.slice(0, 140), infoAdicionais: [{ nome: "Aggenda", valor: `charge:${chargeId}` }] } }); if (!cob.loc?.id) throw new Error("A Efí não retornou a localização do QR Code."); qr = await efiRequest<QrCode>(`/v2/loc/${cob.loc.id}/qrcode`, credential); }

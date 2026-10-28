@@ -1,5 +1,7 @@
 "use server";
 
+import { managedChargeStatuses } from "@/lib/finance-view";
+
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -54,7 +56,7 @@ async function createMercadoPagoCharge(data: FormData) {
   const financialEntryId = text(data, "financialEntryId"); const customerName = text(data, "customerName"); const customerEmail = text(data, "customerEmail");
   const [entry] = await db.select({ id: financialEntries.id, description: financialEntries.description, amountInCents: financialEntries.amountInCents, dueDate: financialEntries.dueDate, clientId: financialEntries.clientId, clientEmail: clients.email, clientPhone: clients.phone }).from(financialEntries).leftJoin(clients, eq(clients.id, financialEntries.clientId)).where(and(eq(financialEntries.id, financialEntryId), eq(financialEntries.organizationId, organization.id), eq(financialEntries.type, "receivable"), eq(financialEntries.status, "pending"))).limit(1);
   if (!entry || customerName.length < 2) return { error: "Selecione uma conta a receber e informe o pagador." };
-  const [active] = await db.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.financialEntryId, entry.id), eq(paymentCharges.status, "pending"))).orderBy(desc(paymentCharges.createdAt)).limit(1); if (active) return { error: "Este lançamento já possui um pagamento pendente." };
+  const [active] = await db.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.financialEntryId, entry.id), inArray(paymentCharges.status, managedChargeStatuses))).orderBy(desc(paymentCharges.createdAt)).limit(1); if (active) return { error: "Este lançamento já possui uma cobrança online vinculada. Acompanhe-a em Cobranças." };
   const credential = await getMercadoPagoCredential(organization.id); const chargeId = crypto.randomUUID();
   let preference: MpPreference; try { preference = await mercadoPagoRequest<MpPreference>("/checkout/preferences", credential.accessToken, { method: "POST", idempotencyKey: chargeId, body: { items: [{ id: entry.id, title: entry.description.slice(0, 120), quantity: 1, currency_id: "BRL", unit_price: entry.amountInCents / 100 }], payer: { name: customerName, email: customerEmail || entry.clientEmail || undefined }, external_reference: `charge:${chargeId}`, notification_url: `${appUrl()}/api/webhooks/mercado-pago?organizationId=${organization.id}`, back_urls: { success: `${appUrl()}/financeiro/cobrancas`, pending: `${appUrl()}/financeiro/cobrancas`, failure: `${appUrl()}/financeiro/cobrancas` }, auto_return: "approved", expires: true, expiration_date_to: `${entry.dueDate}T23:59:59.000-03:00` } }); } catch (error) { return { error: error instanceof Error ? error.message : "Não foi possível criar o checkout Mercado Pago." }; }
   const invoiceUrl = credential.environment === "production" ? preference.init_point : preference.sandbox_init_point ?? preference.init_point;

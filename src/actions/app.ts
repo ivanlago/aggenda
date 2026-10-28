@@ -6,7 +6,7 @@ import { assertProfessionalCapacity } from "@/lib/commercial-access";
 import { serviceDeletionError } from "@/lib/service-deletion";
 import { roomBookingError } from "@/lib/room-errors";
 
-import { and, eq, ilike, inArray, isNull } from "drizzle-orm";
+import { and, eq, ilike, inArray, isNull, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -22,6 +22,8 @@ import {
   clientPackages,
   packageUsages,
   financialEntries,
+  paymentCharges,
+  retailSales,
   financialAccounts,
   financialCategories,
   financialCostCenters,
@@ -46,6 +48,7 @@ import {
   specialties,
   users,
 } from "@/db/schema";
+import { managedChargeStatuses } from "@/lib/finance-view";
 import { auth } from "@/lib/auth";
 import { requireClinicalClient } from "@/lib/clinical-access";
 import { requireOrganization, requireProfessionalScope, requireSession } from "@/lib/session";
@@ -1159,6 +1162,10 @@ export async function updateFinancialEntryStatus(formData: FormData) {
   if (!current) throw new Error("Lançamento financeiro não encontrado.");
   if (current.source === "commission_payment") throw new Error("Gerencie esta quitação pela tela de comissões para preservar o saldo e o histórico.");
   if (current.source === "retail_sale") throw new Error("Gerencie o recebimento pela venda no PDV. Pagamentos integrados dependem da confirmação do provedor.");
+  const [linkedCharge] = await db.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.organizationId, organization.id), eq(paymentCharges.financialEntryId, id), inArray(paymentCharges.status, managedChargeStatuses))).limit(1);
+  if (linkedCharge) throw new Error("Esta conta possui uma cobrança online vinculada. Gerencie o recebimento pela cobrança para preservar a confirmação do provedor.");
+  const [linkedSale] = await db.select({ id: retailSales.id }).from(retailSales).where(and(eq(retailSales.organizationId, organization.id), or(eq(retailSales.financialEntryId, id), eq(retailSales.appointmentFinancialEntryId, id)))).limit(1);
+  if (linkedSale) throw new Error("Gerencie o recebimento pela venda no PDV.");
   const status = requestedStatus === "realized"
     ? (current.type === "payable" ? "paid" : "received")
     : requestedStatus;
@@ -1167,7 +1174,7 @@ export async function updateFinancialEntryStatus(formData: FormData) {
   await db.update(financialEntries).set({
     status,
     realizedDate: isRealized ? (optionalText(formData, "realizedDate") ?? organizationDate(new Date(), organization.timezone)) : null,
-    paymentMethod: isRealized ? optionalText(formData, "paymentMethod") : null,
+    ...(formData.has("paymentMethod") ? { paymentMethod: isRealized ? optionalText(formData, "paymentMethod") : null } : {}),
     updatedAt: new Date(),
   }).where(and(eq(financialEntries.id, id), eq(financialEntries.organizationId, organization.id)));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: `status:${status}`, entityType: "financial_entry", entityId: id });
@@ -1178,6 +1185,10 @@ export async function deleteFinancialEntry(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "finance.manage");
   const id = textValue(formData, "id");
+  const [linkedCharge] = await db.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.organizationId, organization.id), eq(paymentCharges.financialEntryId, id), inArray(paymentCharges.status, managedChargeStatuses))).limit(1);
+  if (linkedCharge) throw new Error("Esta conta possui uma cobrança online vinculada. Gerencie o recebimento pela cobrança para preservar a confirmação do provedor.");
+  const [linkedSale] = await db.select({ id: retailSales.id }).from(retailSales).where(and(eq(retailSales.organizationId, organization.id), or(eq(retailSales.financialEntryId, id), eq(retailSales.appointmentFinancialEntryId, id)))).limit(1);
+  if (linkedSale) throw new Error("Gerencie o recebimento pela venda no PDV.");
   const [deleted] = await db.delete(financialEntries).where(and(
     eq(financialEntries.id, id),
     eq(financialEntries.organizationId, organization.id),

@@ -1,7 +1,9 @@
 "use server";
 
+import { managedChargeStatuses } from "@/lib/finance-view";
+
 import { randomBytes } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { clients, financialEntries, organizationFinancialIntegrations, outboxEvents, paymentChargeEvents, paymentCharges, whatsappChannels } from "@/db/schema";
@@ -99,8 +101,8 @@ export async function createFinancialCharge(data: FormData) {
   if (customerName.length < 2 || ![11, 14].includes(customerDocument.length)) return { error: "Informe nome e CPF/CNPJ do pagador." };
   const [entry] = await db.select({ id: financialEntries.id, type: financialEntries.type, status: financialEntries.status, description: financialEntries.description, amountInCents: financialEntries.amountInCents, dueDate: financialEntries.dueDate, clientId: financialEntries.clientId, clientEmail: clients.email, clientPhone: clients.phone }).from(financialEntries).leftJoin(clients, eq(clients.id, financialEntries.clientId)).where(and(eq(financialEntries.id, financialEntryId), eq(financialEntries.organizationId, organization.id))).limit(1);
   if (!entry || entry.type !== "receivable" || entry.status !== "pending") return { error: "Selecione uma conta a receber pendente." };
-  const [active] = await db.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.financialEntryId, entry.id), eq(paymentCharges.status, "pending"))).orderBy(desc(paymentCharges.createdAt)).limit(1);
-  if (active) return { error: "Este lançamento já possui uma cobrança pendente." };
+  const [active] = await db.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.financialEntryId, entry.id), inArray(paymentCharges.status, managedChargeStatuses))).orderBy(desc(paymentCharges.createdAt)).limit(1);
+  if (active) return { error: "Este lançamento já possui uma cobrança online vinculada. Acompanhe-a em Cobranças." };
   let credential: Credential; try { credential = await getOrganizationAsaasCredential(organization.id); } catch (error) { return { error: errorMessage(error, "Conecte a conta Asaas.") }; }
   const chargeId = crypto.randomUUID(); let customerId: string;
   try { customerId = await ensureCustomer(credential, { name: customerName, cpfCnpj: customerDocument, email: customerEmail ?? entry.clientEmail ?? undefined, phone: customerPhone ?? entry.clientPhone ?? undefined }); } catch (error) { return { error: errorMessage(error, "Não foi possível cadastrar o pagador.") }; }

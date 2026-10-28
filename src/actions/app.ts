@@ -1062,9 +1062,9 @@ export async function createFinancialEntry(formData: FormData) {
   }
   const accountId = optionalText(formData, "accountId"); const categoryId = optionalText(formData, "categoryId"); const costCenterId = optionalText(formData, "costCenterId");
   const [account, category, costCenter] = await Promise.all([
-    accountId ? db.select({ id: financialAccounts.id }).from(financialAccounts).where(and(eq(financialAccounts.id, accountId), eq(financialAccounts.organizationId, organization.id))).limit(1) : [],
-    categoryId ? db.select({ id: financialCategories.id, name: financialCategories.name }).from(financialCategories).where(and(eq(financialCategories.id, categoryId), eq(financialCategories.organizationId, organization.id), eq(financialCategories.type, type))).limit(1) : [],
-    costCenterId ? db.select({ id: financialCostCenters.id }).from(financialCostCenters).where(and(eq(financialCostCenters.id, costCenterId), eq(financialCostCenters.organizationId, organization.id))).limit(1) : [],
+    accountId ? db.select({ id: financialAccounts.id }).from(financialAccounts).where(and(eq(financialAccounts.id, accountId), eq(financialAccounts.isActive, true), eq(financialAccounts.organizationId, organization.id))).limit(1) : [],
+    categoryId ? db.select({ id: financialCategories.id, name: financialCategories.name }).from(financialCategories).where(and(eq(financialCategories.id, categoryId), eq(financialCategories.isActive, true), eq(financialCategories.organizationId, organization.id), eq(financialCategories.type, type))).limit(1) : [],
+    costCenterId ? db.select({ id: financialCostCenters.id }).from(financialCostCenters).where(and(eq(financialCostCenters.id, costCenterId), eq(financialCostCenters.isActive, true), eq(financialCostCenters.organizationId, organization.id))).limit(1) : [],
   ]);
   if ((accountId && !account.length) || (categoryId && !category.length) || (costCenterId && !costCenter.length)) throw new Error("Conta, categoria ou centro de custo inválido.");
   const totalEntries = Math.max(installmentCount, recurrenceMonths); const groupId = totalEntries > 1 ? crypto.randomUUID() : null;

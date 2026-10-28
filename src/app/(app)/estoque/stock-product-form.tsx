@@ -1,51 +1,51 @@
 "use client";
 
-import { PaginatedCollection } from "@/components/paginated-collection";
-
-
-import { Plus, Tags, X } from "lucide-react";
-import { useMemo, useState } from "react";
-
-import { createInventoryCategory, createInventorySubcategory } from "@/actions/inventory";
-import { createRetailProduct } from "@/actions/retail";
+import { useState } from "react";
+import { createRetailProduct, updateRetailVariant } from "@/actions/retail";
 import { ActionForm } from "@/components/action-form";
 import { EntityImageField } from "@/components/entity-image-field";
+import { ModalShell } from "@/components/modal-shell";
+import { FormActions, FormSection } from "@/components/form-dialog-context";
+import { ReferenceManager, ReferenceSelect } from "@/components/reference-records";
+import type { ReferenceRecord } from "@/lib/reference-records";
+import type { StockProductRow } from "./stock-product-list";
 
-type Category = { id: string; name: string };
-type Subcategory = { id: string; categoryId: string; name: string };
+type Props = { categories: ReferenceRecord[]; subcategories: (ReferenceRecord & { categoryId: string })[] };
 
-export function StockProductForm({ categories, subcategories }: { categories: Category[]; subcategories: Subcategory[] }) {
-  const [open, setOpen] = useState(false);
-  const [categoriesOpen, setCategoriesOpen] = useState(false);
-  const [categoryId, setCategoryId] = useState("");
-  const filteredSubcategories = useMemo(() => subcategories.filter((item) => item.categoryId === categoryId), [categoryId, subcategories]);
+function ProductFields({ categories, subcategories, product }: Props & { product?: StockProductRow }) {
+  const [categoryId, setCategoryId] = useState(product?.categoryId ?? "");
+  const [createdCategories, setCreatedCategories] = useState<ReferenceRecord[]>([]);
+  const categoryOptions = [...new Map([...createdCategories, ...categories].map((item) => [item.id, item])).values()];
+  return <ActionForm action={product ? updateRetailVariant : createRetailProduct} successMessage={product ? "Produto atualizado." : "Produto cadastrado."} resetOnSuccess={false} className="grid gap-5 sm:grid-cols-2">
+    <p className="col-span-full text-sm text-muted">Campos com * são obrigatórios.</p>
+    {product && <><input type="hidden" name="variantId" value={product.variantId} /><input type="hidden" name="isActive" value="on" /><input type="hidden" name="unit" value={product.unit} /></>}
+    <FormSection title="Identificação">
+      <label className="grid gap-2 text-sm font-bold sm:col-span-2">Nome do produto *<input className="field" name="name" required defaultValue={product?.name} /></label>
+      <label className="grid gap-2 text-sm font-bold">Apresentação<input className="field" name="variantName" placeholder="Ex.: 250 ml, 300 g" defaultValue={product?.rawPresentation} /></label>
+      <label className="grid gap-2 text-sm font-bold">Marca<input className="field" name="brand" defaultValue={product?.rawBrand} /></label>
+      <label className="grid gap-2 text-sm font-bold">SKU<input className="field" name="sku" defaultValue={product?.sku} /></label>
+      <label className="grid gap-2 text-sm font-bold">Código de barras<input className="field" name="barcode" defaultValue={product?.barcode} /></label>
+    </FormSection>
+    <FormSection title="Classificação">
+      <ReferenceSelect kind="product_category" name="categoryId" label="Categoria" records={categoryOptions} onCreated={(record) => setCreatedCategories((items) => [...items, record])} value={categoryId} onChange={setCategoryId} emptyLabel="Sem categoria" />
+      <ReferenceSelect key={categoryId} kind="product_subcategory" name="subcategoryId" label="Subcategoria" records={subcategories} parents={categoryOptions} parentId={categoryId} defaultValue={categoryId === product?.categoryId ? product?.subcategoryId ?? "" : ""} disabled={!categoryId} emptyLabel="Sem subcategoria" />
+    </FormSection>
+    <FormSection title="Preços e estoque">
+      <label className="grid gap-2 text-sm font-bold">Custo unitário (R$)<input className="field" name="cost" inputMode="decimal" placeholder="0,00" defaultValue={product?.costValue} /></label>
+      <label className="grid gap-2 text-sm font-bold">Preço de venda unitário (R$)<input className="field" name="salePrice" inputMode="decimal" placeholder="0,00" defaultValue={product?.saleValue} /></label>
+      {!product && <><label className="grid gap-2 text-sm font-bold">Unidade do saldo<select className="field" name="unit" defaultValue="unit"><option value="unit">Unidade</option><option value="mL">mL</option><option value="mg">mg</option><option value="g">g</option><option value="UI">UI</option></select></label><label className="grid gap-2 text-sm font-bold">Quantidade inicial *<input className="field" name="initialQuantity" inputMode="decimal" required defaultValue="0" /></label></>}
+      <label className="grid gap-2 text-sm font-bold">Quantidade mínima *<input className="field" name="minimumQuantity" inputMode="decimal" required defaultValue={product?.minimumValue ?? "0"} /></label>
+      {!product && <label className="flex items-center gap-3 text-sm font-bold sm:col-span-2"><input type="checkbox" name="isForConsumption" />Produto destinado ao consumo (por padrão, será cadastrado para venda)</label>}
+    </FormSection>
+    <FormSection title="Informações adicionais"><label className="grid gap-2 text-sm font-bold sm:col-span-2">Descrição<textarea className="field min-h-20" name="description" defaultValue={product?.description} /></label><EntityImageField currentUrl={product?.imageUrl} label="Imagem do produto" /></FormSection>
+    <FormActions editing={Boolean(product)} />
+  </ActionForm>;
+}
 
-  return <>
-    <div className="flex flex-wrap gap-2">
-      <button className="primary-button" type="button" onClick={() => setOpen(true)}><Plus className="mr-2 inline size-4" />Novo produto</button>
-      <button className="secondary-button" type="button" onClick={() => setCategoriesOpen(true)}><Tags className="mr-2 inline size-4" />Categorias</button>
-    </div>
-    {open && <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-label="Novo produto"><section className="panel mx-auto my-6 w-full max-w-4xl">
-      <div className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-extrabold">Novo produto</h2><p className="text-sm text-muted">Cadastre identificação, classificação, preços e saldo inicial.</p></div><button type="button" className="icon-button" onClick={() => setOpen(false)} aria-label="Fechar"><X className="size-4" /></button></div>
-      <ActionForm action={createRetailProduct} successMessage="Produto cadastrado." className="mt-5 grid gap-3 sm:grid-cols-2" onSuccess={() => setOpen(false)}>
-        <label className="grid gap-1 text-sm font-bold">Nome do produto<input className="field" name="name" required /></label>
-        <label className="grid gap-1 text-sm font-bold">Apresentação<input className="field" name="variantName" placeholder="Ex.: 250 ml, 300 g" /></label>
-        <label className="grid gap-1 text-sm font-bold">Marca<input className="field" name="brand" /></label>
-        <label className="grid gap-1 text-sm font-bold">Categoria<select className="field" name="categoryId" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}><option value="">Sem categoria</option>{categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-        <label className="grid gap-1 text-sm font-bold">Subcategoria<select className="field" name="subcategoryId" disabled={!categoryId} defaultValue=""><option value="">Sem subcategoria</option>{filteredSubcategories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-        <label className="grid gap-1 text-sm font-bold">Custo unitário<input className="field" name="cost" inputMode="decimal" placeholder="0,00" /></label>
-        <label className="grid gap-1 text-sm font-bold">Preço de venda unitário<input className="field" name="salePrice" inputMode="decimal" placeholder="0,00" /></label>
-        <label className="grid gap-1 text-sm font-bold">Unidade do saldo<select className="field" name="unit" defaultValue="unit"><option value="unit">Unidade</option><option value="mL">mL</option><option value="mg">mg</option><option value="g">g</option><option value="UI">UI</option></select></label>
-        <label className="grid gap-1 text-sm font-bold">Quantidade inicial<input className="field" name="initialQuantity" inputMode="decimal" required defaultValue="0" /></label>
-        <label className="grid gap-1 text-sm font-bold">Quantidade mínima<input className="field" name="minimumQuantity" inputMode="decimal" required defaultValue="0" /></label>
-        <label className="grid gap-1 text-sm font-bold">SKU<input className="field" name="sku" /></label>
-        <label className="grid gap-1 text-sm font-bold">Código de barras<input className="field" name="barcode" /></label>
-        <label className="flex items-center gap-3 rounded-lg border border-slate-200 p-4 text-sm font-bold sm:col-span-2"><input className="size-4 accent-brand" type="checkbox" name="isForConsumption" />Produto destinado ao consumo <span className="font-normal text-muted">(por padrão, será cadastrado para venda)</span></label>
-        <label className="grid gap-1 text-sm font-bold sm:col-span-2">Descrição<textarea className="field min-h-20" name="description" /></label>
-        <EntityImageField label="Imagem do produto" />
-        <button className="primary-button sm:col-span-2">Cadastrar produto</button>
-      </ActionForm>
-    </section></div>}
-    {categoriesOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-label="Categorias de produtos"><div className="w-full max-w-xl rounded-3xl bg-white p-5 shadow-2xl"><div className="flex justify-between gap-3"><div><p className="eyebrow">Classificação</p><h2 className="text-xl font-extrabold">Categorias e subcategorias</h2></div><button className="icon-button" type="button" onClick={() => setCategoriesOpen(false)}><X className="size-5" /></button></div><div className="mt-5 grid gap-5 sm:grid-cols-2"><ActionForm action={createInventoryCategory} successMessage="Categoria cadastrada." className="grid gap-3"><h3 className="font-extrabold">Nova categoria</h3><input className="field" name="name" required placeholder="Ex.: Cabelo" /><button className="secondary-button">Cadastrar</button></ActionForm><ActionForm action={createInventorySubcategory} successMessage="Subcategoria cadastrada." className="grid gap-3"><h3 className="font-extrabold">Nova subcategoria</h3><select className="field" name="categoryId" required defaultValue=""><option value="" disabled>Categoria</option>{categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input className="field" name="name" required placeholder="Ex.: Shampoo" /><button className="secondary-button">Cadastrar</button></ActionForm></div><PaginatedCollection label="Registros" className="mt-5 border-t pt-4 text-sm text-muted">{categories.map((category) => <p className="py-1" key={category.id}><strong>{category.name}:</strong> {subcategories.filter((item) => item.categoryId === category.id).map((item) => item.name).join(", ") || "sem subcategorias"}</p>)}</PaginatedCollection></div></div>}
-  </>;
+export function StockProductForm(props: Props) {
+  return <><ModalShell title="Novo produto" variant="new" wide closeOnSuccess description="Cadastre identificação, classificação, preços e saldo inicial."><ProductFields {...props} /></ModalShell><ReferenceManager groups={[{ kind: "product_category", records: props.categories }, { kind: "product_subcategory", records: props.subcategories, parents: props.categories }]} /></>;
+}
+
+export function ProductEditButton(props: Props & { product: StockProductRow }) {
+  return <ModalShell title={`Editar produto: ${props.product.name}`} variant="edit" wide closeOnSuccess><ProductFields {...props} /></ModalShell>;
 }

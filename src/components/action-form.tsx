@@ -3,6 +3,9 @@
 import { CheckCircle2, LoaderCircle, X, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { startTransition, useActionState, useEffect, useId, useRef, useState } from "react";
+import type { ReferenceRecord } from "@/lib/reference-records";
+
+export type ActionResult = void | { error?: string; warning?: string; openUrl?: string; record?: ReferenceRecord };
 
 type ActionState = {
   id: number;
@@ -47,11 +50,11 @@ export function ActionForm({
   onSuccess,
   resetOnSuccess = true,
 }: {
-  action: (formData: FormData) => Promise<void | { error?: string; warning?: string; openUrl?: string }>;
+  action: (formData: FormData) => Promise<ActionResult>;
   successMessage: string;
   className?: string;
   children: React.ReactNode;
-  onSuccess?: () => void;
+  onSuccess?: (result: ActionResult) => void;
   resetOnSuccess?: boolean;
 }) {
   const router = useRouter();
@@ -69,7 +72,8 @@ export function ActionForm({
         if (result?.openUrl) window.open(result.openUrl, "_blank", "noopener,noreferrer");
         if (resetOnSuccess) formRef.current?.reset();
         formRef.current?.dispatchEvent(new CustomEvent("aggenda:form-saved", { bubbles: true }));
-        onSuccess?.();
+        router.refresh();
+        onSuccess?.(result);
         return { id: Date.now(), status: "success", message: result?.warning ?? successMessage };
       } catch (error) {
         console.error("[action-form] Falha ao executar comando", error instanceof Error ? error.name : "UnknownError");
@@ -86,7 +90,6 @@ export function ActionForm({
   const errorVisible = state.status === "error" && dismissedErrorId !== state.id;
 
   useEffect(() => {
-    if (state.status === "success") router.refresh();
     if (state.status === "error") errorRef.current?.focus();
   }, [router, state.id, state.status]);
 

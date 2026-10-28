@@ -17,7 +17,7 @@ async function loadPage(path: string) {
         if (path === "@/db") return { contents: `let index=0; export const db={select(){const rows=globalThis.financeRows[index++];const query=new Proxy({}, {get(_,key){return key==='then' ? (resolve)=>Promise.resolve(rows).then(resolve) : ()=>query}});return query}};` };
         if (path === "@/lib/session") return { contents: 'export async function requireOrganization(){return {organization:{id:"org",role:"owner",timezone:"America/Bahia"}}}' };
         if (path === "@/components/action-form") return { resolveDir: process.cwd(), contents: 'import React from "react"; export function ActionForm({children, className}){return React.createElement("form",{className},children)}' };
-        return { contents: "export const createFinancialAccount=async()=>{},createFinancialCategory=async()=>{},createFinancialCostCenter=async()=>{},createFinancialEntry=async()=>{},deleteFinancialEntry=async()=>{},updateFinancialEntryStatus=async()=>{},cancelPaymentCharge=async()=>{},refundPaymentCharge=async()=>{},sendPaymentChargeWhatsApp=async()=>{},updatePaymentCharge=async()=>{},createProviderCharge=async()=>{};" };
+        return { contents: "export const saveReference=async()=>{},changeReference=async()=>{},createFinancialAccount=async()=>{},createFinancialCategory=async()=>{},createFinancialCostCenter=async()=>{},createFinancialEntry=async()=>{},deleteFinancialEntry=async()=>{},updateFinancialEntryStatus=async()=>{},cancelPaymentCharge=async()=>{},refundPaymentCharge=async()=>{},sendPaymentChargeWhatsApp=async()=>{},updatePaymentCharge=async()=>{},createProviderCharge=async()=>{};" };
       });
     } }],
   });

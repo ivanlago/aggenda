@@ -33,7 +33,7 @@ export function GrowthTabs({ initialTab, panels }: { initialTab: TabId; panels: 
     document.getElementById(`growth-tab-${tabs[next].id}`)?.focus();
   }
   return <section className="mt-5 min-w-0">
-    <div className="flex gap-2 overflow-x-auto pb-2 lg:flex-wrap" role="tablist" aria-label="Ferramentas do CRM">
+    <div className="flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label="Ferramentas do CRM">
       {tabs.map(({ id, label, icon: Icon }, index) => <button key={id} id={`growth-tab-${id}`} type="button" role="tab" aria-selected={active === id} aria-controls={`growth-panel-${id}`} tabIndex={active === id ? 0 : -1}
         className={`${active === id ? "primary-button" : "secondary-button"} shrink-0 gap-2 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand`}
         onClick={() => select(id)} onKeyDown={(event) => navigate(event, index)}><Icon className="size-4 shrink-0" aria-hidden="true" />{label}</button>)}

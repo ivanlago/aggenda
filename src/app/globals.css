@@ -160,6 +160,22 @@ a[href]:focus-visible {
 .internal-app .field { min-width: 0; max-width: 100%; }
 .internal-app label.grid { align-content: start; }
 
+/* Tab navigation stays on one row at every width and browser zoom level.
+   Only the strip scrolls when its labels no longer fit in the available space. */
+.internal-app [role="tablist"] {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 0.5rem;
+}
+.internal-app [role="tablist"] > [role="tab"] {
+  flex-shrink: 0;
+  padding-inline: 0.75rem;
+  white-space: nowrap;
+}
+
 /* Institutional colors stay separate from appointment, financial and alert states. */
 .internal-app .app-sidebar {
   background: var(--structure);

@@ -20,7 +20,7 @@ async function context() {
   const [integration] = await db.select().from(organizationFinancialIntegrations).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "nfse"))).limit(1);
   const profile = readNfseProfile(integration?.metadata);
   if (!integration || !profile) throw new Error("Conclua o cadastro fiscal.");
-  if (fiscalChannelFor(profile.municipalityCode, profile.taxRegime) !== "national") throw new Error("Para este perfil de Salvador, utilize o conector municipal de RPS.");
+  if (fiscalChannelFor(profile.municipalityCode, profile.taxRegime) !== "national") throw new Error("Este município e regime exigem o canal municipal de RPS. Confira a integração e a vigência antes de emitir.");
   if (integration.status === "revoked") throw new Error("O uso do certificado foi revogado. Cadastre um A1 autorizado para continuar.");
   const consent = integration.metadata?.certificateConsent as { authorizedAt?: string; revokedAt?: string | null } | undefined;
   if (!consent?.authorizedAt || consent.revokedAt) throw new Error("Atualize o cadastro fiscal e autorize o uso do certificado antes de emitir.");

@@ -3,7 +3,7 @@ import { SignedXml } from "xml-crypto";
 import { z } from "zod";
 import type { NfseFiscalProfile } from "../nfse-routing";
 import type { FiscalEnvironment } from "./government";
-import { fiscalRegimeSchema, nationalTaxSchema, nationalTaxXml, ibsCbsSchema } from "./tax-regimes";
+import { fiscalChannelFor, fiscalRegimeSchema, nationalTaxSchema, nationalTaxXml, ibsCbsSchema } from "./tax-regimes";
 
 export const fiscalIssuerSchema = z.object({ cnpj: z.string().regex(/^\d{14}$/), municipalityCode: z.string().regex(/^\d{7}$/), municipalRegistration: z.string().max(15), taxRegime: fiscalRegimeSchema }).strict();
 export const payerAddressSchema = z.object({ street: z.string().trim().min(1).max(125), number: z.string().trim().min(1).max(10), district: z.string().trim().min(1).max(60), municipalityCode: z.string().regex(/^\d{7}$/), zip: z.string().regex(/^\d{8}$/) }).strict();
@@ -49,6 +49,7 @@ export function dpsId(profile: NfseFiscalProfile, series: string, number: string
 }
 
 export function buildDps(profile: NfseFiscalProfile, environment: FiscalEnvironment, series: string, number: string, input: FiscalDraft, now = new Date()) {
+  if (profile.municipalityCode === "2905701" && fiscalChannelFor(profile.municipalityCode, profile.taxRegime, now) !== "national") throw new Error("Camaçari exige o canal municipal para este regime e vigência.");
   const draft = normalizeFiscalDraft(profile, input);
   const taxation = nationalTaxXml(draft.tax!, draft.amountInCents);
   const id = dpsId(profile, series, number);

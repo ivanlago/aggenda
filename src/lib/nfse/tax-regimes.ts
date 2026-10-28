@@ -20,7 +20,12 @@ export const ibsCbsSchema = z.object({
   cst: z.enum(["000", "200"]), classification: z.string().regex(/^\d{6}$/), operationIndicator: z.string().regex(/^\d{6}$/), finalConsumer: z.enum(["0", "1"]),
 }).strict().refine((value) => value.classification.startsWith(value.cst), "A classificação IBS/CBS deve corresponder ao CST informado.");
 
-export function fiscalChannelFor(municipalityCode: string, regime: FiscalRegime) {
+export function fiscalChannelFor(municipalityCode: string, regime: FiscalRegime, referenceDate = new Date()) {
+  if (municipalityCode === "2905701") {
+    // CGSN 191/2026 takes effect at midnight in Bahia on 01/11/2026.
+    if (regime === "mei" || (regime === "simples_nacional" && referenceDate.getTime() >= Date.parse("2026-11-01T00:00:00-03:00"))) return "national" as const;
+    return "camacari" as const;
+  }
   return municipalityCode === "2927408" && (regime === "lucro_presumido" || regime === "lucro_real") ? "salvador" as const : "national" as const;
 }
 export const percent = (basisPoints: number) => (basisPoints / 100).toFixed(2);

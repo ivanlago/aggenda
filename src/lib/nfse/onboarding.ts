@@ -6,7 +6,7 @@ import { nfseMunicipalityReference } from "./municipalities";
 
 export const nfseOnboardingSchema = z.object({
   cnpj: z.string().transform((value) => value.replace(/\D/g, "")).pipe(z.string().regex(/^\d{14}$/, "Informe o CNPJ com 14 dígitos.")),
-  municipalityCode: z.enum(["2927408", "2919207"], { error: "Selecione Salvador ou Lauro de Freitas." }),
+  municipalityCode: z.enum(["2927408", "2919207", "2905701"], { error: "Selecione Salvador, Lauro de Freitas ou Camaçari." }),
   taxRegime: z.enum(["simples_nacional", "lucro_presumido", "lucro_real", "mei"]),
   municipalRegistration: z.string().trim().max(40).default(""),
 });

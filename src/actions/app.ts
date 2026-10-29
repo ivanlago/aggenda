@@ -67,8 +67,8 @@ import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
 import { updateAppointmentAndInventory } from "@/lib/inventory";
 import { documentPresets } from "@/lib/document-presets";
 import { anamnesisPresets } from "@/lib/anamnesis";
-import { parseClientMeasurement } from "@/lib/client-measurements";
-import { normalizeBrazilianPhone } from "@/lib/phone";
+import { parseClientInput, clientSaveError, duplicateClientPhoneMessage } from "@/lib/client-input";
+import { hasClientPhoneConflict } from "@/lib/client-phone-conflict";
 import { persistWithCatalogImage } from "@/lib/catalog-image";
 
 function textValue(formData: FormData, key: string) {
@@ -546,32 +546,15 @@ export async function updateProfessional(formData: FormData) {
 export async function createClient(formData: FormData) {
   const { organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "clients.manage");
-  const name = textValue(formData, "name");
-  if (name.length < 2) throw new Error("Informe o nome do cliente.");
-  const phoneValue = optionalText(formData, "phone");
-  const normalizedPhone = phoneValue ? normalizeBrazilianPhone(phoneValue) : null;
-  if (normalizedPhone) {
-    const [existing] = await db.select({ id: clients.id, name: clients.name }).from(clients).where(and(eq(clients.organizationId, organization.id), eq(clients.phone, normalizedPhone))).limit(1);
-    if (existing) throw new Error(`Este celular já está cadastrado para ${existing.name}. Abra o cadastro existente para evitar duplicidade.`);
+  try {
+    const input = parseClientInput(formData);
+    if (await hasClientPhoneConflict(db, organization.id, input.phone)) return { error: duplicateClientPhoneMessage };
+    await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "clients", persist: (image) => db.insert(clients).values({ organizationId: organization.id, ...input, ...image }) });
+  } catch (error) {
+    const message = clientSaveError(error);
+    if (message) return { error: message };
+    throw error;
   }
-
-  await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "clients", persist: (image) => db.insert(clients).values({
-    organizationId: organization.id,
-    name,
-    email: optionalText(formData, "email"),
-    phone: normalizedPhone,
-    birthDate: optionalText(formData, "birthDate"),
-    weightKg: parseClientMeasurement(formData.get("weightKg"), "weightKg"),
-    heightCm: parseClientMeasurement(formData.get("heightCm"), "heightCm"),
-    gender: optionalText(formData, "gender"),
-    address: optionalText(formData, "address"),
-    postalCode: optionalText(formData, "postalCode"),
-    maritalStatus: optionalText(formData, "maritalStatus"),
-    cpf: optionalText(formData, "cpf"),
-    profession: optionalText(formData, "profession"),
-    notes: optionalText(formData, "notes"),
-    ...image,
-  }) });
   revalidatePath("/clientes");
   revalidatePath("/dashboard");
 }
@@ -598,29 +581,19 @@ export async function updateClient(formData: FormData) {
   const { organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "clients.manage");
   const id = textValue(formData, "id");
-  const name = textValue(formData, "name");
-  if (!id || name.length < 2) throw new Error("Informe o nome do cliente.");
-  const phoneValue = optionalText(formData, "phone");
-  const [current] = await db.select({ imagePublicId: clients.imagePublicId }).from(clients).where(and(eq(clients.id, id), eq(clients.organizationId, organization.id))).limit(1);
-  if (!current) throw new Error("Cliente não encontrado.");
-  const updated = await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "clients", currentPublicId: current.imagePublicId, persist: (image) => db.update(clients).set({
-    name,
-    email: optionalText(formData, "email"),
-    phone: phoneValue ? normalizeBrazilianPhone(phoneValue) : null,
-    birthDate: optionalText(formData, "birthDate"),
-    weightKg: parseClientMeasurement(formData.get("weightKg"), "weightKg"),
-    heightCm: parseClientMeasurement(formData.get("heightCm"), "heightCm"),
-    gender: optionalText(formData, "gender"),
-    address: optionalText(formData, "address"),
-    postalCode: optionalText(formData, "postalCode"),
-    maritalStatus: optionalText(formData, "maritalStatus"),
-    cpf: optionalText(formData, "cpf"),
-    profession: optionalText(formData, "profession"),
-    notes: optionalText(formData, "notes"),
-    ...image,
-    updatedAt: new Date(),
-  }).where(and(eq(clients.id, id), eq(clients.organizationId, organization.id))).returning({ id: clients.id }) });
-  if (!updated.length) throw new Error("Cliente não encontrado.");
+  if (!id) return { error: "Cliente não encontrado. Atualize a página e tente novamente." };
+  try {
+    const input = parseClientInput(formData);
+    const [current] = await db.select({ imagePublicId: clients.imagePublicId }).from(clients).where(and(eq(clients.id, id), eq(clients.organizationId, organization.id))).limit(1);
+    if (!current) return { error: "Cliente não encontrado. Atualize a página e tente novamente." };
+    if (await hasClientPhoneConflict(db, organization.id, input.phone, id)) return { error: duplicateClientPhoneMessage };
+    const updated = await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "clients", currentPublicId: current.imagePublicId, persist: (image) => db.update(clients).set({ ...input, ...image, updatedAt: new Date() }).where(and(eq(clients.id, id), eq(clients.organizationId, organization.id))).returning({ id: clients.id }) });
+    if (!updated.length) return { error: "Cliente não encontrado. Atualize a página e tente novamente." };
+  } catch (error) {
+    const message = clientSaveError(error);
+    if (message) return { error: message };
+    throw error;
+  }
   revalidatePath("/clientes");
   revalidatePath(`/clientes/${id}`);
   revalidatePath("/atendimento/[id]", "page");

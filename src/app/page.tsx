@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import {
-  ArrowDown,
   ArrowRight,
   ArrowUpRight,
   CalendarCheck,
@@ -19,6 +18,7 @@ import {
   MessageCircle,
   Package,
   PanelTop,
+  Play,
   Scissors,
   ShieldCheck,
   Sparkles,
@@ -213,8 +213,8 @@ export default function Home() {
               </p>
               <div className="hero-actions">
                 <Cta event="hero-signup" />
-                <a className="landing-text-link" href="#funcionalidades">
-                  Conhecer funcionalidades <ArrowDown size={16} />
+                <a className="landing-text-link" href="#video-demonstracao" data-conversion="hero-watch-video">
+                  Assistir à demonstração <Play size={16} />
                 </a>
               </div>
               <div className="hero-offer">
@@ -456,11 +456,38 @@ export default function Home() {
         >
           <SectionHeading
             eyebrow="MENOS ABAS. MAIS CONTROLE."
-            text="Explore uma representação dos módulos que acompanham sua operação."
+            text="Veja o sistema em ação: da organização da rotina ao portal do cliente e ao atendimento pelo WhatsApp."
             centered
           >
             Conheça o Aggenda <span>por dentro.</span>
           </SectionHeading>
+          <figure id="video-demonstracao" className="landing-video">
+            <video
+              controls
+              playsInline
+              preload="none"
+              poster="/landing/video-capa.svg"
+              width={1280}
+              height={720}
+              aria-label="Vídeo de demonstração do Aggenda"
+              aria-describedby="video-demonstracao-caption"
+            >
+              <source src="/landing/aggenda-demonstracao.mp4" type="video/mp4" />
+              Seu navegador não suporta a reprodução deste vídeo.
+              <a href="/landing/aggenda-demonstracao.mp4">Abrir o vídeo de demonstração</a>.
+            </video>
+            <figcaption id="video-demonstracao-caption">
+              <span>Conheça o Aggenda com telas reais do sistema.</span>
+              <a href="/landing/aggenda-demonstracao.mp4" target="_blank" rel="noopener noreferrer">
+                Abrir vídeo em nova aba <ArrowUpRight size={14} />
+              </a>
+            </figcaption>
+          </figure>
+          <p className="landing-video-note">Recursos de WhatsApp e inteligência artificial disponíveis conforme a modalidade contratada e a configuração do serviço.</p>
+          <div className="landing-demo-intro">
+            <h3>Explore também os módulos</h3>
+            <p>As telas interativas abaixo são representações ilustrativas das funcionalidades.</p>
+          </div>
           <ProductDemo />
         </section>
         <section className="whatsapp-section landing-section">

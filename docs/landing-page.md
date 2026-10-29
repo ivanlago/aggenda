@@ -1,5 +1,9 @@
 # Página comercial do Aggenda
 
+## Vídeo de apresentação — 29/10/2026
+
+Vídeo final fornecido pelo usuário incorporado em `public/landing/aggenda-demonstracao.mp4` (3,7 MB, 1280 × 720, aproximadamente 100 segundos), na seção de demonstração antes dos módulos ilustrativos. O CTA secundário do hero leva diretamente ao player. Capa SVG local, controles nativos, reprodução inline em celulares e `preload="none"`, sem autoplay ou dependência de serviços externos. Link alternativo permite abrir o MP4 em outra aba. Mantido aviso sobre contratação/configuração de WhatsApp e IA.
+
 Atualização de 22/10/2026: as descrições históricas abaixo registram a criação original da landing. A contratação agora usa `/assinatura` com três composições e preços reais do catálogo comercial, transmite plano/período selecionados e separa o piloto anual de R$ 5 por convite. Os adicionais de profissionais e as franquias foram atualizados. Referência vigente: `checkout-comercial-piloto.md` e `precificacao-aprovada.md`.
 
 ## Escopo e arquivos

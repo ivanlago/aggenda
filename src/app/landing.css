@@ -1,3 +1,35 @@
+.aggenda-landing .landing-video {
+  margin: 0 auto;
+  max-width: 1080px;
+  overflow: hidden;
+  border: 1px solid #dce8e8;
+  border-radius: 18px;
+  background: #123c46;
+  box-shadow: 0 18px 55px #123c4614;
+  scroll-margin-top: 110px;
+}
+.landing-video video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  background: #123c46;
+}
+.landing-video figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 20px;
+  padding: 16px 22px;
+  background: #f2f8f7;
+  color: var(--ink);
+  font-size: 13px;
+}
+.landing-video figcaption a { display: inline-flex; align-items: center; gap: 5px; color: var(--teal); }
+.aggenda-landing .landing-video-note { max-width: 1080px; margin: 14px auto 0; color: var(--muted); font-size: 12px; }
+.aggenda-landing .landing-demo-intro { margin: 48px 0 22px; }
+.landing-demo-intro h3 { color: var(--ink); font-size: 22px; }
+.landing-demo-intro p { color: var(--muted); font-size: 13px; }
 .migration-card {
   display: flex;
   align-items: center;

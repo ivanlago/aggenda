@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#123c46"/><stop offset="1" stop-color="#075b60"/></linearGradient>
+  </defs>
+  <path fill="url(#bg)" d="M0 0h1280v720H0z"/>
+  <circle cx="1190" cy="80" r="270" fill="#5bd9c4" opacity=".06"/>
+  <circle cx="100" cy="720" r="260" fill="#5bd9c4" opacity=".06"/>
+  <g font-family="Arial, sans-serif" text-anchor="middle">
+    <text x="640" y="175" fill="#fff" font-size="68" font-weight="700">aggenda<tspan fill="#5bd9c4">.</tspan></text>
+    <text x="640" y="248" fill="#ddf5f1" font-size="35">Seu negócio organizado.</text>
+    <text x="640" y="296" fill="#ddf5f1" font-size="35">Seu tempo valorizado.</text>
+    <circle cx="640" cy="410" r="54" fill="#5bd9c4"/>
+    <path d="m628 385 35 25-35 25z" fill="#123c46"/>
+    <text x="640" y="520" fill="#fff" font-size="27" font-weight="600">Conheça o Aggenda em ação</text>
+    <text x="640" y="567" fill="#b9ded9" font-size="23">Gestão · Portal do cliente · WhatsApp com IA</text>
+  </g>
+</svg>

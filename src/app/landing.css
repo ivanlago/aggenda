@@ -30,6 +30,17 @@
 .aggenda-landing .landing-demo-intro { margin: 48px 0 22px; }
 .landing-demo-intro h3 { color: var(--ink); font-size: 22px; }
 .landing-demo-intro p { color: var(--muted); font-size: 13px; }
+.aggenda-landing .landing-feature-status {
+  display: inline-block;
+  margin: 8px 0 4px;
+  padding: 3px 10px;
+  border: 1px solid #e8d399;
+  border-radius: 6px;
+  background: #fff6dc;
+  color: #77520b;
+  font-size: 11px;
+  font-weight: 600;
+}
 .migration-card {
   display: flex;
   align-items: center;

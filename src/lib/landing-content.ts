@@ -19,7 +19,7 @@ export const landingOffer = {
   checkoutInPilot: false,
 } as const;
 
-export const landingFeatures = [
+export const landingFeatures: ReadonlyArray<readonly [string, string, string?]> = [
   [
     "Agenda inteligente",
     "Horários, disponibilidade, bloqueios e reagendamentos. Sua rotina ganha clareza.",
@@ -67,6 +67,23 @@ export const landingFeatures = [
   [
     "Relatórios e indicadores",
     "Uma visão dos dados operacionais, comerciais e financeiros para apoiar suas decisões.",
+  ],
+  [
+    "Vendas e PDV",
+    "Venda serviços e produtos no ponto de venda, registre pagamentos e conecte a operação ao estoque e ao financeiro.",
+  ],
+  [
+    "Integrações de pagamento",
+    "Conecte Asaas, Mercado Pago, PagBank ou Efí (Pix) para cobrar seus clientes e acompanhar pagamentos, conforme configuração e ativação do provedor.",
+  ],
+  [
+    "Assinatura eletrônica de documentos",
+    "Envie termos e documentos para assinatura eletrônica e acompanhe seu andamento. Disponível conforme contratação e franquia de documentos.",
+  ],
+  [
+    "Emissão de NFS-e",
+    "Emissão de notas fiscais de serviço integrada à gestão. Em homologação: ainda não liberada em produção; depende de habilitação fiscal e compatibilidade com o município.",
+    "Em homologação",
   ],
 ] as const;
 
@@ -190,7 +207,19 @@ export const landingFaqs = [
   ],
   [
     "Como funcionam as integrações de pagamento?",
-    "Dependem da conta da empresa no provedor, credenciais, configuração e validação dos fluxos. As tarifas e condições são as do provedor contratado. A assinatura do Aggenda é separada dos pagamentos recebidos dos seus clientes.",
+    "O PDV tem suporte a Asaas, Mercado Pago, PagBank e Efí (Pix). Os meios de pagamento disponíveis variam por provedor e dependem da conta da empresa, credenciais, configuração e ativação da integração. Tarifas e condições são as do provedor contratado. A assinatura do Aggenda é separada dos pagamentos recebidos dos seus clientes.",
+  ],
+  [
+    "Posso vender serviços e produtos pelo PDV?",
+    "Sim. O ponto de venda permite registrar vendas de serviços e produtos, acompanhar pagamentos e conectar a venda ao estoque e ao financeiro. Para receber por um provedor integrado, é necessário configurar e ativar a integração da sua empresa.",
+  ],
+  [
+    "Posso enviar documentos para assinatura eletrônica?",
+    "Sim. Você pode enviar termos e documentos para assinatura eletrônica e acompanhar seu andamento, conforme contratação e franquia disponível. Esse recurso não deve ser confundido com assinatura qualificada ICP-Brasil, que tem requisitos e homologação próprios.",
+  ],
+  [
+    "O Aggenda já emite notas fiscais de serviço em produção?",
+    "Ainda não. A emissão de NFS-e está em homologação e permanece bloqueada em produção até a conclusão dessa etapa. A disponibilidade dependerá da habilitação fiscal da empresa, dos requisitos e da compatibilidade do município. Não há promessa de emissão imediata ao contratar o app.",
   ],
   [
     "Como contratar um plano?",

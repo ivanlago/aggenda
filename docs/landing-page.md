@@ -1,5 +1,9 @@
 # Página comercial do Aggenda
 
+## Destaques comerciais — 29/10/2026
+
+Funcionalidades ampliadas com cartões próprios para vendas e PDV, integrações de pagamento (Asaas, Mercado Pago, PagBank e Efí/Pix), assinatura eletrônica e emissão de NFS-e. O cartão fiscal tem selo explícito de homologação e informa que produção ainda não está liberada; também é excluído da lista de recursos disponíveis no JSON-LD. FAQ detalha configuração/ativação de pagamentos, contratação/franquia de assinatura eletrônica e separação da assinatura qualificada ICP-Brasil. Abertura e metadados reforçam o fluxo de agendar, atender, vender e receber. Sem alterações na cobrança ou habilitação de recursos.
+
 ## Vídeo de apresentação — 29/10/2026
 
 Vídeo final fornecido pelo usuário incorporado em `public/landing/aggenda-demonstracao.mp4` (3,7 MB, 1280 × 720, aproximadamente 100 segundos), na seção de demonstração antes dos módulos ilustrativos. O CTA secundário do hero leva diretamente ao player. Capa SVG local, controles nativos, reprodução inline em celulares e `preload="none"`, sem autoplay ou dependência de serviços externos. Link alternativo permite abrir o MP4 em outra aba. Mantido aviso sobre contratação/configuração de WhatsApp e IA.

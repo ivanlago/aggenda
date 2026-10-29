@@ -10,7 +10,9 @@ import {
   Check,
   ChevronDown,
   CircleDollarSign,
+  CreditCard,
   FileText,
+  FilePenLine,
   HeartHandshake,
   Images,
   Layers3,
@@ -20,6 +22,8 @@ import {
   PanelTop,
   Play,
   Scissors,
+  ShoppingCart,
+  ReceiptText,
   ShieldCheck,
   Sparkles,
   UsersRound,
@@ -43,7 +47,7 @@ import "./landing.css";
 
 const title = "Aggenda — Seu negócio organizado. Seu tempo valorizado.";
 const description =
-  "Gestão para estética, salões, barbearias e bem-estar. Conecte agenda online, clientes, equipe, vendas, pacotes, estoque e financeiro. Conheça o Aggenda.";
+  "Gestão para estética, salões, barbearias e bem-estar. Conecte agenda, clientes, vendas e PDV, pagamentos, assinatura eletrônica e financeiro. Conheça o Aggenda.";
 export const metadata: Metadata = {
   title: { absolute: title },
   description,
@@ -93,6 +97,10 @@ const featureIcons = [
   Images,
   MessageCircle,
   ChartNoAxesCombined,
+  ShoppingCart,
+  CreditCard,
+  FilePenLine,
+  ReceiptText,
 ];
 const painPoints = [
   "Horários espalhados em mensagens e anotações",
@@ -167,7 +175,7 @@ export default function Home() {
     url: "https://www.aggenda.app.br",
     description,
     inLanguage: "pt-BR",
-    featureList: landingFeatures.map(([name]) => name),
+    featureList: landingFeatures.filter(([, , status]) => !status).map(([name]) => name),
   };
   return (
     <LandingMotion>
@@ -208,8 +216,8 @@ export default function Home() {
                 <span>Mais tempo para você.</span>
               </h1>
               <p>
-                Agenda, clientes, equipe, vendas, pacotes, estoque e financeiro
-                em um só lugar. Simplifique sua rotina com o Aggenda.
+                Agende, atenda, venda e receba em um só lugar. Conecte clientes,
+                equipe, PDV, pagamentos, documentos e financeiro com o Aggenda.
               </p>
               <div className="hero-actions">
                 <Cta event="hero-signup" />
@@ -376,7 +384,7 @@ export default function Home() {
               <span>conectado.</span>
             </SectionHeading>
             <div className="features-grid">
-              {landingFeatures.map(([name, text], index) => {
+              {landingFeatures.map(([name, text, status], index) => {
                 const Icon = featureIcons[index];
                 return (
                   <article key={name}>
@@ -384,6 +392,7 @@ export default function Home() {
                       <Icon size={22} />
                     </span>
                     <h3>{name}</h3>
+                    {status && <span className="landing-feature-status">{status}</span>}
                     <p>{text}</p>
                   </article>
                 );

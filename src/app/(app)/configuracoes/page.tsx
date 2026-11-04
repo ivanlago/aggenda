@@ -2,6 +2,7 @@ import { ReferenceCatalogStatus } from "@/components/reference-catalog-status";
 import { RoomSettings } from "@/components/room-settings";
 import { updateDocumentTemplateLibrary } from "@/actions/electronic-documents";
 import { headers } from "next/headers";
+import Link from "next/link";
 import { CustomDomainSettings } from "@/components/custom-domain-settings";
 import { ownershipRecord, type DomainState } from "@/lib/custom-domain-rules";
 import { domainIntegrationReady, inspectCustomDomain } from "@/lib/vercel-domains";
@@ -21,7 +22,7 @@ import { WhatsAppSettingsContent } from "./automation-settings-content";
 
 export const metadata = { title: "Configurações" };
 
-export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ aba?: string; instituicao?: string }> }) {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ aba?: string; instituicao?: string; guia?: string }> }) {
   const query = await searchParams;
   const selectedTab = query.aba === "automation" ? "whatsapp" : query.aba;
   const { organization } = await requireOrganization();
@@ -56,6 +57,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const booking = <section className="panel max-w-4xl">
     <h2 className="text-xl font-extrabold">Agendamento público</h2>
     <CustomDomainSettings initial={domainState} defaultUrl={bookingUrl} canManage={canManage} integrationReady={domainIntegrationReady()} />
+    {query.guia === "publicar" && <aside id="agendamento-publico" className="mt-6 scroll-mt-24 rounded-xl bg-brand/5 p-4 text-sm">
+      <p className="font-bold">Publique seu link de agendamento</p>
+      <p className="mt-1">Ative a página pública abaixo, revise as regras de horário e salve. Depois abra a página como cliente e confira os serviços e horários antes de divulgar.</p>
+      <div className="mt-2 flex flex-wrap gap-3">
+        {organization.bookingEnabled && <a href={bookingUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-brand">Conferir página pública</a>}
+        <Link className="font-bold text-brand" href="/implantacao">Voltar à implantação</Link>
+      </div>
+    </aside>}
     <ActionForm action={updateBookingSettings} successMessage="Regras de agendamento salvas." className="mt-6 grid gap-4 sm:grid-cols-3">
       <input type="hidden" name="settingsSection" value="booking" />
       <label className="flex items-center gap-3 text-sm font-bold sm:col-span-3"><input name="bookingEnabled" type="checkbox" defaultChecked={organization.bookingEnabled} disabled={!canManage} />Permitir agendamentos pela página pública</label>

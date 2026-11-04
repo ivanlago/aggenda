@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { createService, updateService } from "@/actions/app";
 import { ActionForm } from "@/components/action-form";
 import { EntityImageField } from "@/components/entity-image-field";
@@ -12,8 +13,22 @@ import { TussAutocomplete } from "@/components/tuss-autocomplete";
 import type { services } from "@/db/schema";
 import type { ReferenceRecord } from "@/lib/reference-records";
 
+const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+function readAmount(value: string) {
+  const raw = value.replace(/\s/g, "");
+  if (!raw) return null;
+  const amount = Number(raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw);
+  return Number.isFinite(amount) && amount >= 0 ? Math.round(amount * 100) : null;
+}
+
 export function ServiceForm({ item, label, categories }: { item?: typeof services.$inferSelect; label: string; categories: ReferenceRecord[] }) {
   const money = (cents: number | null | undefined) => cents == null ? "" : (cents / 100).toFixed(2).replace(".", ",");
+  const [price, setPrice] = useState(money(item?.priceInCents));
+  const [cost, setCost] = useState(money(item?.estimatedCostInCents));
+  const priceCents = readAmount(price);
+  const costCents = readAmount(cost);
+  const contribution = priceCents !== null && costCents !== null ? priceCents - costCents : null;
   return <ActionForm action={item ? updateService : createService} successMessage={item ? "Procedimento atualizado." : "Procedimento cadastrado."} resetOnSuccess={false} className="grid min-w-0 gap-5 sm:grid-cols-2">
     <p className="col-span-full text-sm text-muted">Campos com * são obrigatórios.</p>
     {item && <input type="hidden" name="id" value={item.id} />}
@@ -26,8 +41,11 @@ export function ServiceForm({ item, label, categories }: { item?: typeof service
     <FormSection title="Classificação"><ReferenceSelect kind="service_category" name="categoryId" label="Categoria" records={categories} defaultValue={item?.categoryId ?? ""} emptyLabel="Sem categoria" /></FormSection>
     <FormSection title="Duração e valores">
       <label className="grid gap-2 text-sm font-bold">Duração em minutos *<input className="field" name="durationMinutes" type="number" min="5" step="5" required defaultValue={item?.durationMinutes} /></label>
-      <label className="grid gap-2 text-sm font-bold">Preço (R$)<input className="field" name="price" inputMode="decimal" defaultValue={money(item?.priceInCents)} placeholder="0,00" /></label>
-      <label className="grid gap-2 text-sm font-bold">Custo estimado (R$)<input className="field" name="estimatedCost" inputMode="decimal" defaultValue={money(item?.estimatedCostInCents)} placeholder="Produtos, taxas etc." /></label>
+      <label className="grid gap-2 text-sm font-bold">Preço (R$)<input className="field" name="price" inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="0,00" /></label>
+      <label className="grid gap-2 text-sm font-bold">Custo estimado (R$)<input className="field" name="estimatedCost" inputMode="decimal" value={cost} onChange={(event) => setCost(event.target.value)} placeholder="Produtos, taxas etc." /></label>
+      <p className="rounded-lg bg-brand/5 p-3 text-sm sm:col-span-2">
+        {contribution === null ? "Informe o preço e o custo para estimar a margem." : <>Margem estimada por atendimento: <strong>{currency.format(contribution / 100)}</strong>. Considera apenas o custo informado.</>}
+      </p>
       <ServiceDepositFields type={item?.depositType} value={item?.depositValue} />
     </FormSection>
     <FormSection title="Informações adicionais">

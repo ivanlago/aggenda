@@ -22,6 +22,7 @@ export function TeamCreateForm({ professions, specialties }: { professions: Prof
 
   return (
     <ActionForm action={createUnifiedTeamMember} successMessage="Membro cadastrado e acesso enviado por e-mail." className="grid gap-4">
+      <p className="text-sm text-muted">O perfil de acesso define o que a pessoa pode fazer no sistema. A opção de agenda define se ela também recebe atendimentos.</p>
       <div className="grid gap-3 md:grid-cols-2">
         <label className="grid gap-2 text-sm font-bold">Nome completo<input className="field" name="fullName" required /></label>
         <label className="grid gap-2 text-sm font-bold">Nome curto<input className="field" name="shortName" required placeholder="Ex.: Dra. Marina Costa" /></label>
@@ -37,11 +38,12 @@ export function TeamCreateForm({ professions, specialties }: { professions: Prof
             <option value="financial">Financeiro</option>
           </select>
         </label>
-        <label className="grid gap-2 text-sm font-bold">Atendente?
+        <label className="grid gap-2 text-sm font-bold">Recebe agendamentos?
           <select className="field" name="isAttendant" required value={isAttendant} onChange={(event) => setIsAttendant(event.target.value)} disabled={role === "professional"}>
             <option value="no">Não</option><option value="yes">Sim</option>
           </select>
           {role === "professional" && <input type="hidden" name="isAttendant" value="yes" />}
+          <span className="text-xs font-normal text-muted">Uma agenda ativa ocupa uma vaga de profissional no plano. Quem só usa o painel para recepção ou administração não precisa de agenda.</span>
         </label>
       </div>
 

@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
-import { professionals, services, weeklyAvailability, whatsappChannels } from "@/db/schema";
+import { appointments, professionals, services, weeklyAvailability, whatsappChannels } from "@/db/schema";
 import { landingOffer } from "@/lib/landing-content";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { getOrganizationServicePlan } from "@/lib/service-plans";
@@ -16,17 +16,20 @@ export const metadata = { title: "Implantação guiada" };
 export default async function ImplantationPage() {
   const { organization } = await requireOrganization();
   if (organization.role === "professional") redirect("/dashboard");
-  const [plan, [professionalTotal], [serviceTotal], [availabilityTotal], channels] = await Promise.all([
+  const canManageAppointments = hasOrganizationPermission(organization.role, "appointments.manage");
+  const [plan, [professionalTotal], [serviceTotal], [availabilityTotal], channels, firstAppointment] = await Promise.all([
     getOrganizationServicePlan(organization.id),
     db.select({ value: count() }).from(professionals).where(and(eq(professionals.organizationId, organization.id), eq(professionals.isActive, true), eq(professionals.isBookable, true))),
     db.select({ value: count() }).from(services).where(eq(services.organizationId, organization.id)),
     db.select({ value: count() }).from(weeklyAvailability).leftJoin(professionals, and(eq(weeklyAvailability.professionalId, professionals.id), eq(professionals.organizationId, organization.id), eq(professionals.isActive, true), eq(professionals.isBookable, true))).where(and(eq(weeklyAvailability.organizationId, organization.id), or(isNull(weeklyAvailability.professionalId), eq(professionals.isActive, true)))),
     db.select({ isActive: whatsappChannels.isActive, connectionStatus: whatsappChannels.connectionStatus }).from(whatsappChannels).where(eq(whatsappChannels.organizationId, organization.id)),
+    db.select({ id: appointments.id }).from(appointments).where(eq(appointments.organizationId, organization.id)).limit(1),
   ]);
   const steps = [
     { title: "Confira os dados do negócio", description: "Revise nome, segmento e telefone de contato.", done: Boolean(organization.name && organization.businessType && organization.phone), href: "/configuracoes?aba=identity", action: "Revisar dados", icon: Building2 },
     { title: `Cadastre ${organization.serviceLabelPlural.toLowerCase()}`, description: "Informe os serviços oferecidos, a duração e os preços.", done: serviceTotal.value > 0, href: "/servicos", action: "Revisar serviços", icon: Wrench },
     { title: "Organize a equipe e os horários", description: "Cadastre os profissionais e defina os dias e horários de atendimento.", done: professionalTotal.value > 0 && availabilityTotal.value > 0, href: professionalTotal.value > 0 ? "/disponibilidade" : "/profissionais", action: professionalTotal.value > 0 ? "Definir horários" : "Cadastrar profissional", icon: CalendarClock },
+    ...(canManageAppointments ? [{ title: "Faça seu primeiro agendamento", description: "Abra a agenda e siga as instruções no formulário.", done: firstAppointment.length > 0, href: "/agenda?novo=1&guia=primeiro", action: "Abrir guia na agenda", icon: CalendarClock }] : []),
   ];
   const complete = steps.filter(step => step.done).length;
   const next = steps.find(step => !step.done);
@@ -46,7 +49,7 @@ export default async function ImplantationPage() {
       <div className="mt-4 h-2 overflow-hidden rounded-full bg-brand/10" role="progressbar" aria-label="Preparação inicial" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage}>
         <div className="h-full rounded-full bg-brand" style={{ width: `${percentage}%` }} />
       </div>
-      <p className="mt-3 text-sm text-muted">{next ? `Próximo passo: ${next.title.toLowerCase()}.` : "Os cadastros básicos estão preparados. Faça um agendamento de teste e confira o fluxo com sua equipe."}</p>
+      <p className="mt-3 text-sm text-muted">{next ? `Próximo passo: ${next.title.toLowerCase()}.` : "Os passos iniciais estão concluídos. Você já pode preparar seu link de agendamento online."}</p>
       <p className="mt-2 text-xs text-muted">O progresso considera os dados cadastrados. Revise os serviços e os horários antes de começar a atender.</p>
     </section>
 
@@ -68,7 +71,7 @@ export default async function ImplantationPage() {
       <h2 id="booking-setup-title" className="text-xl font-extrabold">Receba agendamentos online</h2>
       <p className="mt-2 text-sm text-muted">Se quiser receber reservas pela internet, habilite a página pública e teste a escolha de serviço, profissional e horário pelo celular antes de divulgar o link.</p>
       <div className="mt-4 flex flex-wrap gap-3">
-        <Link className="secondary-button" href="/configuracoes?aba=booking">{organization.bookingEnabled ? "Revisar agendamento online" : "Habilitar agendamento online"}</Link>
+        <Link className="secondary-button" href="/configuracoes?aba=booking&guia=publicar#agendamento-publico">{organization.bookingEnabled ? "Revisar agendamento online" : "Habilitar agendamento online"}</Link>
         {organization.bookingEnabled && <Link className="secondary-button" href={`/agendar/${encodeURIComponent(organization.slug)}`} target="_blank" rel="noopener noreferrer">Ver página pública</Link>}
         <Link className="secondary-button" href="/agenda">Abrir agenda</Link>
       </div>

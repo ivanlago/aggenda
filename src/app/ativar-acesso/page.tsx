@@ -26,16 +26,20 @@ export default async function ActivateAccessPage() {
         <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-brand/10 text-brand">
           <KeyRound className="size-6" />
         </span>
-        <p className="mt-5 text-sm font-extrabold uppercase tracking-widest text-brand">Acesso administrativo criado</p>
+        <p className="mt-5 text-sm font-extrabold uppercase tracking-widest text-brand">Seu acesso está pronto para ativação</p>
         <h1 className="mt-3 text-3xl font-extrabold">Defina sua senha pelo e-mail</h1>
         <p className="mt-4 leading-7 text-muted">
-          Enviamos para <strong>{user.email}</strong> um link seguro, válido por 24 horas. O painel será liberado depois que você definir a senha.
+          Enviamos para <strong>{user.email}</strong> um link individual, válido por 24 horas. Abra o e-mail e defina sua senha para entrar no Aggenda.
         </p>
         <ActionForm action={resendAccessActivation} successMessage="Novo link enviado." className="mt-7">
           <button className="primary-button inline-flex items-center gap-2">
             <Mail className="size-4" /> Reenviar link de acesso
           </button>
         </ActionForm>
+        <p className="mt-4 text-sm text-muted">
+          Confira também a pasta de spam. Se precisar de ajuda para entrar, escreva para{" "}
+          <a className="font-bold text-brand" href="mailto:contato@aggenda.app.br?subject=Ajuda%20com%20o%20primeiro%20acesso">contato@aggenda.app.br</a>.
+        </p>
         <div className="mt-6 flex justify-center rounded-xl bg-brand px-4 py-3">
           <SignOutButton />
         </div>

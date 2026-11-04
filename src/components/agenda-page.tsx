@@ -43,6 +43,7 @@ export async function AgendaPage({ openNewAppointment = false, filters = {} }: {
   const canManage = hasOrganizationPermission(organization.role, "appointments.manage");
   const canManageAvailability = hasOrganizationPermission(organization.role, "availability.manage");
   const canManageFinance = hasOrganizationPermission(organization.role, "finance.manage");
+  const canReadClients = hasOrganizationPermission(organization.role, "clients.read");
   const canSendWhatsApp = !["viewer", "member"].includes(organization.role);
   const range = agendaRange(filters.date, filters.period, organization.timezone);
   const period = range.period;
@@ -60,7 +61,22 @@ export async function AgendaPage({ openNewAppointment = false, filters = {} }: {
 
   return <div className="page-wrap">
     <PageHeader eyebrow="Operação" title="Agenda" description="Consulte períodos anteriores e gerencie os atendimentos da clínica." />
-    <div className="mb-5 flex flex-wrap gap-3">{canManage && <div><ModalShell key={openNewAppointment ? filters.inicio ?? "open" : "closed"} title="Novo agendamento" wide variant="new" defaultOpen={openNewAppointment} closeOnSuccess>{createForm}</ModalShell></div>}{canManageAvailability && <div><ScheduleBlockForm key={filters.bloquear === "1" ? "open-block" : "closed-block"} professionals={professionalItems} defaultOpen={filters.bloquear === "1"} /></div>}</div>
+    <div className="mb-5 flex flex-wrap gap-3">
+      {canManage && <ModalShell key={openNewAppointment ? filters.inicio ?? "open" : "closed"} title="Novo agendamento" wide variant="new" defaultOpen={openNewAppointment} closeOnSuccess>
+        {filters.guia === "primeiro" && <aside className="mb-4 rounded-xl bg-brand/5 p-4 text-sm">
+          <p className="font-bold">Seu primeiro agendamento</p>
+          <p className="mt-1">Escolha o cliente e o serviço, indique quem vai atender e selecione um horário. Confira os dados antes de salvar.</p>
+          <p className="mt-2 flex flex-wrap gap-3">
+            {!clientItems.length && <Link className="font-bold text-brand" href="/clientes">Cadastrar cliente</Link>}
+            {!serviceItems.length && <Link className="font-bold text-brand" href="/servicos">Cadastrar serviço</Link>}
+            {!professionalItems.length && <Link className="font-bold text-brand" href="/profissionais">Cadastrar profissional</Link>}
+            <Link className="font-bold text-brand" href="/implantacao">Voltar à implantação</Link>
+          </p>
+        </aside>}
+        {createForm}
+      </ModalShell>}
+      {canManageAvailability && <div><ScheduleBlockForm key={filters.bloquear === "1" ? "open-block" : "closed-block"} professionals={professionalItems} defaultOpen={filters.bloquear === "1"} /></div>}
+    </div>
     <form className="panel mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6" action="/agenda">
       <label className="grid min-w-0 gap-1 text-sm font-bold">Atendimento<select className="field" name="serviceId" defaultValue={filters.serviceId ?? ""}><option value="">Todos os atendimentos</option>{serviceItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
       <label className="grid min-w-0 gap-1 text-sm font-bold">Situação<select className="field" name="status" defaultValue={filters.status ?? ""}><option value="">Todos os status</option>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -85,7 +101,15 @@ export async function AgendaPage({ openNewAppointment = false, filters = {} }: {
             <td className="whitespace-nowrap p-3"><strong>{time ?? dateTime}</strong><p className="text-xs text-muted">{time ? date : ""}</p></td>
             <td className="max-w-56 p-3"><p className="truncate font-bold" title={item.service}>{item.service}</p></td>
             <td className="p-3"><span className={`status-pill ${statusClasses[item.status] ?? ""}`}>{statusLabels[item.status] ?? item.status}</span>{item.blocked && ["scheduled", "confirmed"].includes(item.status) && <p className="mt-1 text-xs font-bold text-amber-800">Coincide com bloqueio</p>}</td>
-            <td className="p-3">{item.professional ?? "—"}</td><td className="p-3">{item.roomName ?? "Sem sala atribuída"}</td><td className="p-3 font-bold">{item.client}</td>
+            <td className="p-3">{item.professional ?? "—"}</td><td className="p-3">{item.roomName ?? "Sem sala atribuída"}</td>
+            <td className="p-3 font-bold">
+              {canReadClients ? <Link className="text-brand underline-offset-4 hover:underline" href={`/clientes/${item.clientId}`}>{item.client}</Link> : item.client}
+              {canManageFinance && availablePackages.length > 0 && (
+                <ul className="mt-1 text-xs font-normal text-muted" aria-label="Saldo de pacotes para este serviço">
+                  {availablePackages.map((bundle) => <li key={bundle.id}>{bundle.name}: {bundle.remaining} {bundle.remaining === 1 ? "sessão restante" : "sessões restantes"}</li>)}
+                </ul>
+              )}
+            </td>
             {canManageFinance && <td className="p-3"><ModalShell title="Registrar pagamento" variant="payment" completed={item.paymentStatus === "received" || Boolean(item.clientPackageId)}><AppointmentPaymentForm appointmentId={item.id} client={item.client} description={item.service} defaultAmount={price} packages={availablePackages} /></ModalShell></td>}
             {canManage && <td className="p-3"><ModalShell title="Editar agendamento" variant="edit"><div className="grid gap-5"><p className="text-sm text-muted">Escolha a alteração desejada. Cada ação confirma apenas os campos da sua seção.</p><div className="rounded-2xl bg-slate-50 p-4"><p className="font-extrabold">{item.client}</p><p className="text-sm text-muted">{item.service} · {item.professional ?? "Sem profissional"}</p><p className="mt-1 text-sm font-bold text-brand">{dateTime}</p>{item.packageName && <p className="mt-1 text-xs text-brand">Pacote: {item.packageName} · {item.packageStatus}</p>}</div><details><summary className="cursor-pointer font-bold text-brand">Trocar sala sem reagendar</summary><AppointmentRoomForm appointmentId={item.id} roomId={item.roomId} rooms={roomItems} /></details><details><summary className="cursor-pointer font-bold text-brand">Alterar situação</summary><AppointmentStatusForm action={updateAppointmentStatus} appointmentId={item.id} initialStatus={item.status} initialCancellationReason={item.cancellationReason} statuses={statuses} /></details>{item.professionalId && <details><summary className="cursor-pointer font-bold text-brand">Reagendar data, horário e sala</summary><AppointmentRescheduleForm rooms={roomItems} initialRoomId={item.roomId} action={rescheduleAppointment} appointmentId={item.id} serviceId={item.serviceId} professionalId={item.professionalId} timezone={organization.timezone} /></details>}{canSendWhatsApp && whatsapp && <a className="secondary-button sm:w-fit" href={whatsapp} target="_blank" rel="noreferrer">Enviar pelo WhatsApp</a>}</div></ModalShell></td>}
           <td className="p-3"><Link className="primary-button whitespace-nowrap py-2" href={`/atendimento/${item.id}`}>Atender</Link></td></tr>;

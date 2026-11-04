@@ -2331,3 +2331,44 @@ export const professionalFiscalShares = pgTable("professional_fiscal_shares", {
 }, (table) => [
   uniqueIndex("professional_fiscal_share_service_unique").on(table.professionalId, table.serviceId),
 ]);
+
+export const paymentMethods = pgTable("payment_methods", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+}, table => [uniqueIndex("payment_methods_org_name_unique").on(table.organizationId, sql`lower(${table.name})`)]);
+
+export const inventorySuppliers = pgTable("inventory_suppliers", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  document: text("document"),
+  email: text("email"),
+  phone: text("phone"),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
+export const inventoryPurchases = pgTable("inventory_purchases", {
+  id: uuid("id").primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  supplierId: uuid("supplier_id").notNull().references(() => inventorySuppliers.id),
+  supplierName: text("supplier_name").notNull(),
+  purchasedOn: date("purchased_on").notNull(),
+  reference: text("reference"),
+  totalInCents: integer("total_in_cents").notNull(),
+  createdByUserId: text("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, table => [index("inventory_purchases_org_date_idx").on(table.organizationId, table.purchasedOn)]);
+
+export const inventoryPurchaseItems = pgTable("inventory_purchase_items", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  purchaseId: uuid("purchase_id").notNull().references(() => inventoryPurchases.id, { onDelete: "cascade" }),
+  productId: uuid("product_id").notNull().references(() => inventoryProducts.id),
+  productName: text("product_name").notNull(),
+  lotId: uuid("lot_id").references(() => inventoryLots.id, { onDelete: "set null" }),
+  pool: text("pool").notNull(),
+  quantityMillis: integer("quantity_millis").notNull(),
+  unitCostInCents: integer("unit_cost_in_cents").notNull(),
+  totalInCents: integer("total_in_cents").notNull(),
+}, table => [index("inventory_purchase_items_purchase_idx").on(table.purchaseId)]);

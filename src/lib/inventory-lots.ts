@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import type { db } from "../db";
-import { auditLogs, inventoryLots, inventoryLotAllocations, inventoryLotRecalls, inventoryProducts, organizations } from "../db/schema";
+import { auditLogs, inventoryLots, inventoryLotAllocations, inventoryLotRecalls, inventoryMovements, inventoryProducts, organizations } from "../db/schema";
 
 export type LotTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type LotReference = { organizationId: string; productId: string; referenceType: "sale" | "appointment" | "clinical" | "manual"; referenceId: string; userId: string; clientId?: string | null; appointmentId?: string | null };
@@ -83,4 +83,26 @@ export async function restoreLots(tx: LotTransaction, input: LotReference & { le
 
 export async function lotAudit(tx: LotTransaction, organizationId: string, userId: string, action: string, entityId: string, details?: Record<string, unknown>) {
   await tx.insert(auditLogs).values({ organizationId, userId, action, entityType: "inventory_lot", entityId, details });
+}
+
+export async function receiveInventoryLot(tx: LotTransaction, input: { organizationId: string; userId: string; productId: string; code: string; informedCode: string; expiresOn: string; pool: string; mode: string; amount: number; supplier: string | null; notes: string }) {
+  const { organizationId, userId, productId, code, informedCode, expiresOn, pool, mode, amount, supplier, notes } = input;
+  const product = await lockLotProduct(tx, organizationId, productId);
+  const lots = await tx.select().from(inventoryLots).where(and(eq(inventoryLots.organizationId, organizationId), eq(inventoryLots.productId, productId))).for("update");
+  const existing = lots.find(lot => lot.code === code);
+  const lotExpiry = expiresOn || existing?.expiresOn || null;
+  if (existing && (existing.expiresOn !== lotExpiry || existing.status !== "active")) throw new Error("Este lote está bloqueado ou já possui outra validade. Não é permitido trocar sua identificação.");
+  if (mode === "entry" && !product.isActive) throw new Error("Produto inativo.");
+  const field = pool === "sale" ? "saleQuantityMillis" : "consumptionQuantityMillis";
+  const total = pool === "sale" ? product.currentQuantityMillis : product.consumptionQuantityMillis;
+  if (mode === "entry" && total + amount > 2_147_483_647) throw new Error("Saldo acima do limite.");
+  if (mode === "existing" && (product.lotTracking || lots.reduce((n, lot) => n + lot[field], 0) + amount > total)) throw new Error("A quantidade excede o saldo ainda sem lote ou o controle já está ativo.");
+  const [lot] = existing ? await tx.update(inventoryLots).set({ [field]: existing[field] + amount, updatedAt: new Date() }).where(eq(inventoryLots.id, existing.id)).returning() : await tx.insert(inventoryLots).values({ organizationId, productId, code, expiresOn: lotExpiry, status: informedCode && lotExpiry ? "active" : "quarantine", notes: !informedCode || !lotExpiry ? "Entrada com identificação incompleta; confirmar número do lote e vencimento antes de liberar." : null, [field]: amount, supplier }).returning();
+  if (mode === "entry") {
+    const aggregate = pool === "sale" ? "currentQuantityMillis" : "consumptionQuantityMillis";
+    await tx.update(inventoryProducts).set({ [aggregate]: total + amount, updatedAt: new Date() }).where(eq(inventoryProducts.id, productId));
+    await tx.insert(inventoryMovements).values({ organizationId, productId, type: "entry", quantityMillis: amount, balanceAfterMillis: total + amount, notes: [`Lote ${code} · ${pool === "sale" ? "venda" : "consumo"}`, notes].filter(Boolean).join(" · "), createdByUserId: userId });
+  }
+  await lotAudit(tx, organizationId, userId, `inventory.lot.${mode}`, lot.id, { amount, pool, notes: notes || null });
+  return lot;
 }

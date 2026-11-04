@@ -69,7 +69,7 @@ test("real migration, lot actions, clinical use, FEFO, expiry blocking, reversal
       assert.deepEqual(portions.map(p => [p.lotId, p.quantityMillis]), [[null, 46000]]);
       throw new Error("Rollback availability check");
     }).catch(error => { assert.match(error.message, /Rollback availability check/); });
-    const output = await build({ entryPoints: ["src/actions/inventory-lots.ts", "src/actions/inventory.ts", "src/lib/inventory.ts", "src/actions/retail.ts", "src/actions/stock-movement.ts", "src/lib/pos-catalog.ts"], outdir: "unused", bundle: true, write: false, format: "cjs", platform: "node", packages: "external", plugins: [{ name: key, setup(builder) {
+    const output = await build({ entryPoints: ["src/actions/inventory-lots.ts", "src/actions/inventory-purchases.ts", "src/actions/inventory.ts", "src/lib/inventory.ts", "src/actions/retail.ts", "src/actions/stock-movement.ts", "src/lib/pos-catalog.ts"], outdir: "unused", bundle: true, write: false, format: "cjs", platform: "node", packages: "external", plugins: [{ name: key, setup(builder) {
       const mocks: Record<string, string> = { "@/db": `export const db=globalThis.${key}.db;`, "@/lib/session": `export async function requireOrganization(){const c=globalThis.${key};return {session:{user:{id:c.userId}},organization:{id:c.organizationId,role:c.role,timezone:'America/Bahia'}}} export async function requireProfessionalScope(){return 'unused'}`, "next/cache": "export function revalidatePath(){}" };
       builder.onResolve({ filter: /./ }, args => mocks[args.path] ? { path: args.path, namespace: key } : undefined);
       builder.onLoad({ filter: /./, namespace: key }, args => ({ contents: mocks[args.path], loader: "js" }));
@@ -98,6 +98,31 @@ test("real migration, lot actions, clinical use, FEFO, expiry blocking, reversal
     }
     const availableProducts = await (catalog.getPosProducts as (id: string) => Promise<Array<{ stock: number }>>)(org);
     assert.deepEqual(availableProducts.map(p => p.stock), [44, 46]);
+    await pg.exec(await readFile("drizzle/0091_payment_methods_inventory_purchases.sql", "utf8"));
+    const purchaseActions = modules.find(module => module.registerInventoryPurchase)!;
+    const [supplier] = await database.insert(schema.inventorySuppliers).values({ organizationId: org, name: "Test supplier" }).returning();
+    const requestId = randomUUID();
+    const purchaseForm = new FormData();
+    for (const [name, value] of Object.entries({
+      requestId, supplierId: supplier.id, purchasedOn: "2026-11-04", productId: mixed,
+      pool: "consumption", quantity: "2", unitCost: "7,50", code: "REGULAR", expiresOn: "2099-01-01",
+    })) purchaseForm.set(name, value);
+    const registerPurchase = purchaseActions.registerInventoryPurchase as (input: FormData) => Promise<unknown>;
+    const invalidForm = new FormData();
+    for (const [name, value] of purchaseForm) invalidForm.append(name, value);
+    for (const [name, value] of Object.entries({
+      productId: randomUUID(), pool: "consumption", quantity: "1", unitCost: "1", code: "", expiresOn: "",
+    })) invalidForm.append(name, value);
+    assert.match(JSON.stringify(await registerPurchase(invalidForm)), /Produto não encontrado/);
+    assert.equal((await database.select().from(schema.inventoryPurchases)).length, 0);
+    assert.equal(await registerPurchase(purchaseForm), undefined);
+    assert.equal(await registerPurchase(purchaseForm), undefined);
+    const [purchaseItem] = await database.select().from(schema.inventoryPurchaseItems).where(eq(schema.inventoryPurchaseItems.purchaseId, requestId));
+    assert.equal(purchaseItem.lotId, regular.id);
+    assert.equal(purchaseItem.totalInCents, 1500);
+    const [receivedLot] = await database.select().from(schema.inventoryLots).where(eq(schema.inventoryLots.id, regular.id));
+    assert.equal(receivedLot.consumptionQuantityMillis, 2000);
+    assert.equal((await database.select().from(schema.inventoryProducts).where(eq(schema.inventoryProducts.id, mixed)))[0].consumptionQuantityMillis, 2000);
     // Manual operations without a selected lot may touch only the unassigned balance.
     await assert.rejects(unified({ productId: mixed, type: "exit", quantity: "35", pool: "sale" }), /Saldo sem lote insuficiente/);
     await unified({ productId: mixed, type: "consumption", quantity: "1" });
@@ -176,17 +201,21 @@ test("real migration, lot actions, clinical use, FEFO, expiry blocking, reversal
     await pg.query("INSERT INTO retail_products(id,organization_id,name) VALUES ($1,$2,'Serum')", [retailProduct, org]);
     await pg.query("UPDATE retail_product_variants SET product_id=$1,name='Default',sale_price_in_cents=100 WHERE inventory_product_id=$2", [retailProduct, product]);
     const [variant] = await database.select().from(schema.retailProductVariants).where(eq(schema.retailProductVariants.inventoryProductId, product));
-    const checkout = (amount: number) => {
-      const form = new FormData(); form.set("clientId", client); form.set("items", JSON.stringify([{ variantId: variant.id, quantity: amount }])); form.set("payments", JSON.stringify([{ method: "cash", amountInCents: amount * 100 }]));
+    const checkout = (amount: number, method = "cash") => {
+      const form = new FormData(); form.set("clientId", client); form.set("items", JSON.stringify([{ variantId: variant.id, quantity: amount }])); form.set("payments", JSON.stringify([{ method, amountInCents: amount * 100 }]));
       return (retail.registerRetailSale as (form: FormData) => Promise<unknown>)(form);
     };
     const beforeSales = (await pg.query<{ total: number }>("SELECT count(*)::integer AS total FROM retail_sales")).rows[0].total;
     await assert.rejects(checkout(4), /saldo válido insuficiente/);
     assert.equal((await pg.query<{ total: number }>("SELECT count(*)::integer AS total FROM retail_sales")).rows[0].total, beforeSales);
-    await checkout(1);
+    const [custom] = await database.insert(schema.paymentMethods).values({ organizationId: org, name: "Vale-presente" }).returning();
+    const [foreign] = await database.insert(schema.paymentMethods).values({ organizationId: outside, name: "Outra empresa" }).returning();
+    await assert.rejects(checkout(1, "custom:" + foreign.id), /não está ativa/);
+    await checkout(1, "custom:" + custom.id);
     const [sold] = await database.select().from(schema.retailSales).where(eq(schema.retailSales.status, "completed"));
     // The synthetic historical sale has no financial entry, so choose the actual POS sale.
     const actualSale = (await database.select().from(schema.retailSales)).find(row => row.financialEntryId)!;
+    assert.match(actualSale.notes ?? "", /Vale-presente/);
     assert.ok(sold);
     const reverse = new FormData(); reverse.set("saleId", actualSale.id); reverse.set("operation", "refund"); reverse.set("reason", "Customer return");
     await (retail.reverseRetailSale as (form: FormData) => Promise<unknown>)(reverse);

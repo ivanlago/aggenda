@@ -638,6 +638,13 @@
       "when": 1793820111147,
       "tag": "0090_professional_fiscal_partnership",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1793827657793,
+      "tag": "0091_payment_methods_inventory_purchases",
+      "breakpoints": true
     }
   ]
 }

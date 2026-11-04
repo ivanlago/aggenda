@@ -9,7 +9,7 @@ import { requireOrganization } from "@/lib/session";
 import { requireClinicalClient } from "@/lib/clinical-access";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { startLotRecall } from "@/lib/inventory-lot-recall";
-import { allocateLots, lockLotProduct, lotAudit, lotToday, stockMillis, validLotDate } from "@/lib/inventory-lots";
+import { allocateLots, lockLotProduct, lotAudit, lotToday, receiveInventoryLot, stockMillis, validLotDate } from "@/lib/inventory-lots";
 
 const text = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
 function refresh() { revalidatePath("/estoque"); revalidatePath("/estoque/lotes"); revalidatePath("/atendimento", "layout"); revalidatePath("/vendas"); }
@@ -22,21 +22,7 @@ export async function registerInventoryLot(form: FormData) {
   const pool = text(form, "pool"), mode = text(form, "mode"), amount = stockMillis(text(form, "quantity"));
   if (code.length > 100 || (expiresOn && !validLotDate(expiresOn)) || !["sale", "consumption"].includes(pool) || !["existing", "entry"].includes(mode)) throw new Error("Revise produto, lote, vencimento, destino e origem do saldo.");
   await db.transaction(async tx => {
-    const product = await lockLotProduct(tx, organization.id, productId);
-    const lots = await tx.select().from(inventoryLots).where(and(eq(inventoryLots.organizationId, organization.id), eq(inventoryLots.productId, productId))).for("update");
-    const existing = lots.find(lot => lot.code === code);
-    const lotExpiry = expiresOn || existing?.expiresOn || null;
-    if (existing && (existing.expiresOn !== lotExpiry || existing.status !== "active")) throw new Error("Este lote está bloqueado ou já possui outra validade. Não é permitido trocar sua identificação.");
-    const field = pool === "sale" ? "saleQuantityMillis" : "consumptionQuantityMillis";
-    const total = pool === "sale" ? product.currentQuantityMillis : product.consumptionQuantityMillis;
-    if (mode === "existing" && (product.lotTracking || lots.reduce((n, lot) => n + lot[field], 0) + amount > total)) throw new Error("A quantidade excede o saldo ainda sem lote ou o controle já está ativo.");
-    const [lot] = existing ? await tx.update(inventoryLots).set({ [field]: existing[field] + amount, updatedAt: new Date() }).where(eq(inventoryLots.id, existing.id)).returning() : await tx.insert(inventoryLots).values({ organizationId: organization.id, productId, code, expiresOn: lotExpiry, status: informedCode && lotExpiry ? "active" : "quarantine", notes: !informedCode || !lotExpiry ? "Entrada com identificação incompleta; confirmar número do lote e vencimento antes de liberar." : null, [field]: amount, supplier: text(form, "supplier").slice(0, 200) || null }).returning();
-    if (mode === "entry") {
-      const aggregate = pool === "sale" ? "currentQuantityMillis" : "consumptionQuantityMillis";
-      await tx.update(inventoryProducts).set({ [aggregate]: total + amount, updatedAt: new Date() }).where(eq(inventoryProducts.id, productId));
-      await tx.insert(inventoryMovements).values({ organizationId: organization.id, productId, type: "entry", quantityMillis: amount, balanceAfterMillis: total + amount, notes: [`Lote ${code} · ${pool === "sale" ? "venda" : "consumo"}`, text(form, "notes").slice(0, 1000)].filter(Boolean).join(" · "), createdByUserId: session.user.id });
-    }
-    await lotAudit(tx, organization.id, session.user.id, `inventory.lot.${mode}`, lot.id, { amount, pool, notes: text(form, "notes").slice(0, 1000) || null });
+    await receiveInventoryLot(tx, { organizationId: organization.id, userId: session.user.id, productId, code, informedCode, expiresOn, pool, mode, amount, supplier: text(form, "supplier").slice(0, 200) || null, notes: text(form, "notes").slice(0, 1000) });
   }); refresh();
 }
 

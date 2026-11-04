@@ -77,6 +77,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       { href: "/relatorios", label: "Relatórios", icon: ChartNoAxesCombined, permission: "organization.read" },
     ] },
     { label: "Atendimento", items: [
+      { href: "/estoque/compras", label: "Compras e fornecedores", icon: Boxes, permission: "inventory.manage" },
       { href: "/estoque", label: "Estoque", icon: Boxes, permission: "inventory.read" },
       { href: "/servicos", label: organization.serviceLabelPlural, icon: Wrench, permission: "services.read" },
       { href: "/pacotes", label: "Pacotes", icon: PackageOpen, permission: "services.read" },
@@ -89,6 +90,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       { href: "/documentos/assinatura-profissional", label: "Assinatura profissional", icon: FileSignature, permission: "documents.sign" },
     ] },
     { label: "Financeiro", items: [
+      { href: "/financeiro/formas-de-pagamento", label: "Formas de pagamento", icon: WalletCards, permission: "finance.manage" },
       { href: "/financeiro/cobrancas", label: "Cobranças", icon: BanknoteArrowDown, permission: "finance.read" },
       { href: "/financeiro/comissoes", label: "Comissões", icon: HandCoins, permission: "finance.read" },
       { href: "/financeiro", label: "Contas e fluxo de caixa", icon: WalletCards, permission: "finance.read" },

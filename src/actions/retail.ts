@@ -1,4 +1,5 @@
 "use server";
+import { activePaymentMethods } from "@/lib/payment-methods";
 import { allocateLots, restoreLots } from "@/lib/inventory-lots";
 import { attendancePendingItems } from "@/lib/attendance-pending-items";
 import { z } from "zod";
@@ -305,10 +306,19 @@ export async function registerRetailSale(data: FormData) {
   let payments: SalePaymentInput[];
   try { payments = online ? [] : JSON.parse(text(data, "payments")); } catch { throw new Error("Formas de pagamento inválidas."); }
   if (!Array.isArray(payments) || (!online && !payments.length) || payments.length > 5) throw new Error("Informe ao menos uma forma de pagamento.");
+  const customMethods = payments.some(payment => typeof payment?.method === "string" && payment.method.startsWith("custom:"))
+    ? await activePaymentMethods(organization.id) : [];
   let normalizedPayments = payments.map((payment) => {
-    const method = typeof payment.method === "string" ? payment.method : "";
+    if (!payment || typeof payment !== "object") throw new Error("Forma de pagamento inválida.");
+    let method = typeof payment.method === "string" ? payment.method : "";
     const amountInCents = Number(payment.amountInCents);
-    const otherPaymentMethod = typeof payment.otherPaymentMethod === "string" ? payment.otherPaymentMethod.trim().slice(0, 200) : "";
+    let otherPaymentMethod = typeof payment.otherPaymentMethod === "string" ? payment.otherPaymentMethod.trim().slice(0, 200) : "";
+    if (method.startsWith("custom:")) {
+      const custom = customMethods.find(item => item.id === method.slice(7));
+      if (!custom) throw new Error("A forma de pagamento selecionada não está ativa.");
+      method = "other";
+      otherPaymentMethod = custom.name;
+    }
     if (!['cash', 'credit_card', 'debit_card', 'pix', 'bank_transfer', 'boleto', 'other'].includes(method) || !Number.isInteger(amountInCents) || amountInCents < 0 || (method === "other" && otherPaymentMethod.length < 2)) throw new Error("Revise as formas, os valores e a justificativa do pagamento.");
     return { method, amountInCents, otherPaymentMethod };
   });
@@ -439,7 +449,9 @@ export async function registerRetailSale(data: FormData) {
       commissionProfessionalId: commissionBeneficiary?.professionalId, commissionUserId: commissionBeneficiary?.beneficiaryUserId,
       organizationId: organization.id, clientId, attendanceId: sourceQuote?.attendanceId ?? attendanceId, financialEntryId: financialEntry.id, appointmentFinancialEntryId, paymentMethod,
       receiptEmail, receiptPhone: receiptPhoneDigits,
-      subtotalInCents, discountInCents, totalInCents, notes: text(data, "notes") || null,
+      subtotalInCents, discountInCents, totalInCents,
+      notes: [text(data, "notes"), ...normalizedPayments.filter(payment => payment.method === "other").map(payment =>
+        `Pagamento: ${payment.otherPaymentMethod} · ${(payment.amountInCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`)].filter(Boolean).join("\n") || null,
       createdByUserId: session.user.id,
       status: online ? "pending_payment" : "completed", paymentProvider: online ? selectedProvider : null,
       checkoutKey, checkoutInputHash: inputHash,

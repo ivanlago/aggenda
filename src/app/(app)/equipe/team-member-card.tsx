@@ -1,6 +1,6 @@
 "use client";
 import { ModalShell } from "@/components/modal-shell";
-import { FormActions } from "@/components/form-dialog-context";
+import { FormActions, FormSection } from "@/components/form-dialog-context";
 
 import { Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -23,6 +23,8 @@ export type TeamMemberCardData = {
   phone: string | null; bio: string | null; council: string | null; registrationNumber: string | null;
   registrationState: string | null; specialtyIds: string[]; availability: Availability[];
   imageUrl: string | null;
+  agendaOrder: number | null;
+  lastSignedIn: string | null;
 };
 
 export function TeamMemberCard({ member, professions, specialties, canEdit, canDelete }: {
@@ -39,6 +41,7 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
         <div className="min-w-0 flex-1">
           <p className="text-lg font-extrabold">{member.shortName}</p>
           <p className="truncate text-sm text-muted">{member.email}</p>
+          {canEdit && <p className="mt-1 text-xs text-muted">Última entrada registrada: {member.lastSignedIn ?? "Sem registro"}</p>}
           <div className="mt-2 flex flex-wrap gap-2">
             <span className="status-pill">{roleLabels[member.role] ?? member.role}</span>
             {member.professionName && <span className="status-pill">{member.professionName}</span>}
@@ -53,10 +56,17 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
         <ModalShell title={`Editar membro: ${member.shortName}`} triggerLabel="Editar membro" variant="edit" wide closeOnSuccess>
         <ActionForm action={updateUnifiedTeamMember} successMessage="Dados e acesso atualizados." className="mt-4 grid items-start gap-3 rounded-2xl bg-[#f7faf7] p-4 md:grid-cols-2">
           <input type="hidden" name="userId" value={member.userId} /><input type="hidden" name="professionalId" value={member.professionalId ?? ""} />
+          <FormSection title="Identificação">
           <label className="grid gap-1 text-sm font-bold">Nome completo<input className="field" name="fullName" defaultValue={member.fullName} required /></label>
           <label className="grid gap-1 text-sm font-bold">Nome curto<input className="field" name="shortName" defaultValue={member.shortName} required /></label>
+          </FormSection>
+          <FormSection title="Acesso">
           <label className="grid gap-1 text-sm font-bold">Perfil de acesso<select className="field" name="role" defaultValue={member.role} disabled={member.role === "owner"}>{member.role === "owner" && <option value="owner">Administrador</option>}<option value="admin">Administrador</option><option value="manager">Gerente</option><option value="professional">Profissional</option><option value="receptionist">Recepcionista</option><option value="financial">Financeiro</option></select>{member.role === "owner" && <input type="hidden" name="role" value="owner" />}</label>
-          {member.professionalId && <>
+          </FormSection>
+          {member.professionalId && <FormSection title="Agenda">
+            <label className="grid gap-1 text-sm font-bold">Ordem na agenda<input className="field" name="agendaOrder" type="number" min={0} max={9999} step={1} defaultValue={member.agendaOrder ?? 0} /><span className="text-xs font-normal text-muted">Números menores aparecem primeiro. Empates seguem a ordem alfabética.</span></label>
+          </FormSection>}
+          {member.professionalId && <FormSection title="Perfil profissional">
             <label className="grid gap-1 text-sm font-bold">Profissão<select className="field" name="professionId" value={professionId} onChange={(event) => setProfessionId(event.target.value)}><option value="">Selecione</option>{professions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
             <label className="grid gap-1 text-sm font-bold">Especialidades<select className="field min-h-24" name="specialtyIds" multiple defaultValue={member.specialtyIds}>{availableSpecialties.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
             <label className="grid gap-1 text-sm font-bold">Conselho<select className="field" name="council" defaultValue={member.council ?? ""}><option value="">Selecione</option>{["CRM", "CRO", "CRP", "COREN", "CREFITO", "OAB", "CREA", "CREF", "OUTRO"].map((item) => <option key={item}>{item}</option>)}</select></label>
@@ -65,7 +75,7 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
             <label className="grid gap-1 text-sm font-bold">Telefone<PhoneInput name="phone" defaultValue={member.phone} /></label>
             <label className="grid gap-1 text-sm font-bold md:col-span-2">Apresentação breve<textarea className="field min-h-20" name="bio" defaultValue={member.bio ?? ""} /></label>
             <EntityImageField currentUrl={member.imageUrl} label="Foto do profissional" />
-          </>}
+          </FormSection>}
           <FormActions editing />
         </ActionForm></ModalShell>
       )}

@@ -46,6 +46,10 @@ export function ServiceForm({ item, label, categories }: { item?: typeof service
       <p className="rounded-lg bg-brand/5 p-3 text-sm sm:col-span-2">
         {contribution === null ? "Informe o preço e o custo para estimar a margem." : <>Margem estimada por atendimento: <strong>{currency.format(contribution / 100)}</strong>. Considera apenas o custo informado.</>}
       </p>
+      <label className="flex items-start gap-2 text-sm font-bold sm:col-span-2">
+        <input type="checkbox" name="hidePublicPrice" defaultChecked={item?.hidePublicPrice} />
+        Ocultar o preço na lista de serviços do portal. Cobranças e sinais continuam mostrando o valor devido.
+      </label>
       <ServiceDepositFields type={item?.depositType} value={item?.depositValue} />
     </FormSection>
     <FormSection title="Informações adicionais">

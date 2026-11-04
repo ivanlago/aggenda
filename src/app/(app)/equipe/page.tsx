@@ -20,7 +20,7 @@ export default async function TeamPage() {
   if (!canRead) return <div className="page-wrap"><p className="panel">Acesso restrito à gestão da equipe.</p></div>;
 
   const [members, professionOptions, specialtyOptions, specialtyRows, registrationRows, availabilityRows] = await Promise.all([
-    db.select({ userId: users.id, fullName: users.name, shortName: users.shortName, email: users.email, role: organizationMembers.role, professionalId: professionals.id, professionalName: professionals.name, professionId: professionals.professionId, professionName: professions.name, phone: professionals.phone, bio: professionals.bio, imageUrl: professionals.imageUrl })
+    db.select({ userId: users.id, fullName: users.name, shortName: users.shortName, email: users.email, lastSignedInAt: users.lastSignedInAt, role: organizationMembers.role, professionalId: professionals.id, professionalName: professionals.name, agendaOrder: professionals.agendaOrder, professionId: professionals.professionId, professionName: professions.name, phone: professionals.phone, bio: professionals.bio, imageUrl: professionals.imageUrl })
       .from(organizationMembers).innerJoin(users, eq(users.id, organizationMembers.userId))
       .leftJoin(professionals, and(eq(professionals.organizationId, organization.id), eq(professionals.userId, users.id)))
       .leftJoin(professions, eq(professions.id, professionals.professionId))
@@ -37,7 +37,8 @@ export default async function TeamPage() {
     return {
       userId: member.userId, fullName: member.fullName,
       shortName: member.shortName || member.professionalName || member.fullName,
-      email: member.email, role: member.role, professionalId: member.professionalId,
+      email: member.email, role: member.role, professionalId: member.professionalId, agendaOrder: member.agendaOrder,
+      lastSignedIn: member.lastSignedInAt ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: organization.timezone }).format(member.lastSignedInAt) : null,
       professionId: member.professionId, professionName: member.professionName,
       phone: member.phone, bio: member.bio, council: registration?.council ?? null,
       registrationNumber: registration?.registrationNumber ?? null,

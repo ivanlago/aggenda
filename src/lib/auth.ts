@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import * as schema from "@/db/schema";
@@ -18,6 +18,21 @@ export const auth = betterAuth({
     schema,
     usePlural: true,
   }),
+  databaseHooks: {
+    session: {
+      create: {
+        after: async (session) => {
+          try {
+            await db.update(schema.users)
+              .set({ lastSignedInAt: sql`greatest(${schema.users.lastSignedInAt}, ${session.createdAt.toISOString()}::timestamptz AT TIME ZONE 'UTC')` })
+              .where(eq(schema.users.id, session.userId));
+          } catch {
+            console.error("[auth] Não foi possível registrar o horário da última entrada.");
+          }
+        },
+      },
+    },
+  },
   emailAndPassword: {
     enabled: true,
     resetPasswordTokenExpiresIn: 24 * 60 * 60,

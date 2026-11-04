@@ -825,6 +825,7 @@ export async function createService(formData: FormData) {
     durationMinutes,
     priceInCents: optionalMoneyInCents(formData, "price"),
     estimatedCostInCents: optionalMoneyInCents(formData, "estimatedCost") ?? 0,
+    hidePublicPrice: formData.get("hidePublicPrice") === "on",
     ...serviceDepositSettings(formData),
     ...image,
   }) });
@@ -882,6 +883,7 @@ export async function updateService(formData: FormData) {
     publicRepeatPolicy: textValue(formData, "publicRepeatPolicy") === "block" ? "block" : "warn",
     priceInCents: optionalMoneyInCents(formData, "price"),
     estimatedCostInCents: optionalMoneyInCents(formData, "estimatedCost") ?? 0,
+    hidePublicPrice: formData.get("hidePublicPrice") === "on",
     ...serviceDepositSettings(formData),
     isActive: formData.get("isActive") === "on", ...image, updatedAt: new Date(),
   }).where(and(eq(services.id, id), eq(services.organizationId, organization.id))) });

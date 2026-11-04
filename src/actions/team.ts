@@ -60,6 +60,8 @@ export async function createUnifiedTeamMember(formData: FormData) {
   const role = parsedTeamRole(formData);
   const isAttendant = field(formData, "isAttendant") === "yes";
   const professionId = field(formData, "professionId");
+  const agendaOrder = Number(field(formData, "agendaOrder") || "0");
+  if (!Number.isInteger(agendaOrder) || agendaOrder < 0 || agendaOrder > 9999) throw new Error("Informe uma ordem de agenda entre 0 e 9999.");
   const council = field(formData, "council").toUpperCase();
   const registrationNumber = field(formData, "registrationNumber");
   const specialtyIds = isAttendant ? await validatedSpecialtyIds(formData, professionId) : [];
@@ -102,6 +104,7 @@ export async function createUnifiedTeamMember(formData: FormData) {
       email,
       phone: field(formData, "phone") || null,
       professionId: professionId || null,
+      agendaOrder,
       bio: field(formData, "bio") || null,
       ...image,
       isBookable: true,
@@ -133,6 +136,8 @@ export async function updateUnifiedTeamMember(formData: FormData) {
   const requestedRole = parsedTeamRole(formData);
   const professionalId = field(formData, "professionalId");
   const professionId = field(formData, "professionId");
+  const agendaOrder = Number(field(formData, "agendaOrder") || "0");
+  if (!Number.isInteger(agendaOrder) || agendaOrder < 0 || agendaOrder > 9999) throw new Error("Informe uma ordem de agenda entre 0 e 9999.");
   const specialtyIds = professionalId ? await validatedSpecialtyIds(formData, professionId) : [];
   if (!userId || fullName.length < 2 || shortName.length < 2) throw new Error("Informe os nomes completo e curto.");
   const [currentMember] = await db.select({ role: organizationMembers.role }).from(organizationMembers).where(and(
@@ -141,7 +146,8 @@ export async function updateUnifiedTeamMember(formData: FormData) {
   if (!currentMember) throw new Error("Membro não encontrado nesta empresa.");
   const role = currentMember.role === "owner" ? "owner" : requestedRole;
   if (role === "professional" && !professionalId) throw new Error("O perfil Profissional precisa ser atendente.");
-  const [currentProfessional] = professionalId ? await db.select({ imagePublicId: professionals.imagePublicId }).from(professionals).where(and(eq(professionals.id, professionalId), eq(professionals.organizationId, organization.id))).limit(1) : [];
+  const [currentProfessional] = professionalId ? await db.select({ imagePublicId: professionals.imagePublicId }).from(professionals).where(and(eq(professionals.id, professionalId), eq(professionals.organizationId, organization.id), eq(professionals.userId, userId))).limit(1) : [];
+  if (professionalId && !currentProfessional) throw new Error("Profissional não vinculado a este membro.");
   await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "professionals", currentPublicId: currentProfessional?.imagePublicId, persist: (image) => db.transaction(async (tx) => {
     await tx.update(users).set({ name: fullName, shortName, updatedAt: new Date() }).where(eq(users.id, userId));
     await tx.update(organizationMembers).set({ role }).where(and(eq(organizationMembers.organizationId, organization.id), eq(organizationMembers.userId, userId)));
@@ -150,6 +156,7 @@ export async function updateUnifiedTeamMember(formData: FormData) {
       name: shortName,
       phone: field(formData, "phone") || null,
       professionId: professionId || null,
+      agendaOrder,
       bio: field(formData, "bio") || null,
       ...image,
       updatedAt: new Date(),

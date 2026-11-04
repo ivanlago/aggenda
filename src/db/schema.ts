@@ -136,6 +136,7 @@ export const honorifics = pgTable("honorifics", {
 });
 
 export const users = pgTable("users", {
+  lastSignedInAt: timestamp("last_signed_in_at"),
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   shortName: text("short_name"),
@@ -232,6 +233,7 @@ export const organizations = pgTable("organizations", {
     .default("Agendamentos")
     .notNull(),
   bookingEnabled: boolean("booking_enabled").default(false).notNull(),
+  bookingFirstPublishedAt: timestamp("booking_first_published_at"),
   bookingNoticeHours: integer("booking_notice_hours").default(2).notNull(),
   bookingHorizonDays: integer("booking_horizon_days").default(60).notNull(),
   slotIntervalMinutes: integer("slot_interval_minutes").default(30).notNull(),
@@ -577,6 +579,7 @@ export const legalAcceptances = pgTable(
 export const professionals = pgTable(
   "professionals",
   {
+    agendaOrder: integer("agenda_order").default(0).notNull(),
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: uuid("organization_id")
       .notNull()
@@ -1268,6 +1271,7 @@ export const services = pgTable(
     durationMinutes: integer("duration_minutes").notNull(),
     priceInCents: integer("price_in_cents"),
     estimatedCostInCents: integer("estimated_cost_in_cents").default(0).notNull(),
+    hidePublicPrice: boolean("hide_public_price").default(false).notNull(),
     depositType: text("deposit_type").default("none").notNull(),
     depositValue: integer("deposit_value").default(0).notNull(),
     depositExpirationMinutes: integer("deposit_expiration_minutes").default(30).notNull(),

@@ -2,7 +2,7 @@
 
 import { roomBookingError } from "@/lib/room-errors";
 
-import { and, eq, gt, inArray, lt } from "drizzle-orm";
+import { and, eq, gt, inArray, lt, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/db";
@@ -205,7 +205,12 @@ export async function updateBookingSettings(formData: FormData) {
       await db.update(organizations).set({ ...updates, ...(imageFields.imageUrl !== undefined ? { publicLogoUrl: imageFields.imageUrl } : {}) }).where(eq(organizations.id, organization.id));
     } });
   } else {
-    await db.update(organizations).set(updates).where(eq(organizations.id, organization.id));
+    await db.update(organizations).set({
+      ...updates,
+      ...(updates.bookingEnabled === true && {
+        bookingFirstPublishedAt: sql`case when ${organizations.bookingEnabled} then ${organizations.bookingFirstPublishedAt} else coalesce(${organizations.bookingFirstPublishedAt}, now() at time zone 'UTC') end`,
+      }),
+    }).where(eq(organizations.id, organization.id));
   }
   await writeAuditLog({
     organizationId: organization.id,

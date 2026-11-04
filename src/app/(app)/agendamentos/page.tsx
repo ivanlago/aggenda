@@ -56,7 +56,7 @@ export default async function AppointmentsPage() {
         eq(professionals.isActive, true),
         professionalScopeId ? eq(professionals.id, professionalScopeId) : undefined,
       )
-    ).orderBy(professionals.name),
+    ).orderBy(professionals.agendaOrder, professionals.name, professionals.id),
     db.select().from(services).where(and(eq(services.organizationId, organization.id), eq(services.isActive, true))).orderBy(services.name),
     db.select({ serviceId: servicesToProfessionals.serviceId, professionalId: servicesToProfessionals.professionalId })
       .from(servicesToProfessionals)

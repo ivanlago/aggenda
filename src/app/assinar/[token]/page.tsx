@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 
@@ -31,7 +32,7 @@ export default async function PublicSignaturePage({ params, searchParams }: { pa
     <p className="text-sm font-extrabold uppercase tracking-wider text-brand">{row.organizationName}</p>
     <h1 className="mt-3 text-3xl font-extrabold">{row.document.title}</h1>
     <p className="mt-2 text-sm text-muted">Documento destinado a {row.document.signerName} · {row.document.signerEmail}</p>
-    <div className="my-7 whitespace-pre-wrap rounded-2xl border bg-[#fbfcfa] p-5 text-sm leading-7">{row.document.contentSnapshot}</div>
+    <div className="my-7 whitespace-pre-wrap rounded-2xl border bg-[#fbfcfa] p-5 text-sm leading-7">{row.document.professionalSignatureImage ? row.document.contentSnapshot.split("@AssinaturaProfissional").map((part, index) => <span key={index}>{index > 0 && <img className="my-2 block max-h-20 max-w-48 object-contain" src={row.document.professionalSignatureImage!} alt="Imagem da assinatura do profissional" />}{part}</span>) : row.document.contentSnapshot}</div>
     {status === "signed" ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900"><p className="font-extrabold">Documento assinado em {row.document.signedAt?.toLocaleString("pt-BR")}.</p><a className="primary-button mt-4 inline-flex" href={`/api/public/documents/${token}/pdf`}>Baixar minha via em PDF</a></div> : unavailable ? <p className="rounded-2xl bg-amber-50 p-5 font-bold text-amber-900">Este documento está {status === "expired" ? "expirado" : status === "cancelled" ? "cancelado" : "indisponível"}. Solicite um novo envio à clínica.</p> : <SignatureForm token={token} responseSchema={row.document.documentType === "anamnesis" && isAnamnesisSchema(row.document.structuredData?.schema) ? row.document.structuredData.schema : null} initialCode={/^\d{6}$/.test(code) ? code : ""} />}
     <p className="mt-8 text-xs leading-5 text-muted">A assinatura registra a confirmação por e-mail, o desenho, data, hora, endereço IP, navegador e hashes criptográficos do conteúdo e das evidências.</p>
   </article></main>;

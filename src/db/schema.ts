@@ -214,6 +214,7 @@ export const verifications = pgTable("verifications", {
 });
 
 export const organizations = pgTable("organizations", {
+  teamPermissionOverrides: jsonb("team_permission_overrides").$type<import("@/lib/permissions").TeamPermissionOverrides>(),
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
@@ -599,6 +600,7 @@ export const professionals = pgTable(
     title: text("title"),
     bio: text("bio"),
     imageUrl: text("image_url"),
+    signatureImage: text("signature_image"),
     imagePublicId: text("image_public_id"),
     color: text("color").default("#18664a").notNull(),
     isBookable: boolean("is_bookable").default(true).notNull(),
@@ -811,6 +813,7 @@ export const electronicDocuments = pgTable("electronic_documents", {
   documentType: text("document_type").notNull(),
   title: text("title").notNull(),
   contentSnapshot: text("content_snapshot").notNull(),
+  professionalSignatureImage: text("professional_signature_image"),
   contentHash: text("content_hash").notNull(),
   structuredData: jsonb("structured_data").$type<Record<string, unknown>>(),
   status: electronicDocumentStatusEnum("status").default("pending").notNull(),

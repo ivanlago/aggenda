@@ -38,7 +38,7 @@ export async function professionalSnapshotPdf(row: Awaited<ReturnType<typeof pro
     organizationTaxId: institution.taxId, organizationPhone: institution.phone, organizationWhatsapp: institution.publicWhatsapp,
     organizationEmail: institution.publicEmail, organizationWebsite: institution.publicWebsite, organizationAddress: institution.publicAddress,
     organizationLogoUrl: institution.publicLogoUrl, organizationBrandColor: institution.brandColor,
-    title: document.title, documentType: document.documentType, content: document.contentSnapshot,
+    title: document.title, documentType: document.documentType, content: document.contentSnapshot, professionalSignatureImage: document.professionalSignatureImage,
     signerName: document.signerName, signerEmail: document.signerEmail, contentHash: document.contentHash,
     workflowType: document.workflowType, issuedAt: document.issuedAt, showIssuedDate: document.structuredData?.includeDate !== false,
     professionalName: row.professional.name, professionalRegistration: registration ? `${registration.council} ${registration.registrationNumber}/${registration.state}` : null });

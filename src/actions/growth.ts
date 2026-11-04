@@ -15,7 +15,7 @@ const digits = (value: string) => value.replace(/\D/g, "");
 
 export async function sendRecoveryMessage(data: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "clients.manage");
+  assertOrganizationPermission(organization.role, "clients.manage", organization.teamPermissionOverrides);
   const clientId = text(data, "clientId");
   const [[client], [channel], [plan]] = await Promise.all([
     db.select().from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1),

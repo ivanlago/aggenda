@@ -41,7 +41,7 @@ export default async function AppointmentsPage() {
   const professionalScopeId = organization.role === "professional"
     ? await requireProfessionalScope(organization.id, session.user.id)
     : null;
-  const canManage = hasOrganizationPermission(organization.role, "appointments.manage");
+  const canManage = hasOrganizationPermission(organization.role, "appointments.manage", organization.teamPermissionOverrides);
   const canSendWhatsApp = !["viewer", "member"].includes(organization.role);
   const today = organizationDayRange(new Date(), organization.timezone);
   const [clientItems, professionalItems, serviceItems, serviceProfessionalLinks, packageBalanceRows, items] = await Promise.all([

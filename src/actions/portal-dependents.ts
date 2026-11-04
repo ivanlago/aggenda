@@ -9,7 +9,7 @@ import { requireOrganization } from "@/lib/session";
 
 export async function setPortalDependent(data: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "clients.manage");
+  assertOrganizationPermission(organization.role, "clients.manage", organization.teamPermissionOverrides);
   const guardianId = String(data.get("guardianId") || ""), clientId = String(data.get("clientId") || "");
   if (guardianId === clientId || ![guardianId, clientId].every(id => /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id))) return { error: "Selecione um responsável e um dependente diferentes." };
   const revoke = data.get("revoke") === "1";

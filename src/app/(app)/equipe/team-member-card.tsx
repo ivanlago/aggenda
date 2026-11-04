@@ -14,7 +14,7 @@ type Profession = { id: string; name: string };
 type Specialty = { id: string; name: string; professionId: string };
 type Availability = { dayOfWeek: number; startsAt: string; endsAt: string };
 
-const roleLabels: Record<string, string> = { owner: "Administrador", admin: "Administrador", manager: "Gerente", professional: "Profissional", receptionist: "Recepcionista", financial: "Financeiro" };
+const roleLabels: Record<string, string> = { owner: "Administrador", admin: "Administrador", manager: "Gerente", professional: "Atendente", receptionist: "Secretária", financial: "Financeiro" };
 const days = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
 
 export type TeamMemberCardData = {
@@ -61,7 +61,7 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
           <label className="grid gap-1 text-sm font-bold">Nome curto<input className="field" name="shortName" defaultValue={member.shortName} required /></label>
           </FormSection>
           <FormSection title="Acesso">
-          <label className="grid gap-1 text-sm font-bold">Perfil de acesso<select className="field" name="role" defaultValue={member.role} disabled={member.role === "owner"}>{member.role === "owner" && <option value="owner">Administrador</option>}<option value="admin">Administrador</option><option value="manager">Gerente</option><option value="professional">Profissional</option><option value="receptionist">Recepcionista</option><option value="financial">Financeiro</option></select>{member.role === "owner" && <input type="hidden" name="role" value="owner" />}</label>
+          <label className="grid gap-1 text-sm font-bold">Perfil de acesso<select className="field" name="role" defaultValue={["owner", "admin", "professional", "receptionist"].includes(member.role) ? member.role : ""} required disabled={member.role === "owner"}>{!["owner", "admin", "professional", "receptionist"].includes(member.role) && <option value="" disabled>Selecione o novo perfil</option>}{member.role === "owner" && <option value="owner">Administrador</option>}<option value="admin">Administrador</option><option value="professional">Atendente</option><option value="receptionist">Secretária</option></select>{member.role === "owner" && <input type="hidden" name="role" value="owner" />}</label>
           </FormSection>
           {member.professionalId && <FormSection title="Agenda">
             <label className="grid gap-1 text-sm font-bold">Ordem na agenda<input className="field" name="agendaOrder" type="number" min={0} max={9999} step={1} defaultValue={member.agendaOrder ?? 0} /><span className="text-xs font-normal text-muted">Números menores aparecem primeiro. Empates seguem a ordem alfabética.</span></label>

@@ -72,6 +72,7 @@ export const getOrganizationMemberships = cache(async (userId: string) => {
       appointmentLabel: sql<string>`'Agendamento'`,
       appointmentLabelPlural: sql<string>`'Agendamentos'`,
       role: organizationMembers.role,
+      teamPermissionOverrides: organizations.teamPermissionOverrides,
       subscriptionStatus: organizationSubscriptions.status,
       subscriptionPlan: organizationSubscriptions.plan,
       trialEndsAt: organizationSubscriptions.trialEndsAt,

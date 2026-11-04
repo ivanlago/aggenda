@@ -32,7 +32,7 @@ function value(formData: FormData, key: string) {
 
 export async function saveWeeklyAvailability(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "availability.manage");
+  assertOrganizationPermission(organization.role, "availability.manage", organization.teamPermissionOverrides);
   const professionalId = value(formData, "professionalId");
   const professionalScopeId = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
   const dayOfWeek = Number(value(formData, "dayOfWeek"));
@@ -85,7 +85,7 @@ export async function saveWeeklyAvailability(formData: FormData) {
 
 export async function deleteWeeklyAvailability(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "availability.manage");
+  assertOrganizationPermission(organization.role, "availability.manage", organization.teamPermissionOverrides);
   const id = value(formData, "id");
   const professionalScopeId = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
   await db
@@ -109,7 +109,7 @@ export async function deleteWeeklyAvailability(formData: FormData) {
 
 export async function createAvailabilityException(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "availability.manage");
+  assertOrganizationPermission(organization.role, "availability.manage", organization.teamPermissionOverrides);
   const professionalId = value(formData, "professionalId") || null;
   const scope = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
   if (scope && professionalId !== scope) return { error: "Você só pode bloquear a própria agenda." };
@@ -143,7 +143,7 @@ export async function createAvailabilityException(formData: FormData) {
 
 export async function deleteAvailabilityException(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "availability.manage");
+  assertOrganizationPermission(organization.role, "availability.manage", organization.teamPermissionOverrides);
   const id = value(formData, "id");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return { error: "Bloqueio inválido." };
   const scope = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
@@ -223,7 +223,7 @@ export async function updateBookingSettings(formData: FormData) {
 
 export async function rescheduleAppointment(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "appointments.manage");
+  assertOrganizationPermission(organization.role, "appointments.manage", organization.teamPermissionOverrides);
   const id = value(formData, "id");
   const roomId = value(formData, "roomId") || null;
   const professionalScopeId = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;

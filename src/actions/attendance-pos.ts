@@ -15,7 +15,7 @@ import { attendancePaymentState } from "@/lib/attendance-payment";
 
 export async function selectAttendancePackage(data: FormData) {
   const { appointment, organization, session } = await requireAttendance(String(data.get("appointmentId") ?? ""));
-  assertOrganizationPermission(organization.role, "appointments.manage");
+  assertOrganizationPermission(organization.role, "appointments.manage", organization.teamPermissionOverrides);
   const clientPackageId = z.uuid().safeParse(data.get("clientPackageId"));
   if (!clientPackageId.success) return { error: "Selecione um pacote válido." };
   try {

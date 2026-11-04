@@ -40,8 +40,8 @@ function whatsappLink(phone: string, message: string) {
 export async function AgendaPage({ openNewAppointment = false, filters = {} }: { openNewAppointment?: boolean; filters?: Record<string, string | undefined> }) {
   const { session, organization } = await requireOrganization();
   const professionalScopeId = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
-  const canManage = hasOrganizationPermission(organization.role, "appointments.manage");
-  const canManageAvailability = hasOrganizationPermission(organization.role, "availability.manage");
+  const canManage = hasOrganizationPermission(organization.role, "appointments.manage", organization.teamPermissionOverrides);
+  const canManageAvailability = hasOrganizationPermission(organization.role, "availability.manage", organization.teamPermissionOverrides);
   const canManageFinance = hasOrganizationPermission(organization.role, "finance.manage");
   const canReadClients = hasOrganizationPermission(organization.role, "clients.read");
   const canSendWhatsApp = !["viewer", "member"].includes(organization.role);

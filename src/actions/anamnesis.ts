@@ -8,7 +8,7 @@ import { db } from "@/db";
 import { clients, documentTemplates, electronicDocumentEvents, electronicDocuments, professionals } from "@/db/schema";
 import { anamnesisPresets, isAnamnesisSchema, type AnamnesisField } from "@/lib/anamnesis";
 import { writeAuditLog } from "@/lib/audit";
-import { createDocumentCredentials, renderDocumentTemplate, sha256 } from "@/lib/electronic-documents";
+import { createDocumentCredentials, professionalSignaturePlaceholder, renderDocumentTemplate, sha256 } from "@/lib/electronic-documents";
 import { sendElectronicDocumentEmail } from "@/lib/email";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
@@ -53,7 +53,7 @@ export async function createAnamnesisTemplate(data: FormData) {
     const [service] = await db.select({ id: services.id }).from(services).where(and(eq(services.id, serviceId), eq(services.organizationId, organization.id))).limit(1);
     if (!service) return { error: "O procedimento selecionado não foi encontrado." };
   }
-  await db.insert(documentTemplates).values({ organizationId: organization.id, createdByUserId: session.user.id, name, title: name, content: "Responda às perguntas com atenção. As respostas serão anexadas à ficha assinada.", documentType: "anamnesis", workflowType: "patient_signature", responseSchema: schema, schemaVersion: 1, serviceId });
+  await db.insert(documentTemplates).values({ organizationId: organization.id, createdByUserId: session.user.id, name, title: name, content: "Responda às perguntas com atenção. As respostas serão anexadas à ficha assinada." + (data.get("includeProfessionalSignature") === "yes" ? "\n\n" + professionalSignaturePlaceholder : ""), documentType: "anamnesis", workflowType: "patient_signature", responseSchema: schema, schemaVersion: 1, serviceId });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "anamnesis_template", details: { fields: schema.length, serviceId } });
   revalidatePath("/documentos", "layout");
 }
@@ -64,7 +64,7 @@ export async function issueAnamnesis(data: FormData) {
   assertOrganizationPermission(organization.role, "clinical.read");
   const clientId = value(data, "clientId");
   const templateId = value(data, "templateId");
-  const professionalId = value(data, "professionalId") || null;
+  let professionalId = value(data, "professionalId") || null;
   const delivery = value(data, "delivery") === "fill_now" ? "fill_now" : "email";
   const [client] = await db.select().from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1);
   const [template] = await db.select().from(documentTemplates).where(and(eq(documentTemplates.id, templateId), eq(documentTemplates.organizationId, organization.id), eq(documentTemplates.documentType, "anamnesis"), eq(documentTemplates.isActive, true))).limit(1);
@@ -77,6 +77,18 @@ export async function issueAnamnesis(data: FormData) {
   const now = new Date();
   const credentials = createDocumentCredentials();
   const contentSnapshot = renderDocumentTemplate(template.content, { cliente: client.name, clinica: organization.name, data: now.toLocaleDateString("pt-BR", { timeZone: organization.timezone }) });
+  let professionalSignatureImage: string | null = null;
+  if (template.content.includes(professionalSignaturePlaceholder)) {
+    const [issuer] = await db.select({ id: professionals.id, image: professionals.signatureImage })
+      .from(professionals).where(and(eq(professionals.organizationId, organization.id),
+        eq(professionals.userId, session.user.id), eq(professionals.isActive, true))).limit(1);
+    if (!issuer?.image) return { error: "Cadastre sua imagem em Minha assinatura visual antes de emitir esta ficha." };
+    if (professionalId && professionalId !== issuer.id) {
+      return { error: "O profissional responsável deve emitir a ficha com a própria assinatura visual." };
+    }
+    professionalId = issuer.id;
+    professionalSignatureImage = issuer.image;
+  }
   const structuredData = { kind: "anamnesis", schemaVersion: template.schemaVersion, schema: template.responseSchema, answers: {}, responsibleProfessionalId: professionalId, reviewedAt: null };
   const documentId = crypto.randomUUID();
   const [created] = await db.transaction(async (tx) => {
@@ -84,7 +96,7 @@ export async function issueAnamnesis(data: FormData) {
     return tx.insert(electronicDocuments).values({ id: documentId,
     organizationId: organization.id, clientId: client.id, templateId: template.id, createdByUserId: session.user.id,
     issuerProfessionalId: professionalId, workflowType: "patient_signature", documentType: "anamnesis", title: template.title,
-    contentSnapshot, contentHash: sha256(`${contentSnapshot}\n${JSON.stringify(template.responseSchema)}`), structuredData,
+    contentSnapshot, professionalSignatureImage, contentHash: sha256((professionalSignatureImage ?? "") + `${contentSnapshot}\n${JSON.stringify(template.responseSchema)}`), structuredData,
     signerName: client.name, signerEmail: client.email || "preenchimento.presencial@aggenda.local", accessTokenHash: credentials.tokenHash,
     verificationCodeHash: credentials.codeHash, verificationExpiresAt: new Date(now.getTime() + (delivery === "fill_now" ? 8 : 0.5) * 60 * 60_000), tokenExpiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60_000),
     }).returning({ id: electronicDocuments.id });

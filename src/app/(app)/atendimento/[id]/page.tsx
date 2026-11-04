@@ -45,7 +45,7 @@ export default async function AttendancePage({ params, searchParams }: { params:
   const { id } = await params;
   const { tab } = await searchParams;
   const { appointment, organization, session } = await requireAttendance(id);
-  const canWrite = hasOrganizationPermission(organization.role, "appointments.manage");
+  const canWrite = hasOrganizationPermission(organization.role, "appointments.manage", organization.teamPermissionOverrides);
   const canReadClinical = hasOrganizationPermission(organization.role, "clinical.read");
   if (!canReadClinical) return <div className="page-wrap"><PageHeader eyebrow="Agenda" title="Atendimento administrativo" description="Gerencie procedimentos, pagamentos e a situação do agendamento." /><Link className="secondary-button mb-5" href="/agenda">Voltar à agenda</Link><AttendanceItems appointmentId={id} /><AttendancePos appointmentId={id} />{canWrite && <section className="panel mt-5"><AppointmentStatusForm action={updateAttendanceStatus} appointmentId={id} initialStatus={appointment.status} initialCancellationReason={appointment.cancellationReason} statuses={statuses} /></section>}</div>;
   const canReadDocuments = hasOrganizationPermission(organization.role, "documents.read") || hasOrganizationPermission(organization.role, "clinical.read");

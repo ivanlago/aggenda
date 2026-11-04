@@ -14,7 +14,7 @@ export async function undoDataImport(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const [item] = await db.select().from(dataImports).where(and(eq(dataImports.id, id), eq(dataImports.organizationId, organization.id))).limit(1);
   if (!item || item.status !== "completed" || item.undoneAt) throw new Error("Esta importação não pode ser desfeita.");
-  assertOrganizationPermission(organization.role, item.entityType === "clients" ? "clients.manage" : "services.manage");
+  assertOrganizationPermission(organization.role, item.entityType === "clients" ? "clients.manage" : "services.manage", organization.teamPermissionOverrides);
   const rows = await db.select().from(dataImportRows).where(eq(dataImportRows.importId, id));
   await db.transaction(async (tx) => {
     for (const row of rows) {

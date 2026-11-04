@@ -15,7 +15,7 @@ function refresh() { revalidatePath("/pacotes"); revalidatePath("/vendas"); reva
 
 export async function saveServicePackage(data: FormData) {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "services.manage");
+  assertOrganizationPermission(organization.role, "services.manage", organization.teamPermissionOverrides);
   try {
     const input = parsePackageTemplate(data);
     await savePackageTemplate(db, organization.id, input);

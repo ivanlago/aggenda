@@ -28,7 +28,7 @@ export async function DashboardReferenceView() {
   const monthEnd = nextMonth.toISOString().slice(0, 10);
   const canReadFinance = hasOrganizationPermission(organization.role, "finance.read");
   const canManageFinance = hasOrganizationPermission(organization.role, "finance.manage");
-  const canBlockSchedule = hasOrganizationPermission(organization.role, "availability.manage");
+  const canBlockSchedule = hasOrganizationPermission(organization.role, "availability.manage", organization.teamPermissionOverrides);
   const professionalId = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;
   const appointmentScope = professionalId ? eq(appointments.professionalId, professionalId) : undefined;
   const weekStartDate = new Date(`${today}T12:00:00Z`);

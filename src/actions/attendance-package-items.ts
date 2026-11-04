@@ -11,7 +11,7 @@ import { writeAuditLog } from "@/lib/audit";
 
 export async function addAttendancePackageItem(data: FormData) {
   const { appointment, organization, session } = await requireAttendance(String(data.get("appointmentId") ?? ""));
-  assertOrganizationPermission(organization.role, "appointments.manage");
+  assertOrganizationPermission(organization.role, "appointments.manage", organization.teamPermissionOverrides);
   const parsed = z.object({ balanceId: z.uuid(), quantity: z.coerce.number().int().min(1).max(10000) }).safeParse(Object.fromEntries(data));
   if (!parsed.success) return { error: "Selecione o procedimento e uma quantidade válida." };
   try {
@@ -34,7 +34,7 @@ export async function addAttendancePackageItem(data: FormData) {
 
 export async function removeAttendancePackageItem(data: FormData) {
   const { appointment, organization, session } = await requireAttendance(String(data.get("appointmentId") ?? ""));
-  assertOrganizationPermission(organization.role, "appointments.manage");
+  assertOrganizationPermission(organization.role, "appointments.manage", organization.teamPermissionOverrides);
   const itemId = z.uuid().safeParse(data.get("itemId"));
   if (!itemId.success) return { error: "Item inválido." };
   try {

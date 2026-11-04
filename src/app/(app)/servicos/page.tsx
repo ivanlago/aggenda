@@ -19,7 +19,7 @@ export const metadata = { title: "Serviços" };
 
 export default async function ServicesPage({ searchParams }: { searchParams: Promise<{ q?: string; category?: string }> }) {
   const { organization } = await requireOrganization();
-  const canManage = hasOrganizationPermission(organization.role, "services.manage");
+  const canManage = hasOrganizationPermission(organization.role, "services.manage", organization.teamPermissionOverrides);
   const categories = await db.select().from(serviceCategories).where(eq(serviceCategories.organizationId, organization.id)).orderBy(serviceCategories.name);
   const params = await searchParams;
   const query = typeof params.q === "string" ? params.q.trim() : "";

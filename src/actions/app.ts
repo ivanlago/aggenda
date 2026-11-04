@@ -545,7 +545,7 @@ export async function updateProfessional(formData: FormData) {
 
 export async function createClient(formData: FormData) {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "clients.manage");
+  assertOrganizationPermission(organization.role, "clients.manage", organization.teamPermissionOverrides);
   try {
     const input = parseClientInput(formData);
     if (await hasClientPhoneConflict(db, organization.id, input.phone)) return { error: duplicateClientPhoneMessage };
@@ -561,7 +561,7 @@ export async function createClient(formData: FormData) {
 
 export async function deleteClient(formData: FormData) {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "clients.manage");
+  assertOrganizationPermission(organization.role, "clients.manage", organization.teamPermissionOverrides);
   const id = textValue(formData, "id");
   const [current] = await db.select({ imagePublicId: clients.imagePublicId }).from(clients).where(and(eq(clients.id, id), eq(clients.organizationId, organization.id))).limit(1);
   await db
@@ -579,7 +579,7 @@ export async function deleteClient(formData: FormData) {
 
 export async function updateClient(formData: FormData) {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "clients.manage");
+  assertOrganizationPermission(organization.role, "clients.manage", organization.teamPermissionOverrides);
   const id = textValue(formData, "id");
   if (!id) return { error: "Cliente não encontrado. Atualize a página e tente novamente." };
   try {
@@ -800,7 +800,7 @@ async function selectedServiceCategory(formData: FormData, organizationId: strin
 
 export async function createService(formData: FormData) {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "services.manage");
+  assertOrganizationPermission(organization.role, "services.manage", organization.teamPermissionOverrides);
   const name = textValue(formData, "name");
   const durationMinutes = Number.parseInt(textValue(formData, "durationMinutes"), 10);
   if (name.length < 2 || !Number.isFinite(durationMinutes) || durationMinutes <= 0) {
@@ -835,7 +835,7 @@ export async function createService(formData: FormData) {
 
 export async function deleteService(formData: FormData) {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "services.manage");
+  assertOrganizationPermission(organization.role, "services.manage", organization.teamPermissionOverrides);
   const id = textValue(formData, "id");
   const [current] = await db.select({ imagePublicId: services.imagePublicId }).from(services).where(and(eq(services.id, id), eq(services.organizationId, organization.id))).limit(1);
   if (!current) return { error: "Procedimento não encontrado nesta empresa." };
@@ -860,7 +860,7 @@ export async function deleteService(formData: FormData) {
 
 export async function updateService(formData: FormData) {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "services.manage");
+  assertOrganizationPermission(organization.role, "services.manage", organization.teamPermissionOverrides);
   const id = textValue(formData, "id");
   const name = textValue(formData, "name");
   const durationMinutes = Number.parseInt(textValue(formData, "durationMinutes"), 10);
@@ -893,7 +893,7 @@ export async function updateService(formData: FormData) {
 
 export async function createServicePackage(formData: FormData) {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "services.manage");
+  assertOrganizationPermission(organization.role, "services.manage", organization.teamPermissionOverrides);
   const name = textValue(formData, "name");
   const priceInCents = optionalMoneyInCents(formData, "price");
   const validityRaw = optionalText(formData, "validityDays");
@@ -943,7 +943,7 @@ export async function createServicePackage(formData: FormData) {
 
 export async function toggleServicePackage(formData: FormData) {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "services.manage");
+  assertOrganizationPermission(organization.role, "services.manage", organization.teamPermissionOverrides);
   await db.update(servicePackages).set({
     isActive: formData.get("isActive") === "true",
     updatedAt: new Date(),
@@ -957,7 +957,7 @@ export async function toggleServicePackage(formData: FormData) {
 
 export async function assignPackageToClient() {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "clients.manage");
+  assertOrganizationPermission(organization.role, "clients.manage", organization.teamPermissionOverrides);
   return { error: "As vendas de pacotes são realizadas em Venda e orçamento." };
 }
 
@@ -1116,7 +1116,7 @@ export async function deleteFinancialEntry(formData: FormData) {
 
 export async function createAppointment(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "appointments.manage");
+  assertOrganizationPermission(organization.role, "appointments.manage", organization.teamPermissionOverrides);
   const serviceId = textValue(formData, "serviceId");
   const clientId = textValue(formData, "clientId");
   const professionalId = optionalText(formData, "professionalId");
@@ -1227,7 +1227,7 @@ export async function createAppointment(formData: FormData) {
 
 export async function updateAppointmentStatus(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "appointments.manage");
+  assertOrganizationPermission(organization.role, "appointments.manage", organization.teamPermissionOverrides);
   const status = textValue(formData, "status") as
     | "scheduled"
     | "confirmed"

@@ -18,7 +18,7 @@ const uuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4
 
 export async function createVoucher(data: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "services.manage");
+  assertOrganizationPermission(organization.role, "services.manage", organization.teamPermissionOverrides);
   const code = voucherCode(text(data, "code"));
   const discountType = text(data, "discountType");
   if (!/^[A-Z0-9_-]{3,40}$/.test(code) || !["fixed", "percentage"].includes(discountType)) return { error: "Use um código de 3 a 40 letras, números, hífen ou sublinhado." };
@@ -46,7 +46,7 @@ export async function createVoucher(data: FormData) {
 
 export async function queueVoucherCampaign(data: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "crm.manage");
+  assertOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides);
   const voucherId = text(data, "voucherId");
   const clientIds = [...new Set(data.getAll("clientId").map(String))];
   const channel = text(data, "channel");
@@ -82,7 +82,7 @@ export async function queueVoucherCampaign(data: FormData) {
 
 export async function toggleVoucher(data: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "services.manage");
+  assertOrganizationPermission(organization.role, "services.manage", organization.teamPermissionOverrides);
   const id = text(data, "voucherId"); if (!uuid(id)) return { error: "Voucher inválido." };
   const isActive = text(data, "isActive") === "true";
   await db.update(vouchers).set({ isActive }).where(and(eq(vouchers.id, id), eq(vouchers.organizationId, organization.id)));
@@ -93,7 +93,7 @@ export async function toggleVoucher(data: FormData) {
 
 export async function resumeVoucherDeliveries(data: FormData) {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "crm.manage");
+  assertOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides);
   const id = text(data, "deliveryId");
   if (id) {
     if (!uuid(id)) return { error: "Envio inválido." };

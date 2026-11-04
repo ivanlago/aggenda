@@ -19,7 +19,7 @@ const money = (value: number) => (value / 100).toLocaleString("pt-BR", { style: 
 export default async function PackagesPage({ searchParams }: { searchParams: Promise<{ aba?: string; busca?: string; situacao?: string }> }) {
   const { organization } = await requireOrganization();
   const query = await searchParams;
-  const canManage = hasOrganizationPermission(organization.role, "services.manage");
+  const canManage = hasOrganizationPermission(organization.role, "services.manage", organization.teamPermissionOverrides);
   const canSell = hasOrganizationPermission(organization.role, "sales.sell") || hasOrganizationPermission(organization.role, "inventory.manage");
   const now = new Date();
   const date = (value: Date) => value.toLocaleDateString("pt-BR", { timeZone: organization.timezone });

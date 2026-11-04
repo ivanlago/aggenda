@@ -108,7 +108,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   ];
   const navigation = navigationGroups.map((group) => ({
     ...group,
-    items: group.items.filter((item) => hasOrganizationPermission(organization.role, item.permission)),
+    items: group.items.filter((item) => hasOrganizationPermission(organization.role, item.permission, organization.teamPermissionOverrides)),
   })).filter((group) => group.items.length > 0);
 
   return (
@@ -150,7 +150,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                       <ChevronDown className="size-3.5 transition group-open/submenu:rotate-180" />
                     </summary>
                     <div className="ml-5 grid gap-0.5 border-l border-slate-200 pl-2">
-                      {children.filter((child) => hasOrganizationPermission(organization.role, child.permission)).map(({ href: childHref, label: childLabel, icon: ChildIcon }) => <AppNavLink key={childHref} href={childHref} exact className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition" inactiveClassName="text-slate-500 hover:bg-surface-soft hover:text-brand"><ChildIcon className="size-3.5" />{childLabel}</AppNavLink>)}
+                      {children.filter((child) => hasOrganizationPermission(organization.role, child.permission, organization.teamPermissionOverrides)).map(({ href: childHref, label: childLabel, icon: ChildIcon }) => <AppNavLink key={childHref} href={childHref} exact className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition" inactiveClassName="text-slate-500 hover:bg-surface-soft hover:text-brand"><ChildIcon className="size-3.5" />{childLabel}</AppNavLink>)}
                     </div>
                   </details>
                 ) : (
@@ -186,7 +186,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           <div className="mt-4"><SignOutButton /></div>
         </div>
       </aside>
-      <main className="min-w-0"><AppHeader organizationId={organization.id} role={organization.role} timezone={organization.timezone} userId={session.user.id} userName={session.user.name} />
+      <main className="min-w-0"><AppHeader organizationId={organization.id} role={organization.role} teamPermissionOverrides={organization.teamPermissionOverrides} timezone={organization.timezone} userId={session.user.id} userName={session.user.name} />
         {usage && hasOrganizationPermission(organization.role, "billing.manage") && (["responses", "documents", "notes"] as const).map((metric) => {
           const used = usage.quantities[metric] ?? 0; const limit = usage.available[metric];
           if (!limit || used / limit < 0.8) return null;

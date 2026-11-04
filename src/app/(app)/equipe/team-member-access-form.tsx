@@ -39,9 +39,9 @@ export function TeamMemberAccessForm({
         {!['admin', 'manager', 'receptionist', 'professional', 'financial'].includes(initialRole) && (
           <option value={initialRole} disabled>Perfil legado — selecione um novo</option>
         )}
-        <option value="admin">Administrador</option><option value="manager">Gerente</option>
-        <option value="receptionist">Recepcionista</option><option value="professional">Profissional</option>
-        <option value="financial">Financeiro</option>
+        <option value="admin">Administrador</option>
+        <option value="receptionist">Secretária</option><option value="professional">Atendente</option>
+
       </select>
       {professionalRole && !initialProfessionalId && (
         <select

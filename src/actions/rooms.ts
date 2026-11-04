@@ -38,7 +38,7 @@ export async function saveRoom(form: FormData) {
 
 export async function assignAppointmentRoom(form: FormData) {
  const { session, organization } = await requireOrganization();
- assertOrganizationPermission(organization.role, "appointments.manage");
+ assertOrganizationPermission(organization.role, "appointments.manage", organization.teamPermissionOverrides);
  const parsed = z.object({ id: z.string().uuid(), roomId: z.string().uuid().nullable() }).safeParse({ id: form.get("id"), roomId: form.get("roomId") || null });
  if (!parsed.success) return { error: "Selecione uma sala válida." };
  const scope = organization.role === "professional" ? await requireProfessionalScope(organization.id, session.user.id) : null;

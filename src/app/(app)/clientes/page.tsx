@@ -29,7 +29,7 @@ export default async function ClientsPage({
   const professionalScopeId = organization.role === "professional"
     ? await requireProfessionalScope(organization.id, session.user.id)
     : null;
-  const canManage = hasOrganizationPermission(organization.role, "clients.manage");
+  const canManage = hasOrganizationPermission(organization.role, "clients.manage", organization.teamPermissionOverrides);
   const query = await searchParams;
   const search = String(query.busca ?? "").trim().slice(0, 100);
   const condition =

@@ -128,18 +128,40 @@ const rolePermissions: Record<OrganizationRole, ReadonlySet<OrganizationPermissi
   member: new Set(operationalRead),
 };
 
+export const teamRoles = ["admin", "receptionist", "professional"] as const;
+export type TeamRole = (typeof teamRoles)[number];
+export const teamRoleLabels: Record<TeamRole, string> = {
+  admin: "Administrador", receptionist: "Secretária", professional: "Atendente",
+};
+export type TeamPermissionOverrides = Partial<Record<TeamRole, OrganizationPermission[]>>;
+
+// Configure operational access without changing ownership or clinical scope.
+export const configurableTeamPermissions = {
+  "clients.manage": "Cadastrar e editar clientes",
+  "appointments.manage": "Criar e editar agendamentos",
+  "availability.manage": "Configurar disponibilidade",
+  "services.manage": "Cadastrar e editar serviços",
+  "crm.manage": "Gerenciar relacionamento com clientes",
+} as const satisfies Partial<Record<OrganizationPermission, string>>;
+
 export function hasOrganizationPermission(
   role: string,
-  permission: OrganizationPermission
+  permission: OrganizationPermission,
+  overrides?: TeamPermissionOverrides | null,
 ) {
+  const configured = overrides?.[role as TeamRole];
+  if (configured && Object.hasOwn(configurableTeamPermissions, permission)) {
+    return configured.includes(permission);
+  }
   return rolePermissions[role as OrganizationRole]?.has(permission) ?? false;
 }
 
 export function assertOrganizationPermission(
   role: string,
-  permission: OrganizationPermission
+  permission: OrganizationPermission,
+  overrides?: TeamPermissionOverrides | null,
 ) {
-  if (!hasOrganizationPermission(role, permission)) {
+  if (!hasOrganizationPermission(role, permission, overrides)) {
     throw new Error("Você não tem permissão para realizar esta ação.");
   }
 }

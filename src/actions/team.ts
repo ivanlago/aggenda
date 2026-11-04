@@ -1,7 +1,7 @@
 "use server";
 import { assertProfessionalCapacity } from "@/lib/commercial-access";
 
-import { and, eq, ilike, inArray, isNull, or } from "drizzle-orm";
+import { and, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -9,6 +9,7 @@ import { db } from "@/db";
 import {
   organizationInvitations,
   organizationMembers,
+  organizations,
   professionalRegistrations,
   professionalSpecialties,
   professionals,
@@ -22,12 +23,10 @@ import {
   requireOrganizationMembership,
   requireSession,
 } from "@/lib/session";
-import { assertOrganizationPermission } from "@/lib/permissions";
+import { assertOrganizationPermission, configurableTeamPermissions, teamRoles, type TeamRole, type OrganizationPermission } from "@/lib/permissions";
 import { persistWithCatalogImage } from "@/lib/catalog-image";
 import { deleteCatalogImage } from "@/lib/cloudinary";
 
-const teamRoles = ["admin", "manager", "receptionist", "professional", "financial"] as const;
-type TeamRole = (typeof teamRoles)[number];
 
 function field(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -35,7 +34,8 @@ function field(formData: FormData, key: string) {
 
 function parsedTeamRole(formData: FormData): TeamRole {
   const requested = field(formData, "role");
-  return teamRoles.includes(requested as TeamRole) ? requested as TeamRole : "receptionist";
+  if (!teamRoles.includes(requested as TeamRole)) throw new Error("Selecione um perfil válido.");
+  return requested as TeamRole;
 }
 
 async function validatedSpecialtyIds(formData: FormData, professionId: string) {
@@ -70,7 +70,7 @@ export async function createUnifiedTeamMember(formData: FormData) {
     throw new Error("Preencha nome completo, nome curto e um e-mail válido.");
   }
   if (!isAttendant && role === "professional") {
-    throw new Error("O perfil Profissional precisa estar marcado como atendente.");
+    throw new Error("O perfil Atendente precisa estar marcado como atendente.");
   }
   if ((council && !registrationNumber) || (!council && registrationNumber)) {
     throw new Error("Informe o conselho e o número do conselho.");
@@ -133,7 +133,6 @@ export async function updateUnifiedTeamMember(formData: FormData) {
   const userId = field(formData, "userId");
   const fullName = field(formData, "fullName");
   const shortName = field(formData, "shortName");
-  const requestedRole = parsedTeamRole(formData);
   const professionalId = field(formData, "professionalId");
   const professionId = field(formData, "professionId");
   const agendaOrder = Number(field(formData, "agendaOrder") || "0");
@@ -144,8 +143,8 @@ export async function updateUnifiedTeamMember(formData: FormData) {
     eq(organizationMembers.organizationId, organization.id), eq(organizationMembers.userId, userId),
   )).limit(1);
   if (!currentMember) throw new Error("Membro não encontrado nesta empresa.");
-  const role = currentMember.role === "owner" ? "owner" : requestedRole;
-  if (role === "professional" && !professionalId) throw new Error("O perfil Profissional precisa ser atendente.");
+  const role = currentMember.role === "owner" ? "owner" : parsedTeamRole(formData);
+  if (role === "professional" && !professionalId) throw new Error("O perfil Atendente precisa ser atendente.");
   const [currentProfessional] = professionalId ? await db.select({ imagePublicId: professionals.imagePublicId }).from(professionals).where(and(eq(professionals.id, professionalId), eq(professionals.organizationId, organization.id), eq(professionals.userId, userId))).limit(1) : [];
   if (professionalId && !currentProfessional) throw new Error("Profissional não vinculado a este membro.");
   await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "professionals", currentPublicId: currentProfessional?.imagePublicId, persist: (image) => db.transaction(async (tx) => {
@@ -176,7 +175,7 @@ export async function updateUnifiedTeamMember(formData: FormData) {
 
 export async function replaceTeamMemberAvailability(formData: FormData) {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "availability.manage");
+  assertOrganizationPermission(organization.role, "availability.manage", organization.teamPermissionOverrides);
   const professionalId = field(formData, "professionalId");
   const rows = Array.from({ length: 7 }, (_, dayOfWeek) => ({
     dayOfWeek,
@@ -223,12 +222,7 @@ export async function inviteTeamMember(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const requestedRole = String(formData.get("role") ?? "viewer");
-  const allowedRoles = [
-    "admin",
-    "manager",
-    "receptionist",
-    "financial",
-  ] as const;
+  const allowedRoles = teamRoles;
   const role = allowedRoles.includes(requestedRole as (typeof allowedRoles)[number])
     ? (requestedRole as (typeof allowedRoles)[number])
     : "receptionist";
@@ -353,6 +347,7 @@ export async function acceptInvitation(token: string) {
           organizationMembers.userId,
         ],
         set: { role: invitation.role },
+        setWhere: ne(organizationMembers.role, "owner"),
       });
     if (invitation.role === "professional") {
       const [matchingProfessional] = await tx
@@ -372,8 +367,13 @@ export async function acceptInvitation(token: string) {
       if (matchingProfessional) {
         await tx
           .update(professionals)
-          .set({ userId: session.user.id, updatedAt: new Date() })
-          .where(eq(professionals.id, matchingProfessional.id));
+          .set({
+            userId: session.user.id,
+            signatureImage: sql`CASE WHEN ${professionals.userId} = ${session.user.id} THEN ${professionals.signatureImage} ELSE NULL END`,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(professionals.id, matchingProfessional.id),
+            or(isNull(professionals.userId), eq(professionals.userId, session.user.id))));
       }
     }
     await tx
@@ -410,7 +410,7 @@ export async function removeTeamMember(formData: FormData) {
 export type TeamAccessActionState = {
   error?: string;
   success?: boolean;
-  savedRole?: "admin" | "manager" | "receptionist" | "professional" | "financial";
+  savedRole?: TeamRole;
   submissionId?: string;
 };
 
@@ -424,7 +424,7 @@ export async function updateTeamMemberAccess(
   const userId = String(formData.get("userId") ?? "");
   const requestedRole = String(formData.get("role") ?? "receptionist");
   const professionalId = String(formData.get("professionalId") ?? "");
-  const allowedRoles = ["admin", "manager", "receptionist", "professional", "financial"] as const;
+  const allowedRoles = teamRoles;
   const role = allowedRoles.includes(requestedRole as (typeof allowedRoles)[number])
     ? requestedRole as (typeof allowedRoles)[number]
     : "receptionist";
@@ -450,12 +450,17 @@ export async function updateTeamMemberAccess(
     const [updatedMember] = await tx.update(organizationMembers).set({ role }).where(and(
       eq(organizationMembers.organizationId, organization.id),
       eq(organizationMembers.userId, userId),
+      ne(organizationMembers.role, "owner"),
     )).returning({ role: organizationMembers.role });
     if (!updatedMember || updatedMember.role !== role) {
       throw new Error("O perfil salvo não corresponde ao perfil solicitado.");
     }
     if (role === "professional") {
-      const updated = await tx.update(professionals).set({ userId, updatedAt: new Date() }).where(and(
+      const updated = await tx.update(professionals).set({
+        userId,
+        signatureImage: sql`CASE WHEN ${professionals.userId} = ${userId} THEN ${professionals.signatureImage} ELSE NULL END`,
+        updatedAt: new Date(),
+      }).where(and(
         eq(professionals.id, effectiveProfessionalId),
         eq(professionals.organizationId, organization.id),
         eq(professionals.isActive, true),
@@ -473,4 +478,16 @@ export async function updateTeamMemberAccess(
     }));
     return { error: "Não foi possível salvar o acesso. Atualize a página e tente novamente." };
   }
+}
+
+export async function updateTeamProfilePermissions(formData: FormData) {
+  const { organization } = await requireOrganization();
+  if (organization.role !== "owner") throw new Error("Somente o titular pode configurar os perfis.");
+  const overrides = Object.fromEntries(teamRoles.map((role) => [
+    role,
+    formData.getAll(role).map(String).filter((permission): permission is OrganizationPermission =>
+      Object.hasOwn(configurableTeamPermissions, permission)),
+  ]));
+  await db.update(organizations).set({ teamPermissionOverrides: overrides }).where(eq(organizations.id, organization.id));
+  revalidatePath("/", "layout");
 }

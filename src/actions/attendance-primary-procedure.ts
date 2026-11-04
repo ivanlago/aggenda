@@ -10,7 +10,7 @@ import { writeAuditLog } from "@/lib/audit";
 
 export async function removeAttendancePrimaryProcedure(data: FormData) {
   const { appointment, organization, session } = await requireAttendance(String(data.get("appointmentId") ?? ""));
-  assertOrganizationPermission(organization.role, "appointments.manage");
+  assertOrganizationPermission(organization.role, "appointments.manage", organization.teamPermissionOverrides);
   try {
     await db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`attendance-payment:${appointment.id}`}, 0))`);

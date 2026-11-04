@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   try {
     const { session, organization } = await requireOrganization();
     const input = requestSchema.parse(await request.json());
-    assertOrganizationPermission(organization.role, input.entityType === "clients" ? "clients.manage" : "services.manage");
+    assertOrganizationPermission(organization.role, input.entityType === "clients" ? "clients.manage" : "services.manage", organization.teamPermissionOverrides);
 
     const [existingImport] = await db.select().from(dataImports)
       .where(and(eq(dataImports.id, input.importId), eq(dataImports.organizationId, organization.id))).limit(1);

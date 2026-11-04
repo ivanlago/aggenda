@@ -10,7 +10,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { clientHistoryEntries, clients, documentTemplates, electronicDocumentEvents, electronicDocuments, professionals, professionalRegistrations, services, organizations, commercialUsage, commercialContracts } from "@/db/schema";
 import { writeAuditLog } from "@/lib/audit";
-import { createDocumentCredentials, matchesHash, renderDocumentTemplate, sha256 } from "@/lib/electronic-documents";
+import { createDocumentCredentials, matchesHash, professionalSignaturePlaceholder, renderDocumentTemplate, sha256 } from "@/lib/electronic-documents";
 import { legalDefinitions, legalKey, legalFieldValues, legalContextValues, renderLegalDocument, reusableLegalFields } from "@/lib/legal-documents";
 import { syncDocumentPresets } from "@/lib/document-presets-sync";
 import { documentPresets } from "@/lib/document-presets";
@@ -179,6 +179,13 @@ export async function issueProfessionalDocument(data: FormData) {
   }
   const values = { cliente: client.name, clinica: organization.name, profissional: professional.name, data: now.toLocaleDateString("pt-BR", { timeZone: organization.timezone }) };
   const contentSnapshot = renderDocumentTemplate(rawContent, values);
+  let professionalSignatureImage: string | null = null;
+  if (rawContent.includes(professionalSignaturePlaceholder)) {
+    if (professional.userId !== session.user.id || !professional.signatureImage) {
+      return { error: "Emita este documento como profissional responsável e cadastre sua própria imagem de assinatura." };
+    }
+    professionalSignatureImage = professional.signatureImage;
+  }
   let structuredData: Record<string, unknown> | null = null;
   const prescriptionData = text(data, "prescriptionData").slice(0, 30_000);
   if (template.documentType === "prescription" && prescriptionData) {
@@ -192,11 +199,11 @@ export async function issueProfessionalDocument(data: FormData) {
   const title = renderDocumentTemplate(text(data, "title") || template.title, values);
   if (appointmentId) structuredData = { ...structuredData, appointmentId };
   const credentials = createDocumentCredentials();
-  const contentHash = sha256(contentSnapshot);
+  const contentHash = sha256(professionalSignatureImage ? JSON.stringify([contentSnapshot, professionalSignatureImage]) : contentSnapshot);
   const evidenceHash = sha256(JSON.stringify({ organizationId: organization.id, professionalId: professional.id, clientId: client.id, templateId: template.id, contentHash, issuedAt: now.toISOString() }));
   const [created] = await db.insert(electronicDocuments).values({
     organizationId: organization.id, clientId: client.id, templateId: template.id, createdByUserId: session.user.id,
-    issuerProfessionalId: professional.id, workflowType: "professional_issue", documentType: template.documentType, title, contentSnapshot, contentHash,
+    issuerProfessionalId: professional.id, workflowType: "professional_issue", documentType: template.documentType, title, contentSnapshot, contentHash, professionalSignatureImage,
     status: "issued", signerName: professional.name, signerEmail: professional.email || session.user.email, structuredData,
     accessTokenHash: credentials.tokenHash, verificationCodeHash: credentials.codeHash,
     verificationExpiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60_000), tokenExpiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60_000),
@@ -297,6 +304,18 @@ export async function issueElectronicDocument(data: FormData) {
     contentSnapshot = renderDocumentTemplate(template.content, { cliente: client.name, clinica: organization.name, data: now.toLocaleDateString("pt-BR", { timeZone: organization.timezone }) });
     if (/\[PREENCHER|\[PERSONALIZAR/i.test(contentSnapshot)) return { error: "Personalize os campos pendentes do modelo antes de enviar." };
   }
+  let professionalSignatureImage: string | null = null;
+  if (template.content.includes(professionalSignaturePlaceholder)) {
+    const [issuer] = await db.select({ id: professionals.id, image: professionals.signatureImage })
+      .from(professionals).where(and(eq(professionals.organizationId, organization.id),
+        eq(professionals.userId, session.user.id), eq(professionals.isActive, true))).limit(1);
+    if (!issuer?.image) return { error: "Cadastre sua imagem em Minha assinatura visual antes de emitir este modelo." };
+    if (issuerProfessionalId && issuerProfessionalId !== issuer.id) {
+      return { error: "O profissional responsável deve emitir este modelo com a própria assinatura visual." };
+    }
+    issuerProfessionalId = issuer.id;
+    professionalSignatureImage = issuer.image;
+  }
   const documentId = crypto.randomUUID();
   const [created] = await db.transaction(async (tx) => {
     await reserveCommercialUsage(tx, organization.id, "documents", documentId);
@@ -311,7 +330,8 @@ export async function issueElectronicDocument(data: FormData) {
     documentType: template.documentType,
     title: renderDocumentTemplate(template.title, { cliente: client.name, clinica: organization.name }),
     contentSnapshot,
-    contentHash: sha256(contentSnapshot),
+    professionalSignatureImage,
+    contentHash: sha256(professionalSignatureImage ? JSON.stringify([contentSnapshot, professionalSignatureImage]) : contentSnapshot),
     signerName,
     signerEmail,
     accessTokenHash: credentials.tokenHash,

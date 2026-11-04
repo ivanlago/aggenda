@@ -1,3 +1,6 @@
+import { ActionForm } from "@/components/action-form";
+import { updateTeamProfilePermissions } from "@/actions/team";
+import Link from "next/link";
 import { ModalShell } from "@/components/modal-shell";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { and, eq } from "drizzle-orm";
@@ -5,7 +8,7 @@ import { and, eq } from "drizzle-orm";
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
 import { organizationMembers, professionalRegistrations, professionalSpecialties, professionals, professions, specialties, users, weeklyAvailability } from "@/db/schema";
-import { hasOrganizationPermission } from "@/lib/permissions";
+import { configurableTeamPermissions, hasOrganizationPermission, teamRoles, teamRoleLabels, type OrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
 import { TeamCreateForm } from "./team-create-form";
@@ -17,7 +20,7 @@ export default async function TeamPage() {
   const { session, organization } = await requireOrganization();
   const canRead = hasOrganizationPermission(organization.role, "team.read");
   const canManage = hasOrganizationPermission(organization.role, "team.manage");
-  if (!canRead) return <div className="page-wrap"><p className="panel">Acesso restrito à gestão da equipe.</p></div>;
+  if (!canRead) return <div className="page-wrap"><Link className="secondary-button" href="/equipe/minha-assinatura">Minha assinatura visual</Link><p className="panel">Acesso restrito à gestão da equipe.</p></div>;
 
   const [members, professionOptions, specialtyOptions, specialtyRows, registrationRows, availabilityRows] = await Promise.all([
     db.select({ userId: users.id, fullName: users.name, shortName: users.shortName, email: users.email, lastSignedInAt: users.lastSignedInAt, role: organizationMembers.role, professionalId: professionals.id, professionalName: professionals.name, agendaOrder: professionals.agendaOrder, professionId: professionals.professionId, professionName: professions.name, phone: professionals.phone, bio: professionals.bio, imageUrl: professionals.imageUrl })
@@ -53,6 +56,23 @@ export default async function TeamPage() {
     <div className="page-wrap">
       <PageHeader eyebrow={organization.name} title="Equipe e acesso" description="Cadastre a equipe, defina os acessos e configure quem realiza atendimentos." />
       <div className="grid items-start gap-5">
+        <div><Link className="secondary-button" href="/equipe/minha-assinatura">Minha assinatura visual</Link></div>
+        {organization.role === "owner" && <details className="panel">
+          <summary className="cursor-pointer font-extrabold">Configurar perfis de acesso</summary>
+          <ActionForm action={updateTeamProfilePermissions} successMessage="Perfis atualizados." className="mt-4 grid gap-4">
+            <p className="text-sm text-muted">As permissões operacionais valem para todos os membros com o perfil selecionado. O acesso do titular é preservado.</p>
+            <div className="grid gap-4 md:grid-cols-3">
+              {teamRoles.map((role) => <fieldset key={role} className="grid gap-2 rounded-xl border p-3">
+                <legend className="font-bold">{teamRoleLabels[role]}</legend>
+                {Object.entries(configurableTeamPermissions).map(([permission, label]) => <label key={permission} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name={role} value={permission} defaultChecked={hasOrganizationPermission(role, permission as OrganizationPermission, organization.teamPermissionOverrides)} />
+                  {label}
+                </label>)}
+              </fieldset>)}
+            </div>
+            <div><button className="primary-button">Salvar perfis</button></div>
+          </ActionForm>
+        </details>}
         {canManage && <div><ModalShell title="Novo membro da equipe" variant="new" wide closeOnSuccess><TeamCreateForm professions={professionOptions} specialties={specialtyOptions} /></ModalShell></div>}
         <section className="panel">
           <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-extrabold">Equipe cadastrada</h2><span className="status-pill">{memberCards.length} {memberCards.length === 1 ? "membro" : "membros"}</span></div>

@@ -56,7 +56,7 @@ function localDateTime(value: string) {
 
 export async function initializeCrm() {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "crm.manage");
+  assertOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides);
   const [existing] = await db.select({ id: crmPipelines.id }).from(crmPipelines)
     .where(eq(crmPipelines.organizationId, organization.id)).limit(1);
   if (existing) return;
@@ -80,7 +80,7 @@ export async function initializeCrm() {
 
 export async function createCrmLead(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "crm.manage");
+  assertOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides);
   const name = text(formData, "name");
   if (name.length < 2) throw new Error("Informe o nome do lead.");
   const pipelineId = text(formData, "pipelineId");
@@ -120,7 +120,7 @@ export async function createCrmLead(formData: FormData) {
 
 export async function moveCrmOpportunity(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "crm.manage");
+  assertOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides);
   const opportunityId = text(formData, "opportunityId");
   const stageId = text(formData, "stageId");
   const [stage] = await db.select({ id: crmStages.id, pipelineId: crmStages.pipelineId }).from(crmStages)
@@ -135,7 +135,7 @@ export async function moveCrmOpportunity(formData: FormData) {
 
 export async function closeCrmOpportunity(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "crm.manage");
+  assertOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides);
   const id = text(formData, "opportunityId");
   const status = text(formData, "status");
   if (status !== "won" && status !== "lost") throw new Error("Situação inválida.");
@@ -154,7 +154,7 @@ export async function closeCrmOpportunity(formData: FormData) {
 
 export async function createCrmTask(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "crm.manage");
+  assertOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides);
   const title = text(formData, "title");
   const dueAt = localDateTime(text(formData, "dueAt"));
   if (title.length < 2 || !dueAt) throw new Error("Informe tarefa e prazo.");
@@ -175,7 +175,7 @@ export async function createCrmTask(formData: FormData) {
 
 export async function completeCrmTask(formData: FormData) {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "crm.manage");
+  assertOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides);
   const id = text(formData, "taskId");
   await db.update(crmTasks).set({ completedAt: new Date(), updatedAt: new Date() })
     .where(and(eq(crmTasks.id, id), eq(crmTasks.organizationId, organization.id)));
@@ -184,7 +184,7 @@ export async function completeCrmTask(formData: FormData) {
 
 export async function convertCrmLeadToClient(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "crm.manage");
+  assertOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides);
   const leadId = text(formData, "leadId");
   const [lead] = await db.select().from(crmLeads).where(and(eq(crmLeads.id, leadId), eq(crmLeads.organizationId, organization.id))).limit(1);
   if (!lead) throw new Error("Lead não encontrado.");
@@ -210,7 +210,7 @@ export async function convertCrmLeadToClient(formData: FormData) {
 
 export async function createCrmLeadFromConversation(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "crm.manage");
+  assertOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides);
   const conversationId = text(formData, "conversationId");
   const [conversation] = await db.select().from(chatConversations).where(and(
     eq(chatConversations.id, conversationId), eq(chatConversations.organizationId, organization.id)
@@ -284,7 +284,7 @@ export async function updateCrmHandoff(formData: FormData) {
 
 export async function createCrmProposal(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "crm.manage");
+  assertOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides);
   const opportunityId = text(formData, "opportunityId");
   const description = text(formData, "description");
   const quantity = Math.max(1, Math.trunc(Number(text(formData, "quantity") || "1")));
@@ -317,7 +317,7 @@ export async function createCrmProposal(formData: FormData) {
 
 export async function updateCrmProposalStatus(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "crm.manage");
+  assertOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides);
   const proposalId = text(formData, "proposalId");
   const status = text(formData, "status") as "draft" | "sent" | "accepted" | "rejected" | "expired";
   if (!["draft", "sent", "accepted", "rejected", "expired"].includes(status)) throw new Error("Situação inválida.");
@@ -338,7 +338,7 @@ export async function updateCrmProposalStatus(formData: FormData) {
 
 export async function addCrmTag(formData: FormData) {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "crm.manage");
+  assertOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides);
   const leadId = text(formData, "leadId");
   const name = text(formData, "name");
   if (!name) throw new Error("Informe a etiqueta.");
@@ -354,7 +354,7 @@ export async function addCrmTag(formData: FormData) {
 
 export async function createCrmCustomField(formData: FormData) {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "crm.manage");
+  assertOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides);
   const name = text(formData, "name");
   const fieldType = text(formData, "fieldType");
   if (!name || !["text", "number", "date", "select"].includes(fieldType)) throw new Error("Defina nome e tipo válidos.");
@@ -364,7 +364,7 @@ export async function createCrmCustomField(formData: FormData) {
 
 export async function setCrmCustomFieldValue(formData: FormData) {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "crm.manage");
+  assertOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides);
   const leadId = text(formData, "leadId"); const fieldId = text(formData, "fieldId");
   const [field] = await db.select({ id: crmCustomFields.id }).from(crmCustomFields).where(and(eq(crmCustomFields.id, fieldId), eq(crmCustomFields.organizationId, organization.id))).limit(1);
   if (!field) throw new Error("Campo personalizado inválido.");
@@ -375,7 +375,7 @@ export async function setCrmCustomFieldValue(formData: FormData) {
 
 export async function generateCrmAiInsight(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "crm.manage");
+  assertOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides);
   const leadId = text(formData, "leadId");
   const [lead] = await db.select().from(crmLeads).where(and(eq(crmLeads.id, leadId), eq(crmLeads.organizationId, organization.id))).limit(1);
   if (!lead) throw new Error("Lead não encontrado.");
@@ -394,7 +394,7 @@ export async function generateCrmAiInsight(formData: FormData) {
 
 export async function reviewCrmAiInsight(formData: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "crm.manage");
+  assertOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides);
   const id = text(formData, "insightId"); const status = text(formData, "status");
   if (status !== "approved" && status !== "dismissed") throw new Error("Revisão inválida.");
   await db.update(crmAiInsights).set({ status, reviewedByUserId: session.user.id, reviewedAt: new Date() }).where(and(eq(crmAiInsights.id, id), eq(crmAiInsights.organizationId, organization.id)));

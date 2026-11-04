@@ -17,7 +17,7 @@ export async function AttendancePackages({ appointmentId }: { appointmentId: str
     db.select({ id: attendancePackageItems.id, balanceId: attendancePackageItems.balanceId, quantity: attendancePackageItems.quantity, status: attendancePackageItems.status, name: services.name, packageName: servicePackages.name }).from(attendancePackageItems).innerJoin(clientPackageBalances, eq(clientPackageBalances.id, attendancePackageItems.balanceId)).innerJoin(services, eq(services.id, clientPackageBalances.serviceId)).innerJoin(clientPackages, eq(clientPackages.id, attendancePackageItems.clientPackageId)).innerJoin(servicePackages, eq(servicePackages.id, clientPackages.packageId)).where(and(eq(attendancePackageItems.appointmentId, appointmentId), eq(attendancePackageItems.organizationId, organization.id))),
   ]);
   const usage = usages[0];
-  const canSelect = ["scheduled", "confirmed"].includes(appointment.status) && hasOrganizationPermission(organization.role, "appointments.manage");
+  const canSelect = ["scheduled", "confirmed"].includes(appointment.status) && hasOrganizationPermission(organization.role, "appointments.manage", organization.teamPermissionOverrides);
   return <section className="panel mt-5"><h2 className="mb-3 text-lg font-extrabold">Pacotes disponíveis</h2>
     <p className="text-sm text-muted">Selecione individualmente os procedimentos a utilizar. As sessões ficam reservadas e são consumidas ao concluir o atendimento.</p>
     <PaginatedCollection label="Registros" className="mt-3 divide-y">

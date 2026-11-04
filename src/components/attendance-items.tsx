@@ -42,7 +42,7 @@ export async function AttendanceItems({ appointmentId }: { appointmentId: string
     ...purchases.filter((item) => !(item.serviceId === appointment.serviceId && item.variant === "Procedimento realizado")).map((item) => ({ id: item.id, name: item.name + (item.variant && !item.serviceId && !item.packageId ? ` · ${item.variant}` : ""), quantity: String(item.quantity), origin: item.serviceId ? "Procedimento adquirido no atendimento" : item.packageId ? "Pacote adquirido no atendimento" : "Produto adquirido no atendimento", status: item.status === "completed" ? "Compra registrada" : "Venda cancelada / estornada" })),
     ...consumptions.map((item) => ({ id: `stock-${item.id}`, name: item.name, quantity: `${(item.quantity / 1000).toLocaleString("pt-BR")} ${item.unit === "unit" ? "un." : item.unit}`, origin: "Consumo de estoque", status: "Utilizado" })),
   ];
-  const canUsePackages = hasOrganizationPermission(organization.role, "appointments.manage");
+  const canUsePackages = hasOrganizationPermission(organization.role, "appointments.manage", organization.teamPermissionOverrides);
   const canSell = organization.role === "professional" || hasOrganizationPermission(organization.role, "finance.manage") || hasOrganizationPermission(organization.role, "sales.sell") || hasOrganizationPermission(organization.role, "inventory.manage");
   const [balances, offerings, products] = await Promise.all([getPosPackageBalances(organization.id, appointment.clientId), canSell ? getPosOfferings(organization.id) : [], canSell ? getPosProducts(organization.id) : []]);
   const options = [

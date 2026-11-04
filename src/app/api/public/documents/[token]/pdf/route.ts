@@ -24,6 +24,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
     organizationWebsite: row.institution.publicWebsite, organizationAddress: row.institution.publicAddress, organizationLogoUrl: row.institution.publicLogoUrl,
     organizationBrandColor: row.institution.brandColor,
     title: row.document.title, documentType: row.document.documentType, content: row.document.contentSnapshot, signerName: row.document.signerName, signerEmail: row.document.signerEmail,
+    professionalSignatureImage: row.document.professionalSignatureImage,
     signatureData: row.document.signatureData, signerResponses: row.document.signerResponses, signedAt: row.document.signedAt,
     signerIpAddress: row.document.signerIpAddress, signerUserAgent: row.document.signerUserAgent, contentHash: row.document.contentHash,
     evidenceHash: row.document.evidenceHash, workflowType: row.document.workflowType, issuedAt: row.document.issuedAt,

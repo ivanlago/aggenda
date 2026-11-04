@@ -62,7 +62,7 @@ export default async function ClientHistoryPage({
   const professionalScopeId = organization.role === "professional"
     ? await requireProfessionalScope(organization.id, session.user.id)
     : null;
-  const canManage = hasOrganizationPermission(organization.role, "clients.manage");
+  const canManage = hasOrganizationPermission(organization.role, "clients.manage", organization.teamPermissionOverrides);
   const canReadClinical = hasOrganizationPermission(organization.role, "clinical.read");
   const canManageClinical = hasOrganizationPermission(organization.role, "clinical.manage");
   const canManageClinicalMedia = canManageClinical;

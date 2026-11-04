@@ -33,9 +33,9 @@ export function TeamCreateForm({ professions, specialties }: { professions: Prof
             setRole(nextRole);
             if (nextRole === "professional") setIsAttendant("yes");
           }}>
-            <option value="admin">Administrador</option><option value="manager">Gerente</option>
-            <option value="professional">Profissional</option><option value="receptionist">Recepcionista</option>
-            <option value="financial">Financeiro</option>
+            <option value="admin">Administrador</option>
+            <option value="professional">Atendente</option><option value="receptionist">Secretária</option>
+
           </select>
         </label>
         <label className="grid gap-2 text-sm font-bold">Recebe agendamentos?

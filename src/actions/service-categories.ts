@@ -10,7 +10,7 @@ import { requireOrganization } from "@/lib/session";
 
 export async function saveServiceCategory(formData: FormData) {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "services.manage");
+  assertOrganizationPermission(organization.role, "services.manage", organization.teamPermissionOverrides);
   const name = z.string().trim().min(2, "Informe ao menos 2 caracteres.").max(80).parse(formData.get("name"));
   const rawId = formData.get("id");
   if (rawId) {
@@ -24,7 +24,7 @@ export async function saveServiceCategory(formData: FormData) {
 
 export async function deleteServiceCategory(formData: FormData) {
   const { organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "services.manage");
+  assertOrganizationPermission(organization.role, "services.manage", organization.teamPermissionOverrides);
   const id = z.uuid().parse(formData.get("id"));
   await db.transaction(async tx => {
     // Lock the category before detaching services, including concurrent assignments.

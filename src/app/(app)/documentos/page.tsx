@@ -42,7 +42,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
         <label className="grid min-w-0 gap-2 text-sm font-bold">Tipo de documento<select className="field" name="documentType" defaultValue="consent">{Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label className="grid min-w-0 gap-2 text-sm font-bold">Título<input className="field" name="title" required maxLength={180} placeholder="Título exibido no documento" /></label>
         <label className="grid min-w-0 gap-2 text-sm font-bold">Conteúdo do documento<textarea className="field min-h-64" name="content" required maxLength={30000} placeholder="Conteúdo integral do documento" /></label>
-        <p className="text-xs text-muted">Variáveis disponíveis: {"{{cliente}}"}, {"{{clinica}}"}, {"{{profissional}}"} e {"{{data}}"}. O conteúdo é congelado na emissão.</p>
+        <p className="text-xs text-muted">Variáveis disponíveis: {"{{cliente}}"}, {"{{clinica}}"}, {"{{profissional}}"} e {"{{data}}"}. No conteúdo do modelo, use @AssinaturaProfissional para inserir a imagem do profissional logado. O conteúdo é congelado na emissão.</p>
         <FormActions submitLabel="Criar modelo" />
       </ActionForm></ModalShell>}
 

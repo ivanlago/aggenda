@@ -624,6 +624,13 @@
       "when": 1793814195567,
       "tag": "0088_onboarding_team_portal",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1793818535945,
+      "tag": "0089_team_profiles_signature",
+      "breakpoints": true
     }
   ]
 }

@@ -16,7 +16,7 @@ export const metadata = { title: "Implantação guiada" };
 export default async function ImplantationPage() {
   const { organization } = await requireOrganization();
   if (organization.role === "professional") redirect("/dashboard");
-  const canManageAppointments = hasOrganizationPermission(organization.role, "appointments.manage");
+  const canManageAppointments = hasOrganizationPermission(organization.role, "appointments.manage", organization.teamPermissionOverrides);
   const [plan, [professionalTotal], [serviceTotal], [availabilityTotal], channels, firstAppointment] = await Promise.all([
     getOrganizationServicePlan(organization.id),
     db.select({ value: count() }).from(professionals).where(and(eq(professionals.organizationId, organization.id), eq(professionals.isActive, true), eq(professionals.isBookable, true))),

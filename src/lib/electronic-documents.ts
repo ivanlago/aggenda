@@ -19,6 +19,8 @@ export function matchesHash(value: string, expectedHash: string) {
   return received.length === expected.length && timingSafeEqual(received, expected);
 }
 
+export const professionalSignaturePlaceholder = "@AssinaturaProfissional";
+
 export function renderDocumentTemplate(content: string, values: Record<string, string>) {
   return content.replace(/{{\s*([\w_]+)\s*}}/g, (_match, key: string) => values[key] ?? "");
 }
@@ -54,6 +56,7 @@ export async function createSignedDocumentPdf(input: {
   content: string;
   signerName: string;
   signerEmail: string;
+  professionalSignatureImage?: string | null;
   signatureData?: string | null;
   signerResponses?: string | null;
   signedAt?: Date | null;
@@ -121,7 +124,21 @@ export async function createSignedDocumentPdf(input: {
   y = 690;
   drawLines(input.title, bold, 20);
   y -= 20;
-  drawLines(input.content, regular, 10.5);
+  if (input.professionalSignatureImage && input.content.includes(professionalSignaturePlaceholder)) {
+    const image = await pdf.embedPng(Buffer.from(input.professionalSignatureImage.split(",")[1], "base64"));
+    const scaled = image.scaleToFit(170, 60);
+    const sections = input.content.split(professionalSignaturePlaceholder);
+    for (const [index, section] of sections.entries()) {
+      if (section.trim()) drawLines(section.trim(), regular, 10.5);
+      if (index === sections.length - 1) break;
+      if (y < contentBottom + scaled.height + 16) addPage();
+      y -= scaled.height;
+      page.drawImage(image, { x: margin, y, ...scaled });
+      y -= 16;
+    }
+  } else {
+    drawLines(input.content, regular, 10.5);
+  }
 
   if (input.signerResponses) {
     y -= 20;

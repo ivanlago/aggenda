@@ -11,7 +11,7 @@ import { getProcedureReturns } from "@/lib/procedure-returns";
 
 export async function updateProcedureReturnContact(data: FormData) {
   const { organization, session } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "crm.manage");
+  assertOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides);
   const id = String(data.get("id") ?? "");
   const status = String(data.get("contactStatus") ?? "");
   const note = String(data.get("contactNote") ?? "").trim();

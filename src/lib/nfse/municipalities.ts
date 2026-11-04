@@ -11,7 +11,7 @@ export const nfseMunicipalities = [
     requirements: "Certificado ICP-Brasil, cadastro municipal e item de serviço. Leiaute de NBS/IBS/CBS e acesso ao treinamento aguardam validação.",
     source: "https://focusnfe.com.br/guides/nfse/municipios-integrados/camacari-ba/",
     currentSource: "https://sefaz.camacari.ba.gov.br/portal-nfse-sefaz-camacari/",
-    history: "A Focus não oferece homologação municipal; a prefeitura publica treinamento, sujeito à confirmação de acesso. Simples ME/EPP: transição ao nacional em 01/11/2026.",
+    history: "A Focus não oferece homologação municipal; a prefeitura publica treinamento, sujeito à confirmação de acesso.",
   },
   {
     code: "2927408",
@@ -46,15 +46,15 @@ export function nfseMunicipalityReference(code: string, regime: string, referenc
   if (!municipality) return null;
   const parsedRegime = fiscalRegimeSchema.safeParse(regime);
   const nationalRegime = parsedRegime.success && fiscalChannelFor(code, parsedRegime.data, referenceDate) === "national";
-  const regimeTransition = municipality.channel === "municipal" && nationalRegime;
+  const usesNationalIssuer = nationalRegime || municipality.channel === "national";
   return {
     ...municipality,
-    suggestedChannel: regimeTransition ? "national" as const : municipality.channel,
-    providerForRegime: regimeTransition ? "Ambiente Nacional — habilitação e transição a confirmar" : municipality.provider,
+    suggestedChannel: usesNationalIssuer ? "national" as const : municipality.channel,
+    providerForRegime: usesNationalIssuer ? "Emissor Nacional da NFS-e" : municipality.provider,
     regimeNotice: regime === "mei"
       ? "MEI: emissão pelo canal nacional, com indicador próprio e sem totalização percentual do Simples. Fluxo em homologação."
       : regime === "simples_nacional"
-        ? "Simples Nacional: confira a transição ao Emissor Nacional e a habilitação do CNPJ. A referência não muda automaticamente o emissor cadastrado."
+        ? "ME/EPP do Simples Nacional: emissão pelo Emissor Nacional desde 01/11/2026. A habilitação do CNPJ deve ser conferida separadamente."
         : code === "2905701" ? "Lucro Presumido/Real: integração municipal em preparação. Emissão no Aggenda aguarda contrato atualizado e homologação." : "Lucro Presumido/Real: cenários locais sem retenções implementados nos respectivos canais. Combinações fiscais e habilitação do CNPJ ainda exigem homologação.",
     authentication: "Certificado digital; na integração da Focus, modelo A1 da empresa emissora.",
     automaticIssuanceAvailable: false as const,

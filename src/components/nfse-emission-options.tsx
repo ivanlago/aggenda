@@ -4,6 +4,7 @@ import { nfseMunicipalities, nfseMunicipalityReference } from "@/lib/nfse/munici
 
 export function NfseEmissionOptions({ mode, municipalityCode, regime, canManageBilling }: { canManageBilling: boolean; mode: NfseEmissionMode; municipalityCode: string; regime: string }) {
   const requirements = nfseRequirements(municipalityCode, regime);
+  const usesNationalIssuer = regime === "simples_nacional" || regime === "mei";
   const reference = nfseMunicipalityReference(municipalityCode, regime);
   return <section className="panel mb-5" aria-labelledby="nfse-options-title">
     <h2 id="nfse-options-title" className="text-xl font-extrabold">Como deseja trabalhar com as notas?</h2>
@@ -14,8 +15,14 @@ export function NfseEmissionOptions({ mode, municipalityCode, regime, canManageB
       <label className="grid gap-2 text-sm font-bold md:col-span-2">Forma de trabalho<select className="field" name="modo" defaultValue={mode}><option value="external">Emitir fora do Aggenda e registrar a nota</option><option value="a1">Integrar com A1 — piloto nacional</option><option value="municipal">Consultar integração prevista para o município</option></select></label>
       <button className="secondary-button justify-self-start">Simular requisitos</button>
     </form>
+    {usesNationalIssuer && <div className="mt-4 rounded-xl border p-4 text-sm">
+      <p className="font-bold">Canal oficial: Emissor Nacional da NFS-e</p>
+      <p className="mt-2">{regime === "mei" ? "O MEI prestador de serviços já utiliza o Emissor Nacional." : "Desde 01/11/2026, ME e EPP do Simples Nacional emitem a NFS-e pelo Emissor Nacional, via portal ou API."}</p>
+      <p className="mt-2">Para emitir uma nota com validade fiscal enquanto o Aggenda está em homologação, use o portal oficial e depois registre a nota emitida no Aggenda.</p>
+      <a href="https://www.nfse.gov.br/EmissorNacional" target="_blank" rel="noopener noreferrer" className="mt-3 inline-block font-bold text-brand underline">Abrir Emissor Nacional</a>
+    </div>}
     {!requirements.identified && <p className="mt-4 text-sm text-muted">Informe o município e o perfil fiscal para orientar a análise. Essa seleção não credencia o prestador nem confirma cobertura.</p>}
-    {reference ? <div className="mt-4 rounded-xl border p-4 text-sm">
+    {usesNationalIssuer ? null : reference ? <div className="mt-4 rounded-xl border p-4 text-sm">
       <h3 className="font-bold">{reference.name} — referência para preparação</h3>
       <dl className="mt-3 grid gap-3 md:grid-cols-2">
         <div><dt className="font-bold">Classificação municipal na Focus</dt><dd>{reference.provider} · {reference.format}</dd></div>
@@ -31,7 +38,7 @@ export function NfseEmissionOptions({ mode, municipalityCode, regime, canManageB
     </div> : <p className="mt-4 text-sm text-muted">A preparação regional contempla Salvador, Lauro de Freitas e Camaçari. A emissão automática depende de homologação específica por município e perfil fiscal.</p>}
     {mode === "external" && <div className="mt-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-950"><h3 className="font-bold">Registro externo disponível, sem cadastrar certificado no Aggenda</h3><p className="mt-2">Emita pelo portal autorizado para sua empresa ou por outro emissor. Depois, registre o número, valor, endereço de verificação e o recebimento correspondente.</p><p className="mt-2">O portal pode exigir senha, gov.br ou certificado conforme o seu cadastro. Registrar a nota aqui não transmite uma nova nota, não confirma sua autenticidade e não consome a franquia de emissão automática.</p><a href="#notas-externas" className="mt-3 inline-block font-bold underline">Registrar ou consultar notas externas</a></div>}
     {mode === "a1" && <div className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-950"><h3 className="font-bold">Conector atual: A1 com CNPJ, somente homologação</h3><p className="mt-2">A assinatura e a transmissão pelo servidor exigem o A1 da empresa neste conector. A consulta municipal não comprova habilitação individual. O piloto atual é restrito ao cenário tributário descrito abaixo; os demais perfis dependem de análise.</p><p className="mt-2">Não há suporte fiscal A3 neste fluxo. A produção continua bloqueada até homologação.</p></div>}
-    {mode === "municipal" && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"><h3 className="font-bold">Integração regional ainda não homologada</h3><p className="mt-2">As referências de Salvador e Lauro de Freitas exigem certificado na integração. O acesso por senha ao portal não substitui esse requisito. O Aggenda ainda precisa homologar o canal e as regras tributárias antes de oferecer a emissão.</p><p className="mt-2">Não informe senha municipal ou gov.br em outros campos.</p><a href="#notas-externas" className="mt-3 inline-block font-bold underline">Usar o registro de notas externas enquanto isso</a></div>}
+    {mode === "municipal" && !usesNationalIssuer && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"><h3 className="font-bold">Integração regional ainda não homologada</h3><p className="mt-2">As referências de Salvador e Lauro de Freitas exigem certificado na integração. O acesso por senha ao portal não substitui esse requisito. O Aggenda ainda precisa homologar o canal e as regras tributárias antes de oferecer a emissão.</p><p className="mt-2">Não informe senha municipal ou gov.br em outros campos.</p><a href="#notas-externas" className="mt-3 inline-block font-bold underline">Usar o registro de notas externas enquanto isso</a></div>}
     <p className="mt-4 text-sm text-muted">A contratação e as condições comerciais ficam em Administração → Assinaturas. {canManageBilling && <Link className="font-bold text-brand underline" href="/assinatura#servicos-complementares">Consultar serviços</Link>}</p>
   </section>;
 }

@@ -2314,3 +2314,20 @@ export const clinicalConsultationRecords = pgTable("clinical_consultation_record
   foreignKey({ name: "clinical_records_parent_tenant_fk", columns: [table.organizationId, table.clientId, table.appointmentId, table.parentRecordId], foreignColumns: [table.organizationId, table.clientId, table.appointmentId, table.id] }),
   index("clinical_records_client_idx").on(table.organizationId, table.clientId, table.createdAt),
 ]);
+
+export const professionalFiscalPartnerships = pgTable("professional_fiscal_partnerships", {
+  professionalId: uuid("professional_id").primaryKey().references(() => professionals.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  cpf: text("cpf"),
+  cnpj: text("cnpj").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const professionalFiscalShares = pgTable("professional_fiscal_shares", {
+  professionalId: uuid("professional_id").notNull().references(() => professionalFiscalPartnerships.professionalId, { onDelete: "cascade" }),
+  serviceId: uuid("service_id").notNull().references(() => services.id, { onDelete: "cascade" }),
+  percentageBasisPoints: integer("percentage_basis_points").notNull(),
+}, (table) => [
+  uniqueIndex("professional_fiscal_share_service_unique").on(table.professionalId, table.serviceId),
+]);

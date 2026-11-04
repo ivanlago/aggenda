@@ -73,6 +73,7 @@ export default async function TeamPage() {
             <div><button className="primary-button">Salvar perfis</button></div>
           </ActionForm>
         </details>}
+        {hasOrganizationPermission(organization.role, "finance.manage") && <div><Link className="secondary-button" href="/equipe/parceria-fiscal">Profissional parceiro</Link></div>}
         {canManage && <div><ModalShell title="Novo membro da equipe" variant="new" wide closeOnSuccess><TeamCreateForm professions={professionOptions} specialties={specialtyOptions} /></ModalShell></div>}
         <section className="panel">
           <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-extrabold">Equipe cadastrada</h2><span className="status-pill">{memberCards.length} {memberCards.length === 1 ? "membro" : "membros"}</span></div>

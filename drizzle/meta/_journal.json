@@ -631,6 +631,13 @@
       "when": 1793818535945,
       "tag": "0089_team_profiles_signature",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1793820111147,
+      "tag": "0090_professional_fiscal_partnership",
+      "breakpoints": true
     }
   ]
 }

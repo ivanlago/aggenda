@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { registerInventoryPurchase } from "@/actions/inventory-purchases";
 import { ActionForm } from "@/components/action-form";
+import { FormActions } from "@/components/form-dialog-context";
 
 type Product = { id: string; name: string; lotTracking: boolean; unit: string };
 type Item = { id: number; productId: string };
@@ -68,7 +69,7 @@ export function PurchaseForm({ suppliers, products, today }: {
         const id = nextId.current++;
         setItems(current => [...current, { id, productId: "" }]);
       }}>Adicionar item</button>
-      <button className="primary-button">Registrar compra e dar entrada</button>
     </div>
+    <FormActions submitLabel="Registrar compra e dar entrada" />
   </ActionForm>;
 }

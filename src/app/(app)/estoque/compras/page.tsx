@@ -2,6 +2,8 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { saveInventorySupplier } from "@/actions/inventory-purchases";
 import { ActionForm } from "@/components/action-form";
+import { FormActions } from "@/components/form-dialog-context";
+import { ModalShell } from "@/components/modal-shell";
 import { PageHeader } from "@/components/page-header";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { db } from "@/db";
@@ -22,7 +24,7 @@ function SupplierForm({ supplier }: { supplier?: typeof inventorySuppliers.$infe
     <label className="grid gap-1 text-sm font-bold">E-mail<input className="field" name="email" type="email" defaultValue={supplier?.email ?? ""} maxLength={160} /></label>
     <label className="grid gap-1 text-sm font-bold">Telefone<input className="field" name="phone" type="tel" defaultValue={supplier?.phone ?? ""} maxLength={40} /></label>
     <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="active" defaultChecked={supplier?.isActive ?? true} /> Disponível para novas compras</label>
-    <div><button className="primary-button">{supplier ? "Salvar fornecedor" : "Cadastrar fornecedor"}</button></div>
+    <FormActions editing={Boolean(supplier)} />
   </ActionForm>;
 }
 
@@ -45,18 +47,38 @@ export default async function InventoryPurchasesPage() {
     <PageHeader eyebrow="Estoque" title="Compras e fornecedores" description="Cadastre fornecedores e registre mercadorias recebidas no estoque de venda ou consumo." />
     <nav className="flex flex-wrap gap-2" aria-label="Compras e estoque">
       <a className="secondary-button" href="#fornecedores">Fornecedores</a>
+      <a className="secondary-button" href="#compras">Compras</a>
       <Link className="secondary-button" href="/estoque/lotes">Consultar lotes</Link>
-      <Link className="secondary-button" href="/estoque">Voltar ao estoque</Link>
     </nav>
-    <section className="panel grid gap-3">
-      <h2 className="font-extrabold">Nova compra</h2>
-      <p className="text-sm text-muted">Registre a compra quando receber os produtos. Para itens controlados por lote, informe o número e a validade. Se o lote já existir com esses dados, o saldo será somado ao lote existente.</p>
-      {activeSuppliers.length && products.length
-        ? <PurchaseForm suppliers={activeSuppliers.map(({ id, name }) => ({ id, name }))} products={products} today={organizationDate(new Date(), organization.timezone)} />
-        : <p className="text-sm">Cadastre pelo menos um fornecedor ativo e um produto no estoque para registrar a compra.</p>}
+    <section id="fornecedores" className="panel grid gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-extrabold">Fornecedores cadastrados</h2>
+        <ModalShell title="Novo fornecedor" variant="new" closeOnSuccess><SupplierForm /></ModalShell>
+      </div>
+      <PaginatedCollection label="Fornecedores cadastrados" className="divide-y">
+        {suppliers.map(supplier => <article key={supplier.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+          <div>
+            <p className="font-bold">{supplier.name}</p>
+            <p className="text-sm text-muted">{[supplier.document, supplier.email, supplier.phone].filter(Boolean).join(" · ")}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="status-pill">{supplier.isActive ? "Ativo" : "Inativo"}</span>
+            <ModalShell title={"Editar fornecedor: " + supplier.name} variant="edit" closeOnSuccess><SupplierForm supplier={supplier} /></ModalShell>
+          </div>
+        </article>)}
+      </PaginatedCollection>
+      {!suppliers.length && <p className="text-sm text-muted">Nenhum fornecedor cadastrado.</p>}
     </section>
-    <section className="panel grid gap-3">
-      <h2 className="font-extrabold">Compras registradas</h2>
+    <section id="compras" className="panel grid gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-extrabold">Compras registradas</h2>
+      {activeSuppliers.length && products.length
+        ? <ModalShell title="Nova compra" variant="new" wide closeOnSuccess description="Registre os produtos recebidos. Para itens controlados por lote, informe o número e a validade.">
+            <PurchaseForm suppliers={activeSuppliers.map(({ id, name }) => ({ id, name }))} products={products} today={organizationDate(new Date(), organization.timezone)} />
+          </ModalShell>
+        : null}
+      </div>
+      {(!activeSuppliers.length || !products.length) && <p className="text-sm text-muted">Cadastre um fornecedor ativo e um produto no estoque para registrar a compra.</p>}
       <p className="text-sm text-muted">Até 100 compras recentes.</p>
       <PaginatedCollection label="Compras registradas" className="grid gap-3">
         {purchases.map(purchase => <details key={purchase.id} className="rounded-xl border p-3">
@@ -71,19 +93,6 @@ export default async function InventoryPurchasesPage() {
         </details>)}
       </PaginatedCollection>
       {!purchases.length && <p className="text-sm text-muted">Nenhuma compra registrada.</p>}
-    </section>
-    <section id="fornecedores" className="panel grid gap-3">
-      <h2 className="font-extrabold">Fornecedores</h2>
-      <details open={!suppliers.length} className="rounded-xl border p-3">
-        <summary className="cursor-pointer font-bold">Novo fornecedor</summary>
-        <div className="mt-3"><SupplierForm /></div>
-      </details>
-      <PaginatedCollection label="Fornecedores cadastrados" className="grid gap-3">
-        {suppliers.map(supplier => <details key={supplier.id} className="rounded-xl border p-3">
-          <summary className="cursor-pointer font-bold">{supplier.name} · {supplier.isActive ? "Ativo" : "Inativo"}</summary>
-          <div className="mt-3"><SupplierForm supplier={supplier} /></div>
-        </details>)}
-      </PaginatedCollection>
     </section>
   </div>;
 }

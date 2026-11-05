@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { createService, updateService } from "@/actions/app";
 import { ActionForm } from "@/components/action-form";
 import { EntityImageField } from "@/components/entity-image-field";
@@ -23,6 +24,8 @@ function readAmount(value: string) {
 }
 
 export function ServiceForm({ item, label, categories }: { item?: typeof services.$inferSelect; label: string; categories: ReferenceRecord[] }) {
+  const [additionalOpen, setAdditionalOpen] = useState(false);
+  const additionalId = useId();
   const money = (cents: number | null | undefined) => cents == null ? "" : (cents / 100).toFixed(2).replace(".", ",");
   const [price, setPrice] = useState(money(item?.priceInCents));
   const [cost, setCost] = useState(money(item?.estimatedCostInCents));
@@ -34,8 +37,7 @@ export function ServiceForm({ item, label, categories }: { item?: typeof service
     {item && <input type="hidden" name="id" value={item.id} />}
     <FormSection title="Identificação">
       <div className="sm:col-span-2"><TussAutocomplete table="22" label="Buscar na TUSS (opcional)" defaultCode={item?.tussCode ?? ""} defaultName={item?.tussName ?? ""} onSelectNameField="name" onSelectCodeField="manualTussCode" /></div>
-      <label className="grid gap-2 text-sm font-bold sm:col-span-2">Nome completo *<input className="field" name="name" required defaultValue={item?.name} /></label>
-      <label className="grid gap-2 text-sm font-bold">Nome reduzido<input className="field" name="shortName" maxLength={80} defaultValue={item?.shortName ?? ""} placeholder="Ex.: RM, USG" /></label>
+      <label className="grid gap-2 text-sm font-bold sm:col-span-2">Nome *<input className="field" name="name" minLength={2} maxLength={80} required defaultValue={item?.shortName || item?.name || ""} placeholder="Ex.: RM, USG" /></label>
       <label className="grid gap-2 text-sm font-bold">Código TUSS<input className="field" name="manualTussCode" defaultValue={item?.tussCode ?? ""} /></label>
     </FormSection>
     <FormSection title="Classificação"><ReferenceSelect kind="service_category" name="categoryId" label="Categoria" records={categories} defaultValue={item?.categoryId ?? ""} emptyLabel="Sem categoria" /></FormSection>
@@ -52,6 +54,10 @@ export function ServiceForm({ item, label, categories }: { item?: typeof service
       </label>
       <ServiceDepositFields type={item?.depositType} value={item?.depositValue} />
     </FormSection>
+    <button type="button" className="secondary-button col-span-full w-fit" aria-expanded={additionalOpen} aria-controls={additionalId} onClick={() => setAdditionalOpen(open => !open)}>
+      Informações adicionais<ChevronDown aria-hidden="true" className={`size-4 transition-transform ${additionalOpen ? "rotate-180" : ""}`} />
+    </button>
+    <div id={additionalId} className="col-span-full" hidden={!additionalOpen}>
     <FormSection title="Informações adicionais">
       <label className="grid gap-2 text-sm font-bold sm:col-span-2">Descrição<textarea className="field min-h-24" name="description" defaultValue={item?.description ?? ""} /></label>
       <label className="grid gap-2 text-sm font-bold sm:col-span-2">Preparação necessária<textarea className="field min-h-24" name="preparation" defaultValue={item?.preparation ?? ""} /></label>
@@ -60,6 +66,7 @@ export function ServiceForm({ item, label, categories }: { item?: typeof service
       <ServiceRepeatPolicy value={item?.publicRepeatPolicy} />
       {item && <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" name="isActive" defaultChecked={item.isActive} />Ativo</label>}
     </FormSection>
+    </div>
     <FormActions editing={Boolean(item)} />
   </ActionForm>;
 }

@@ -40,7 +40,7 @@ export async function ServicesCatalog({ searchParams }: { searchParams: Promise<
       <h2 className="mb-5 text-xl font-extrabold">Serviços</h2>
       <div className="mb-5"><Link className="secondary-button" href="/calculadora-retorno" target="_blank" rel="noopener noreferrer"><Calculator className="mr-2 size-4" />Calculadora de retorno</Link></div>
       <div className="mb-5 flex flex-wrap items-start gap-3">
-        {canManage && <ModalShell title={`Novo ${organization.serviceLabel.toLowerCase()}`} variant="new" wide closeOnSuccess description="Preencha a identificação, a classificação e os dados do serviço.">
+        {canManage && <ModalShell title={`Novo ${organization.serviceLabel.toLowerCase()}`} variant="new" wide closeOnSuccess>
           <ServiceForm label={organization.serviceLabel} categories={categories} />
         </ModalShell>}
         {canManage && <ReferenceManager groups={[{ kind: "service_category", records: categories }]} />}
@@ -50,7 +50,7 @@ export async function ServicesCatalog({ searchParams }: { searchParams: Promise<
           <form action="/produtos-servicos" method="get" className="mb-5 flex flex-wrap items-end gap-3">
             <input type="hidden" name="tab" value="servicos" />
             <label className="grid min-w-0 flex-1 gap-2 text-sm font-bold">Buscar por nome
-              <input className="field" type="search" name="q" defaultValue={query} placeholder="Nome completo ou reduzido" />
+              <input className="field" type="search" name="q" defaultValue={query} placeholder="Nome do serviço" />
             </label>
             <label className="grid min-w-0 gap-2 text-sm font-bold">Categoria
               <select className="field" name="category" defaultValue={category}>

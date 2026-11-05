@@ -12,8 +12,8 @@ export function packageAmount(value: FormDataEntryValue | null) {
 
 export function parsePackageTemplate(data: FormData) {
   const items = [...data.entries()].filter(([key]) => key.startsWith("quantity:")).map(([key, value]) => ({ serviceId: z.uuid().parse(key.slice(9)), quantity: z.coerce.number().int().min(1).max(10000).parse(value) }));
-  if (!items.length) throw new Error("Adicione ao menos um procedimento ao pacote.");
-  if (new Set(items.map((item) => item.serviceId)).size !== items.length) throw new Error("Não repita procedimentos na composição.");
+  if (!items.length) throw new Error("Adicione ao menos um serviço ao pacote.");
+  if (new Set(items.map((item) => item.serviceId)).size !== items.length) throw new Error("Não repita serviços na composição.");
   const validity = String(data.get("validityDays") ?? "").trim();
   return {
     id: data.get("id") ? z.uuid().parse(data.get("id")) : undefined,

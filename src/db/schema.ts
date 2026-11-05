@@ -2372,3 +2372,15 @@ export const inventoryPurchaseItems = pgTable("inventory_purchase_items", {
   unitCostInCents: integer("unit_cost_in_cents").notNull(),
   totalInCents: integer("total_in_cents").notNull(),
 }, table => [index("inventory_purchase_items_purchase_idx").on(table.purchaseId)]);
+
+export const catalogKits = pgTable("catalog_kits", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  priceInCents: integer("price_in_cents").notNull(),
+  items: jsonb("items").$type<Array<{ type: "product" | "service"; id: string; name: string; quantity: number }>>().notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [index("catalog_kits_org_idx").on(table.organizationId, table.name), check("catalog_kits_price_check", sql`${table.priceInCents} >= 0`)]);

@@ -40,7 +40,7 @@ export default async function PlatformAdminPage() {
     ["Empresas", companyCount.value, "/admin/empresas"],
     ["Usuários", userCount.value, "/admin/usuarios"],
     ["Clientes finais — consultar por empresa", clientCount.value, "/admin/empresas"],
-    ["Procedimentos — consultar por empresa", serviceCount.value, "/admin/empresas"],
+    ["Serviços — consultar por empresa", serviceCount.value, "/admin/empresas"],
   ] as const;
   const hours = (value: number | null) => value === null ? "Sem dados" : `${value.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} h`;
   return (

@@ -11,7 +11,8 @@ import { savePackageTemplate } from "@/lib/package-catalog-repository";
 function failure(error: unknown) {
   return { error: error instanceof z.ZodError ? "Revise os campos obrigatórios, as datas e as quantidades." : error instanceof Error && !(error as Error & { cause?: unknown }).cause ? error.message : "Não foi possível salvar o pacote. Tente novamente." };
 }
-function refresh() { revalidatePath("/pacotes"); revalidatePath("/vendas"); revalidatePath("/clientes"); }
+function refresh() { revalidatePath("/pacotes");
+  revalidatePath("/produtos-servicos"); revalidatePath("/vendas"); revalidatePath("/clientes"); }
 
 export async function saveServicePackage(data: FormData) {
   const { organization } = await requireOrganization();

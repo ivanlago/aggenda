@@ -6,10 +6,8 @@ import {
   Settings2,
   UsersRound,
   UserRoundCog,
-  Wrench,
   ScrollText,
   DatabaseBackup,
-  PackageOpen,
   WalletCards,
   Rocket,
   Boxes,
@@ -64,11 +62,14 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     { label: "Agenda", items: [
       { href: "/agenda", label: "Agenda", icon: CalendarDays, permission: "appointments.read" },
     ] },
+    { label: "Venda e orçamento", items: [
+      { href: "/vendas", label: "Venda e orçamento", icon: ShoppingCart, permission: "inventory.read" },
+    ] },
     { label: organization.clientLabelPlural, items: [
       { href: "/clientes", label: organization.clientLabelPlural, icon: UsersRound, permission: "clients.read" },
     ] },
-    { label: "Venda e orçamento", items: [
-      { href: "/vendas", label: "Venda e orçamento", icon: ShoppingCart, permission: "inventory.read" },
+    { label: "Produtos e Serviços", items: [
+      { href: "/produtos-servicos", label: "Produtos e Serviços", icon: Boxes, permission: hasOrganizationPermission(organization.role, "services.read", organization.teamPermissionOverrides) ? "services.read" : "inventory.read" },
     ] },
     { label: "CRM", items: [
       { href: "/crescimento", label: "CRM", icon: TrendingUp, permission: "crm.read" },
@@ -78,9 +79,6 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     ] },
     { label: "Atendimento", items: [
       { href: "/estoque/compras", label: "Compras e fornecedores", icon: Boxes, permission: "inventory.manage" },
-      { href: "/estoque", label: "Estoque", icon: Boxes, permission: "inventory.read" },
-      { href: "/servicos", label: organization.serviceLabelPlural, icon: Wrench, permission: "services.read" },
-      { href: "/pacotes", label: "Pacotes", icon: PackageOpen, permission: "services.read" },
       { href: "/documentos", label: "Documentos", icon: FileSignature, permission: "documents.read", children: [
         { href: "/documentos/clinicos", label: "Clínicos", icon: FileCheck2, permission: "documents.read", secondary: true },
         { href: "/documentos/juridicos", label: "Jurídicos", icon: ScrollText, permission: "documents.read", secondary: true },

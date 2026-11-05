@@ -119,8 +119,8 @@ export async function createOrganization(formData: FormData) {
           clientLabelPlural: "Pacientes",
           professionalLabel: "Profissional",
           professionalLabelPlural: "Profissionais",
-          serviceLabel: "Procedimento",
-          serviceLabelPlural: "Procedimentos",
+          serviceLabel: "Serviço",
+          serviceLabelPlural: "Serviços",
           appointmentLabel: "Agendamento",
           appointmentLabelPlural: "Agendamentos",
         }
@@ -445,8 +445,8 @@ export async function updateOrganizationTerminology(formData: FormData) {
     clientLabelPlural: textValue(formData, "clientLabelPlural"),
     professionalLabel: textValue(formData, "professionalLabel"),
     professionalLabelPlural: textValue(formData, "professionalLabelPlural"),
-    serviceLabel: textValue(formData, "serviceLabel"),
-    serviceLabelPlural: textValue(formData, "serviceLabelPlural"),
+    serviceLabel: "Serviço",
+    serviceLabelPlural: "Serviços",
     appointmentLabel: "Agendamento",
     appointmentLabelPlural: "Agendamentos",
   };
@@ -830,6 +830,7 @@ export async function createService(formData: FormData) {
     ...image,
   }) });
   revalidatePath("/servicos");
+  revalidatePath("/produtos-servicos");
   revalidatePath("/dashboard");
 }
 
@@ -838,7 +839,7 @@ export async function deleteService(formData: FormData) {
   assertOrganizationPermission(organization.role, "services.manage", organization.teamPermissionOverrides);
   const id = textValue(formData, "id");
   const [current] = await db.select({ imagePublicId: services.imagePublicId }).from(services).where(and(eq(services.id, id), eq(services.organizationId, organization.id))).limit(1);
-  if (!current) return { error: "Procedimento não encontrado nesta empresa." };
+  if (!current) return { error: "Serviço não encontrado nesta empresa." };
   try {
   await db
     .delete(services)
@@ -855,6 +856,7 @@ export async function deleteService(formData: FormData) {
   }
   if (current?.imagePublicId) await deleteCatalogImage(current.imagePublicId).catch((error) => console.error("Falha ao excluir imagem do atendimento", error));
   revalidatePath("/servicos");
+  revalidatePath("/produtos-servicos");
   revalidatePath("/dashboard");
 }
 
@@ -888,6 +890,7 @@ export async function updateService(formData: FormData) {
     isActive: formData.get("isActive") === "on", ...image, updatedAt: new Date(),
   }).where(and(eq(services.id, id), eq(services.organizationId, organization.id))) });
   revalidatePath("/servicos");
+  revalidatePath("/produtos-servicos");
   revalidatePath("/dashboard");
 }
 
@@ -939,6 +942,7 @@ export async function createServicePackage(formData: FormData) {
     })));
   });
   revalidatePath("/pacotes");
+  revalidatePath("/produtos-servicos");
 }
 
 export async function toggleServicePackage(formData: FormData) {
@@ -952,6 +956,7 @@ export async function toggleServicePackage(formData: FormData) {
     eq(servicePackages.organizationId, organization.id)
   ));
   revalidatePath("/pacotes");
+  revalidatePath("/produtos-servicos");
   revalidatePath("/vendas");
 }
 
@@ -1007,7 +1012,7 @@ export async function registerAppointmentPayment(formData: FormData) {
     .from(appointments).innerJoin(services, eq(services.id, appointments.serviceId))
     .where(and(eq(appointments.id, appointmentId), eq(appointments.organizationId, organization.id))).limit(1);
   if (!appointment) throw new Error("Agendamento não encontrado.");
-  if (appointment.metadata?.primaryProcedureRemoved === true) throw new Error("O procedimento foi removido deste atendimento.");
+  if (appointment.metadata?.primaryProcedureRemoved === true) throw new Error("O serviço foi removido deste atendimento.");
   if (paymentMethod === "package") {
     const clientPackageId = textValue(formData, "clientPackageId");
     const [existingUsage] = await db.select({ clientPackageId: packageUsages.clientPackageId }).from(packageUsages).where(eq(packageUsages.appointmentId, appointmentId)).limit(1);
@@ -1018,6 +1023,7 @@ export async function registerAppointmentPayment(formData: FormData) {
     if (appointment.status === "completed" || appointment.status === "no_show") await reconcilePackageUsage(appointmentId, appointment.status);
     await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "payment:package", entityType: "appointment", entityId: appointmentId, details: { clientPackageId } });
     revalidatePath("/dashboard"); revalidatePath("/financeiro"); revalidatePath(`/clientes/${appointment.clientId}`); revalidatePath("/pacotes");
+  revalidatePath("/produtos-servicos");
     return;
   }
   const realizedDate = organizationDate(new Date(), organization.timezone);
@@ -1302,6 +1308,7 @@ export async function updateAppointmentStatus(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/financeiro");
   revalidatePath("/estoque");
+  revalidatePath("/produtos-servicos");
   revalidatePath("/crescimento");
   revalidatePath(`/cliente/${organization.slug}`);
   if (previousAppointment) revalidatePath(`/clientes/${previousAppointment.clientId}`);

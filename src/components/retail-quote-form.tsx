@@ -52,7 +52,7 @@ export function RetailQuoteForm({ catalog, clients, attendanceId, initialClientI
           <button className="icon-button text-red-700" type="button" aria-label={`Remover ${entry.label}`} onClick={() => setItems((current) => current.filter((line) => line.variantId !== item.variantId))}><Trash2 className="size-4" /></button>
           {canDiscount && <label className="grid gap-1 text-xs font-bold sm:col-span-4">Desconto do item (R$)<input className="field max-w-40" inputMode="decimal" value={(item.discountInCents / 100).toFixed(2).replace(".", ",")} onChange={(event) => { const amount = Math.max(0, Math.min(entry.priceInCents * item.quantity, Math.round((Number(event.target.value.replace(",", ".")) || 0) * 100))); setItems((current) => current.map((line) => line.variantId === item.variantId ? { ...line, discountInCents: amount } : line)); }} /></label>}
         </div>;
-      })}{!items.length && <p className="py-5 text-sm text-muted">Adicione produtos, procedimentos ou pacotes acima.</p>}</div>
+      })}{!items.length && <p className="py-5 text-sm text-muted">Adicione produtos, serviços ou pacotes acima.</p>}</div>
       {attendanceId ? <input type="hidden" name="clientId" value={clientId} /> : <ClientSearch clients={clients} value={clientId} onChange={setClientId} />}
       {canDiscount && <OrderDiscountField type={discountType} value={discountValue} onTypeChange={setDiscountType} onValueChange={setDiscountValue} error={discountError} />}
       <label className="grid gap-1 text-sm font-bold">Validade<input className="field sm:max-w-64" type="date" name="validUntil" defaultValue={defaultValidity} required /></label>

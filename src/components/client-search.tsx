@@ -26,7 +26,7 @@ export function ClientSearch({ clients, value, onChange, fixed = false, required
       {matches.length > 50 && <p className="p-2 text-xs text-muted">Digite mais letras para refinar a busca.</p>}
     </div>}
     {value && <div className="flex items-center gap-2 text-sm"><span>{selected?.name ?? "Cliente selecionado"}</span>{!fixed && <button type="button" className="icon-button" aria-label="Remover cliente selecionado" onClick={() => onChange("")}><X className="size-4" /></button>}</div>}
-    {required && !value && <p className="text-xs text-amber-700">Selecione um cliente para vender procedimentos ou pacotes.</p>}
+    {required && !value && <p className="text-xs text-amber-700">Selecione um cliente para vender serviços ou pacotes.</p>}
   </div>;
 }
 

@@ -11,7 +11,7 @@ export async function AttendanceReturnSettings({ appointment, timezone }: { appo
     db.select({ serviceId: retailSaleItems.serviceId, variant: retailSaleItems.variantName }).from(retailSaleItems).innerJoin(retailSales, eq(retailSales.id, retailSaleItems.saleId)).where(and(eq(retailSales.organizationId, appointment.organizationId), eq(retailSales.attendanceId, appointment.id), eq(retailSales.status, "completed"))),
     db.select().from(procedureReturns).where(and(eq(procedureReturns.organizationId, appointment.organizationId), eq(procedureReturns.appointmentId, appointment.id))),
   ]);
-  const ids = [...new Set([...(appointment.metadata?.primaryProcedureRemoved === true ? [] : [appointment.serviceId]), ...packages.map((item) => item.serviceId), ...purchases.flatMap((item) => item.serviceId && item.variant !== "Procedimento realizado" ? [item.serviceId] : [])])];
+  const ids = [...new Set([...(appointment.metadata?.primaryProcedureRemoved === true ? [] : [appointment.serviceId]), ...packages.map((item) => item.serviceId), ...purchases.flatMap((item) => item.serviceId && item.variant !== "Serviço realizado" ? [item.serviceId] : [])])];
   if (!ids.length) return null;
   const catalog = await db.select().from(services).where(and(eq(services.organizationId, appointment.organizationId), inArray(services.id, ids))).orderBy(services.name);
   return <AttendanceReturnOptions procedures={catalog.map((service) => {

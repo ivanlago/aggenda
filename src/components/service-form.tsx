@@ -29,7 +29,7 @@ export function ServiceForm({ item, label, categories }: { item?: typeof service
   const priceCents = readAmount(price);
   const costCents = readAmount(cost);
   const contribution = priceCents !== null && costCents !== null ? priceCents - costCents : null;
-  return <ActionForm action={item ? updateService : createService} successMessage={item ? "Procedimento atualizado." : "Procedimento cadastrado."} resetOnSuccess={false} className="grid min-w-0 gap-5 sm:grid-cols-2">
+  return <ActionForm action={item ? updateService : createService} successMessage={item ? "Serviço atualizado." : "Serviço cadastrado."} resetOnSuccess={false} className="grid min-w-0 gap-5 sm:grid-cols-2">
     <p className="col-span-full text-sm text-muted">Campos com * são obrigatórios.</p>
     {item && <input type="hidden" name="id" value={item.id} />}
     <FormSection title="Identificação">

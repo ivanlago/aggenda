@@ -645,6 +645,13 @@
       "when": 1793827657793,
       "tag": "0091_payment_methods_inventory_purchases",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1793869486309,
+      "tag": "0092_catalog_kits",
+      "breakpoints": true
     }
   ]
 }

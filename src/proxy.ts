@@ -16,7 +16,7 @@ export async function proxy(request: NextRequest) {
       return NextResponse.rewrite(portalUrl);
     }
   }
-  const protectedPath = ["/dashboard", "/onboarding", "/profissionais", "/clientes", "/servicos", "/agendamentos", "/equipe", "/assinatura", "/admin", "/crescimento", "/documentos"].some((path) => request.nextUrl.pathname === path || request.nextUrl.pathname.startsWith(`${path}/`));
+  const protectedPath = ["/dashboard", "/onboarding", "/profissionais", "/clientes", "/servicos", "/produtos-servicos", "/agendamentos", "/equipe", "/assinatura", "/admin", "/crescimento", "/documentos"].some((path) => request.nextUrl.pathname === path || request.nextUrl.pathname.startsWith(`${path}/`));
   if (protectedPath && !getSessionCookie(request)) {
     return NextResponse.redirect(new URL("/entrar", request.url));
   }
@@ -31,6 +31,7 @@ export const config = {
     "/profissionais/:path*",
     "/clientes/:path*",
     "/servicos/:path*",
+    "/produtos-servicos/:path*",
     "/agendamentos/:path*",
     "/equipe/:path*",
     "/assinatura/:path*",

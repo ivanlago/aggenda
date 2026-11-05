@@ -134,6 +134,7 @@ export async function createRetailProduct(data: FormData) {
   revalidatePath("/produtos");
   revalidatePath("/vendas");
   revalidatePath("/estoque");
+  revalidatePath("/produtos-servicos");
 }
 
 export async function updateRetailVariant(data: FormData) {
@@ -182,6 +183,7 @@ export async function updateRetailVariant(data: FormData) {
     }).where(and(eq(inventoryProducts.id, variant.inventoryProductId), eq(inventoryProducts.organizationId, organization.id)));
   }) });
   revalidatePath("/produtos"); revalidatePath("/vendas"); revalidatePath("/estoque");
+  revalidatePath("/produtos-servicos");
 }
 
 export async function deleteRetailProduct(data: FormData) {
@@ -212,7 +214,7 @@ export async function deleteRetailProduct(data: FormData) {
   const [lotReference] = await db.select({ id: inventoryLots.id }).from(inventoryLots).where(and(eq(inventoryLots.organizationId, organization.id), eq(inventoryLots.productId, variant.inventoryProductId))).limit(1);
   if (lotReference) return { error: "Este produto possui lotes e rastreabilidade. Desative-o para preservar o histórico." };
   if (saleReference.length || consumptionReference.length) {
-    return { error: "Este produto possui histórico de venda ou procedimento. Desative-o para preservar os registros." };
+    return { error: "Este produto possui histórico de venda ou serviço. Desative-o para preservar os registros." };
   }
 
   await db.transaction(async (tx) => {
@@ -236,6 +238,7 @@ export async function deleteRetailProduct(data: FormData) {
   if (variant.imagePublicId) await deleteCatalogImage(variant.imagePublicId).catch((error) => console.error("Falha ao excluir imagem do produto", error));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "delete", entityType: "retail_product", entityId: variant.productId });
   revalidatePath("/produtos"); revalidatePath("/vendas"); revalidatePath("/estoque");
+  revalidatePath("/produtos-servicos");
 }
 
 type SaleInputItem = { variantId?: unknown; quantity?: unknown; discountInCents?: unknown };
@@ -292,12 +295,12 @@ export async function registerRetailSale(data: FormData) {
   const variantIds = [...grouped.keys()].filter((id) => !id.includes(":"));
   const appointmentKeys = [...grouped.keys()].filter((id) => id.startsWith("appointment:"));
   if (variantIds.length + serviceIds.length + packageIds.length + appointmentKeys.length !== grouped.size) throw new Error("Tipo de item inválido.");
-  if (appointmentKeys.length && (!attendance || appointmentKeys.length !== 1 || appointmentKeys[0] !== `appointment:${attendanceId}` || grouped.get(appointmentKeys[0])!.quantity !== 1)) throw new Error("Procedimento do atendimento inválido.");
-  if (attendance && attendance.appointment.metadata?.primaryProcedureRemoved !== true && serviceIds.includes(attendance.appointment.serviceId)) throw new Error("Use o item do procedimento realizado, já incluído no carrinho, para receber este atendimento.");
+  if (appointmentKeys.length && (!attendance || appointmentKeys.length !== 1 || appointmentKeys[0] !== `appointment:${attendanceId}` || grouped.get(appointmentKeys[0])!.quantity !== 1)) throw new Error("Serviço do atendimento inválido.");
+  if (attendance && attendance.appointment.metadata?.primaryProcedureRemoved !== true && serviceIds.includes(attendance.appointment.serviceId)) throw new Error("Use o item do serviço realizado, já incluído no carrinho, para receber este atendimento.");
   const clientId = attendance?.appointment.clientId ?? (text(data, "clientId") || null);
   const [client] = clientId ? await db.select({ id: clients.id, email: clients.email, phone: clients.phone }).from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1) : [];
   if (clientId && !client) throw new Error("Cliente não encontrado.");
-  if ((serviceIds.length || packageIds.length) && !clientId) throw new Error("Selecione o cliente para vender procedimentos ou pacotes.");
+  if ((serviceIds.length || packageIds.length) && !clientId) throw new Error("Selecione o cliente para vender serviços ou pacotes.");
   const receiptEmail = text(data, "receiptEmail") || client?.email || null;
   const receiptPhone = text(data, "receiptPhone") || client?.phone || null;
   if (receiptEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(receiptEmail)) throw new Error("Informe um e-mail válido para o recibo.");
@@ -346,8 +349,8 @@ export async function registerRetailSale(data: FormData) {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`attendance-payment:${attendanceId}`}, 0))`);
       const [locked] = await tx.select().from(appointments).where(and(eq(appointments.id, attendance.appointment.id), eq(appointments.organizationId, organization.id))).for("update");
       if (!locked || ["cancelled", "no_show"].includes(locked.status)) throw new Error("Atendimento indisponível.");
-      if (locked.metadata?.primaryProcedureRemoved === true && appointmentKeys.length) throw new Error("O procedimento principal foi removido. Atualize o carrinho.");
-      if (locked.metadata?.primaryProcedureRemoved !== true && serviceIds.includes(locked.serviceId)) throw new Error("Atualize o procedimento principal no carrinho.");
+      if (locked.metadata?.primaryProcedureRemoved === true && appointmentKeys.length) throw new Error("O serviço principal foi removido. Atualize o carrinho.");
+      if (locked.metadata?.primaryProcedureRemoved !== true && serviceIds.includes(locked.serviceId)) throw new Error("Atualize o serviço principal no carrinho.");
       const pending = attendancePendingItems(locked.metadata);
       const selected = pending.filter((item) => pendingIds.includes(item.id));
       if (selected.length !== new Set(pendingIds).size) throw new Error("Os itens pendentes foram alterados. Atualize o atendimento.");
@@ -371,10 +374,10 @@ export async function registerRetailSale(data: FormData) {
       const [current] = await tx.select().from(appointments).where(and(eq(appointments.id, attendance.appointment.id), eq(appointments.organizationId, organization.id))).for("update");
       const [existing] = await tx.select().from(financialEntries).where(and(eq(financialEntries.appointmentId, current.id), eq(financialEntries.organizationId, organization.id)));
       const [usage] = await tx.select().from(packageUsages).where(and(eq(packageUsages.appointmentId, current.id), eq(packageUsages.organizationId, organization.id), inArray(packageUsages.status, ["reserved", "consumed"])));
-      if (existing?.status === "received" || usage) throw new Error("Este procedimento já foi pago ou está coberto por pacote. Atualize o carrinho.");
+      if (existing?.status === "received" || usage) throw new Error("Este serviço já foi pago ou está coberto por pacote. Atualize o carrinho.");
       if (["cancelled", "no_show"].includes(current.status)) throw new Error("Revise a situação do atendimento antes de receber.");
       const [service] = await tx.select().from(services).where(and(eq(services.id, current.serviceId), eq(services.organizationId, organization.id)));
-      appointmentLine = { id: appointmentKeys[0], serviceId: service.id, packageId: null, productName: service.name, variantName: "Procedimento realizado", price: existing?.amountInCents ?? current.priceInCents ?? service.priceInCents };
+      appointmentLine = { id: appointmentKeys[0], serviceId: service.id, packageId: null, productName: service.name, variantName: "Serviço realizado", price: existing?.amountInCents ?? current.priceInCents ?? service.priceInCents };
     }
     const variants = await tx.select({
       id: retailProductVariants.id, inventoryProductId: retailProductVariants.inventoryProductId,
@@ -406,15 +409,15 @@ export async function registerRetailSale(data: FormData) {
     });
     const procedureRows = serviceIds.length ? await tx.select().from(services).where(and(eq(services.organizationId, organization.id), eq(services.isActive, true), inArray(services.id, serviceIds))) : [];
     const packageRows = packageIds.length ? await tx.select().from(servicePackages).where(and(eq(servicePackages.organizationId, organization.id), eq(servicePackages.isActive, true), inArray(servicePackages.id, packageIds))).for("share") : [];
-    if (procedureRows.length !== serviceIds.length || packageRows.length !== packageIds.length) throw new Error("Procedimento ou pacote indisponível.");
+    if (procedureRows.length !== serviceIds.length || packageRows.length !== packageIds.length) throw new Error("Serviço ou pacote indisponível.");
     const additionalLines = [
       ...(appointmentLine ? [appointmentLine] : []),
-      ...procedureRows.map((item) => ({ id: `service:${item.id}`, serviceId: item.id, packageId: null as string | null, productName: item.name, variantName: "Procedimento", price: item.priceInCents })),
+      ...procedureRows.map((item) => ({ id: `service:${item.id}`, serviceId: item.id, packageId: null as string | null, productName: item.name, variantName: "Serviço", price: item.priceInCents })),
       ...packageRows.map((item) => ({ id: `package:${item.id}`, serviceId: null as string | null, packageId: item.id, productName: item.name, variantName: "Pacote", price: item.priceInCents })),
     ].map((catalogItem) => {
       const item = { ...catalogItem, price: quotedPrices.get(catalogItem.id) ?? catalogItem.price };
       const requested = grouped.get(item.id)!;
-      if (item.price == null || item.price < 0 || requested.discountInCents > item.price * requested.quantity) throw new Error("Revise o preço e desconto do procedimento ou pacote.");
+      if (item.price == null || item.price < 0 || requested.discountInCents > item.price * requested.quantity) throw new Error("Revise o preço e desconto do serviço ou pacote.");
       if (item.packageId && requested.quantity > 100) throw new Error("Limite de 100 pacotes por item.");
       return { ...item, price: item.price, quantity: requested.quantity, discount: requested.discountInCents, total: item.price * requested.quantity - requested.discountInCents, inventoryProductId: null, cost: 0, commission: 0 };
     });
@@ -436,7 +439,7 @@ export async function registerRetailSale(data: FormData) {
         type: "receivable", source: "appointment", status: "received", description: `Atendimento - ${appointmentLine.productName}`, category: "Atendimentos",
         amountInCents: procedureTotal, dueDate: today, realizedDate: today, paymentMethod, createdByUserId: session.user.id,
       }).onConflictDoUpdate({ target: financialEntries.appointmentId, set: { status: "received", amountInCents: procedureTotal, realizedDate: today, paymentMethod, updatedAt: new Date() }, setWhere: ne(financialEntries.status, "received") }).returning({ id: financialEntries.id });
-      if (!entry) throw new Error("O pagamento deste procedimento já foi registrado.");
+      if (!entry) throw new Error("O pagamento deste serviço já foi registrado.");
       appointmentFinancialEntryId = entry.id;
     }
     const [financialEntry] = additionalInCents > 0 || !appointmentFinancialEntryId ? await tx.insert(financialEntries).values({
@@ -478,7 +481,7 @@ export async function registerRetailSale(data: FormData) {
       if (!item.packageId) continue;
       const template = packageRows.find((row) => row.id === item.packageId)!;
       const contents = await tx.select().from(servicePackageItems).where(and(eq(servicePackageItems.organizationId, organization.id), eq(servicePackageItems.packageId, template.id)));
-      if (!contents.length) throw new Error(`O pacote ${template.name} não possui procedimentos.`);
+      if (!contents.length) throw new Error(`O pacote ${template.name} não possui serviços.`);
       const purchasedAt = new Date();
       const unitPrices = splitPosPackagePrice(item.total, item.quantity);
       for (let unit = 0; unit < item.quantity; unit++) {
@@ -504,7 +507,8 @@ export async function registerRetailSale(data: FormData) {
   });
   if (online) {
     await ensurePosCheckout(organization.id, createdSale.id);
-    revalidatePath("/vendas"); revalidatePath("/estoque"); revalidatePath("/financeiro"); revalidatePath("/financeiro/cobrancas");
+    revalidatePath("/vendas"); revalidatePath("/estoque");
+  revalidatePath("/produtos-servicos"); revalidatePath("/financeiro"); revalidatePath("/financeiro/cobrancas");
     return { openUrl: `/vendas/pagamento/${createdSale.id}`, warning: "Venda aguardando pagamento. Os itens estão reservados; a liberação depende da confirmação do provedor." };
   }
   const receiptPath = `/recibo/${createdSale.receiptToken}`;
@@ -520,11 +524,13 @@ export async function registerRetailSale(data: FormData) {
   }
   const notificationResults = await Promise.allSettled(notifications);
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "retail_sale", entityId: createdSale.id });
-  revalidatePath("/vendas"); revalidatePath("/produtos"); revalidatePath("/estoque"); revalidatePath("/financeiro");
+  revalidatePath("/vendas"); revalidatePath("/produtos"); revalidatePath("/estoque");
+  revalidatePath("/produtos-servicos"); revalidatePath("/financeiro");
   if (attendanceId) revalidatePath(`/atendimento/${attendanceId}`);
   if (sourceQuote?.attendanceId) revalidatePath(`/atendimento/${sourceQuote.attendanceId}`);
   revalidatePath("/agenda"); revalidatePath("/dashboard");
   revalidatePath("/pacotes");
+  revalidatePath("/produtos-servicos");
   if (clientId) revalidatePath(`/clientes/${clientId}`);
   return { openUrl: receiptPath, warning: notificationResults.some((result) => result.status === "rejected") ? "Venda concluída, mas um dos envios do recibo falhou." : undefined };
 }
@@ -569,8 +575,10 @@ export async function reverseRetailSale(data: FormData) {
     if (sale.appointmentFinancialEntryId && sale.appointmentFinancialEntryId !== sale.financialEntryId) await tx.update(financialEntries).set({ status: operation, updatedAt: new Date() }).where(and(eq(financialEntries.id, sale.appointmentFinancialEntryId), eq(financialEntries.organizationId, organization.id)));
   });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: operation, entityType: "retail_sale", entityId: saleId, details: { reason } });
-  revalidatePath("/vendas"); revalidatePath("/vendas/historico"); revalidatePath("/vendas/relatorios"); revalidatePath("/estoque"); revalidatePath("/financeiro");
+  revalidatePath("/vendas"); revalidatePath("/vendas/historico"); revalidatePath("/vendas/relatorios"); revalidatePath("/estoque");
+  revalidatePath("/produtos-servicos"); revalidatePath("/financeiro");
   revalidatePath("/pacotes");
+  revalidatePath("/produtos-servicos");
   revalidatePath("/atendimento/[id]", "page");
   revalidatePath("/clientes/[id]", "page");
 }

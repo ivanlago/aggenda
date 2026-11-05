@@ -14,7 +14,7 @@ import { assertOrganizationPermission, hasOrganizationPermission } from "@/lib/p
 import { requireOrganization } from "@/lib/session";
 
 export const metadata = { title: "Comissões" };
-const sources:Record<string,string>={appointment:"Atendimento",product:"Produto",service:"Procedimento no PDV",adjustment:"Ajuste"};
+const sources:Record<string,string>={appointment:"Atendimento",product:"Produto",service:"Serviço no PDV",adjustment:"Ajuste"};
 export default async function CommissionsPage({searchParams}:{searchParams:Promise<{mes?:string;beneficiario?:string;status?:string}>}) {
   const {organization}=await requireOrganization(); assertOrganizationPermission(organization.role,"finance.read");
   const canManage=hasOrganizationPermission(organization.role,"finance.manage"),query=await searchParams,today=organizationDate(new Date(),organization.timezone);
@@ -38,7 +38,7 @@ export default async function CommissionsPage({searchParams}:{searchParams:Promi
   const visible=period.filter(item=>!query.status||item.status===query.status);
   return <div className="page-wrap">
     <Link className="mb-4 inline-flex text-sm font-bold text-brand" href="/financeiro">← Voltar ao financeiro</Link>
-    <PageHeader eyebrow="Financeiro" title="Comissões" description="Procedimentos e produtos, saldo acumulado e histórico de quitações."/>
+    <PageHeader eyebrow="Financeiro" title="Comissões" description="Serviços e produtos, saldo acumulado e histórico de quitações."/>
     <form method="get" className="panel mb-5 grid gap-3 sm:grid-cols-4">
       <label className="grid gap-2 text-sm font-bold">Competência<input className="field" name="mes" type="month" defaultValue={month}/></label>
       <label className="grid gap-2 text-sm font-bold">Beneficiário<select className="field" name="beneficiario" defaultValue={query.beneficiario||""}><option value="">Todos</option>{[...names].map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>

@@ -48,8 +48,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       <label className="grid gap-2 text-sm font-bold">Cliente, no plural<input className="field" name="clientLabelPlural" defaultValue={organization.clientLabelPlural} disabled={!canManage} required /></label>
       <label className="grid gap-2 text-sm font-bold">Profissional, no singular<input className="field" name="professionalLabel" defaultValue={organization.professionalLabel} disabled={!canManage} required /></label>
       <label className="grid gap-2 text-sm font-bold">Profissional, no plural<input className="field" name="professionalLabelPlural" defaultValue={organization.professionalLabelPlural} disabled={!canManage} required /></label>
-      <label className="grid gap-2 text-sm font-bold">Serviço, no singular<input className="field" name="serviceLabel" defaultValue={organization.serviceLabel} disabled={!canManage} required /></label>
-      <label className="grid gap-2 text-sm font-bold">Serviço, no plural<input className="field" name="serviceLabelPlural" defaultValue={organization.serviceLabelPlural} disabled={!canManage} required /></label>
       {canManage && <button className="primary-button sm:col-span-2 sm:w-fit">Salvar terminologia</button>}
     </ActionForm>
   </section>;
@@ -121,7 +119,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const documents = <section className="panel max-w-4xl">
     <h2 className="text-xl font-extrabold">Biblioteca de modelos de documentos</h2>
     <p className="mt-2 text-sm text-muted">Os modelos nativos ficam disponíveis automaticamente nas páginas de Documentos.</p>
-    <p className="mt-2 text-sm text-muted">Atualize a biblioteca para aplicar os textos padrão mais recentes e adicionar modelos disponíveis. Suas cópias personalizadas, padrões por procedimento e documentos já emitidos são preservados.</p>
+    <p className="mt-2 text-sm text-muted">Atualize a biblioteca para aplicar os textos padrão mais recentes e adicionar modelos disponíveis. Suas cópias personalizadas, padrões por serviço e documentos já emitidos são preservados.</p>
     {hasOrganizationPermission(organization.role, "documents.manage") && <ActionForm action={updateDocumentTemplateLibrary} successMessage="Biblioteca de modelos atualizada." className="mt-5"><button className="primary-button">Atualizar biblioteca de modelos</button></ActionForm>}
   </section>;
 

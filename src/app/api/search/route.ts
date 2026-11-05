@@ -9,10 +9,12 @@ const pages: Array<{ label: string; href: string; permission: OrganizationPermis
   { label: "Dashboard", href: "/dashboard", permission: "organization.read" },
   { label: "Agenda e agendamentos", href: "/agenda", permission: "appointments.read" },
   { label: "Clientes e prontuários", href: "/clientes", permission: "clients.read" },
-  { label: "Procedimentos", href: "/servicos", permission: "services.read" },
+  { label: "Produtos e Serviços", href: "/produtos-servicos", permission: "services.read" },
+  { label: "Pacotes", href: "/produtos-servicos?tab=pacotes", permission: "services.read" },
+  { label: "Kit de Produtos/Serviços", href: "/produtos-servicos?tab=kits", permission: "services.read" },
   { label: "Venda e orçamento", href: "/vendas", permission: "inventory.read" },
   { label: "CRM e conversas comerciais", href: "/crescimento", permission: "crm.read" },
-  { label: "Estoque e produtos", href: "/estoque", permission: "inventory.read" },
+  { label: "Produtos e Serviços", href: "/produtos-servicos", permission: "inventory.read" },
   { label: "Documentos clínicos", href: "/documentos/clinicos", permission: "documents.read" },
   { label: "Documentos jurídicos", href: "/documentos/juridicos", permission: "documents.read" },
   { label: "Histórico de documentos", href: "/documentos/historico", permission: "documents.read" },
@@ -24,7 +26,7 @@ const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u0
 export async function GET(request: Request) {
   const { organization } = await requireOrganization();
   const query = new URL(request.url).searchParams.get("q")?.trim().slice(0, 100) ?? "";
-  const results = pages.filter(page => hasOrganizationPermission(organization.role, page.permission) && normalize(page.label).includes(normalize(query))).map(page => ({ label: page.label, href: page.href, category: "Página" }));
+  const results = pages.filter(page => hasOrganizationPermission(organization.role, page.permission, organization.teamPermissionOverrides) && normalize(page.label).includes(normalize(query))).filter((page, index, list) => list.findIndex(item => item.href === page.href) === index).map(page => ({ label: page.label, href: page.href, category: "Página" }));
   if (query.length >= 2) {
     const pattern = `%${query.replace(/[\\%_]/g, "\\$&")}%`;
     const [clientMatches, serviceMatches] = await Promise.all([
@@ -37,7 +39,7 @@ export async function GET(request: Request) {
     ]);
     results.unshift(
       ...clientMatches.map(client => ({ label: client.name, href: `/clientes/${client.id}`, category: "Cliente / prontuário" })),
-      ...serviceMatches.map(service => ({ label: service.name, href: `/servicos#procedimento-${service.id}`, category: "Procedimento" })),
+      ...serviceMatches.map(service => ({ label: service.name, href: `/produtos-servicos#procedimento-${service.id}`, category: "Serviço" })),
     );
   }
   return NextResponse.json({ results: results.slice(0, 15) }, { headers: { "Cache-Control": "private, no-store" } });

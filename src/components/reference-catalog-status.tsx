@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { referenceReleases, referenceSyncRuns } from "@/db/reference-schema";
 import { referenceKinds } from "@/lib/reference-types";
 
-const labels = { "tuss-20": "Medicamentos — TUSS 20", "tuss-22": "Exames e procedimentos — TUSS 22", "cid-10": "Diagnósticos — CID-10", "anvisa-medications": "Medicamentos — Anvisa" };
+const labels = { "tuss-20": "Medicamentos — TUSS 20", "tuss-22": "Exames e serviços — TUSS 22", "cid-10": "Diagnósticos — CID-10", "anvisa-medications": "Medicamentos — Anvisa" };
 const formatDate = (date: Date) => date.toLocaleString("pt-BR", { timeZone: "America/Bahia", dateStyle: "short", timeStyle: "short" });
 export async function ReferenceCatalogStatus() {
   const [releases, runs] = await Promise.all([

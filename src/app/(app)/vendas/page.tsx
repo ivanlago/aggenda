@@ -76,7 +76,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
   }
 
   return <div className="page-wrap">
-    <PageHeader eyebrow="Varejo" title="Venda e orçamento" description="Venda produtos, procedimentos e pacotes ou prepare um orçamento para converter em venda depois." />
+    <PageHeader eyebrow="Varejo" title="Venda e orçamento" description="Venda produtos, serviços e pacotes ou prepare um orçamento para converter em venda depois." />
     <nav className="mb-5 flex flex-wrap gap-2"><Link className="secondary-button" href="/vendas/historico">Histórico completo</Link><Link className="secondary-button" href="/vendas/relatorios">Relatórios do PDV</Link></nav>
     <section className="grid gap-4 sm:grid-cols-3">
       <article className="panel"><ShoppingBag className="size-5 text-brand" /><p className="mt-4 text-3xl font-extrabold">{sales.length}</p><p className="text-sm text-muted">vendas recentes</p></article>

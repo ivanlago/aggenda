@@ -7,7 +7,7 @@ export type RegisteredProcedure = { id: string; name: string; shortName: string 
 
 const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-export function ProcedureAutocomplete({ procedures, onSelect, onCustom, resetAfterSelect = false, label = "Buscar procedimento cadastrado" }: { procedures: RegisteredProcedure[]; onSelect: (procedure: RegisteredProcedure) => void; onCustom?: (name: string) => void; resetAfterSelect?: boolean; label?: string }) {
+export function ProcedureAutocomplete({ procedures, onSelect, onCustom, resetAfterSelect = false, label = "Buscar serviço cadastrado" }: { procedures: RegisteredProcedure[]; onSelect: (procedure: RegisteredProcedure) => void; onCustom?: (name: string) => void; resetAfterSelect?: boolean; label?: string }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const results = useMemo(() => {

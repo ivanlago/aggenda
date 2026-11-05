@@ -72,6 +72,7 @@ export async function moveInventory(data: FormData) {
     await tx.insert(inventoryMovements).values({ organizationId: organization.id, productId, type, quantityMillis: delta, balanceAfterMillis: balanceAfter, notes: movementNotes, createdByUserId: session.user.id });
   });
   revalidatePath("/estoque");
+  revalidatePath("/produtos-servicos");
 }
 
 export async function createInventoryCategory(data: FormData) {
@@ -81,6 +82,7 @@ export async function createInventoryCategory(data: FormData) {
   if (name.length < 2) throw new Error("Informe o nome da categoria.");
   await db.insert(inventoryCategories).values({ organizationId: organization.id, name });
   revalidatePath("/estoque");
+  revalidatePath("/produtos-servicos");
 }
 
 export async function createInventorySubcategory(data: FormData) {
@@ -92,6 +94,9 @@ export async function createInventorySubcategory(data: FormData) {
   if (!category || name.length < 2) throw new Error("Informe uma categoria e o nome da subcategoria.");
   await db.insert(inventorySubcategories).values({ organizationId: organization.id, categoryId, name });
   revalidatePath("/estoque");
+  revalidatePath("/produtos-servicos");
 }
-export async function setServiceInventoryItem(data: FormData) { const { organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "inventory.manage"); const serviceId = text(data, "serviceId"); const productId = text(data, "productId"); const amount = quantity(data, "quantity"); const [service, product] = await Promise.all([db.select({ id: services.id }).from(services).where(and(eq(services.id, serviceId), eq(services.organizationId, organization.id))).limit(1), db.select({ id: inventoryProducts.id }).from(inventoryProducts).innerJoin(retailProductVariants, eq(retailProductVariants.inventoryProductId, inventoryProducts.id)).where(and(eq(inventoryProducts.id, productId), eq(inventoryProducts.organizationId, organization.id), eq(retailProductVariants.isForProcedures, true), eq(retailProductVariants.isActive, true))).limit(1)]); if (!service.length || !product.length || !amount) throw new Error("Serviço, produto ou quantidade inválida."); await db.insert(serviceInventoryItems).values({ organizationId: organization.id, serviceId, productId, quantityMillis: amount }).onConflictDoUpdate({ target: [serviceInventoryItems.serviceId, serviceInventoryItems.productId], set: { quantityMillis: amount } }); revalidatePath("/estoque"); }
-export async function removeServiceInventoryItem(data: FormData) { const { organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "inventory.manage"); await db.delete(serviceInventoryItems).where(and(eq(serviceInventoryItems.organizationId, organization.id), eq(serviceInventoryItems.serviceId, text(data, "serviceId")), eq(serviceInventoryItems.productId, text(data, "productId")))); revalidatePath("/estoque"); }
+export async function setServiceInventoryItem(data: FormData) { const { organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "inventory.manage"); const serviceId = text(data, "serviceId"); const productId = text(data, "productId"); const amount = quantity(data, "quantity"); const [service, product] = await Promise.all([db.select({ id: services.id }).from(services).where(and(eq(services.id, serviceId), eq(services.organizationId, organization.id))).limit(1), db.select({ id: inventoryProducts.id }).from(inventoryProducts).innerJoin(retailProductVariants, eq(retailProductVariants.inventoryProductId, inventoryProducts.id)).where(and(eq(inventoryProducts.id, productId), eq(inventoryProducts.organizationId, organization.id), eq(retailProductVariants.isForProcedures, true), eq(retailProductVariants.isActive, true))).limit(1)]); if (!service.length || !product.length || !amount) throw new Error("Serviço, produto ou quantidade inválida."); await db.insert(serviceInventoryItems).values({ organizationId: organization.id, serviceId, productId, quantityMillis: amount }).onConflictDoUpdate({ target: [serviceInventoryItems.serviceId, serviceInventoryItems.productId], set: { quantityMillis: amount } }); revalidatePath("/estoque");
+  revalidatePath("/produtos-servicos"); }
+export async function removeServiceInventoryItem(data: FormData) { const { organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "inventory.manage"); await db.delete(serviceInventoryItems).where(and(eq(serviceInventoryItems.organizationId, organization.id), eq(serviceInventoryItems.serviceId, text(data, "serviceId")), eq(serviceInventoryItems.productId, text(data, "productId")))); revalidatePath("/estoque");
+  revalidatePath("/produtos-servicos"); }

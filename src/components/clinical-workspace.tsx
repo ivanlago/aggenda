@@ -16,7 +16,7 @@ import { ClinicalConsultationEditor } from "./clinical-consultation-editor";
 import { blankClinicalDraft, clinicalDraftSchema } from "@/lib/clinical-draft";
 
 const vitalLabels: Record<string, string> = { weight: "Peso (kg)", height: "Altura (cm)", systolic: "Pressão sistólica (mmHg)", diastolic: "Pressão diastólica (mmHg)", heartRate: "Frequência cardíaca (bpm)", temperature: "Temperatura (°C)", oxygenSaturation: "Saturação de O₂ (%)" };
-const labels = { subjective: "Queixa / objetivo e relato do paciente (S)", objective: "Exame / achados objetivos (O)", assessment: "Avaliação profissional (A)", plan: "Conduta e plano (P)", procedure: "Procedimento e técnica utilizados", intercurrences: "Intercorrências e providências", instructions: "Orientações ao paciente" };
+const labels = { subjective: "Queixa / objetivo e relato do paciente (S)", objective: "Exame / achados objetivos (O)", assessment: "Avaliação profissional (A)", plan: "Conduta e plano (P)", procedure: "Serviço e técnica utilizados", intercurrences: "Intercorrências e providências", instructions: "Orientações ao paciente" };
 
 /** Authorizes independently: callers cannot expose this server component to reception. */
 export async function ClinicalWorkspace({ clientId, appointmentId, defaultMode = "aesthetic", summaryOnly = false, hideSummary = false, section = "all" }: { clientId: string; appointmentId?: string; defaultMode?: "medical" | "aesthetic"; summaryOnly?: boolean; hideSummary?: boolean; section?: "all" | "consultation" | "exams" }) {

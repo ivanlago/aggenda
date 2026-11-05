@@ -14,7 +14,7 @@ export function AnamnesisTemplateBuilder({ services }: { services: Array<{ id: s
   return <>
     <input type="hidden" name="responseSchema" value={JSON.stringify(fields)} />
     <label className="grid gap-2 text-sm font-bold">Nome do modelo<input className="field" name="name" required maxLength={120} placeholder="Ex.: Anamnese para microagulhamento" /></label>
-    <label className="grid gap-2 text-sm font-bold">Procedimento associado<select className="field" name="serviceId" defaultValue=""><option value="">Todos os procedimentos</option>{services.map((service) => <option key={service.id} value={service.id}>{service.shortName || service.name}</option>)}</select></label>
+    <label className="grid gap-2 text-sm font-bold">Serviço associado<select className="field" name="serviceId" defaultValue=""><option value="">Todos os serviços</option>{services.map((service) => <option key={service.id} value={service.id}>{service.shortName || service.name}</option>)}</select></label>
     <div className="grid gap-3">{fields.map((field, index) => <article className="rounded-2xl border bg-slate-50 p-3" key={field.id}>
       <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_180px_auto]">
         <input className="field" value={field.label} onChange={(event) => update(index, { label: event.target.value })} placeholder={`Pergunta ${index + 1}`} aria-label={`Texto da pergunta ${index + 1}`} />

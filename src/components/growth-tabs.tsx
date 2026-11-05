@@ -4,7 +4,7 @@ import { useState, type ReactNode, type KeyboardEvent } from "react";
 import { CalendarClock, ChartNoAxesCombined, KanbanSquare, MessageCircleMore, TicketPercent, UserRoundSearch } from "lucide-react";
 
 const tabs = [
-  { id: "retornos", label: "Retornos por procedimento", icon: CalendarClock },
+  { id: "retornos", label: "Retornos por serviço", icon: CalendarClock },
   { id: "recuperacao", label: "Recuperação de pacientes", icon: UserRoundSearch },
   { id: "voucher", label: "Voucher", icon: TicketPercent },
   { id: "conversas", label: "Conversas comerciais", icon: MessageCircleMore },

@@ -6,7 +6,7 @@ export type PaymentCatalogMethod = { id: string; name: string; kind: string; pro
 export type PaymentCatalogAccount = { id: string; name: string };
 
 export function paymentKindSupported(kind: string, provider: string) {
-  if (provider === "manual") return kind !== "link" && paymentKinds.includes(kind as PaymentKind);
+  if (provider === "manual") return paymentKinds.includes(kind as PaymentKind);
   if (provider === "efi") return kind === "pix";
   if (provider === "asaas") return ["pix", "boleto", "credit_card", "link"].includes(kind);
   return ["mercado_pago", "pagbank"].includes(provider) && ["pix", "boleto", "credit_card", "debit_card", "link"].includes(kind);

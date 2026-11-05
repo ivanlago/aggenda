@@ -39,3 +39,19 @@ export async function savePaymentMethod(form: FormData) {
   revalidatePath("/vendas");
   revalidatePath("/atendimento", "layout");
 }
+
+export async function deletePaymentMethod(form: FormData) {
+  const { organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "finance.manage");
+  const input = z.uuid().safeParse(form.get("id"));
+  if (!input.success) return { error: "Forma de pagamento inválida." };
+  try {
+    const [removed] = await db.delete(paymentMethods).where(and(eq(paymentMethods.id, input.data), eq(paymentMethods.organizationId, organization.id))).returning({ id: paymentMethods.id });
+    if (!removed) return { error: "Forma de pagamento não encontrada." };
+  } catch (error) {
+    const code = (error as { code?: string; cause?: { code?: string } }).cause?.code ?? (error as { code?: string }).code;
+    if (code === "23503" || code === "23001") return { error: "Esta forma de pagamento possui movimentações vinculadas. Edite o cadastro e desmarque Disponível para novos pagamentos para desativá-la." };
+    throw error;
+  }
+  revalidatePath("/", "layout");
+}

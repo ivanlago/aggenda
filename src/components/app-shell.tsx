@@ -92,6 +92,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       { href: "/documentos/assinatura-profissional", label: "Assinatura profissional", icon: FileSignature, permission: "documents.sign" },
     ] },
     { label: "Financeiro", items: [
+      { href: "/financeiro/cadastros", label: "Cadastros financeiros", icon: Landmark, permission: "finance.manage" },
       { href: "/financeiro/formas-de-pagamento", label: "Formas de pagamento", icon: WalletCards, permission: "finance.manage" },
       { href: "/financeiro/cobrancas", label: "Cobranças", icon: BanknoteArrowDown, permission: "finance.read" },
       { href: "/financeiro/comissoes", label: "Comissões", icon: HandCoins, permission: "finance.read" },

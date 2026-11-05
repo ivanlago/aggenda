@@ -10,7 +10,7 @@ export function PaymentCatalogProvider({ catalog, children }: { catalog: { metho
   return <CatalogContext.Provider value={catalog}>{children}</CatalogContext.Provider>;
 }
 
-export function PaymentMethodFields({ methodName = "paymentMethod", accountLabel = "Conta de destino", required = true, provider = "manual", initialMethodId = "", initialAccountId = "" }: { methodName?: string; accountLabel?: string; required?: boolean; provider?: string; initialMethodId?: string; initialAccountId?: string }) {
+export function PaymentMethodFields({ methodName = "paymentMethod", accountLabel = "Conta de pagamento", required = true, provider = "manual", initialMethodId = "", initialAccountId = "" }: { methodName?: string; accountLabel?: string; required?: boolean; provider?: string; initialMethodId?: string; initialAccountId?: string }) {
   const { methods, accounts } = usePaymentCatalog();
   const choices = methods.filter(method => method.provider === provider);
   const [methodId, setMethodId] = useState(initialMethodId);

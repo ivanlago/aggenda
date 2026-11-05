@@ -2,15 +2,16 @@
 import { PaymentMethodFields } from "@/components/payment-catalog-context";
 
 import { useState } from "react";
+import Link from "next/link";
 import { createFinancialEntry } from "@/actions/app";
 import { ActionForm } from "@/components/action-form";
 import { FinancialScheduleFields } from "@/components/financial-schedule-fields";
 import { FormActions, FormSection } from "@/components/form-dialog-context";
 import { ModalShell } from "@/components/modal-shell";
-import { ReferenceManager, ReferenceSelect } from "@/components/reference-records";
+import { ReferenceSelect } from "@/components/reference-records";
 import type { ReferenceRecord } from "@/lib/reference-records";
 
-type Props = { accounts: ReferenceRecord[]; categories: ReferenceRecord[]; costCenters: ReferenceRecord[]; today: string; initialType?: string; openReferences?: boolean };
+type Props = { accounts: ReferenceRecord[]; categories: ReferenceRecord[]; costCenters: ReferenceRecord[]; today: string; initialType?: string };
 
 function EntryFields({ categories, costCenters, today, initialType }: Props) {
   const [type, setType] = useState(initialType === "payable" ? "payable" : "receivable");
@@ -41,6 +42,6 @@ function EntryFields({ categories, costCenters, today, initialType }: Props) {
 export function FinancialEntryControls(props: Props) {
   return <div className="mb-5 flex flex-wrap items-start gap-3" id="novo-lancamento">
     <ModalShell key={props.initialType ?? "new"} title="Novo lançamento" variant="new" wide closeOnSuccess defaultOpen={props.initialType === "payable" || props.initialType === "receivable"}><EntryFields {...props} /></ModalShell>
-    <ReferenceManager defaultOpen={props.openReferences} title="Cadastros financeiros" groups={[{ kind: "financial_account", records: props.accounts }, { kind: "financial_category", records: props.categories }, { kind: "cost_center", records: props.costCenters }]} />
+    <Link className="secondary-button" href="/financeiro/cadastros">Cadastros financeiros</Link>
   </div>;
 }

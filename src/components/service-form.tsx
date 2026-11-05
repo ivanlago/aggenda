@@ -33,10 +33,10 @@ export function ServiceForm({ item, label, categories }: { item?: typeof service
     <p className="col-span-full text-sm text-muted">Campos com * são obrigatórios.</p>
     {item && <input type="hidden" name="id" value={item.id} />}
     <FormSection title="Identificação">
+      <div className="sm:col-span-2"><TussAutocomplete table="22" label="Buscar na TUSS (opcional)" defaultCode={item?.tussCode ?? ""} defaultName={item?.tussName ?? ""} onSelectNameField="name" onSelectCodeField="manualTussCode" /></div>
       <label className="grid gap-2 text-sm font-bold sm:col-span-2">Nome completo *<input className="field" name="name" required defaultValue={item?.name} /></label>
       <label className="grid gap-2 text-sm font-bold">Nome reduzido<input className="field" name="shortName" maxLength={80} defaultValue={item?.shortName ?? ""} placeholder="Ex.: RM, USG" /></label>
       <label className="grid gap-2 text-sm font-bold">Código TUSS<input className="field" name="manualTussCode" defaultValue={item?.tussCode ?? ""} /></label>
-      <div className="sm:col-span-2"><TussAutocomplete table="22" label="Buscar na TUSS (opcional)" defaultCode={item?.tussCode ?? ""} defaultName={item?.tussName ?? ""} onSelectNameField="name" onSelectCodeField="manualTussCode" /></div>
     </FormSection>
     <FormSection title="Classificação"><ReferenceSelect kind="service_category" name="categoryId" label="Categoria" records={categories} defaultValue={item?.categoryId ?? ""} emptyLabel="Sem categoria" /></FormSection>
     <FormSection title="Duração e valores">

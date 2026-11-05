@@ -13,8 +13,8 @@ export function AttendanceWorkspaceTabs({ tabs, initialTab }: { tabs: Array<{ id
     window.addEventListener("aggenda:attendance-tab", select);
     return () => window.removeEventListener("aggenda:attendance-tab", select);
   }, [tabs, prefix]);
-  return <div><div ref={list} className="sticky top-0 z-10 mb-5 flex gap-1 overflow-x-auto rounded-xl border bg-white p-1 shadow-sm" role="tablist" aria-label="Seções do atendimento">
-    {tabs.map((tab, index) => <button type="button" key={tab.id} id={`${prefix}-${tab.id}-tab`} role="tab" aria-selected={active === tab.id} aria-controls={`${prefix}-${tab.id}-panel`} tabIndex={active === tab.id ? 0 : -1} className={`shrink-0 rounded-lg px-4 py-3 text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${active === tab.id ? "bg-brand text-white" : "text-muted hover:bg-slate-50"}`} onClick={() => setActive(tab.id)} onKeyDown={event => {
+  return <div><div ref={list} className="app-tabs sticky top-0 z-10 bg-white" role="tablist" aria-label="Seções do atendimento">
+    {tabs.map((tab, index) => <button type="button" key={tab.id} id={`${prefix}-${tab.id}-tab`} role="tab" aria-selected={active === tab.id} aria-controls={`${prefix}-${tab.id}-panel`} tabIndex={active === tab.id ? 0 : -1} className="app-tab" onClick={() => setActive(tab.id)} onKeyDown={event => {
       let next = index;
       if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
       else if (event.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
@@ -23,5 +23,5 @@ export function AttendanceWorkspaceTabs({ tabs, initialTab }: { tabs: Array<{ id
       else return;
       event.preventDefault(); setActive(tabs[next].id); list.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
     }}>{tab.label}</button>)}
-  </div>{tabs.map(tab => <div key={tab.id} id={`${prefix}-${tab.id}-panel`} role="tabpanel" aria-labelledby={`${prefix}-${tab.id}-tab`} hidden={active !== tab.id} tabIndex={0}>{tab.content}</div>)}</div>;
+  </div>{tabs.map(tab => <div key={tab.id} id={`${prefix}-${tab.id}-panel`} className="app-tab-content" role="tabpanel" aria-labelledby={`${prefix}-${tab.id}-tab`} hidden={active !== tab.id} tabIndex={0}>{tab.content}</div>)}</div>;
 }

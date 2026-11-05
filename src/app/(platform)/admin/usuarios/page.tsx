@@ -33,7 +33,7 @@ export default async function UsersAdminPage({ searchParams }: { searchParams: P
       <p className="mt-2 text-muted">Contas da plataforma e vínculos com empresas.</p>
       <form method="get" className="mt-5 flex flex-wrap items-end gap-3"><label className="grid gap-1 text-sm font-bold">Buscar usuário ou empresa<input className="field" type="search" name="q" defaultValue={search} /></label><button className="secondary-button">Buscar</button></form>
       <div className="panel mt-6 overflow-x-auto max-h-[40rem] overflow-y-auto">
-        <table className="w-full text-left text-sm">
+        <table className="app-list-table w-full text-left text-sm">
           <thead><tr className="border-b text-muted"><th className="py-3">Usuário</th><th>Empresa</th><th>Papel empresarial</th><th>Papel SaaS</th></tr></thead>
           <PaginatedCollection as="tbody" pageSize={20} label="Registros">{items.map((item, index) => (
             <tr className="border-b last:border-0" key={`${item.id}-${item.organizationName ?? index}`}>

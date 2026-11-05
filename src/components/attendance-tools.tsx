@@ -21,14 +21,14 @@ export function AttendanceTools({ forms, availableTools, restrictionMessage }: {
     <div className="flex items-center gap-2"><h3 id="attendance-tools-title" className="text-lg font-extrabold">Ferramentas de atendimento</h3>
       {restrictionMessage && <details className="relative shrink-0"><summary className="flex cursor-pointer list-none items-center rounded text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand [&::-webkit-details-marker]:hidden"><Info className="size-4" aria-hidden="true" /><span className="sr-only">Por que os documentos médicos não aparecem?</span></summary><p className="absolute right-0 top-full z-20 mt-2 w-72 max-w-[75vw] rounded-xl border bg-white p-3 text-xs font-normal text-muted shadow-lg">{restrictionMessage}</p></details>}
     </div>
-    <div className="mt-4 flex gap-2 overflow-x-auto pb-2" role="group" aria-label="Ferramentas de atendimento">
+    <div className="app-tabs mt-4" role="group" aria-label="Ferramentas de atendimento">
       {visibleTools.map(({ id, label, icon: Icon }) => <button
         key={id}
         id={`${id}-button`}
         type="button"
         aria-expanded={activeTool === id}
         aria-controls={id}
-        className={`${activeTool === id ? "primary-button" : "secondary-button"} shrink-0 gap-2 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand`}
+        className="app-tab"
         onClick={() => setActiveTool((current) => current === id ? null : id)}
       >
         <Icon className="size-4 shrink-0" aria-hidden="true" />
@@ -42,7 +42,7 @@ export function AttendanceTools({ forms, availableTools, restrictionMessage }: {
       role="region"
       aria-labelledby={`${id}-button`}
       hidden={activeTool !== id}
-      className="mt-4 border-t pt-4"
+      className="app-tab-content"
     >{forms[id]}</div>)}
   </section>;
 }

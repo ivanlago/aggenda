@@ -20,7 +20,7 @@ export async function KitsCatalog({ query = "", status = "active" }: { query?: s
   const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
   const rows = kits.filter(kit => normalize(`${kit.name} ${kit.description ?? ""}`).includes(normalize(query)) && (status === "all" || kit.isActive === (status !== "inactive")));
   return <section className="grid gap-5">
-    <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-extrabold">Kit de Produtos/Serviços</h2>{canManage && <CatalogKitDialog choices={choices} />}</div>
+    <div className="flex flex-wrap items-center justify-between gap-3">{canManage && <CatalogKitDialog choices={choices} />}</div>
     <form className="panel flex flex-wrap items-end gap-3" method="get">
       <input type="hidden" name="tab" value="kits" />
       <label className="grid flex-1 gap-2 text-sm font-bold">Buscar kit<input className="field" type="search" name="q" defaultValue={query} /></label>

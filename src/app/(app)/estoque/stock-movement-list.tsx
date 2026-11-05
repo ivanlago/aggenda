@@ -79,7 +79,7 @@ export function StockMovementList({ movements }: { movements: StockMovementRow[]
     </div>
 
     <div className="mt-4 overflow-x-auto max-h-[40rem] overflow-y-auto">
-      <table className="w-full min-w-[900px] text-left text-sm">
+      <table className="app-list-table w-full text-left text-sm">
         <thead className="border-b text-xs uppercase text-muted"><tr>
           <th className="p-3">Data e hora</th><th className="p-3">Produto</th><th className="p-3">Tipo</th>
           <th className="p-3 text-right">Quantidade</th><th className="p-3 text-right">Saldo</th><th className="p-3">Motivo / referência</th>

@@ -63,8 +63,9 @@ function ReferenceManagerContent({ groups }: { groups: ReferenceGroup[] }) {
   const group = groups.find((item) => item.kind === kind)!;
   const label = referenceLabels[kind];
   const records = group.records.filter((record) => record.name.toLocaleLowerCase("pt-BR").includes(search.trim().toLocaleLowerCase("pt-BR")));
-  return <div className="grid gap-5">
-    {groups.length > 1 && <div className="flex flex-wrap gap-2" role="group" aria-label="Tipos de cadastro">{groups.map((item) => <button key={item.kind} type="button" aria-pressed={kind === item.kind} className={kind === item.kind ? "primary-button" : "secondary-button"} onClick={() => { setKind(item.kind); setSearch(""); }}>{referenceLabels[item.kind].plural}</button>)}</div>}
+  return <div className="min-w-0">
+    {groups.length > 1 && <div className="app-tabs" role="group" aria-label="Tipos de cadastro">{groups.map((item) => <button key={item.kind} type="button" aria-pressed={kind === item.kind} className="app-tab" onClick={() => { setKind(item.kind); setSearch(""); }}>{referenceLabels[item.kind].plural}</button>)}</div>}
+    <div className={`${groups.length > 1 ? "app-tab-content " : ""}grid gap-5`}>
     <div className="flex flex-wrap items-end justify-between gap-3"><label className="grid min-w-0 flex-1 gap-2 text-sm font-bold">Buscar por nome<input className="field" type="search" value={search} onChange={(event) => setSearch(event.target.value)} /></label><button className="primary-button" type="button" onClick={() => openAuxiliary(`Cadastrar ${label.singular}`, <ReferenceRecordForm kind={kind} parents={group.parents} />)}><Plus className="size-4" />{kind === "financial_account" ? "Nova conta" : kind === "cost_center" ? "Novo centro de custo" : `Nova ${label.singular}`}</button></div>
     <p className="text-sm text-muted">{records.length} registro(s){isFinancialReference(kind) ? ". Desativar impede novas seleções e preserva os lançamentos existentes." : kind === "service_category" ? ". Ao excluir uma categoria, os serviços ficam sem categoria." : ". Registros vinculados precisam ser reclassificados antes da exclusão."}</p>
     <PaginatedCollection key={`${kind}:${search}`} label={label.plural} className="divide-y">{records.map((record) => <div className="flex flex-wrap items-center gap-3 py-3" key={record.id}>
@@ -74,6 +75,7 @@ function ReferenceManagerContent({ groups }: { groups: ReferenceGroup[] }) {
         if (!isFinancialReference(kind) && !window.confirm(kind === "service_category" ? `Excluir “${record.name}”? Os serviços vinculados ficarão sem categoria.` : `Excluir “${record.name}”?`)) event.preventDefault();
       }}>{isFinancialReference(kind) ? record.isActive === false ? "Reativar" : "Desativar" : "Excluir"}</button></ActionForm>
     </div>)}{!records.length && <p className="empty-state">{search ? "Nenhum resultado para a busca." : "Nenhum registro cadastrado. Use o botão acima para começar."}</p>}</PaginatedCollection>
+    </div>
   </div>;
 }
 

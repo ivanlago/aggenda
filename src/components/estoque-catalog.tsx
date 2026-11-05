@@ -112,9 +112,10 @@ export async function InventoryCatalog() {
   }));
 
   return <div className="grid gap-5">
-    <h2 className="mb-5 text-xl font-extrabold">Produtos</h2>
-    <div className="mb-5 flex flex-wrap gap-2"><Link className="secondary-button" href="/calculadora-retorno/produtos" target="_blank" rel="noopener noreferrer"><Calculator className="mr-2 size-4" />Calculadora de retorno de produtos</Link></div>
-    {canManage && <div className="mb-5 flex flex-wrap gap-3"><StockProductForm categories={categories} subcategories={subcategories} /><StockMovementControl /></div>}
+    <div className="mb-5 flex flex-wrap items-start gap-3">
+      {canManage && <><StockProductForm categories={categories} subcategories={subcategories} /><StockMovementControl /></>}
+      <Link className="secondary-button" href="/calculadora-retorno/produtos" target="_blank" rel="noopener noreferrer"><Calculator className="mr-2 size-4" />Calculadora de retorno de produtos</Link>
+    </div>
     <section className="grid gap-4 sm:grid-cols-3">
       <article className="panel"><Boxes className="size-5 text-brand" /><p className="mt-4 text-3xl font-extrabold">{items.length}</p><p className="text-sm text-muted">produtos cadastrados</p></article>
       <article className="panel"><WalletCards className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{currency(costValue)}</p><p className="text-sm text-muted">valor de custo</p></article>

@@ -824,27 +824,6 @@
   max-width: 1020px;
   margin: auto;
 }
-.demo-tabs {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 30px;
-}
-.demo-tabs button {
-  background: white;
-  border: 1px solid #e0e9e4;
-  border-radius: 7px;
-  padding: 10px 20px;
-  font-size: 12px;
-  font-weight: 650;
-  color: #63756f;
-}
-.demo-tabs button[aria-selected="true"] {
-  background: var(--ink);
-  color: white;
-  border-color: var(--ink);
-}
 .demo-interactive .product-preview {
   box-shadow: 0 28px 65px -35px #123c4660;
 }
@@ -1699,15 +1678,27 @@
   margin-left: auto;
 }
 .preview-record-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
   font-size: 9px;
-  color: #a3b09b;
-  word-spacing: 12px;
-  border-block: 1px solid #eaf0e5;
-  padding: 13px 0;
+  color: #648276;
+  border-bottom: 1px solid #cbd5e1;
   margin: 20px 0;
 }
+.preview-record-tabs > span,
+.preview-record-tabs > b {
+  margin-bottom: -1px;
+  border: 1px solid transparent;
+  border-top: 2px solid transparent;
+  padding: 10px 12px;
+}
 .preview-record-tabs b {
-  color: #487f3d;
+  border-color: #cbd5e1;
+  border-top-color: var(--teal);
+  border-bottom-color: white;
+  background: white;
+  color: #475569;
 }
 .preview-record h4 {
   font-size: 11px;
@@ -2316,15 +2307,6 @@
     left: 53px;
     width: calc(100% - 40px);
   }
-  .demo-tabs {
-    gap: 7px;
-    margin-bottom: 20px;
-    justify-content: flex-start;
-  }
-  .demo-tabs button {
-    padding: 8px 12px;
-    font-size: 10px;
-  }
   .demo-caption {
     flex-direction: column;
     gap: 10px;
@@ -2469,7 +2451,6 @@
   }
   .preview-record-tabs {
     font-size: 7px;
-    word-spacing: 5px;
   }
   .preview-record p {
     font-size: 7px;
@@ -2666,7 +2647,6 @@
   transition: transform 220ms ease;
 }
 .aggenda-landing a,
-.demo-tabs button,
 .price-cycle button,
 .landing-mobile-nav button,
 .faq-list summary,
@@ -2703,7 +2683,6 @@
   .landing-button:hover { box-shadow: 0 8px 22px #123c4626; }
   .landing-mobile-nav nav a:hover { background-color: var(--soft); }
   .landing-mobile-nav nav a.landing-button:hover { background-color: var(--ink); }
-  .demo-tabs button:hover:not([aria-selected="true"]),
   .price-cycle button:hover:not([aria-pressed="true"]),
   .landing-mobile-nav > button:hover { background-color: var(--soft); color: var(--ink); }
   .footer-grid > div > a:not(.landing-brand):hover { color: var(--teal); text-decoration: underline; text-underline-offset: 4px; }

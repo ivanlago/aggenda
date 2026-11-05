@@ -61,7 +61,7 @@ input:disabled {
   cursor: not-allowed;
 }
 
-main a[href]:not(.primary-button):not(.secondary-button):not(.icon-button):not(.panel):not([class*="rounded-"]) {
+main a[href]:not(.primary-button):not(.secondary-button):not(.icon-button):not(.app-tab):not(.panel):not([class*="rounded-"]) {
   text-decoration-color: transparent;
   text-decoration-line: underline;
   text-decoration-thickness: 2px;
@@ -69,7 +69,7 @@ main a[href]:not(.primary-button):not(.secondary-button):not(.icon-button):not(.
   transition: color 160ms ease, text-decoration-color 160ms ease;
 }
 
-main a[href]:not(.primary-button):not(.secondary-button):not(.icon-button):not(.panel):not([class*="rounded-"]):hover {
+main a[href]:not(.primary-button):not(.secondary-button):not(.icon-button):not(.app-tab):not(.panel):not([class*="rounded-"]):hover {
   color: var(--brand);
   text-decoration-color: currentColor;
 }
@@ -167,6 +167,7 @@ a[href]:focus-visible {
   max-width: 100%;
   flex-wrap: nowrap;
   overflow-x: auto;
+  overflow-y: hidden;
   overscroll-behavior-x: contain;
   scroll-padding-inline: 0.5rem;
 }
@@ -236,4 +237,103 @@ a[href]:focus-visible {
 }
 @container dashboard-main (min-width: 48rem) {
   .dashboard-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* Tabs keep their own outlines; content retains padding without outer side borders. */
+.app-tabs {
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  gap: 0;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.app-tab {
+  position: relative;
+  display: inline-flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  cursor: pointer;
+  max-width: 100%;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: -1px;
+  border: 1px solid transparent;
+  border-top: 3px solid transparent;
+  border-radius: 0;
+  padding: 0.75rem 1.25rem;
+  color: var(--brand);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.app-tab:hover {
+  background: color-mix(in srgb, var(--brand) 4%, white);
+  color: var(--brand-dark);
+}
+
+.app-tab[aria-current="page"],
+.app-tab[aria-selected="true"],
+.app-tab[aria-pressed="true"],
+.app-tab[aria-expanded="true"] {
+  z-index: 1;
+  border-color: #cbd5e1;
+  border-top-color: var(--brand);
+  border-bottom-color: white;
+  background: white;
+  color: #475569;
+  font-weight: 700;
+}
+
+.app-tab-content {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  border: 0;
+  border-bottom: 1px solid #cbd5e1;
+  background: white;
+  padding: 1.5rem;
+}
+
+.app-tabs--secondary .app-tab {
+  min-height: 2.75rem;
+  padding: 0.625rem 1rem;
+}
+
+@media (max-width: 639px) {
+  .app-tab { padding-inline: 0.75rem; }
+  .app-tab-content { padding: 1rem; }
+}
+
+.app-tab:focus-visible { outline: 3px solid color-mix(in srgb, var(--brand) 35%, transparent); outline-offset: -3px; }
+
+/* Padded tab panels must not inherit the intrinsic width of tables or flex rows.
+   Wide tables keep their own scroll containers; dropdowns remain unclipped. */
+.app-tab-content > *,
+.app-tab-content :where(.grid, .flex) > * {
+  min-width: 0;
+}
+
+/* A nested tab level shares the outer panel's horizontal gutter. */
+.app-tab-content .app-tab-content {
+  padding-inline: 0;
+}
+
+/* Let list columns use the available width rather than their longest word.
+   Keep scroll containers as a fallback for genuinely narrow screens. */
+.app-list-table {
+  width: 100%;
+  min-width: 0;
+}
+.app-list-table :is(th, td) {
+  overflow-wrap: break-word;
+  padding-inline: 0.5rem;
 }

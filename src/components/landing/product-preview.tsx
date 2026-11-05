@@ -152,7 +152,7 @@ export function ProductPreview({
                 <span className="preview-status">Em atendimento</span>
               </div>
               <div className="preview-record-tabs">
-                Visão geral <b>Consulta</b> Fotos e exames
+                <span>Visão geral</span><b>Consulta</b><span>Fotos e exames</span>
               </div>
               <h4>Evolução do atendimento</h4>
               <p>

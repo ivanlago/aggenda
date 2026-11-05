@@ -41,7 +41,7 @@ export function StockLotList({ lots, today }: { lots: StockLotRow[]; today: stri
       <button className="secondary-button" type="button" onClick={() => { setCode(""); setProduct(""); setFrom(""); setUntil(""); }}>Limpar filtros</button>
     </div>
     <div className="mt-4 overflow-x-auto max-h-[40rem] overflow-y-auto">
-      <table className="w-full min-w-[850px] text-left text-sm">
+      <table className="app-list-table w-full text-left text-sm">
         <thead className="border-b text-xs uppercase text-muted"><tr>
           <th className="p-3">Número do lote</th><th className="p-3">Produto / apresentação</th><th className="p-3">Marca</th><th className="p-3 text-right">Qtd.</th><th className="p-3" aria-sort="ascending">Vencimento ↑</th><th className="p-3">Status</th><th className="p-3">Ações</th>
         </tr></thead>

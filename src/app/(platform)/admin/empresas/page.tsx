@@ -55,7 +55,7 @@ export default async function CompaniesAdminPage({ searchParams }: { searchParam
       <p className="mt-2 text-muted">Organizações, plano e volume cadastrado na plataforma.</p>
       <form method="get" className="mt-5 flex flex-wrap items-end gap-3"><label className="grid gap-1 text-sm font-bold">Buscar empresa<input className="field" type="search" name="q" defaultValue={search} /></label><button className="secondary-button">Buscar</button></form>
       <div className="panel mt-6 overflow-x-auto max-h-[40rem] overflow-y-auto">
-        <table className="w-full text-left text-sm">
+        <table className="app-list-table w-full text-left text-sm">
           <thead><tr className="border-b text-muted"><th className="py-3">Empresa</th><th>Plano de cobrança</th><th>Membros</th><th>Clientes</th><th>Serviços</th><th>NFS-e</th><th>Status</th></tr></thead>
           <PaginatedCollection as="tbody" pageSize={20} label="Registros">
             {items.map((item) => (

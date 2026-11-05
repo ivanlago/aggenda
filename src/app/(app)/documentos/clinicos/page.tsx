@@ -28,11 +28,11 @@ export default async function ClinicalDocumentsPage() {
  const missingTemplate = <p className="empty-state">Modelo indisponível. Confira a biblioteca em Configurações.</p>;
  const readOnly = <p className="empty-state">Seu perfil possui acesso somente para consulta de documentos.</p>;
  return <div className="page-wrap"><PageHeader eyebrow="Documentos" title="Clínicos" description="Selecione uma ferramenta para preparar e emitir o documento do paciente." />
- <DocumentNavigation /><ClinicalDocumentTools forms={{
+ <DocumentNavigation active="clinicos" /><div className="app-tab-content"><ClinicalDocumentTools forms={{
  anamnesis: <AnamnesesPage embedded />,
  certificate: <CertificatesPage embedded />,
  prescription: <PrescriptionsPage embedded searchParams={Promise.resolve({})} />,
  exam_request: <ExamRequestsPage embedded searchParams={Promise.resolve({})} />,
  companion_declaration: canManage ? companionTemplate ? <ActionForm action={issueProfessionalDocument} successMessage="Declaração de acompanhante emitida." className="form-stack"><CompanionDeclarationComposer templateId={companionTemplate.id} clients={clientRows} professionals={professionalRows} organizationName={organization.name} initialDate={initialDate} /></ActionForm> : missingTemplate : readOnly,
- }} /></div>;
+ }} /></div></div>;
 }

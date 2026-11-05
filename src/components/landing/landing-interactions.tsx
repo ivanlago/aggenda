@@ -182,7 +182,7 @@ export function ProductDemo() {
   return (
     <div className="demo-interactive">
       <div
-        className="demo-tabs"
+        className="app-tabs"
         role="tablist"
         aria-label="Explore os módulos do Aggenda"
       >
@@ -191,6 +191,7 @@ export function ProductDemo() {
             type="button"
             role="tab"
             key={view.id}
+            className="app-tab"
             id={`demo-tab-${view.id}`}
             aria-controls={`demo-panel-${view.id}`}
             aria-selected={index === selected}
@@ -210,6 +211,7 @@ export function ProductDemo() {
         initial={false}
         animate={reducedMotion ? { opacity: 1 } : { opacity: [0.5, 1], y: [10, 0] }}
         transition={{ duration: 0.3 }}
+        className="app-tab-content"
         id={`demo-panel-${demoViews[selected].id}`}
         role="tabpanel"
         aria-labelledby={`demo-tab-${demoViews[selected].id}`}

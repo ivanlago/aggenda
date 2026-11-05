@@ -155,7 +155,7 @@ export function StockProductList({
         </select></label>
       </div>
       <div className="mt-4 overflow-x-auto max-h-[40rem] overflow-y-auto">
-        <table className="w-full min-w-[1100px] text-left text-sm">
+        <table className="app-list-table w-full text-left text-sm">
           <thead className="border-b text-xs uppercase text-muted">
             <tr>
               <th className="p-3">Produto</th>

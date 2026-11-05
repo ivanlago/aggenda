@@ -39,12 +39,12 @@ export async function PackagesCatalog({ searchParams }: { searchParams: Promise<
   }).filter((item) => (!search || packageSearch(`${item.client} ${item.packageName}`).includes(search)) && (!query.situacao || query.situacao === "all" || item.situation.key === query.situacao));
 
   return <div className="grid gap-5">
-    <h2 className="mb-5 text-xl font-extrabold">Pacotes</h2>
     <div className="mb-5 flex flex-wrap items-start gap-3">
       {canManage && <PackageDialog procedures={procedures} />}
       {canSell && <Link className="secondary-button" href="/vendas?novo=1&tipo=package#venda-form">Vender pacote</Link>}
     </div>
-    <nav className="mb-5 flex flex-wrap gap-2" aria-label="Áreas de pacotes"><Link className={clientsTab ? "secondary-button" : "primary-button"} aria-current={!clientsTab ? "page" : undefined} href="/produtos-servicos?tab=pacotes">Modelos de pacotes</Link><Link className={clientsTab ? "primary-button" : "secondary-button"} aria-current={clientsTab ? "page" : undefined} href="/produtos-servicos?tab=pacotes&aba=clientes">Pacotes dos clientes</Link></nav>
+    <div className="min-w-0"><nav className="app-tabs app-tabs--secondary" aria-label="Áreas de pacotes"><Link className="app-tab" aria-current={!clientsTab ? "page" : undefined} href="/produtos-servicos?tab=pacotes">Modelos de pacotes</Link><Link className="app-tab" aria-current={clientsTab ? "page" : undefined} href="/produtos-servicos?tab=pacotes&aba=clientes">Pacotes dos clientes</Link></nav>
+    <div className="app-tab-content">
     <form className="panel mb-5 flex flex-wrap items-end gap-3" method="get">
       <input type="hidden" name="tab" value="pacotes" /><input type="hidden" name="aba" value={clientsTab ? "clientes" : "modelos"} />
       <label className="grid min-w-0 flex-1 gap-2 text-sm font-bold">{clientsTab ? "Buscar cliente ou pacote" : "Buscar modelo"}<input className="field" type="search" name="busca" defaultValue={query.busca} /></label>
@@ -63,5 +63,6 @@ export async function PackagesCatalog({ searchParams }: { searchParams: Promise<
       <p className="mt-1 text-xs text-muted">Adquirido em {date(item.purchasedAt)} · {money(item.priceInCents)}{item.expiresAt ? ` · válido até ${date(item.expiresAt)}` : " · sem prazo de validade"}</p>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">{item.balances.map((balance) => <div className="rounded-xl border p-3 text-sm" key={balance.serviceId}><p className="font-bold">{balance.serviceName}</p><p>{item.situation.available ? Math.max(0, balance.total - balance.used) : 0} sessão(ões) disponível(is) agora</p><p className="text-xs text-muted">{Math.max(0, balance.used - balance.reserved)} utilizada(s) · {balance.reserved} reservada(s) · {balance.total} registrada(s)</p>{!item.situation.available && <p className="mt-1 text-xs text-muted">Saldo registrado sem consumo: {Math.max(0, balance.total - balance.used + balance.reserved)}. Indisponível para novas utilizações.</p>}</div>)}</div>
     </article>)}{!purchases.length && <p className="empty-state">Nenhum pacote de cliente encontrado para os filtros.</p>}</PaginatedCollection></section>}
+    </div></div>
   </div>;
 }

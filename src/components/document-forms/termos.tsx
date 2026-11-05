@@ -35,7 +35,7 @@ export async function TermsPage({ legal = false }: { legal?: boolean } = {}) {
 
   return <div className="page-wrap">
     <PageHeader eyebrow="Documentos para assinatura" title={legal ? "Jurídicos" : "Termos e contratos"} description="Envie consentimentos, termos e contratos para assinatura eletrônica do paciente." />
-    <DocumentNavigation /><div className="mb-5 flex justify-end">
+    <DocumentNavigation active="juridicos" /><div className="app-tab-content"><div className="mb-5 flex justify-end">
       <Link className="secondary-button" href="/documentos/historico">Ver documentos emitidos</Link>
     </div>
 
@@ -45,5 +45,5 @@ export async function TermsPage({ legal = false }: { legal?: boolean } = {}) {
 
     {canManage && <Link className="secondary-button mt-5" href="/documentos?aba=modelos">Gerenciar modelos de termos e contratos</Link>}
 
-  </div>;
+  </div></div>;
 }

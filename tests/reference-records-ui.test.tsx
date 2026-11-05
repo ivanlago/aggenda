@@ -28,13 +28,14 @@ test("quick registration preserves the draft, auto-selects categories, and keeps
   const bundle = await build({ stdin: { contents: 'export { StockProductForm } from "./src/app/(app)/estoque/stock-product-form"; export { FinancialEntryControls } from "./src/components/financial-entry-form";', resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, format: "cjs", platform: "node", packages: "external", jsx: "automatic", plugins: [{ name: "reference-ui", setup(builder) {
     const mocks: Record<string, string> = {
       "next/navigation": "const router={refresh(){globalThis.referenceTestRefresh()}}; export function useRouter(){return router}",
+      "next/link": "import {createElement} from 'react'; export default function Link(props){return createElement('a',props)}",
       "@/actions/reference-records": "export const saveReference=(data)=>globalThis.referenceTestSave(data); export async function changeReference(){}",
       "@/actions/retail": "export async function createRetailProduct(){} export async function updateRetailVariant(){}",
       "@/actions/app": "export async function createFinancialEntry(){}",
       "@/components/entity-image-field": "export function EntityImageField(){return null}",
     };
     builder.onResolve({ filter: /.*/ }, (args) => mocks[args.path] ? { path: args.path, namespace: "fixture" } : undefined);
-    builder.onLoad({ filter: /./, namespace: "fixture" }, ({ path }) => ({ contents: mocks[path] }));
+    builder.onLoad({ filter: /./, namespace: "fixture" }, ({ path }) => ({ contents: mocks[path], resolveDir: process.cwd() }));
   } }] });
   const compiled = { exports: {} as { StockProductForm: ComponentType<{ categories: []; subcategories: [] }>; FinancialEntryControls: ComponentType<{ accounts: unknown[]; categories: unknown[]; costCenters: []; today: string }> } };
   new Function("require", "module", "exports", bundle.outputFiles[0].text)(createRequire(import.meta.url), compiled, compiled.exports);

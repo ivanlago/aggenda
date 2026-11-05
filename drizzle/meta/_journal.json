@@ -652,6 +652,13 @@
       "when": 1793869486309,
       "tag": "0092_catalog_kits",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1793908410126,
+      "tag": "0093_payment_catalog_cash_ledger",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
 "use server";
+import { resolveOrganizationPayment } from "@/lib/payment-methods";
 
 import { managedChargeStatuses } from "@/lib/finance-view";
 
@@ -93,7 +94,8 @@ async function recordLocalEvent(input: { organizationId: string; chargeId: strin
 
 export async function createFinancialCharge(data: FormData) {
   const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage");
-  const financialEntryId = text(data, "financialEntryId"); const paymentMethod = text(data, "paymentMethod");
+  const selectedPayment = await resolveOrganizationPayment(organization.id, text(data, "paymentMethod"), text(data, "accountId"), "asaas");
+  const financialEntryId = text(data, "financialEntryId"); const paymentMethod = selectedPayment.method;
   const chargeMode = ["single", "installment", "recurring"].includes(text(data, "chargeMode")) ? text(data, "chargeMode") : "single";
   const installmentCount = Math.min(24, Math.max(1, Number(text(data, "installmentCount")) || 1));
   const customerName = text(data, "customerName"); const customerDocument = digits(text(data, "customerDocument")); const customerEmail = text(data, "customerEmail") || undefined; const customerPhone = digits(text(data, "customerPhone")) || undefined;
@@ -116,7 +118,7 @@ export async function createFinancialCharge(data: FormData) {
   let pix: AsaasPix | null = null; let bankSlip: AsaasBankSlip | null = null;
   if (payment && (billingType === "PIX" || billingType === "UNDEFINED")) pix = await organizationAsaasRequest<AsaasPix>(`/payments/${payment.id}/pixQrCode`, credential).catch(() => null);
   if (payment && billingType === "BOLETO") bankSlip = await organizationAsaasRequest<AsaasBankSlip>(`/payments/${payment.id}/identificationField`, credential).catch(() => null);
-  await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => { await tx.update(financialEntries).set({ accountId: selectedPayment.accountId, paymentMethodId: selectedPayment.paymentMethodId, paymentMethodName: selectedPayment.paymentMethodName, paymentMethod: selectedPayment.method, updatedAt: new Date() }).where(and(eq(financialEntries.id, entry.id), eq(financialEntries.organizationId, organization.id)));
     await tx.insert(paymentCharges).values({ id: chargeId, organizationId: organization.id, providerPaymentId: payment?.id, providerSubscriptionId: subscription?.id, providerCustomerId: customerId, originType: entry.clientId ? "client" : "financial", originId: entry.clientId ?? entry.id, financialEntryId: entry.id, clientId: entry.clientId, paymentMethod, chargeMode, installmentCount: chargeMode === "installment" ? installmentCount : 1, status: "pending", amountInCents: entry.amountInCents, description: entry.description, customerName, customerDocument, customerEmail: customerEmail ?? entry.clientEmail, customerPhone: customerPhone ?? entry.clientPhone, dueDate: entry.dueDate, invoiceUrl: payment?.invoiceUrl, bankSlipUrl: payment?.bankSlipUrl, bankSlipIdentificationField: bankSlip?.identificationField, pixQrCodePayload: pix?.payload, pixQrCodeImage: pix?.encodedImage, metadata: { subscriptionCycle: chargeMode === "recurring" ? "MONTHLY" : null }, createdByUserId: session.user.id });
     await tx.insert(paymentChargeEvents).values({ organizationId: organization.id, chargeId, eventType: "charge_created", status: "pending", payload: { providerPaymentId: payment?.id ?? null, providerSubscriptionId: subscription?.id ?? null, billingType, chargeMode, installmentCount } });
   });

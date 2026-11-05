@@ -1,3 +1,4 @@
+import { PaymentMethodFields } from "@/components/payment-catalog-context";
 import { FormActions } from "@/components/form-dialog-context";
 import { randomUUID } from "node:crypto";
 import { payCommissions, saveCommissionRule } from "@/actions/commissions";
@@ -29,9 +30,8 @@ export function CommissionPaymentForm({beneficiary,label,amount,accounts,today,e
     <ActionForm action={payCommissions} successMessage="Quitação registrada no financeiro." className="mt-4 grid gap-3">
       <input type="hidden" name="beneficiary" value={beneficiary}/><input type="hidden" name="requestKey" value={randomUUID()}/><input type="hidden" name="expectedAmount" value={amount}/>{entryId&&<input type="hidden" name="entryId" value={entryId}/>}
       <label className="grid gap-2 text-sm font-bold">Data do pagamento<input className="field" type="date" name="paidOn" required max={today} defaultValue={today}/></label>
-      <label className="grid gap-2 text-sm font-bold">Conta de saída<select className="field" name="accountId" required defaultValue=""><option value="">Selecione</option>{accounts.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
       {!accounts.length&&<p className="text-sm text-amber-800">Cadastre uma conta ativa no financeiro antes de quitar.</p>}
-      <label className="grid gap-2 text-sm font-bold">Forma de pagamento<select className="field" name="method"><option value="pix">Pix</option><option value="bank_transfer">Transferência</option><option value="cash">Dinheiro</option><option value="other">Outra</option></select></label>
+      <PaymentMethodFields methodName="method" accountLabel="Conta de saída" />
       <label className="grid gap-2 text-sm font-bold">Observação ou referência do comprovante<textarea className="field" name="notes" maxLength={2000}/></label>
       <FormActions disabled={!accounts.length} submitLabel={`Registrar ${commissionMoney(amount)} como pagos`} />
     </ActionForm>

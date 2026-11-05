@@ -1,5 +1,6 @@
 "use server";
 
+import { resolveOrganizationPayment } from "@/lib/payment-methods";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -60,16 +61,16 @@ export async function payAttendanceExtra(data: FormData) {
   const parsed = z.object({
     id: z.uuid(), description: z.string().trim().min(2).max(300),
     amount: z.string().regex(/^\d+(?:[.,]\d{1,2})?$/).transform((value) => Math.round(Number(value.replace(",", ".")) * 100)).pipe(z.number().int().min(1).max(100000000)),
-    paymentMethod: z.enum(["cash", "pix", "credit_card", "debit_card", "bank_transfer", "boleto", "other"]),
+    paymentMethod: z.string().min(1).max(50),
     otherPaymentMethod: z.string().trim().max(200).optional(),
   }).safeParse(Object.fromEntries(data));
   if (!parsed.success) return { error: "Revise a descrição, o valor e a forma de pagamento." };
-  const { id, description, amount, paymentMethod, otherPaymentMethod } = parsed.data;
-  if (paymentMethod === "other" && (!otherPaymentMethod || otherPaymentMethod.length < 2)) return { error: "Justifique a forma de pagamento escolhida." };
+  const { id, description, amount, paymentMethod } = parsed.data;
+  const selectedPayment = await resolveOrganizationPayment(organization.id, paymentMethod, String(data.get("accountId") ?? ""));
   const today = organizationDate(new Date(), organization.timezone);
   const [created] = await db.insert(financialEntries).values({ id, organizationId: organization.id, clientId: appointment.clientId, attendanceId: appointment.id,
     type: "receivable", source: "attendance_extra", status: "received", description, category: "Adicionais do atendimento", amountInCents: amount,
-    dueDate: today, realizedDate: today, paymentMethod, notes: paymentMethod === "other" ? `Outros: ${otherPaymentMethod}` : null, createdByUserId: session.user.id,
+    dueDate: today, realizedDate: today, paymentMethod: selectedPayment.method, paymentMethodId: selectedPayment.paymentMethodId, paymentMethodName: selectedPayment.paymentMethodName, accountId: selectedPayment.accountId, notes: selectedPayment.paymentMethodName, createdByUserId: session.user.id,
   }).onConflictDoNothing({ target: financialEntries.id }).returning({ id: financialEntries.id });
   if (created) await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "payment", entityType: "financial_entry", entityId: created.id, details: { appointmentId: appointment.id, amountInCents: amount } });
   revalidatePath(`/atendimento/${appointment.id}`);

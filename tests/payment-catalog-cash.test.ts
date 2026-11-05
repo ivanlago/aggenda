@@ -1,0 +1,96 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { getTableColumns, eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/pglite";
+import { PGlite } from "@electric-sql/pglite";
+import type { db } from "../src/db";
+import * as schema from "../src/db/schema";
+import { choosePayment, hostedPaymentTypes, mercadoPagoMethodSettings } from "../src/lib/payment-catalog-policy";
+import { CashClosingRepository } from "../src/lib/cash-closing-repository";
+
+test("catalog selection requires an active organization method and an active destination, preserving its identity and type", () => {
+  const methods = [{ id: "one", name: "Pix no banco", kind: "pix", provider: "manual", defaultAccountId: "bank" }];
+  const accounts = [{ id: "bank", name: "Banco" }, { id: "cash", name: "Caixa" }];
+  assert.deepEqual(choosePayment(methods, accounts, "one"), { method: "pix", paymentMethodId: "one", paymentMethodName: "Pix no banco", accountId: "bank" });
+  assert.equal(choosePayment(methods, accounts, "custom:one", "cash").accountId, "cash");
+  for (const token of ["cash", "pix", "other", "another-organization"]) assert.throws(() => choosePayment(methods, accounts, token));
+  assert.throws(() => choosePayment([], accounts, "one"));
+  assert.throws(() => choosePayment(methods, accounts, "one", "outside"));
+  assert.throws(() => choosePayment(methods, [], "one"));
+  assert.throws(() => choosePayment(methods, accounts, "one", "bank", "efi"));
+  assert.deepEqual(hostedPaymentTypes("asaas", "pix"), ["PIX"]);
+  assert.throws(() => hostedPaymentTypes("asaas", "boleto"));
+  assert.deepEqual(hostedPaymentTypes("efi", "pix"), ["PIX"]);
+  assert.throws(() => hostedPaymentTypes("efi", "credit_card"));
+  assert.deepEqual(mercadoPagoMethodSettings("link"), {});
+  assert.ok(mercadoPagoMethodSettings("pix").excluded_payment_types?.every(item => item.id !== "bank_transfer"));
+});
+
+test("cash migration and closing: split destinations, no double counting, expenses, reversals, multi-day periods, tenant guards and replay", async () => {
+  const pg = new PGlite();
+  const omitted: Record<string, string[]> = { financial_entries: ["payment_method_id", "payment_method_name", "cash_managed_by_sale"], payment_methods: ["kind", "provider", "default_account_id"], retail_sale_payments: ["payment_method_id", "payment_method_name", "account_id", "refunded_in_cents"] };
+  try {
+    await pg.exec("CREATE TABLE organizations(id uuid PRIMARY KEY, name text); CREATE TABLE users(id text PRIMARY KEY)");
+    for (const [name, table] of Object.entries({ financial_accounts: schema.financialAccounts, payment_methods: schema.paymentMethods, financial_entries: schema.financialEntries, retail_sale_payments: schema.retailSalePayments, cash_closings: schema.cashClosings })) {
+      const columns = Object.values(getTableColumns(table)).filter(column => !omitted[name]?.includes(column.name)).map(column => {
+        const type = column.enumValues ? "text" : column.getSQLType();
+        let fallback = "";
+        if (column.primary && type === "uuid") fallback = " DEFAULT gen_random_uuid()";
+        else if (["created_at", "updated_at", "opened_at"].includes(column.name)) fallback = " DEFAULT timezone('UTC',clock_timestamp())";
+        else if (typeof column.default === "string") fallback = ` DEFAULT '${column.default.replaceAll("'", "''")}'`;
+        else if (typeof column.default === "number" || typeof column.default === "boolean") fallback = ` DEFAULT ${column.default}`;
+        return `"${column.name}" ${type}${column.primary ? " PRIMARY KEY" : ""}${fallback}`;
+      });
+      await pg.exec(`CREATE TABLE ${name} (${columns.join(",")})`);
+    }
+    await pg.exec("CREATE UNIQUE INDEX payment_method_name_unique ON payment_methods(organization_id,lower(name))");
+    const org = randomUUID(), outside = randomUUID(), cash = randomUUID(), bank = randomUUID(), other = randomUUID();
+    await pg.query("INSERT INTO organizations VALUES ($1,'Empresa'),($2,'Outra')", [org, outside]);
+    await pg.exec("INSERT INTO users VALUES ('operator')");
+    await pg.query("INSERT INTO financial_accounts(id,organization_id,name,is_active) VALUES ($1,$2,'Caixa',true),($3,$2,'Banco',true),($4,$5,'Outra conta',true)", [cash, org, bank, other, outside]);
+    await pg.query("INSERT INTO financial_entries(organization_id,account_id,type,status,description,amount_in_cents,due_date,updated_at) VALUES ($1,$2,'receivable','received','Histórico',500,'2020-01-01','2020-01-01')", [org, cash]);
+    await pg.exec(await readFile(new URL("../drizzle/0093_payment_catalog_cash_ledger.sql", import.meta.url), "utf8"));
+    assert.equal((await pg.query<{ count: number }>("SELECT count(*)::int AS count FROM payment_methods WHERE organization_id=$1", [org])).rows[0].count, 6);
+    assert.equal((await pg.query<{ count: number }>("SELECT count(*)::int AS count FROM cash_movements WHERE is_legacy")).rows[0].count, 1);
+    const database = drizzle(pg, { schema });
+    const repository = new CashClosingRepository(database as unknown as typeof db);
+    const [cashMethod, bankMethod] = await Promise.all([database.select().from(schema.paymentMethods).where(eq(schema.paymentMethods.kind, "cash")), database.select().from(schema.paymentMethods).where(eq(schema.paymentMethods.kind, "pix"))]);
+    const cashId = cashMethod.find(method => method.organizationId === org)!.id;
+    const pixId = bankMethod.find(method => method.organizationId === org)!.id;
+    await assert.rejects(repository.open(org, "operator", other, 0), /conta ativa/);
+    const opened = await repository.open(org, "operator", cash, 10000);
+    const bankOpened = await repository.open(org, "operator", bank, 0);
+    await assert.rejects(repository.open(org, "operator", cash, 0), /já possui/);
+    await database.insert(schema.financialEntries).values({ organizationId: org, accountId: cash, cashManagedBySale: true, type: "receivable", status: "received", source: "retail_sale", description: "Resumo da venda", amountInCents: 10000, dueDate: "2026-01-01" });
+    const saleId = randomUUID();
+    const [first] = await database.insert(schema.retailSalePayments).values({ organizationId: org, saleId, method: "cash", paymentMethodId: cashId, paymentMethodName: "Dinheiro", accountId: cash, amountInCents: 4000, status: "received" }).returning();
+    await database.insert(schema.retailSalePayments).values({ organizationId: org, saleId, method: "pix", paymentMethodId: pixId, paymentMethodName: "Pix", accountId: bank, amountInCents: 6000, status: "received" });
+    const [expense] = await database.insert(schema.financialEntries).values({ organizationId: org, accountId: cash, type: "payable", status: "paid", description: "Despesa", amountInCents: 1000, dueDate: "2026-01-01" }).returning();
+    await database.update(schema.financialEntries).set({ status: "paid", notes: "Sem nova saída" }).where(eq(schema.financialEntries.id, expense.id));
+    assert.equal((await database.select().from(schema.cashMovements)).filter(movement => !movement.isLegacy).length, 3);
+    const result = await repository.close(org, "operator", opened.id, 13000, "Conferido");
+    assert.equal(result.expected, 13000);
+    assert.equal(result.difference, 0);
+    assert.equal((await repository.close(org, "operator", bankOpened.id, 6000, "")).expected, 6000);
+    await assert.rejects(repository.close(org, "operator", opened.id, 13000, ""), /já foi fechado/);
+    const next = await repository.open(org, "operator", cash, 13000);
+    await database.update(schema.retailSalePayments).set({ refundedInCents: 1000, status: "partially_refunded" }).where(eq(schema.retailSalePayments.id, first.id));
+    const movementCount = (await database.select().from(schema.cashMovements)).length;
+    await database.update(schema.retailSalePayments).set({ refundedInCents: 1000, status: "partially_refunded" }).where(eq(schema.retailSalePayments.id, first.id));
+    assert.equal((await database.select().from(schema.cashMovements)).length, movementCount);
+    assert.equal((await repository.close(org, "operator", next.id, 12000, "Estorno parcial")).expected, 12000);
+    const multiDay = await repository.open(org, "operator", cash, 12000);
+    await pg.query("UPDATE cash_closings SET opened_at=timezone('UTC',now())-interval '3 days' WHERE id=$1", [multiDay.id]);
+    const [received] = await database.insert(schema.financialEntries).values({ organizationId: org, accountId: cash, type: "receivable", status: "received", description: "Dia anterior", amountInCents: 700, dueDate: "2020-01-01" }).returning();
+    await pg.query("UPDATE cash_movements SET occurred_at=timezone('UTC',now())-interval '1 day' WHERE source_id=$1", [received.id]);
+    assert.equal((await repository.close(org, "operator", multiDay.id, 12700, "Mais de um dia")).expected, 12700);
+    const guarded = await repository.open(org, "operator", cash, 12700);
+    const [unassigned] = await database.insert(schema.financialEntries).values({ organizationId: org, type: "receivable", status: "received", description: "Sem destino", amountInCents: 100, dueDate: "2020-01-01" }).returning();
+    await assert.rejects(repository.close(org, "operator", guarded.id, 12800, ""), /sem conta de destino/);
+    await assert.rejects(database.update(schema.financialEntries).set({ accountId: other }).where(eq(schema.financialEntries.id, unassigned.id)));
+    await database.update(schema.financialEntries).set({ accountId: cash }).where(eq(schema.financialEntries.id, unassigned.id));
+    assert.equal((await repository.close(org, "operator", guarded.id, 12800, "Regularizado")).expected, 12800);
+  } finally { await pg.close(); }
+});

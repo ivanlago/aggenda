@@ -1465,6 +1465,10 @@ export const retailSalePayments = pgTable("retail_sale_payments", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
   saleId: uuid("sale_id").notNull().references(() => retailSales.id, { onDelete: "cascade" }),
+  paymentMethodId: uuid("payment_method_id").references(() => paymentMethods.id, { onDelete: "restrict" }),
+  paymentMethodName: text("payment_method_name"),
+  accountId: uuid("account_id").references(() => financialAccounts.id, { onDelete: "restrict" }),
+  refundedInCents: integer("refunded_in_cents").notNull().default(0),
   method: text("method").notNull(),
   amountInCents: integer("amount_in_cents").notNull(),
   status: text("status").default("received").notNull(),
@@ -2053,6 +2057,9 @@ export const financialEntries = pgTable(
     amountInCents: integer("amount_in_cents").notNull(),
     dueDate: date("due_date", { mode: "string" }).notNull(),
     realizedDate: date("realized_date", { mode: "string" }),
+    paymentMethodId: uuid("payment_method_id").references(() => paymentMethods.id, { onDelete: "restrict" }),
+    paymentMethodName: text("payment_method_name"),
+    cashManagedBySale: boolean("cash_managed_by_sale").notNull().default(false),
     paymentMethod: text("payment_method"),
     notes: text("notes"),
     recurrenceGroupId: uuid("recurrence_group_id"),
@@ -2336,6 +2343,9 @@ export const paymentMethods = pgTable("payment_methods", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  kind: text("kind").notNull().default("other"),
+  provider: text("provider").notNull().default("manual"),
+  defaultAccountId: uuid("default_account_id").references(() => financialAccounts.id, { onDelete: "restrict" }),
   isActive: boolean("is_active").notNull().default(true),
 }, table => [uniqueIndex("payment_methods_org_name_unique").on(table.organizationId, sql`lower(${table.name})`)]);
 
@@ -2384,3 +2394,18 @@ export const catalogKits = pgTable("catalog_kits", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [index("catalog_kits_org_idx").on(table.organizationId, table.name), check("catalog_kits_price_check", sql`${table.priceInCents} >= 0`)]);
+
+export const cashMovements = pgTable("cash_movements", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  accountId: uuid("account_id").notNull().references(() => financialAccounts.id, { onDelete: "restrict" }),
+  sourceType: text("source_type").notNull(),
+  sourceId: uuid("source_id").notNull(),
+  amountInCents: integer("amount_in_cents").notNull(),
+  paymentMethodId: uuid("payment_method_id").references(() => paymentMethods.id, { onDelete: "restrict" }),
+  paymentMethodName: text("payment_method_name"),
+  description: text("description").notNull(),
+  occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+  cashClosingId: uuid("cash_closing_id").references(() => cashClosings.id, { onDelete: "restrict" }),
+  isLegacy: boolean("is_legacy").default(false).notNull(),
+}, table => [index("cash_movements_account_time_idx").on(table.organizationId, table.accountId, table.occurredAt), index("cash_movements_source_idx").on(table.sourceType, table.sourceId)]);

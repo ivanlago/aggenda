@@ -39,7 +39,9 @@ export class PosPaymentRepository {
       const method = payment.payment_type_id === "credit_card" ? "credit_card" : payment.payment_type_id === "debit_card" ? "debit_card" : payment.payment_method_id === "pix" ? "pix" : payment.payment_type_id === "ticket" ? "boleto" : provider;
       const settledPaymentId = charge.metadata?.paidPaymentId ?? charge.providerPaymentId;
       const anotherPayment = settledPaymentId && String(settledPaymentId) !== String(payment.id);
-      const needsReview = sale.status === "payment_review" || status === "payment_review" || status === "partially_refunded" || Boolean(anotherPayment) || (status === "paid" && (sale.status === "cancelled" || sale.stockRestoredAt));
+      const configuredKind = typeof charge.metadata?.catalogPaymentKind === "string" ? charge.metadata.catalogPaymentKind : null;
+      const incompatibleMethod = configuredKind && configuredKind !== "link" && configuredKind !== method;
+      const needsReview = Boolean(incompatibleMethod) || sale.status === "payment_review" || status === "payment_review" || status === "partially_refunded" || Boolean(anotherPayment) || (status === "paid" && (sale.status === "cancelled" || sale.stockRestoredAt));
       const saleStatus = needsReview ? "payment_review" : status === "paid" ? "completed" : "refunded";
       const summary = { grossInCents: charge.amountInCents, refundedInCents: refund,
         feeInCents: payment.fee_details?.reduce((sum, item) => sum + (paymentCents(item.amount) ?? 0), 0) ?? null,
@@ -49,7 +51,7 @@ export class PosPaymentRepository {
         paymentMethod: method, metadata: { ...(charge.metadata ?? {}), summary, providerUpdatedAt: payment.date_last_updated ?? null,
           ...(status === "paid" && !anotherPayment ? { paidPaymentId: String(payment.id) } : {}), ...(needsReview ? { attention: anotherPayment ? "Pagamento adicional para a mesma venda; conferir e estornar o excedente no provedor." : "Pagamento exige conferência financeira. Não libere itens automaticamente." } : {}) }, updatedAt: now }).where(eq(paymentCharges.id, charge.id));
       await tx.update(retailSales).set({ status: saleStatus, paymentMethod: method, ...(saleStatus === "completed" ? { soldAt: approvedAt } : {}) }).where(eq(retailSales.id, sale.id));
-      await tx.update(retailSalePayments).set({ status: saleStatus === "completed" ? "received" : saleStatus, method }).where(and(eq(retailSalePayments.organizationId, organizationId), eq(retailSalePayments.saleId, sale.id)));
+      await tx.update(retailSalePayments).set({ status: saleStatus === "completed" ? "received" : status === "partially_refunded" ? "partially_refunded" : saleStatus, refundedInCents: refund, method }).where(and(eq(retailSalePayments.organizationId, organizationId), eq(retailSalePayments.saleId, sale.id)));
       const ids = [...new Set([sale.financialEntryId, sale.appointmentFinancialEntryId].filter((id): id is string => Boolean(id)))];
       if (ids.length) await tx.update(financialEntries).set({ status: status === "refunded" ? "refunded" : needsReview && status !== "partially_refunded" ? "pending" : "received",
         realizedDate: status === "refunded" || (needsReview && status !== "partially_refunded") ? null : organizationDate(approvedAt, org.timezone),

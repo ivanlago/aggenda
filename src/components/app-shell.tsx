@@ -34,6 +34,9 @@ import {
   requireOrganization,
 } from "@/lib/session";
 
+import { organizationPaymentCatalog } from "@/lib/payment-methods";
+import { PaymentCatalogProvider } from "@/components/payment-catalog-context";
+
 import { AppNavigation } from "./app-navigation";
 import { AppHeader } from "./app-header";
 
@@ -42,10 +45,11 @@ import { AppNavLink } from "./app-nav-link";
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
   const { session, organization } = await requireOrganization();
-  const [memberships, platformMembership, usage] = await Promise.all([
+  const [memberships, platformMembership, usage, paymentCatalog] = await Promise.all([
     getOrganizationMemberships(session.user.id),
     getPlatformMembership(session.user.id),
     commercialUsageSummary(organization.id),
+    organizationPaymentCatalog(organization.id),
   ]);
   type NavigationItem = {
     href: string;
@@ -195,7 +199,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             <strong>{threshold}% da franquia de {metric === "responses" ? "respostas" : metric === "documents" ? "documentos" : "notas"} utilizada.</strong> {used}/{limit}. {threshold === 100 ? "Novas operações desse recurso estão pausadas." : "Acompanhe seu saldo."} <Link className="font-bold underline" href="/assinatura">Ver franquias e adicionais</Link>
           </div>;
         })}
-        {children}</main>
+        <PaymentCatalogProvider catalog={paymentCatalog}>{children}</PaymentCatalogProvider></main>
     </div>
   );
 }

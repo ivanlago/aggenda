@@ -1,5 +1,6 @@
 "use server";
 
+import { resolveOrganizationPayment } from "@/lib/payment-methods";
 import { parseClinicalVisitDate, validateClinicalPhotoPair } from "@/lib/clinical-photo";
 import { serviceCatalogReference } from "@/lib/reference-snapshots";
 import { assertProfessionalCapacity } from "@/lib/commercial-access";
@@ -980,7 +981,8 @@ export async function createFinancialEntry(formData: FormData) {
   if (!['payable', 'receivable'].includes(type) || description.length < 2 || !amountInCents || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
     throw new Error("Informe tipo, descrição, valor e vencimento válidos.");
   }
-  const accountId = optionalText(formData, "accountId"); const categoryId = optionalText(formData, "categoryId"); const costCenterId = optionalText(formData, "costCenterId");
+  const selectedPayment = textValue(formData, "paymentMethod") || realized ? await resolveOrganizationPayment(organization.id, textValue(formData, "paymentMethod"), optionalText(formData, "accountId")) : null;
+  const accountId = selectedPayment?.accountId ?? optionalText(formData, "accountId"); const categoryId = optionalText(formData, "categoryId"); const costCenterId = optionalText(formData, "costCenterId");
   const [account, category, costCenter] = await Promise.all([
     accountId ? db.select({ id: financialAccounts.id }).from(financialAccounts).where(and(eq(financialAccounts.id, accountId), eq(financialAccounts.isActive, true), eq(financialAccounts.organizationId, organization.id))).limit(1) : [],
     categoryId ? db.select({ id: financialCategories.id, name: financialCategories.name }).from(financialCategories).where(and(eq(financialCategories.id, categoryId), eq(financialCategories.isActive, true), eq(financialCategories.organizationId, organization.id), eq(financialCategories.type, type))).limit(1) : [],
@@ -992,7 +994,7 @@ export async function createFinancialEntry(formData: FormData) {
   const values = Array.from({ length: totalEntries }, (_, index) => {
     const next = new Date(baseDate); next.setUTCMonth(next.getUTCMonth() + index);
     const entryAmount = installmentCount > 1 ? Math.floor(amountInCents / installmentCount) + (index < amountInCents % installmentCount ? 1 : 0) : amountInCents;
-    return { organizationId: organization.id, type, status: realized && index === 0 ? (type === "payable" ? "paid" : "received") : "pending", source: recurrenceMonths > 1 ? "recurring" : installmentCount > 1 ? "installment" : "manual", description: totalEntries > 1 ? `${description} (${index + 1}/${totalEntries})` : description, category: category[0]?.name ?? optionalText(formData, "category"), categoryId, accountId, costCenterId, amountInCents: entryAmount, dueDate: next.toISOString().slice(0, 10), realizedDate: realized && index === 0 ? (optionalText(formData, "realizedDate") ?? dueDate) : null, paymentMethod: optionalText(formData, "paymentMethod"), notes: optionalText(formData, "notes"), recurrenceGroupId: groupId, installmentNumber: index + 1, installmentCount: totalEntries, createdByUserId: session.user.id };
+    return { organizationId: organization.id, type, status: realized && index === 0 ? (type === "payable" ? "paid" : "received") : "pending", source: recurrenceMonths > 1 ? "recurring" : installmentCount > 1 ? "installment" : "manual", description: totalEntries > 1 ? `${description} (${index + 1}/${totalEntries})` : description, category: category[0]?.name ?? optionalText(formData, "category"), categoryId, accountId, costCenterId, amountInCents: entryAmount, dueDate: next.toISOString().slice(0, 10), realizedDate: realized && index === 0 ? (optionalText(formData, "realizedDate") ?? dueDate) : null, paymentMethod: selectedPayment?.method ?? null, paymentMethodId: selectedPayment?.paymentMethodId ?? null, paymentMethodName: selectedPayment?.paymentMethodName ?? null, notes: optionalText(formData, "notes"), recurrenceGroupId: groupId, installmentNumber: index + 1, installmentCount: totalEntries, createdByUserId: session.user.id };
   });
   const [entry] = await db.insert(financialEntries).values(values).returning({ id: financialEntries.id });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "financial_entry", entityId: entry.id });
@@ -1005,9 +1007,7 @@ export async function registerAppointmentPayment(formData: FormData) {
   const appointmentId = textValue(formData, "appointmentId");
   const amountInCents = optionalMoneyInCents(formData, "amount");
   const paymentMethod = textValue(formData, "paymentMethod");
-  const otherMethod = optionalText(formData, "otherPaymentMethod");
-  const allowedMethods = ["cash", "credit_card", "debit_card", "pix", "bank_transfer", "boleto", "other", "package"];
-  if (!allowedMethods.includes(paymentMethod) || (paymentMethod !== "package" && !amountInCents) || (paymentMethod === "other" && !otherMethod)) throw new Error("Informe valor e forma de pagamento válidos.");
+  if (paymentMethod !== "package" && !amountInCents) throw new Error("Informe valor e forma de pagamento válidos.");
   const [appointment] = await db.select({ clientId: appointments.clientId, serviceId: appointments.serviceId, status: appointments.status, metadata: appointments.metadata, service: services.name })
     .from(appointments).innerJoin(services, eq(services.id, appointments.serviceId))
     .where(and(eq(appointments.id, appointmentId), eq(appointments.organizationId, organization.id))).limit(1);
@@ -1026,14 +1026,15 @@ export async function registerAppointmentPayment(formData: FormData) {
   revalidatePath("/produtos-servicos");
     return;
   }
+  const selectedPayment = await resolveOrganizationPayment(organization.id, paymentMethod, optionalText(formData, "accountId"));
   const realizedDate = organizationDate(new Date(), organization.timezone);
   const description = `Atendimento - ${appointment.service}`;
-  const notes = paymentMethod === "other" ? `Forma de pagamento: ${otherMethod}` : null;
+  const notes = `Forma de pagamento: ${selectedPayment.paymentMethodName}`;
   const [entry] = await db.insert(financialEntries).values({
     organizationId: organization.id, appointmentId, clientId: appointment.clientId, type: "receivable",
     status: "received", source: "appointment", description, category: "Atendimentos",
-    amountInCents: amountInCents!, dueDate: realizedDate, realizedDate, paymentMethod, notes, createdByUserId: session.user.id,
-  }).onConflictDoUpdate({ target: financialEntries.appointmentId, set: { status: "received", description, amountInCents: amountInCents!, realizedDate, paymentMethod, notes, updatedAt: new Date() } }).returning({ id: financialEntries.id });
+    amountInCents: amountInCents!, dueDate: realizedDate, realizedDate, paymentMethod: selectedPayment.method, paymentMethodId: selectedPayment.paymentMethodId, paymentMethodName: selectedPayment.paymentMethodName, accountId: selectedPayment.accountId, notes, createdByUserId: session.user.id,
+  }).onConflictDoUpdate({ target: financialEntries.appointmentId, set: { status: "received", description, amountInCents: amountInCents!, realizedDate, paymentMethod: selectedPayment.method, paymentMethodId: selectedPayment.paymentMethodId, paymentMethodName: selectedPayment.paymentMethodName, accountId: selectedPayment.accountId, notes, updatedAt: new Date() } }).returning({ id: financialEntries.id });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "payment", entityType: "appointment", entityId: appointmentId, details: { financialEntryId: entry.id, amountInCents, paymentMethod } });
   revalidatePath("/dashboard"); revalidatePath("/financeiro");
 }
@@ -1077,7 +1078,7 @@ export async function updateFinancialEntryStatus(formData: FormData) {
   assertOrganizationPermission(organization.role, "finance.manage");
   const id = textValue(formData, "id");
   const requestedStatus = textValue(formData, "status");
-  const [current] = await db.select({ type: financialEntries.type, source: financialEntries.source }).from(financialEntries).where(and(
+  const [current] = await db.select({ type: financialEntries.type, source: financialEntries.source, paymentMethodId: financialEntries.paymentMethodId, accountId: financialEntries.accountId }).from(financialEntries).where(and(
     eq(financialEntries.id, id), eq(financialEntries.organizationId, organization.id)
   )).limit(1);
   if (!current) throw new Error("Lançamento financeiro não encontrado.");
@@ -1092,10 +1093,11 @@ export async function updateFinancialEntryStatus(formData: FormData) {
     : requestedStatus;
   if (!["pending", "paid", "received", "cancelled"].includes(status)) throw new Error("Status financeiro inválido.");
   const isRealized = status === "paid" || status === "received";
+  const selectedPayment = isRealized ? await resolveOrganizationPayment(organization.id, textValue(formData, "paymentMethod") || current.paymentMethodId || "", optionalText(formData, "accountId") || current.accountId) : null;
   await db.update(financialEntries).set({
     status,
     realizedDate: isRealized ? (optionalText(formData, "realizedDate") ?? organizationDate(new Date(), organization.timezone)) : null,
-    ...(formData.has("paymentMethod") ? { paymentMethod: isRealized ? optionalText(formData, "paymentMethod") : null } : {}),
+    ...(selectedPayment ? { paymentMethod: selectedPayment.method, paymentMethodId: selectedPayment.paymentMethodId, paymentMethodName: selectedPayment.paymentMethodName, accountId: selectedPayment.accountId } : {}),
     updatedAt: new Date(),
   }).where(and(eq(financialEntries.id, id), eq(financialEntries.organizationId, organization.id)));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: `status:${status}`, entityType: "financial_entry", entityId: id });

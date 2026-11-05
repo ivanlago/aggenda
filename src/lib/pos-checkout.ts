@@ -1,3 +1,4 @@
+import { hostedPaymentTypes } from "./payment-catalog-policy";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { organizationFinancialIntegrations, paymentCharges, retailSales } from "@/db/schema";
@@ -39,6 +40,7 @@ export async function ensurePosCheckout(org:string,saleId:string) {
   await posOtherContext(org,charge.provider);
   const [sale]=await db.select().from(retailSales).where(and(eq(retailSales.id,saleId),eq(retailSales.organizationId,org))).limit(1);
   if(!sale || sale.status!=="pending_payment") return;
+  const types = hostedPaymentTypes(charge.provider, String(charge.metadata?.catalogPaymentKind ?? "link"));
   const expiresAt=new Date(Date.now()+86400000).toISOString();
   const claimed=await db.transaction(async tx=>{
     const [current]=await tx.select().from(paymentCharges).where(eq(paymentCharges.id,charge.id)).for("update");
@@ -51,12 +53,12 @@ export async function ensurePosCheckout(org:string,saleId:string) {
     const returnUrl=`${appUrl()}/pagamento/venda/${sale.receiptToken}`;
     let checkoutId:string, url:string|undefined;
     if(charge.provider==="asaas") {
-      const result=await request<{id:string}>(charge,"/checkouts","POST",{billingTypes:["PIX","CREDIT_CARD"],chargeTypes:["DETACHED"],minutesToExpire:1440,externalReference:`charge:${charge.id}`,callback:{successUrl:returnUrl,cancelUrl:returnUrl,expiredUrl:returnUrl},items:[{name:`Compra #${sale.id.slice(0,8)}`,quantity:1,value:sale.totalInCents/100}]});
+      const result=await request<{id:string}>(charge,"/checkouts","POST",{billingTypes:types,chargeTypes:["DETACHED"],minutesToExpire:1440,externalReference:`charge:${charge.id}`,callback:{successUrl:returnUrl,cancelUrl:returnUrl,expiredUrl:returnUrl},items:[{name:`Compra #${sale.id.slice(0,8)}`,quantity:1,value:sale.totalInCents/100}]});
       checkoutId=result.id;
       url=`https://${charge.metadata?.environment==="production"?"asaas.com":"sandbox.asaas.com"}/checkoutSession/show?id=${encodeURIComponent(checkoutId)}`;
     } else {
       const webhook=`${appUrl()}/api/webhooks/pagbank?organizationId=${org}`;
-      const result=await request<{id:string;links?:{rel:string;href:string}[]}>(charge,"/checkouts","POST",{reference_id:`charge:${charge.id}`,expiration_date:expiresAt,customer_modifiable:true,items:[{reference_id:sale.id,name:`Compra #${sale.id.slice(0,8)}`,quantity:1,unit_amount:sale.totalInCents}],payment_methods:[{type:"PIX"},{type:"CREDIT_CARD"},{type:"BOLETO"}],payment_methods_configs:[{type:"CREDIT_CARD",config_options:[{option:"INSTALLMENTS_LIMIT",value:"1"}]}],redirect_url:returnUrl,return_url:returnUrl,notification_urls:[webhook],payment_notification_urls:[webhook]});
+      const result=await request<{id:string;links?:{rel:string;href:string}[]}>(charge,"/checkouts","POST",{reference_id:`charge:${charge.id}`,expiration_date:expiresAt,customer_modifiable:true,items:[{reference_id:sale.id,name:`Compra #${sale.id.slice(0,8)}`,quantity:1,unit_amount:sale.totalInCents}],payment_methods:types.map(type=>({type})),payment_methods_configs:types.includes("CREDIT_CARD")?[{type:"CREDIT_CARD",config_options:[{option:"INSTALLMENTS_LIMIT",value:"1"}]}]:undefined,redirect_url:returnUrl,return_url:returnUrl,notification_urls:[webhook],payment_notification_urls:[webhook]});
       checkoutId=result.id; url=result.links?.find(link=>link.rel==="PAY")?.href;
     }
     if(!checkoutId || !url || !checkoutUrlIsSafe(url,charge.provider)) throw new Error("Checkout inválido.");

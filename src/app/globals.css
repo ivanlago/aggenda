@@ -249,7 +249,11 @@ a[href]:focus-visible {
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   gap: 0;
-  border-bottom: 1px solid #cbd5e1;
+  /* Paint the baseline behind the tabs so the active white tab opens into its panel. */
+  background-image: linear-gradient(#cbd5e1, #cbd5e1);
+  background-position: bottom;
+  background-size: 100% 1px;
+  background-repeat: no-repeat;
 }
 
 .app-tab {
@@ -262,7 +266,7 @@ a[href]:focus-visible {
   min-height: 3rem;
   align-items: center;
   justify-content: center;
-  margin-bottom: -1px;
+  margin-bottom: 0;
   border: 1px solid transparent;
   border-top: 3px solid transparent;
   border-radius: 0;

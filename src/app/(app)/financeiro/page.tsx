@@ -1,3 +1,4 @@
+import { PaymentMethodFields } from "@/components/payment-catalog-context";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { asc, desc, eq } from "drizzle-orm";
 import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, CalendarRange, Download, Trash2, WalletCards } from "lucide-react";
@@ -73,7 +74,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
           {canManage && entry.source !== "commission_payment" && entry.source !== "retail_sale" && !sale && !managed && <details className="xl:col-span-2"><summary className="cursor-pointer text-sm font-bold text-brand">Registrar ou corrigir {entry.type === "payable" ? "pagamento" : "recebimento"} manual</summary>
             <div className="mt-3 flex flex-wrap items-end gap-3"><ActionForm action={updateFinancialEntryStatus} successMessage="Lançamento atualizado." className="flex flex-wrap items-end gap-3"><input type="hidden" name="id" value={entry.id} />
               <label className="grid gap-1 text-sm font-bold">Situação<select className="field" name="status" defaultValue={isRealized ? "realized" : entry.status}><option value="pending">Pendente</option><option value="realized">{entry.type === "payable" ? "Pago" : "Recebido"}</option><option value="cancelled">Cancelado</option></select></label>
-              <label className="grid gap-1 text-sm font-bold">Data da baixa<input className="field" name="realizedDate" type="date" defaultValue={entry.realizedDate ?? today} /></label><button className="secondary-button">Salvar baixa manual</button>
+              <PaymentMethodFields required={false} initialMethodId={entry.paymentMethodId ?? ""} initialAccountId={entry.accountId ?? ""} /><label className="grid gap-1 text-sm font-bold">Data da baixa<input className="field" name="realizedDate" type="date" defaultValue={entry.realizedDate ?? today} /></label><button className="secondary-button">Salvar baixa manual</button>
             </ActionForm>{["manual", "installment", "recurring"].includes(entry.source) && <ActionForm action={deleteFinancialEntry} successMessage="Lançamento excluído."><input type="hidden" name="id" value={entry.id} /><button className="icon-button" aria-label={`Excluir lançamento: ${entry.description}`}><Trash2 className="size-4" /></button></ActionForm>}</div>
           </details>}
         </article>;

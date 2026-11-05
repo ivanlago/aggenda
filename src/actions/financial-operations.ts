@@ -1,10 +1,10 @@
 "use server";
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { auditLogs, bankImportTransactions, cashClosings, financialEntries, fiscalDocuments, organizationFinancialIntegrations, commercialContracts } from "@/db/schema";
-import { organizationDate } from "@/lib/appointment-safety";
+import { auditLogs, bankImportTransactions, financialEntries, fiscalDocuments, organizationFinancialIntegrations, commercialContracts } from "@/db/schema";
+import { CashClosingRepository } from "@/lib/cash-closing-repository";
 import { writeAuditLog } from "@/lib/audit";
 import { encryptFinancialCredential } from "@/lib/financial-secret";
 import { nfseVault, openNfseCertificate } from "@/lib/nfse/vault";
@@ -15,11 +15,24 @@ import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
 const value = (data: FormData, key: string) => String(data.get(key) ?? "").trim();
-const cents = (data: FormData, key: string) => { const raw = value(data, key).replace(/\./g, "").replace(",", "."); const number = Number(raw); if (!Number.isFinite(number) || number < 0) throw new Error("Informe um valor válido."); return Math.round(number * 100); };
+const cents = (data: FormData, key: string) => { const input = value(data, key); const raw = input.includes(",") ? input.replace(/\./g, "").replace(",", ".") : input; const number = Number(raw); if (!Number.isFinite(number) || number < 0) throw new Error("Informe um valor válido."); return Math.round(number * 100); };
 
-export async function openCash(data: FormData) { const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage"); const accountId = value(data, "accountId"); const open = await db.select({ id: cashClosings.id }).from(cashClosings).where(and(eq(cashClosings.organizationId, organization.id), eq(cashClosings.accountId, accountId), isNull(cashClosings.closedAt))).limit(1); if (open.length) throw new Error("Esta conta já possui caixa aberto."); await db.insert(cashClosings).values({ organizationId: organization.id, accountId, openedByUserId: session.user.id, openingBalanceInCents: cents(data, "openingBalance") }); revalidatePath("/financeiro/fechamento-caixa"); }
+export async function openCash(data: FormData) {
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "finance.manage");
+  const accountId = value(data, "accountId");
+  if (!/^[0-9a-f-]{36}$/i.test(accountId)) throw new Error("Selecione uma conta válida.");
+  await new CashClosingRepository(db).open(organization.id, session.user.id, accountId, cents(data, "openingBalance"));
+  revalidatePath("/financeiro/fechamento-caixa");
+}
 
-export async function closeCash(data: FormData) { const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage"); const id = value(data, "id"); const [cash] = await db.select().from(cashClosings).where(and(eq(cashClosings.id, id), eq(cashClosings.organizationId, organization.id), isNull(cashClosings.closedAt))).limit(1); if (!cash) throw new Error("Caixa aberto não encontrado."); const today = organizationDate(new Date(), organization.timezone); const movements = await db.select().from(financialEntries).where(and(eq(financialEntries.organizationId, organization.id), eq(financialEntries.accountId, cash.accountId), eq(financialEntries.realizedDate, today))); const expected = cash.openingBalanceInCents + movements.reduce((sum, item) => sum + (item.type === "receivable" && item.status === "received" ? item.amountInCents : item.type === "payable" && item.status === "paid" ? -item.amountInCents : 0), 0); const counted = cents(data, "countedBalance"); await db.update(cashClosings).set({ closedByUserId: session.user.id, closedAt: new Date(), expectedBalanceInCents: expected, countedBalanceInCents: counted, differenceInCents: counted - expected, notes: value(data, "notes") || null }).where(eq(cashClosings.id, id)); revalidatePath("/financeiro/fechamento-caixa"); }
+export async function closeCash(data: FormData) {
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "finance.manage");
+  const result = await new CashClosingRepository(db).close(organization.id, session.user.id, value(data, "id"), cents(data, "countedBalance"), value(data, "notes"));
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "close", entityType: "cash_closing", entityId: value(data, "id"), details: result });
+  revalidatePath("/financeiro/fechamento-caixa");
+}
 
 export async function importOfx(data: FormData) { const { organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage"); const accountId = value(data, "accountId"); const file = data.get("file"); if (!(file instanceof File) || file.size > 5_000_000) throw new Error("Selecione um OFX de até 5 MB."); const content = await file.text(); const blocks = content.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi) ?? []; if (!blocks.length) throw new Error("Nenhuma transação encontrada no arquivo OFX."); for (const block of blocks) { const field = (name: string) => block.match(new RegExp(`<${name}>([^<\\r\\n]+)`, "i"))?.[1]?.trim() ?? ""; const externalId = field("FITID") || `${field("DTPOSTED")}-${field("TRNAMT")}-${field("MEMO")}`; const date = field("DTPOSTED").slice(0, 8).replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3"); const amount = Math.round(Number(field("TRNAMT")) * 100); if (!date || !Number.isFinite(amount)) continue; await db.insert(bankImportTransactions).values({ organizationId: organization.id, accountId, externalId, occurredOn: date, description: field("MEMO") || field("NAME") || "Movimentação bancária", amountInCents: amount }).onConflictDoNothing(); } revalidatePath("/financeiro/conciliacao-ofx"); }
 

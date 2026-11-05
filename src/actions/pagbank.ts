@@ -1,4 +1,6 @@
 "use server";
+import { hostedPaymentTypes } from "@/lib/payment-catalog-policy";
+import { resolveOrganizationPayment } from "@/lib/payment-methods";
 
 import { managedChargeStatuses } from "@/lib/finance-view";
 
@@ -71,12 +73,13 @@ export async function disconnectPagBankAccount() {
 export async function createPagBankCharge(data: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "finance.manage");
+  const selectedPayment = await resolveOrganizationPayment(organization.id, text(data, "paymentMethod"), text(data, "accountId"), "pagbank");
   const financialEntryId = text(data, "financialEntryId");
   const customerName = text(data, "customerName");
   const customerDocument = digits(text(data, "customerDocument"));
   const customerEmail = text(data, "customerEmail");
   const customerPhone = digits(text(data, "customerPhone"));
-  const requestedPaymentMethod = ["pix", "boleto", "credit_card", "link"].includes(text(data, "paymentMethod")) ? text(data, "paymentMethod") : "link";
+  const requestedPaymentMethod = selectedPayment.method;
   const chargeMode = ["single", "installment", "recurring"].includes(text(data, "chargeMode")) ? text(data, "chargeMode") : "single";
   const installmentCount = Math.min(12, Math.max(2, Number(text(data, "installmentCount")) || 2));
   if (customerName.length < 2 || ![11, 14].includes(customerDocument.length)) return { error: "Informe nome e CPF/CNPJ do pagador." };
@@ -89,8 +92,9 @@ export async function createPagBankCharge(data: FormData) {
   const expiration = new Date(`${entry.dueDate}T23:59:59-03:00`).toISOString();
   const phone = customerPhone || digits(entry.clientPhone ?? "");
   const webhookUrl = `${appUrl()}/api/webhooks/pagbank?organizationId=${organization.id}`;
+  if (chargeMode !== "single" && !["credit_card", "link"].includes(requestedPaymentMethod)) return { error: "Parcelamento e recorrência exigem uma forma de cartão ou link cadastrada." };
   const paymentMethod = chargeMode === "recurring" || chargeMode === "installment" ? "credit_card" : requestedPaymentMethod;
-  const availableMethods = paymentMethod === "link" ? ["PIX", "BOLETO", "CREDIT_CARD"] : [paymentMethod === "pix" ? "PIX" : paymentMethod === "boleto" ? "BOLETO" : "CREDIT_CARD"];
+  const availableMethods = hostedPaymentTypes("pagbank", paymentMethod);
   const methods = availableMethods;
   let checkout: PagBankCheckout;
   try {
@@ -112,7 +116,7 @@ export async function createPagBankCharge(data: FormData) {
   } catch (error) { return { error: message(error, "Não foi possível criar o Checkout PagBank.") }; }
   const paymentUrl = checkout.links?.find((link) => link.rel === "PAY")?.href;
   if (!paymentUrl) return { error: "O PagBank criou o checkout sem fornecer o link de pagamento." };
-  await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => { await tx.update(financialEntries).set({ accountId: selectedPayment.accountId, paymentMethodId: selectedPayment.paymentMethodId, paymentMethodName: selectedPayment.paymentMethodName, paymentMethod: selectedPayment.method, updatedAt: new Date() }).where(and(eq(financialEntries.id, entry.id), eq(financialEntries.organizationId, organization.id)));
     await tx.insert(paymentCharges).values({ id: chargeId, organizationId: organization.id, provider: "pagbank", providerPaymentId: checkout.id, providerSubscriptionId: checkout.recurrence_plan?.id, originType: entry.clientId ? "client" : "financial", originId: entry.clientId ?? entry.id, financialEntryId: entry.id, clientId: entry.clientId, paymentMethod, chargeMode, installmentCount: chargeMode === "installment" ? installmentCount : 1, status: "pending", amountInCents: entry.amountInCents, description: entry.description, customerName, customerDocument, customerEmail: customerEmail || entry.clientEmail, customerPhone: customerPhone || entry.clientPhone, dueDate: entry.dueDate, invoiceUrl: paymentUrl, metadata: { checkoutId: checkout.id, recurrencePlanId: checkout.recurrence_plan?.id ?? null }, createdByUserId: session.user.id });
     await tx.insert(paymentChargeEvents).values({ organizationId: organization.id, chargeId, eventType: "PAGBANK_CHECKOUT_CREATED", status: "pending", payload: { checkoutId: checkout.id, paymentMethod, chargeMode, installmentCount } });
   });

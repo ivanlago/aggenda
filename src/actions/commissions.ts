@@ -1,4 +1,5 @@
 "use server";
+import { resolveOrganizationPayment } from "@/lib/payment-methods";
 
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -50,7 +51,8 @@ export async function payCommissions(data: FormData) {
   const { organization,session } = await context();
   const paidOn = text(data,"paidOn");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(paidOn) || Number.isNaN(Date.parse(paidOn)) || new Date(paidOn).toISOString().slice(0,10) !== paidOn || paidOn > organizationDate(new Date(),organization.timezone)) return { error:"Informe a data válida da quitação, até hoje." };
-  try { await new CommissionRepository(db).pay({ org:organization.id,timezone:organization.timezone,actor:session.user.id,expectedAmount:z.coerce.number().int().positive().parse(text(data,"expectedAmount")),beneficiary:parseBeneficiary(text(data,"beneficiary")),requestKey:z.uuid().parse(text(data,"requestKey")),paidOn,accountId:z.uuid().parse(text(data,"accountId")),method:z.enum(["pix","cash","bank_transfer","other"]).parse(text(data,"method")),notes:text(data,"notes").slice(0,2000),entryId:text(data,"entryId") ? z.uuid().parse(text(data,"entryId")) : undefined }); } catch(error) { if(error instanceof CommissionError) return { error: error.message }; throw error; } refreshPages();
+  const selectedPayment = await resolveOrganizationPayment(organization.id, text(data,"method"), text(data,"accountId"));
+  try { await new CommissionRepository(db).pay({ org:organization.id,timezone:organization.timezone,actor:session.user.id,expectedAmount:z.coerce.number().int().positive().parse(text(data,"expectedAmount")),beneficiary:parseBeneficiary(text(data,"beneficiary")),requestKey:z.uuid().parse(text(data,"requestKey")),paidOn,accountId:z.uuid().parse(text(data,"accountId")),method:selectedPayment.method,paymentMethodId:selectedPayment.paymentMethodId,paymentMethodName:selectedPayment.paymentMethodName,notes:text(data,"notes").slice(0,2000),entryId:text(data,"entryId") ? z.uuid().parse(text(data,"entryId")) : undefined }); } catch(error) { if(error instanceof CommissionError) return { error: error.message }; throw error; } refreshPages();
 }
 export async function reverseCommissionPayment(data: FormData) {
   const { organization,session } = await context(); const reason=text(data,"reason");

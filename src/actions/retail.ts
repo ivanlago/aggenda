@@ -1,5 +1,6 @@
 "use server";
-import { activePaymentMethods } from "@/lib/payment-methods";
+import { organizationPaymentCatalog } from "@/lib/payment-methods";
+import { choosePayment, hostedPaymentTypes } from "@/lib/payment-catalog-policy";
 import { allocateLots, restoreLots } from "@/lib/inventory-lots";
 import { attendancePendingItems } from "@/lib/attendance-pending-items";
 import { z } from "zod";
@@ -242,7 +243,7 @@ export async function deleteRetailProduct(data: FormData) {
 }
 
 type SaleInputItem = { variantId?: unknown; quantity?: unknown; discountInCents?: unknown };
-type SalePaymentInput = { method?: unknown; amountInCents?: unknown; otherPaymentMethod?: unknown };
+type SalePaymentInput = { method?: unknown; amountInCents?: unknown; otherPaymentMethod?: unknown; accountId?: unknown };
 
 export async function registerRetailSale(data: FormData) {
   const { session, organization } = await requireOrganization();
@@ -309,28 +310,22 @@ export async function registerRetailSale(data: FormData) {
   let payments: SalePaymentInput[];
   try { payments = online ? [] : JSON.parse(text(data, "payments")); } catch { throw new Error("Formas de pagamento inválidas."); }
   if (!Array.isArray(payments) || (!online && !payments.length) || payments.length > 5) throw new Error("Informe ao menos uma forma de pagamento.");
-  const customMethods = payments.some(payment => typeof payment?.method === "string" && payment.method.startsWith("custom:"))
-    ? await activePaymentMethods(organization.id) : [];
-  let normalizedPayments = payments.map((payment) => {
+  const catalog = await organizationPaymentCatalog(organization.id);
+  const onlineSelection = online ? choosePayment(catalog.methods, catalog.accounts, text(data, "onlinePaymentMethodId"), text(data, "accountId"), selectedProvider) : null;
+  if (onlineSelection) hostedPaymentTypes(selectedProvider, onlineSelection.method);
+  let normalizedPayments = payments.map(payment => {
     if (!payment || typeof payment !== "object") throw new Error("Forma de pagamento inválida.");
-    let method = typeof payment.method === "string" ? payment.method : "";
+    const selected = choosePayment(catalog.methods, catalog.accounts, String(payment.method ?? ""), String(payment.accountId ?? ""));
     const amountInCents = Number(payment.amountInCents);
-    let otherPaymentMethod = typeof payment.otherPaymentMethod === "string" ? payment.otherPaymentMethod.trim().slice(0, 200) : "";
-    if (method.startsWith("custom:")) {
-      const custom = customMethods.find(item => item.id === method.slice(7));
-      if (!custom) throw new Error("A forma de pagamento selecionada não está ativa.");
-      method = "other";
-      otherPaymentMethod = custom.name;
-    }
-    if (!['cash', 'credit_card', 'debit_card', 'pix', 'bank_transfer', 'boleto', 'other'].includes(method) || !Number.isInteger(amountInCents) || amountInCents < 0 || (method === "other" && otherPaymentMethod.length < 2)) throw new Error("Revise as formas, os valores e a justificativa do pagamento.");
-    return { method, amountInCents, otherPaymentMethod };
+    if (!Number.isSafeInteger(amountInCents) || amountInCents < 0 || amountInCents > 2147483647) throw new Error("Valor de pagamento inválido.");
+    return { ...selected, amountInCents, otherPaymentMethod: selected.paymentMethodName };
   });
   const paymentMethod = online ? selectedProvider : normalizedPayments.length > 1 ? "mixed" : normalizedPayments[0].method;
   // Concluir a venda representa a confirmação de recebimento do valor total.
   const received = !online;
   const commissionBeneficiary = text(data, "commissionBeneficiary") ? parseBeneficiary(text(data, "commissionBeneficiary")) : null;
   const today = organizationDate(new Date(), organization.timezone);
-  const inputHash = online ? checkoutInputHash({ provider:selectedProvider, items: [...grouped].sort(([a],[b]) => a.localeCompare(b)), clientId, quoteId, commissionBeneficiary,
+  const inputHash = online ? checkoutInputHash({ provider:selectedProvider, onlineSelection, items: [...grouped].sort(([a],[b]) => a.localeCompare(b)), clientId, quoteId, commissionBeneficiary,
     receiptEmail, receiptPhoneDigits, notes: text(data, "notes") }) : null;
 
   const pendingIds = z.array(z.uuid()).parse(JSON.parse(String(data.get("pendingAttendanceItemIds") || "[]")));
@@ -427,23 +422,25 @@ export async function registerRetailSale(data: FormData) {
     const totalInCents = subtotalInCents - discountInCents;
     if (online) {
       if (totalInCents <= 0) throw new Error("Use recebimento manual para uma venda com total zero.");
-      normalizedPayments = [{ method: selectedProvider, amountInCents: totalInCents, otherPaymentMethod: "" }];
+      normalizedPayments = [{ ...onlineSelection!, amountInCents: totalInCents, otherPaymentMethod: onlineSelection!.paymentMethodName }];
     }
     if (normalizedPayments.some((payment) => payment.amountInCents === 0) && (totalInCents !== 0 || normalizedPayments.length !== 1)) throw new Error("Pagamento zero só é permitido quando o total da venda é zero.");
     if (normalizedPayments.reduce((sum, payment) => sum + payment.amountInCents, 0) !== totalInCents) throw new Error("A soma dos pagamentos deve ser igual ao total da venda.");
     const procedureTotal = additionalLines.find((item) => item.id.startsWith("appointment:"))?.total ?? 0;
     const { additionalInCents } = splitCheckoutTotal(totalInCents, procedureTotal);
+    const singlePayment = normalizedPayments.length === 1 ? normalizedPayments[0] : null;
+    const paymentSnapshot = { accountId: singlePayment?.accountId ?? null, paymentMethodId: singlePayment?.paymentMethodId ?? null, paymentMethodName: singlePayment?.paymentMethodName ?? "Pagamento dividido", cashManagedBySale: true };
     let appointmentFinancialEntryId: string | null = null;
     if (appointmentLine && attendance) {
       const [entry] = await tx.insert(financialEntries).values({ organizationId: organization.id, appointmentId: attendance.appointment.id, clientId,
         type: "receivable", source: "appointment", status: "received", description: `Atendimento - ${appointmentLine.productName}`, category: "Atendimentos",
-        amountInCents: procedureTotal, dueDate: today, realizedDate: today, paymentMethod, createdByUserId: session.user.id,
-      }).onConflictDoUpdate({ target: financialEntries.appointmentId, set: { status: "received", amountInCents: procedureTotal, realizedDate: today, paymentMethod, updatedAt: new Date() }, setWhere: ne(financialEntries.status, "received") }).returning({ id: financialEntries.id });
+        ...paymentSnapshot, amountInCents: procedureTotal, dueDate: today, realizedDate: today, paymentMethod, createdByUserId: session.user.id,
+      }).onConflictDoUpdate({ target: financialEntries.appointmentId, set: { ...paymentSnapshot, status: "received", amountInCents: procedureTotal, realizedDate: today, paymentMethod, updatedAt: new Date() }, setWhere: ne(financialEntries.status, "received") }).returning({ id: financialEntries.id });
       if (!entry) throw new Error("O pagamento deste serviço já foi registrado.");
       appointmentFinancialEntryId = entry.id;
     }
     const [financialEntry] = additionalInCents > 0 || !appointmentFinancialEntryId ? await tx.insert(financialEntries).values({
-      organizationId: organization.id, type: "receivable", status: received ? "received" : "pending",
+      ...paymentSnapshot, organizationId: organization.id, type: "receivable", status: received ? "received" : "pending",
       source: "retail_sale", description: "Venda no PDV", category: "Vendas no PDV",
       amountInCents: additionalInCents, dueDate: today, realizedDate: received ? today : null,
         paymentMethod, clientId, notes: [text(data, "notes"), ...normalizedPayments.filter((payment) => payment.method === "other").map((payment) => `Outros: ${payment.otherPaymentMethod}`)].filter(Boolean).join("\n") || null, createdByUserId: session.user.id,
@@ -501,7 +498,7 @@ export async function registerRetailSale(data: FormData) {
       await tx.insert(paymentCharges).values({ organizationId: organization.id, provider: selectedProvider, originType: "retail_sale", originId: sale.id,
         financialEntryId: financialEntry.id, clientId, paymentMethod: "link", amountInCents: totalInCents,
         description: `Venda no PDV #${sale.id.slice(0,8)}`, customerName: "Cliente do PDV", customerEmail: receiptEmail,
-        dueDate: today, createdByUserId: session.user.id, metadata: { collectorId, credentialFingerprint, environment: paymentEnvironment, checkoutState: "new" } });
+        dueDate: today, createdByUserId: session.user.id, metadata: { collectorId, credentialFingerprint, environment: paymentEnvironment, checkoutState: "new", catalogPaymentMethodId: onlineSelection?.paymentMethodId, catalogPaymentKind: onlineSelection?.method, destinationAccountId: onlineSelection?.accountId } });
     }
     return sale;
   });

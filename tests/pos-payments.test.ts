@@ -47,7 +47,7 @@ test("todos os provedores aptos aparecem sem padrão; padrão não filtra opçõ
 
 test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento e estorno", async t => {
   const pg = new PGlite();
-  const tables = { users:schema.users, organizations:schema.organizations, organization_members:schema.organizationMembers,
+  const tables = { financial_accounts:schema.financialAccounts, payment_methods:schema.paymentMethods, users:schema.users, organizations:schema.organizations, organization_members:schema.organizationMembers,
     professionals:schema.professionals, clients:schema.clients, services:schema.services, service_packages:schema.servicePackages,
     service_package_items:schema.servicePackageItems, retail_products:schema.retailProducts, retail_product_variants:schema.retailProductVariants,
     retail_sales:schema.retailSales, retail_sale_items:schema.retailSaleItems, retail_sale_payments:schema.retailSalePayments,
@@ -83,6 +83,10 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
     await pg.query("INSERT INTO service_packages(id,organization_id,name,price_in_cents,validity_days,is_active) VALUES ($1,$2,'Pacote teste',2000,30,true)",[pack,org]);
     await pg.query("INSERT INTO service_package_items(package_id,service_id,organization_id,quantity) VALUES ($1,$2,$3,2)",[pack,procedure,org]);
     await pg.query("INSERT INTO organization_financial_integrations(id,organization_id,provider,status,environment,metadata) VALUES ($1,$2,'mercado_pago','active','production',$3)",[randomUUID(),org,JSON.stringify({accountId:99,webhookStatus:"configured"})]);
+    const accountId = randomUUID();
+    await pg.query("INSERT INTO financial_accounts(id,organization_id,name,is_active) VALUES ($1,$2,'Conta teste',true)",[accountId,org]);
+    const catalogIds = Object.fromEntries(["cash","pix","mercado_pago","asaas","pagbank","efi"].map(key => [key, randomUUID()]));
+    for (const [key,id] of Object.entries(catalogIds)) await pg.query("INSERT INTO payment_methods(id,organization_id,name,kind,provider,default_account_id,is_active) VALUES ($1,$2,$3,$4,$5,$6,true)",[id,org,key,["cash","pix","efi"].includes(key)?key==="efi"?"pix":key:"link",["cash","pix"].includes(key)?"manual":key,accountId]);
     const database = drizzle(pg,{schema}) as unknown as typeof db;
     const globals = globalThis as unknown as { __posDb: typeof db; __posContext: unknown };
     globals.__posDb = database;
@@ -101,7 +105,7 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
     new Function("require","module","exports",compiled.outputFiles[0].text)(createRequire(import.meta.url),actionModule,actionModule.exports);
     const register = actionModule.exports.registerRetailSale;
     async function create(items = [{variantId:variant,quantity:1,discountInCents:0}], key = randomUUID(), provider = "mercado_pago") {
-      const form = new FormData(); form.set("checkoutProvider",provider); form.set("checkoutKey",key); form.set("items",JSON.stringify(items)); form.set("payments","[]"); form.set("clientId",client);
+      const form = new FormData(); form.set("checkoutProvider",provider); form.set("onlinePaymentMethodId",catalogIds[provider]); form.set("accountId",accountId); form.set("checkoutKey",key); form.set("items",JSON.stringify(items)); form.set("payments","[]"); form.set("clientId",client);
       const result = await register(form);
       assert.ok(result.openUrl?.startsWith("/vendas/pagamento/"));
       const saleId=result.openUrl!.split("/").at(-1)!;
@@ -292,7 +296,7 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
       await pg.query("INSERT INTO organization_financial_integrations(id,organization_id,provider,is_default_pos) VALUES ($1,$2,'other',true)",[randomUUID(),outside]);
     });
     await t.test("recebimento manual misto continua concluído e sem cobrança externa; sem permissão não vende",async()=>{
-      const form=new FormData(); form.set("checkoutProvider","manual"); form.set("items",JSON.stringify([{variantId:variant,quantity:1,discountInCents:0}])); form.set("payments",JSON.stringify([{method:"cash",amountInCents:200},{method:"pix",amountInCents:300}]));
+      const form=new FormData(); form.set("checkoutProvider","manual"); form.set("items",JSON.stringify([{variantId:variant,quantity:1,discountInCents:0}])); form.set("payments",JSON.stringify([{method:catalogIds.cash,accountId,amountInCents:200},{method:catalogIds.pix,accountId,amountInCents:300}]));
       const result=await register(form);
       assert.ok(result.openUrl?.startsWith("/recibo/"));
       const receipt=result.openUrl!.split("/").at(-1)!;

@@ -1,4 +1,5 @@
 "use client";
+import { PaymentMethodFields } from "@/components/payment-catalog-context";
 
 import { useState } from "react";
 import { ActionForm } from "@/components/action-form";
@@ -10,8 +11,7 @@ export function AttendanceExtraPaymentForm({ appointmentId, requestId }: { appoi
     <input type="hidden" name="id" value={id} /><input type="hidden" name="appointmentId" value={appointmentId} />
     <label className="grid gap-2 text-sm font-bold sm:col-span-2">Item utilizado / cobrança adicional<input className="field" name="description" required minLength={2} maxLength={300} placeholder="Ex.: material adicional utilizado no serviço" /></label>
     <label className="grid gap-2 text-sm font-bold">Valor (R$)<input className="field" name="amount" required inputMode="decimal" placeholder="0,00" /></label>
-    <label className="grid gap-2 text-sm font-bold">Forma de pagamento<select className="field" name="paymentMethod" required defaultValue=""><option value="" disabled>Selecione</option><option value="cash">Espécie</option><option value="credit_card">Cartão de crédito</option><option value="debit_card">Cartão de débito</option><option value="pix">PIX</option><option value="bank_transfer">Transferência</option><option value="boleto">Boleto</option><option value="other">Outros</option></select></label>
-    <label className="grid gap-2 text-sm font-bold">Justificativa (se Outros)<input className="field" name="otherPaymentMethod" maxLength={200} placeholder="Justifique se necessário" /></label>
+    <PaymentMethodFields />
     <button className="primary-button w-fit sm:col-span-2">Registrar pagamento adicional</button>
   </ActionForm>;
 }

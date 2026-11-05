@@ -1,10 +1,11 @@
 # Produtos e Serviços
 
-O catálogo fica em `/produtos-servicos`, com três abas:
+O catálogo fica em `/produtos-servicos`, com quatro abas, nesta ordem:
 
-- Produtos e Serviços: mantém os cadastros, imagens, categorias, preços e controles de estoque existentes.
-- Pacotes: mantém modelos, versões e saldos dos clientes.
+- Produtos: mantém os cadastros, imagens, categorias, preços e controles de estoque existentes.
+- Serviços: mantém os serviços cadastrados, imagens, categorias, duração e preços.
 - Kit de Produtos/Serviços: cadastra composição com quantidades inteiras, preço, descrição e status; permite editar e desativar kits.
+- Pacotes: mantém modelos, versões e saldos dos clientes.
 
 Os endereços `/servicos`, `/produtos`, `/estoque` e `/pacotes` redirecionam ao catálogo. Os filtros e a aba de pacotes dos clientes são preservados. Rotas de compras e lotes continuam disponíveis.
 

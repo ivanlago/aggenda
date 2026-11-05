@@ -48,6 +48,7 @@ export async function ServicesCatalog({ searchParams }: { searchParams: Promise<
       <div className="grid gap-6">
         <section className="panel">
           <form action="/produtos-servicos" method="get" className="mb-5 flex flex-wrap items-end gap-3">
+            <input type="hidden" name="tab" value="servicos" />
             <label className="grid min-w-0 flex-1 gap-2 text-sm font-bold">Buscar por nome
               <input className="field" type="search" name="q" defaultValue={query} placeholder="Nome completo ou reduzido" />
             </label>
@@ -59,7 +60,7 @@ export async function ServicesCatalog({ searchParams }: { searchParams: Promise<
               </select>
             </label>
             <button className="primary-button" type="submit">Buscar</button>
-            {(query || category) && <Link className="secondary-button" href="/produtos-servicos">Limpar filtros</Link>}
+            {(query || category) && <Link className="secondary-button" href="/produtos-servicos?tab=servicos">Limpar filtros</Link>}
           </form>
           <h2 className="text-lg font-extrabold">
             {items.length}{" "}

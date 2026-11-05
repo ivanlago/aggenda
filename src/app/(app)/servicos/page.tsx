@@ -4,5 +4,6 @@ export default async function LegacyCatalogPage({ searchParams }: { searchParams
  const query = new URLSearchParams();
  for (const [key, value] of Object.entries(params)) if (typeof value === "string") query.set(key, value);
 
+ query.set("tab", "servicos");
  redirect(`/produtos-servicos?${query}`);
 }

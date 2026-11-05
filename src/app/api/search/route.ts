@@ -39,7 +39,7 @@ export async function GET(request: Request) {
     ]);
     results.unshift(
       ...clientMatches.map(client => ({ label: client.name, href: `/clientes/${client.id}`, category: "Cliente / prontuário" })),
-      ...serviceMatches.map(service => ({ label: service.name, href: `/produtos-servicos#procedimento-${service.id}`, category: "Serviço" })),
+      ...serviceMatches.map(service => ({ label: service.name, href: `/produtos-servicos?tab=servicos#procedimento-${service.id}`, category: "Serviço" })),
     );
   }
   return NextResponse.json({ results: results.slice(0, 15) }, { headers: { "Cache-Control": "private, no-store" } });

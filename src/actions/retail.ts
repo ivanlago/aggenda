@@ -7,7 +7,7 @@ import { z } from "zod";
 import { parseBeneficiary } from "@/lib/commission-beneficiary";
 import { assertCommissionBeneficiary } from "@/lib/commission-beneficiaries";
 
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireAttendance } from "@/lib/attendance";
 import { matchesQuoteItems } from "@/lib/retail-quote-items";
@@ -19,6 +19,7 @@ import {
   appointmentInventoryConsumptions,
   appointments, packageUsages,
   clients,
+  cashClosings, financialAccounts,
   services, servicePackages, servicePackageItems, clientPackages, clientPackageBalances,
   financialEntries,
   inventoryLots,
@@ -243,7 +244,7 @@ export async function deleteRetailProduct(data: FormData) {
 }
 
 type SaleInputItem = { variantId?: unknown; quantity?: unknown; discountInCents?: unknown };
-type SalePaymentInput = { method?: unknown; amountInCents?: unknown; otherPaymentMethod?: unknown; accountId?: unknown };
+type SalePaymentInput = { method?: unknown; amountInCents?: unknown; otherPaymentMethod?: unknown };
 
 export async function registerRetailSale(data: FormData) {
   const { session, organization } = await requireOrganization();
@@ -311,21 +312,23 @@ export async function registerRetailSale(data: FormData) {
   try { payments = online ? [] : JSON.parse(text(data, "payments")); } catch { throw new Error("Formas de pagamento inválidas."); }
   if (!Array.isArray(payments) || (!online && !payments.length) || payments.length > 5) throw new Error("Informe ao menos uma forma de pagamento.");
   const catalog = await organizationPaymentCatalog(organization.id);
-  const onlineSelection = online ? choosePayment(catalog.methods, catalog.accounts, text(data, "onlinePaymentMethodId"), text(data, "accountId"), selectedProvider) : null;
+  const onlineSelection = online ? choosePayment(catalog.methods, catalog.accounts, text(data, "onlinePaymentMethodId"), undefined, selectedProvider) : null;
   if (onlineSelection) hostedPaymentTypes(selectedProvider, onlineSelection.method);
   let normalizedPayments = payments.map(payment => {
     if (!payment || typeof payment !== "object") throw new Error("Forma de pagamento inválida.");
-    const selected = choosePayment(catalog.methods, catalog.accounts, String(payment.method ?? ""), String(payment.accountId ?? ""));
+    const selected = choosePayment(catalog.methods, catalog.accounts, String(payment.method ?? ""));
     const amountInCents = Number(payment.amountInCents);
     if (!Number.isSafeInteger(amountInCents) || amountInCents < 0 || amountInCents > 2147483647) throw new Error("Valor de pagamento inválido.");
     return { ...selected, amountInCents, otherPaymentMethod: selected.paymentMethodName };
   });
   const paymentMethod = online ? selectedProvider : normalizedPayments.length > 1 ? "mixed" : normalizedPayments[0].method;
+  const cashClosingId = z.uuid("Selecione um caixa válido.").optional().parse(text(data, "cashClosingId") || undefined);
+  const cashPayments = normalizedPayments.filter(payment => payment.method === "cash" && payment.amountInCents > 0);
   // Concluir a venda representa a confirmação de recebimento do valor total.
   const received = !online;
   const commissionBeneficiary = text(data, "commissionBeneficiary") ? parseBeneficiary(text(data, "commissionBeneficiary")) : null;
   const today = organizationDate(new Date(), organization.timezone);
-  const inputHash = online ? checkoutInputHash({ provider:selectedProvider, onlineSelection, items: [...grouped].sort(([a],[b]) => a.localeCompare(b)), clientId, quoteId, commissionBeneficiary,
+  const inputHash = online ? checkoutInputHash({ provider:selectedProvider, onlineSelection, items: [...grouped].sort(([a],[b]) => a.localeCompare(b)), clientId, quoteId, commissionBeneficiary, ...(cashClosingId ? { cashClosingId } : {}),
     receiptEmail, receiptPhoneDigits, notes: text(data, "notes") }) : null;
 
   const pendingIds = z.array(z.uuid()).parse(JSON.parse(String(data.get("pendingAttendanceItemIds") || "[]")));
@@ -428,6 +431,20 @@ export async function registerRetailSale(data: FormData) {
     if (normalizedPayments.reduce((sum, payment) => sum + payment.amountInCents, 0) !== totalInCents) throw new Error("A soma dos pagamentos deve ser igual ao total da venda.");
     const procedureTotal = additionalLines.find((item) => item.id.startsWith("appointment:"))?.total ?? 0;
     const { additionalInCents } = splitCheckoutTotal(totalInCents, procedureTotal);
+    if (cashPayments.length && !cashClosingId) throw new Error("Abra ou selecione um caixa para receber em dinheiro.");
+    if (cashClosingId) {
+      const [candidate] = await tx.select({ accountId: cashClosings.accountId }).from(cashClosings).where(and(eq(cashClosings.id, cashClosingId), eq(cashClosings.organizationId, organization.id)));
+      if (!candidate) throw new Error("Caixa indisponível.");
+      if (cashPayments.some(payment => payment.accountId !== candidate.accountId)) throw new Error("Selecione o caixa da conta vinculada ao pagamento em dinheiro.");
+      const accountIds = new Set([candidate.accountId, ...normalizedPayments.map(payment => payment.accountId)]);
+      for (const accountId of [...accountIds].sort()) {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`cash-account:${organization.id}:${accountId}`},0))`);
+      }
+      const [openCash] = await tx.select({ id: cashClosings.id }).from(cashClosings)
+        .innerJoin(financialAccounts, and(eq(financialAccounts.id, cashClosings.accountId), eq(financialAccounts.organizationId, organization.id), eq(financialAccounts.isActive, true), eq(financialAccounts.accountType, "cash")))
+        .where(and(eq(cashClosings.id, cashClosingId), eq(cashClosings.organizationId, organization.id), isNull(cashClosings.closedAt)));
+      if (!openCash) throw new Error("O caixa selecionado está fechado ou indisponível.");
+    }
     const singlePayment = normalizedPayments.length === 1 ? normalizedPayments[0] : null;
     const paymentSnapshot = { accountId: singlePayment?.accountId ?? null, paymentMethodId: singlePayment?.paymentMethodId ?? null, paymentMethodName: singlePayment?.paymentMethodName ?? "Pagamento dividido", cashManagedBySale: true };
     let appointmentFinancialEntryId: string | null = null;
@@ -446,6 +463,7 @@ export async function registerRetailSale(data: FormData) {
         paymentMethod, clientId, notes: [text(data, "notes"), ...normalizedPayments.filter((payment) => payment.method === "other").map((payment) => `Outros: ${payment.otherPaymentMethod}`)].filter(Boolean).join("\n") || null, createdByUserId: session.user.id,
     }).returning({ id: financialEntries.id }) : [{ id: appointmentFinancialEntryId }];
     const [sale] = await tx.insert(retailSales).values({
+      cashClosingId,
       commissionProfessionalId: commissionBeneficiary?.professionalId, commissionUserId: commissionBeneficiary?.beneficiaryUserId,
       organizationId: organization.id, clientId, attendanceId: sourceQuote?.attendanceId ?? attendanceId, financialEntryId: financialEntry.id, appointmentFinancialEntryId, paymentMethod,
       receiptEmail, receiptPhone: receiptPhoneDigits,

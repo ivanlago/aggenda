@@ -14,7 +14,6 @@ export function PosCatalog({ variants, cart, addToCart, quoteMode = false, initi
   const [barcode, setBarcode] = useState("");
   const [barcodeMessage, setBarcodeMessage] = useState("");
   const deferredQuery = useDeferredValue(query);
-  const description = quoteMode ? "Selecione os itens para compor o orçamento." : "Monte o carrinho com os itens desejados. Pacotes exigem cliente identificado e pagamento recebido.";
   const visibleVariants = useMemo(() => {
     const normalizedQuery = normalize(deferredQuery.trim());
     return variants.filter((item) => (category === "all" || (item.kind ?? "product") === category) && (!normalizedQuery || normalize(item.label).includes(normalizedQuery)));
@@ -31,8 +30,8 @@ export function PosCatalog({ variants, cart, addToCart, quoteMode = false, initi
     addToCart(variant.id); setBarcode(""); setBarcodeMessage(`${variant.label} adicionado.`);
   };
   return (      <section className="panel form-stack">
-        <div><h2 className="text-lg font-extrabold">Produtos, serviços e pacotes</h2><p className="text-sm text-muted">{description}</p></div>
-        <label className="grid gap-1 text-sm font-bold">Tipo de item<select className="field" value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">Todos os itens</option><option value="product">Produtos</option><option value="service">Serviços</option><option value="package">Pacotes</option></select></label>
+        <div><h2 className="text-lg font-extrabold">Produtos / Serviços</h2>{quoteMode && <p className="text-sm text-muted">Selecione os itens para compor o orçamento.</p>}</div>
+        <select aria-label="Filtrar por tipo de item" className="field" value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">Todos os itens</option><option value="product">Produtos</option><option value="service">Serviços</option><option value="package">Pacotes</option></select>
         <div className="grid gap-2 sm:grid-cols-2"><label className="relative block"><span className="sr-only">Buscar item</span><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" /><input className="field w-full pl-9" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar item" /></label><label className="relative block"><span className="sr-only">Ler código de barras</span><ScanBarcode className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" /><input className="field w-full pl-9" value={barcode} onChange={(event) => setBarcode(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); readBarcode(); } }} placeholder="Leia o código e pressione Enter" /></label></div>{barcodeMessage && <p className="text-xs font-bold text-brand" role="status">{barcodeMessage}</p>}
         <div className="grid max-h-[560px] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
           {visibleVariants.map((variant) => {

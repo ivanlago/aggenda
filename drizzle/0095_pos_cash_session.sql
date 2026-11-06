@@ -1,0 +1,2 @@
+ALTER TABLE "retail_sales" ADD COLUMN "cash_closing_id" uuid;--> statement-breakpoint
+ALTER TABLE "retail_sales" ADD CONSTRAINT "retail_sales_cash_closing_id_cash_closings_id_fk" FOREIGN KEY ("cash_closing_id") REFERENCES "public"."cash_closings"("id") ON DELETE restrict ON UPDATE no action;

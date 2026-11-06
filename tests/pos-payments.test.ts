@@ -47,7 +47,7 @@ test("todos os provedores aptos aparecem sem padrão; padrão não filtra opçõ
 
 test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento e estorno", async t => {
   const pg = new PGlite();
-  const tables = { financial_accounts:schema.financialAccounts, payment_methods:schema.paymentMethods, users:schema.users, organizations:schema.organizations, organization_members:schema.organizationMembers,
+  const tables = { cash_closings:schema.cashClosings, financial_accounts:schema.financialAccounts, payment_methods:schema.paymentMethods, users:schema.users, organizations:schema.organizations, organization_members:schema.organizationMembers,
     professionals:schema.professionals, clients:schema.clients, services:schema.services, service_packages:schema.servicePackages,
     service_package_items:schema.servicePackageItems, retail_products:schema.retailProducts, retail_product_variants:schema.retailProductVariants,
     retail_sales:schema.retailSales, retail_sale_items:schema.retailSaleItems, retail_sale_payments:schema.retailSalePayments,
@@ -56,7 +56,7 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
     client_package_balances:schema.clientPackageBalances, audit_logs:schema.auditLogs, inventory_products:schema.inventoryProducts,
     inventory_lots:schema.inventoryLots, inventory_lot_allocations:schema.inventoryLotAllocations, inventory_lot_recalls:schema.inventoryLotRecalls,
     inventory_movements:schema.inventoryMovements, appointments:schema.appointments, package_usages:schema.packageUsages };
-  const omitted: Record<string,string[]> = { retail_sales:["payment_provider","checkout_key","checkout_input_hash","stock_restored_at"], organization_financial_integrations:["is_default_pos"] };
+  const omitted: Record<string,string[]> = { retail_sales:["payment_provider","checkout_key","checkout_input_hash","stock_restored_at","cash_closing_id"], organization_financial_integrations:["is_default_pos"] };
   try {
     for (const [name, table] of Object.entries(tables)) {
       const columns = Object.values(getTableColumns(table)).filter(column => !omitted[name]?.includes(column.name)).map(column => {
@@ -71,6 +71,7 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
       await pg.exec(`CREATE TABLE "${name}" (${columns.join(",")})`);
     }
     await pg.exec(await readFile(new URL("../drizzle/0085_pos_online_payments.sql",import.meta.url),"utf8"));
+    await pg.exec(await readFile(new URL("../drizzle/0095_pos_cash_session.sql",import.meta.url),"utf8"));
     await pg.exec("CREATE UNIQUE INDEX payment_charge_events_provider_event_unique ON payment_charge_events(provider_event_id)");
     const org = randomUUID(), outside = randomUUID(), client = randomUUID(), stock = randomUUID(), product = randomUUID(), variant = randomUUID(), procedure = randomUUID(), pack = randomUUID();
     await pg.query("INSERT INTO users(id,name) VALUES ('cashier','Operador teste')");
@@ -84,7 +85,7 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
     await pg.query("INSERT INTO service_package_items(package_id,service_id,organization_id,quantity) VALUES ($1,$2,$3,2)",[pack,procedure,org]);
     await pg.query("INSERT INTO organization_financial_integrations(id,organization_id,provider,status,environment,metadata) VALUES ($1,$2,'mercado_pago','active','production',$3)",[randomUUID(),org,JSON.stringify({accountId:99,webhookStatus:"configured"})]);
     const accountId = randomUUID();
-    await pg.query("INSERT INTO financial_accounts(id,organization_id,name,is_active) VALUES ($1,$2,'Conta teste',true)",[accountId,org]);
+    await pg.query("INSERT INTO financial_accounts(id,organization_id,name,account_type,is_active) VALUES ($1,$2,'Conta teste','cash',true)",[accountId,org]);
     const catalogIds = Object.fromEntries(["cash","pix","mercado_pago","asaas","pagbank","efi"].map(key => [key, randomUUID()]));
     for (const [key,id] of Object.entries(catalogIds)) await pg.query("INSERT INTO payment_methods(id,organization_id,name,kind,provider,default_account_id,is_active) VALUES ($1,$2,$3,$4,$5,$6,true)",[id,org,key,["cash","pix","efi"].includes(key)?key==="efi"?"pix":key:"link",["cash","pix"].includes(key)?"manual":key,accountId]);
     const database = drizzle(pg,{schema}) as unknown as typeof db;
@@ -297,11 +298,18 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
     });
     await t.test("recebimento manual misto continua concluído e sem cobrança externa; sem permissão não vende",async()=>{
       const form=new FormData(); form.set("checkoutProvider","manual"); form.set("items",JSON.stringify([{variantId:variant,quantity:1,discountInCents:0}])); form.set("payments",JSON.stringify([{method:catalogIds.cash,accountId,amountInCents:200},{method:catalogIds.pix,accountId,amountInCents:300}]));
+      await assert.rejects(register(form), /Abra ou selecione um caixa/);
+      const cashClosingId = randomUUID();
+      await pg.query("INSERT INTO cash_closings(id,organization_id,account_id,opened_by_user_id,opening_balance_in_cents,opened_at,closed_at) VALUES ($1,$2,$3,'cashier',0,now(),now())",[cashClosingId,org,accountId]);
+      form.set("cashClosingId",cashClosingId);
+      await assert.rejects(register(form), /fechado ou indisponível/);
+      await pg.query("UPDATE cash_closings SET closed_at=null WHERE id=$1",[cashClosingId]);
       const result=await register(form);
       assert.ok(result.openUrl?.startsWith("/recibo/"));
       const receipt=result.openUrl!.split("/").at(-1)!;
       const sale=(await pg.query<{id:string;status:string;payment_provider:string|null}>("SELECT id,status,payment_provider FROM retail_sales WHERE receipt_token=$1",[receipt])).rows[0];
       assert.equal(sale.status,"completed"); assert.equal(sale.payment_provider,null);
+      assert.equal((await pg.query<{cash_closing_id:string}>("SELECT cash_closing_id FROM retail_sales WHERE id=$1",[sale.id])).rows[0].cash_closing_id,cashClosingId);
       assert.equal((await pg.query("SELECT id FROM payment_charges WHERE origin_id=$1",[sale.id])).rows.length,0);
       globals.__posContext={organization:{id:org,name:"Clínica teste",role:"viewer",timezone:"America/Bahia"},session:{user:{id:"cashier"}}};
       await assert.rejects(register(form),/permissão/);

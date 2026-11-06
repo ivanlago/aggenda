@@ -40,6 +40,11 @@ export function RetailQuoteForm({ catalog, clients, attendanceId, initialClientI
     <input type="hidden" name="id" value={id} />
     <input type="hidden" name="items" value={discountError ? "[]" : JSON.stringify(discountedItems)} />
     {attendanceId && <input type="hidden" name="attendanceId" value={attendanceId} />}
+    <section className="panel col-span-full grid min-w-0 items-start gap-4 sm:grid-cols-2" aria-label="Dados do orçamento">
+      {attendanceId ? <input type="hidden" name="clientId" value={clientId} /> : <ClientSearch clients={clients} value={clientId} onChange={setClientId} />}
+      <label className="grid gap-1 text-sm font-bold">Validade<input className="field sm:max-w-64" type="date" name="validUntil" defaultValue={defaultValidity} required /></label>
+      <label className="col-span-full grid gap-1 text-sm font-bold">Condições e observações<textarea className="field min-h-20" name="notes" maxLength={3000} placeholder="Condições comerciais e informações adicionais" /></label>
+    </section>
     <PosCatalog variants={catalog} cart={items} addToCart={addItem} quoteMode />
     <section className="panel form-stack xl:sticky xl:top-5">
       <h3 className="text-lg font-extrabold">Itens do orçamento</h3>
@@ -53,10 +58,7 @@ export function RetailQuoteForm({ catalog, clients, attendanceId, initialClientI
           {canDiscount && <label className="grid gap-1 text-xs font-bold sm:col-span-4">Desconto do item (R$)<input className="field max-w-40" inputMode="decimal" value={(item.discountInCents / 100).toFixed(2).replace(".", ",")} onChange={(event) => { const amount = Math.max(0, Math.min(entry.priceInCents * item.quantity, Math.round((Number(event.target.value.replace(",", ".")) || 0) * 100))); setItems((current) => current.map((line) => line.variantId === item.variantId ? { ...line, discountInCents: amount } : line)); }} /></label>}
         </div>;
       })}{!items.length && <p className="py-5 text-sm text-muted">Adicione produtos, serviços ou pacotes acima.</p>}</div>
-      {attendanceId ? <input type="hidden" name="clientId" value={clientId} /> : <ClientSearch clients={clients} value={clientId} onChange={setClientId} />}
       {canDiscount && <OrderDiscountField type={discountType} value={discountValue} onTypeChange={setDiscountType} onValueChange={setDiscountValue} error={discountError} />}
-      <label className="grid gap-1 text-sm font-bold">Validade<input className="field sm:max-w-64" type="date" name="validUntil" defaultValue={defaultValidity} required /></label>
-      <label className="grid gap-1 text-sm font-bold">Condições e observações<textarea className="field min-h-20" name="notes" maxLength={3000} placeholder="Condições comerciais e informações adicionais" /></label>
       <div className="rounded-xl bg-brand/5 p-4"><p className="text-sm">Subtotal: {money(subtotal)} · Desconto: {money(discount)}</p><p className="mt-2 text-xl font-extrabold text-brand">Total: {money(subtotal - discount)}</p></div>
       <button className="primary-button w-fit" disabled={!items.length || Boolean(discountError)}>Salvar e abrir orçamento em PDF</button>
     </section>

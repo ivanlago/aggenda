@@ -19,7 +19,7 @@ function MethodForm({ method, accounts }: { method?: Method; accounts: Account[]
     {method && <input type="hidden" name="id" value={method.id} />}
     <label className="grid gap-2 text-sm font-bold sm:col-span-2">Nome *<input className="field" name="name" required minLength={2} maxLength={80} defaultValue={method?.name} /></label>
     <label className="grid gap-2 text-sm font-bold">Tipo *<select className="field" name="kind" defaultValue={method?.kind ?? "other"}>{paymentKinds.map(kind => <option key={kind} value={kind}>{paymentKindLabels[kind]}</option>)}</select></label>
-    <label className="grid gap-2 text-sm font-bold">Conta de pagamento<select className="field" name="defaultAccountId" defaultValue={method?.defaultAccountId ?? ""}><option value="">Definir no recebimento</option>{accounts.filter(account => account.isActive || account.id === method?.defaultAccountId).map(account => <option key={account.id} value={account.id}>{account.name}{!account.isActive ? " (inativa)" : ""}</option>)}</select></label>
+    <label className="grid gap-2 text-sm font-bold">Conta de pagamento *<select className="field" name="defaultAccountId" required defaultValue={method?.defaultAccountId ?? ""}><option value="" disabled>Selecione uma conta</option>{accounts.filter(account => account.isActive || account.id === method?.defaultAccountId).map(account => <option key={account.id} value={account.id}>{account.name}{!account.isActive ? " (inativa)" : ""}</option>)}</select></label>
     <label className="grid gap-2 text-sm font-bold sm:col-span-2">Recebimento *<select className="field" name="provider" defaultValue={method?.provider ?? "manual"}>{Object.entries(providers).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
     <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" name="active" defaultChecked={method?.isActive ?? true} /> Disponível para novos pagamentos</label>
     <p className="text-xs text-muted sm:col-span-2">Campos com * são obrigatórios.</p>
@@ -54,7 +54,7 @@ export function PaymentMethodsCatalog({ methods, accounts }: { methods: Method[]
             <td className="break-words px-2 py-4 font-bold">{method.name}<span className="mt-1 block text-xs font-normal text-muted md:hidden">{paymentKindLabels[method.kind as PaymentKind] ?? method.kind}</span></td>
             <td className="hidden break-words px-2 py-4 md:table-cell">{paymentKindLabels[method.kind as PaymentKind] ?? method.kind}</td>
             <td className="hidden break-words px-2 py-4 lg:table-cell">{providers[method.provider] ?? method.provider}</td>
-            <td className="break-words px-2 py-4">{method.defaultAccountId ? accountNames.get(method.defaultAccountId) ?? "Conta indisponível" : "Definir no recebimento"}</td>
+            <td className="break-words px-2 py-4">{method.defaultAccountId ? accountNames.get(method.defaultAccountId) ?? "Conta indisponível" : "Sem conta cadastrada"}</td>
             <td className="px-2 py-4"><span className={`inline-flex rounded-full px-2 py-1 text-xs font-bold ${method.isActive ? "bg-teal-50 text-brand" : "bg-slate-100 text-slate-600"}`}>{method.isActive ? "Ativo" : "Inativo"}</span></td>
             <td className="px-1 py-4"><div className="flex flex-wrap items-center justify-center gap-1">
               <ModalShell title={`Editar ${method.name}`} variant="edit" closeOnSuccess><MethodForm method={method} accounts={accounts} /></ModalShell>

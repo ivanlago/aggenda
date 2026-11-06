@@ -1397,6 +1397,7 @@ export const retailProductVariants = pgTable("retail_product_variants", {
 
 export const retailSales = pgTable("retail_sales", {
   id: uuid("id").defaultRandom().primaryKey(),
+  cashClosingId: uuid("cash_closing_id").references((): import("drizzle-orm/pg-core").AnyPgColumn => cashClosings.id, { onDelete: "restrict" }),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
   clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
   attendanceId: uuid("attendance_id"),

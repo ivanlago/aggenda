@@ -107,10 +107,14 @@ function EntryFields({ categories, today, initialType, providers = [] }: Props) 
       <label className="flex items-center gap-2 text-sm font-bold sm:col-span-2"><input type="checkbox" name="realized" checked={realized} onChange={(event) => setRealized(event.target.checked)} />Primeiro lançamento já foi {type === "payable" ? "pago" : "recebido"}</label>
       {realized && <label className="grid gap-2 text-sm font-bold">Data da baixa *<input className="field" name="realizedDate" type="date" required defaultValue={today} /></label>}
     </FormSection>
-    {type === "receivable" && !realized && eligible.length > 0 && <FormSection title="Cobrança online">
-      <label className="col-span-full flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={emit} onChange={event => setWithCharge(event.target.checked)} />Emitir cobrança online</label>
+    {type === "receivable" && <FormSection title="Cobrança online">
+      <label className="col-span-full flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={emit} disabled={realized || !provider} onChange={event => setWithCharge(event.target.checked)} />Emitir cobrança online</label>
+      {realized ? <p className="col-span-full text-sm text-muted">Desmarque “Primeiro lançamento já foi recebido” para emitir cobrança pelo formulário.</p>
+        : !providers.length ? <p className="col-span-full text-sm text-muted">Conecte e valide um provedor em <Link className="font-bold text-brand underline" href="/configuracoes?aba=payments">Provedores de pagamento</Link> para liberar a emissão.</p>
+          : !provider ? <p className="col-span-full text-sm text-muted">Provedores ativos: {providers.map(item => item.name).join(", ")}. Em <Link className="font-bold text-brand underline" href="/financeiro/formas-de-pagamento">Formas de pagamento</Link>, vincule uma forma ativa e compatível a um desses provedores e selecione uma conta de destino ativa.</p>
+            : !emit && <p className="col-span-full text-sm text-muted">Marque a opção acima para informar o pagador e escolher as parcelas que deseja cobrar.</p>}
+      {!realized && provider && <label className="grid gap-2 text-sm font-bold">Provedor<select className="field" name="chargeProvider" value={provider.id} onChange={event => setSelectedProvider(event.target.value)}>{eligible.map(item => <option key={item.id} value={item.id}>{item.name}{item.environment === "sandbox" ? " (testes)" : ""}</option>)}</select></label>}
       {emit && provider && <>
-        <label className="grid gap-2 text-sm font-bold">Provedor<select className="field" name="chargeProvider" value={provider.id} onChange={event => setSelectedProvider(event.target.value)}>{eligible.map(item => <option key={item.id} value={item.id}>{item.name}{item.environment === "sandbox" ? " (testes)" : ""}</option>)}</select></label>
         <label className="grid gap-2 text-sm font-bold">Forma de pagamento *<select key={provider.id} className="field" name="chargePaymentMethod" required><option value="">Selecione</option>{compatibleMethods.filter(method => method.provider === provider.id).map(method => <option key={method.id} value={method.id}>{method.name}</option>)}</select></label>
         <label className="grid gap-2 text-sm font-bold">Nome do pagador *<input className="field" name="customerName" required minLength={2} /></label>
         <label className="grid gap-2 text-sm font-bold">CPF ou CNPJ{provider.id !== "mercado_pago" && " *"}<input className="field" name="customerDocument" inputMode="numeric" required={provider.id !== "mercado_pago"} /></label>
@@ -124,7 +128,9 @@ function EntryFields({ categories, today, initialType, providers = [] }: Props) 
     </FormSection>}
     <FormSection title="Informações adicionais"><label className="grid gap-2 text-sm font-bold sm:col-span-2">Observações<textarea className="field min-h-20" name="notes" /></label></FormSection>
     <FormActions submitLabel={type === "receivable" ? (emit ? "Salvar e emitir cobranças" : "Salvar conta") : undefined}
-      extraActions={emit && <button type="submit" name="submitIntent" value="save" formNoValidate className="secondary-button">Salvar conta</button>}
+      extraActions={type === "receivable" && (emit
+        ? <button type="submit" name="submitIntent" value="save" formNoValidate className="secondary-button">Salvar conta</button>
+        : <button type="button" className="secondary-button" disabled>Salvar e emitir cobranças</button>)}
       disabled={emit && !installments.some(index => !omitted.includes(index))} />
   </ActionForm>;
 }

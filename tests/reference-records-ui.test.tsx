@@ -79,6 +79,7 @@ test("quick registration preserves the draft, auto-selects categories, and keeps
 
     await act(async () => root.render(<compiled.exports.FinancialEntryControls categories={[{ id: "income", name: "Receita", type: "receivable" }, { id: "expense", name: "Despesa", type: "payable" }]} today="2026-10-28" />));
     await click("Nova conta a receber");
+    assert.equal(document.querySelector<HTMLInputElement>('dialog input[name="description"]')?.required, false);
     assert.equal(document.querySelector('dialog [name="costCenterId"]'), null);
     const category = document.querySelector<HTMLSelectElement>('dialog select[name="categoryId"]')!;
     assert.ok(category.querySelector('option[value="income"]'));

@@ -972,16 +972,17 @@ export async function createFinancialEntry(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "finance.manage");
   const type = textValue(formData, "type");
-  const description = textValue(formData, "description");
+  const customDescription = optionalText(formData, "description");
   const amountInCents = optionalMoneyInCents(formData, "amount");
   const dueDate = textValue(formData, "dueDate");
   const realized = formData.get("realized") === "on";
   const installmentCount = Math.min(60, Math.max(1, Math.trunc(Number(textValue(formData, "installmentCount") || "1"))));
   const recurrenceMonths = Math.min(60, Math.max(1, Math.trunc(Number(textValue(formData, "recurrenceMonths") || "1"))));
   if (installmentCount > 1 && recurrenceMonths > 1) throw new Error("Escolha parcelamento ou recorrência, não os dois ao mesmo tempo.");
-  if (!['payable', 'receivable'].includes(type) || description.length < 2 || !amountInCents || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
-    throw new Error("Informe tipo, descrição, valor e vencimento válidos.");
+  if (!['payable', 'receivable'].includes(type) || !amountInCents || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    throw new Error("Informe tipo, valor e vencimento válidos.");
   }
+  if (customDescription?.length === 1) throw new Error("A descrição deve ter pelo menos dois caracteres.");
   const selectedPayment = textValue(formData, "paymentMethod") || realized ? await resolveOrganizationPayment(organization.id, textValue(formData, "paymentMethod"), optionalText(formData, "accountId")) : null;
   const accountId = selectedPayment?.accountId ?? optionalText(formData, "accountId"); const categoryId = optionalText(formData, "categoryId");
   const [account, category] = await Promise.all([
@@ -989,12 +990,15 @@ export async function createFinancialEntry(formData: FormData) {
     categoryId ? db.select({ id: financialCategories.id, name: financialCategories.name }).from(financialCategories).where(and(eq(financialCategories.id, categoryId), eq(financialCategories.isActive, true), eq(financialCategories.organizationId, organization.id), eq(financialCategories.type, type))).limit(1) : [],
   ]);
   if ((accountId && !account.length) || (categoryId && !category.length)) throw new Error("Conta ou categoria inválida.");
+  const categoryName = category[0]?.name ?? optionalText(formData, "category");
+  const description = customDescription ?? categoryName;
+  if (!description) throw new Error("Selecione uma categoria ou informe uma descrição.");
   const totalEntries = Math.max(installmentCount, recurrenceMonths); const groupId = totalEntries > 1 ? crypto.randomUUID() : null;
   const baseDate = new Date(`${dueDate}T12:00:00Z`);
   const values = Array.from({ length: totalEntries }, (_, index) => {
     const next = new Date(baseDate); next.setUTCMonth(next.getUTCMonth() + index);
     const entryAmount = installmentCount > 1 ? Math.floor(amountInCents / installmentCount) + (index < amountInCents % installmentCount ? 1 : 0) : amountInCents;
-    return { organizationId: organization.id, type, status: realized && index === 0 ? (type === "payable" ? "paid" : "received") : "pending", source: recurrenceMonths > 1 ? "recurring" : installmentCount > 1 ? "installment" : "manual", description: totalEntries > 1 ? `${description} (${index + 1}/${totalEntries})` : description, category: category[0]?.name ?? optionalText(formData, "category"), categoryId, accountId, amountInCents: entryAmount, dueDate: next.toISOString().slice(0, 10), realizedDate: realized && index === 0 ? (optionalText(formData, "realizedDate") ?? dueDate) : null, paymentMethod: selectedPayment?.method ?? null, paymentMethodId: selectedPayment?.paymentMethodId ?? null, paymentMethodName: selectedPayment?.paymentMethodName ?? null, notes: optionalText(formData, "notes"), recurrenceGroupId: groupId, installmentNumber: index + 1, installmentCount: totalEntries, createdByUserId: session.user.id };
+    return { organizationId: organization.id, type, status: realized && index === 0 ? (type === "payable" ? "paid" : "received") : "pending", source: recurrenceMonths > 1 ? "recurring" : installmentCount > 1 ? "installment" : "manual", description: totalEntries > 1 ? `${description} (${index + 1}/${totalEntries})` : description, category: categoryName, categoryId, accountId, amountInCents: entryAmount, dueDate: next.toISOString().slice(0, 10), realizedDate: realized && index === 0 ? (optionalText(formData, "realizedDate") ?? dueDate) : null, paymentMethod: selectedPayment?.method ?? null, paymentMethodId: selectedPayment?.paymentMethodId ?? null, paymentMethodName: selectedPayment?.paymentMethodName ?? null, notes: optionalText(formData, "notes"), recurrenceGroupId: groupId, installmentNumber: index + 1, installmentCount: totalEntries, createdByUserId: session.user.id };
   });
   const [entry] = await db.insert(financialEntries).values(values).returning({ id: financialEntries.id });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "financial_entry", entityId: entry.id });

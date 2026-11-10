@@ -18,7 +18,7 @@ function EntryFields({ categories, today, initialType }: Props) {
   return <ActionForm action={createFinancialEntry} successMessage="Lançamento financeiro criado." className="grid gap-5 sm:grid-cols-2" resetOnSuccess={false}>
     <p className="col-span-full text-sm text-muted">Campos com * são obrigatórios. O vencimento é independente do período do relatório.</p>
     <FormSection title="Identificação">
-      <label className="grid gap-2 text-sm font-bold sm:col-span-2">Descrição *<input className="field" name="description" required placeholder="Ex.: Aluguel" /></label>
+      <label className="grid gap-2 text-sm font-bold sm:col-span-2">Descrição (opcional)<input className="field" name="description" placeholder="Se ficar em branco, usaremos o nome da categoria" /></label>
       <label className="grid gap-2 text-sm font-bold">Tipo *<select className="field" name="type" value={type} onChange={(event) => setType(event.target.value)}><option value="receivable">Conta a receber</option><option value="payable">Conta a pagar</option></select></label>
     </FormSection>
     <FormSection title="Classificação">

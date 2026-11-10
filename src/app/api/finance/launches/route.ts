@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { financialAccounts, financialCategories, financialCostCenters, paymentCharges, paymentMethods } from "@/db/schema";
+import { financialAccounts, financialCategories, paymentCharges, paymentMethods } from "@/db/schema";
 import { chargeListCondition } from "@/lib/charge-list";
 import { buildFinancialDownloadExcel, buildFinancialDownloadPdf, type FinancialDownload } from "@/lib/financial-download";
 import { launchEntries, loadLaunchEntries, sourceLabels } from "@/lib/financial-launch-entries";
@@ -24,17 +24,15 @@ type Filters = Record<string, string | undefined>;
 
 async function accountsDownload(organization: Context, query: Filters, today: string, month: string, nextMonth: string, outgoing: boolean): Promise<FinancialDownload> {
   const type = outgoing ? "payable" : "receivable";
-  const [allEntries, accounts, categories, methods, costCenters] = await Promise.all([
+  const [allEntries, accounts, categories, methods] = await Promise.all([
     loadLaunchEntries(db, organization.id, type),
     db.select({ id: financialAccounts.id, name: financialAccounts.name }).from(financialAccounts).where(eq(financialAccounts.organizationId, organization.id)),
     db.select({ id: financialCategories.id, name: financialCategories.name }).from(financialCategories).where(eq(financialCategories.organizationId, organization.id)),
     db.select({ id: paymentMethods.id, name: paymentMethods.name }).from(paymentMethods).where(eq(paymentMethods.organizationId, organization.id)),
-    db.select({ id: financialCostCenters.id, name: financialCostCenters.name }).from(financialCostCenters).where(eq(financialCostCenters.organizationId, organization.id)),
   ]);
   const names = new Map(accounts.map(item => [item.id, item.name]));
   const categoryNames = new Map(categories.map(item => [item.id, item.name]));
   const methodNames = new Map(methods.map(item => [item.id, item.name]));
-  const centerNames = new Map(costCenters.map(item => [item.id, item.name]));
   const { entries, received, paid, receivable, payable, overdue } = launchEntries(allEntries, { ...query, tipo: type }, today, month, nextMonth);
   const realized = outgoing ? paid : received;
   const pending = outgoing ? payable : receivable;
@@ -54,11 +52,11 @@ async function accountsDownload(organization: Context, query: Filters, today: st
       { label: "Total do período", cents: realized + pending },
     ],
     columns: [dayColumn("Vencimento"), dayColumn("Data da baixa"), { label: "Descrição", width: 185 }, { label: "Categoria", width: 116 },
-      { label: "Conta", width: 80 }, { label: "Forma", width: 86 }, { label: "Centro de custo", width: 100 },
+      { label: "Conta", width: 80 }, { label: "Forma", width: 86 },
       { label: "Origem", width: 85 }, { label: "Situação", width: 78 }, amountColumn("Valor")],
     rows: entries.map(entry => [entry.dueDate, entry.realizedDate, entry.description, entry.category || null,
       names.get(entry.accountId ?? "") ?? null, entry.paymentMethodName || methodNames.get(entry.paymentMethodId ?? "") || null,
-      centerNames.get(entry.costCenterId ?? "") ?? null, sourceLabels[entry.source] ?? entry.source,
+      sourceLabels[entry.source] ?? entry.source,
       entry.status === "pending" && entry.dueDate < today ? "Vencido" : statusLabels[entry.status] ?? entry.status, entry.amountInCents]),
   };
 }

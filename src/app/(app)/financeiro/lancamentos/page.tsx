@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/page-header";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { PaymentMethodFields } from "@/components/payment-catalog-context";
 import { db } from "@/db";
-import { financialAccounts, financialCategories, financialCostCenters, paymentCharges, paymentMethods, retailSales } from "@/db/schema";
+import { financialAccounts, financialCategories, paymentCharges, paymentMethods, retailSales } from "@/db/schema";
 import { organizationDate } from "@/lib/appointment-safety";
 import { financeMonth, financeQuery, launchesPath, launchesUrl, nextFinanceMonth, onlineChargesPath, type FinanceSearchParams } from "@/lib/finance-navigation";
 import { launchEntries, loadLaunchEntries, sourceLabels } from "@/lib/financial-launch-entries";
@@ -72,11 +72,10 @@ async function AccountsView({ organization, query, today, month, nextMonth, tab 
   const incoming = tab === "receber";
   const type = incoming ? "receivable" : "payable";
   const canManage = hasOrganizationPermission(organization.role, "finance.manage");
-  const [allEntries, accounts, categories, costCenters, charges, sales, methods] = await Promise.all([
+  const [allEntries, accounts, categories, charges, sales, methods] = await Promise.all([
     loadLaunchEntries(db, organization.id, type),
     db.select().from(financialAccounts).where(eq(financialAccounts.organizationId, organization.id)).orderBy(asc(financialAccounts.name)),
     db.select().from(financialCategories).where(eq(financialCategories.organizationId, organization.id)).orderBy(asc(financialCategories.name)),
-    db.select().from(financialCostCenters).where(eq(financialCostCenters.organizationId, organization.id)).orderBy(asc(financialCostCenters.name)),
     db.select().from(paymentCharges).where(eq(paymentCharges.organizationId, organization.id)).orderBy(desc(paymentCharges.createdAt)),
     db.select({ id: retailSales.id, financialEntryId: retailSales.financialEntryId, appointmentFinancialEntryId: retailSales.appointmentFinancialEntryId }).from(retailSales).where(eq(retailSales.organizationId, organization.id)),
     db.select({ id: paymentMethods.id, name: paymentMethods.name }).from(paymentMethods).where(eq(paymentMethods.organizationId, organization.id)),
@@ -116,7 +115,7 @@ async function AccountsView({ organization, query, today, month, nextMonth, tab 
       <div className="flex flex-wrap gap-2"><button className="primary-button">Filtrar</button><Link className="secondary-button" href={launchesPath + "?aba=" + tab}>Limpar</Link></div>
     </form>
     <div className="mb-5 flex flex-wrap items-start gap-3">
-      {canManage && <FinancialEntryControls key={type} categories={categories} costCenters={costCenters} today={today} initialType={type} autoOpen={query.novo === type} />}
+      {canManage && <FinancialEntryControls key={type} categories={categories} today={today} initialType={type} autoOpen={query.novo === type} />}
       {incoming && <Link className="secondary-button" href={chargesPath}>{canManage ? "Emitir ou consultar cobrança online" : "Consultar cobranças online"}</Link>}
       <FinancialDownloadButtons filters={{ ...query, aba: tab, mes: month }} />
       <a className="self-center text-sm font-bold text-brand" href={"/api/finance/report?mes=" + month}>Relatório mensal consolidado</a>
@@ -127,7 +126,6 @@ async function AccountsView({ organization, query, today, month, nextMonth, tab 
         <p className="mt-1 text-sm text-muted">Contas com vencimento ou baixa no período.</p>
       <PaginatedCollection key={JSON.stringify(query)} label="Registros" className="mt-4 divide-y">{entries.map((entry) => {
         const account = accounts.find((item) => item.id === entry.accountId)?.name;
-        const costCenter = costCenters.find((item) => item.id === entry.costCenterId)?.name;
         const linkedCharges = charges.filter((item) => item.financialEntryId === entry.id);
         const charge = linkedCharges.find((item) => isManagedCharge(item.status)) ?? linkedCharges[0];
         const managed = linkedCharges.some((item) => isManagedCharge(item.status));
@@ -137,7 +135,7 @@ async function AccountsView({ organization, query, today, month, nextMonth, tab 
         const isRealized = entry.status === "paid" || entry.status === "received";
         return <article id={`lancamento-${entry.id}`} key={entry.id} className={`grid scroll-mt-6 gap-3 py-4 xl:grid-cols-[1fr_auto] xl:items-center ${query.lancamento === entry.id ? "rounded-xl bg-teal-50 p-4" : ""}`}>
           <div><div className="flex flex-wrap items-center gap-2"><p className="font-extrabold">{entry.description}</p>{isOverdue && <span className="status-pill text-red-700">Vencido</span>}{managed && <span className="status-pill">Cobrança online vinculada</span>}</div>
-            <p className="mt-1 text-xs text-muted">{entry.category || "Sem categoria"}{account ? ` · ${account}` : ""}{costCenter ? ` · ${costCenter}` : ""} · {sourceLabels[entry.source] ?? entry.source}{paymentName ? ` · ${paymentName}` : ""} · vencimento {new Date(`${entry.dueDate}T12:00:00Z`).toLocaleDateString("pt-BR")}{entry.realizedDate ? ` · baixa ${new Date(`${entry.realizedDate}T12:00:00Z`).toLocaleDateString("pt-BR")}` : ""}</p>
+            <p className="mt-1 text-xs text-muted">{entry.category || "Sem categoria"}{account ? ` · ${account}` : ""} · {sourceLabels[entry.source] ?? entry.source}{paymentName ? ` · ${paymentName}` : ""} · vencimento {new Date(`${entry.dueDate}T12:00:00Z`).toLocaleDateString("pt-BR")}{entry.realizedDate ? ` · baixa ${new Date(`${entry.realizedDate}T12:00:00Z`).toLocaleDateString("pt-BR")}` : ""}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {charge && <Link className="secondary-button" href={`${chargesPath}&cobranca=${charge.id}#cobranca-${charge.id}`}>Ver cobrança vinculada</Link>}
               {canManage && entry.type === "receivable" && entry.status === "pending" && !managed && entry.source !== "retail_sale" && !sale && <Link className="secondary-button" href={`${chargesPath}&lancamento=${entry.id}#nova-cobranca`}>Gerar cobrança</Link>}

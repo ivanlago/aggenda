@@ -46,7 +46,7 @@ const baseCharge = { id: "charge", financialEntryId: "entry", status: "pending",
 
 test("cash flow links integrated entries to charges and PDV instead of offering manual settlement", async () => {
   const page = await loadPage("./src/app/(app)/financeiro/lancamentos/page.tsx");
-  globals.financeRows = [[baseEntry, { ...baseEntry, id: "pdv", source: "retail_sale" }], [], [], [], [baseCharge], [{ id: "sale", financialEntryId: "pdv" }], []];
+  globals.financeRows = [[baseEntry, { ...baseEntry, id: "pdv", source: "retail_sale" }], [], [], [baseCharge], [{ id: "sale", financialEntryId: "pdv" }], []];
   try {
     const html = await renderAsync(await page({ searchParams: Promise.resolve({ mes: "2026-10" }) }));
     assert.match(html, /Contas a receber/);

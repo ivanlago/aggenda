@@ -47,14 +47,13 @@ export async function loadManagementReport(organization: Organization, filters: 
     if (filters.status !== "all") constraints.push(sql`f.status=${filters.status}`);
     if (filters.account) constraints.push(sql`f.account_id=${filters.account}`);
     if (filters.category) constraints.push(sql`f.category_id=${filters.category}`);
-    if (filters.costCenter) constraints.push(sql`f.cost_center_id=${filters.costCenter}`);
     if (filters.search) constraints.push(sql`(f.description ILIKE ${search} OR c.name ILIKE ${search})`);
     const [rows, options] = await Promise.all([
-      query(sql`SELECT f.description, f.type, f.status, f.due_date::text AS due, f.realized_date::text AS realized, ${financeDate}::text AS date, f.amount_in_cents AS amount, coalesce(c.name,'Sem cliente') AS client, coalesce(a.name,'Sem conta') AS account, coalesce(cat.name,f.category,'Sem categoria') AS category, coalesce(cc.name,'Sem centro de custo') AS center FROM financial_entries f LEFT JOIN clients c ON c.id=f.client_id AND c.organization_id=${org} LEFT JOIN financial_accounts a ON a.id=f.account_id AND a.organization_id=${org} LEFT JOIN financial_categories cat ON cat.id=f.category_id AND cat.organization_id=${org} LEFT JOIN financial_cost_centers cc ON cc.id=f.cost_center_id AND cc.organization_id=${org} WHERE ${sql.join(constraints, sql` AND `)} ORDER BY ${financeDate}, f.id`),
-      filters.account || filters.category || filters.costCenter ? reportFinanceOptions(org) : Promise.resolve(null),
+      query(sql`SELECT f.description, f.type, f.status, f.due_date::text AS due, f.realized_date::text AS realized, ${financeDate}::text AS date, f.amount_in_cents AS amount, coalesce(c.name,'Sem cliente') AS client, coalesce(a.name,'Sem conta') AS account, coalesce(cat.name,f.category,'Sem categoria') AS category FROM financial_entries f LEFT JOIN clients c ON c.id=f.client_id AND c.organization_id=${org} LEFT JOIN financial_accounts a ON a.id=f.account_id AND a.organization_id=${org} LEFT JOIN financial_categories cat ON cat.id=f.category_id AND cat.organization_id=${org} WHERE ${sql.join(constraints, sql` AND `)} ORDER BY ${financeDate}, f.id`),
+      filters.account || filters.category ? reportFinanceOptions(org) : Promise.resolve(null),
     ]);
     report.filters.push(`Situação: ${financialStatusLabel[filters.status] ?? "Todas"}`);
-    for (const [label, field, choices] of [["Conta", "account", options?.accounts], ["Categoria", "category", options?.categories], ["Centro de custo", "costCenter", options?.centers]] as const) {
+    for (const [label, field, choices] of [["Conta", "account", options?.accounts], ["Categoria", "category", options?.categories]] as const) {
       if (filters[field]) report.filters.push(`${label}: ${choices?.find(choice => choice.id === filters[field])?.name ?? "Opção não encontrada"}`);
     }
     if (filters.search) report.filters.push(`Busca por descrição ou cliente: ${filters.search}`);
@@ -72,7 +71,7 @@ export async function loadManagementReport(organization: Organization, filters: 
         return row.status === "pending" && row.type === type && days >= min && days <= max;
       }).reduce((sum, row) => sum + money(row.amount), 0))]) });
     }
-    report.tables.push({ title: "Lançamentos", columns: [{ title: "Descrição / cliente", width: 2 }, { title: "Tipo / situação" }, { title: "Vencimento", kind: "date" }, { title: "Realização", kind: "date" }, { title: "Valor", kind: "money" }, { title: "Conta / categoria / centro", width: 2 }, ...(filters.id === "contas" ? [{ title: "Atraso atual (dias)", kind: "number" as const }] : [])], rows: rows.map(row => [`${row.description} / ${row.client}`, `${row.type === "receivable" ? "A receber" : "A pagar"} / ${financialStatusLabel[String(row.status)] ?? row.status}`, text(row.due), text(row.realized), money(row.amount), `${row.account} / ${row.category} / ${row.center}`, ...(filters.id === "contas" ? [row.status === "pending" ? Math.max(0, Math.floor((Date.parse(today) - Date.parse(String(row.due))) / 86400000)) : 0] : [])]) });
+    report.tables.push({ title: "Lançamentos", columns: [{ title: "Descrição / cliente", width: 2 }, { title: "Tipo / situação" }, { title: "Vencimento", kind: "date" }, { title: "Realização", kind: "date" }, { title: "Valor", kind: "money" }, { title: "Conta / categoria", width: 2 }, ...(filters.id === "contas" ? [{ title: "Atraso atual (dias)", kind: "number" as const }] : [])], rows: rows.map(row => [`${row.description} / ${row.client}`, `${row.type === "receivable" ? "A receber" : "A pagar"} / ${financialStatusLabel[String(row.status)] ?? row.status}`, text(row.due), text(row.realized), money(row.amount), `${row.account} / ${row.category}`, ...(filters.id === "contas" ? [row.status === "pending" ? Math.max(0, Math.floor((Date.parse(today) - Date.parse(String(row.due))) / 86400000)) : 0] : [])]) });
     report.notes.push(filters.id === "fluxo" ? "Realizado por data de realização; previsto por vencimento. Contas realizadas sem data de realização não integram o fluxo. Cancelados são excluídos. Não inclui saldo inicial das contas." : `Filtro por vencimento. A situação e o atraso refletem a posição atual em ${today}, não uma reconstrução histórica. Contas canceladas não compõem os totais.`, "Os valores previstos podem mudar com pagamentos, cancelamentos ou alterações posteriores.");
   } else if (filters.id === "vendas") {
     const [sales, quotes, items] = await Promise.all([
@@ -101,10 +100,9 @@ export async function loadManagementReport(organization: Organization, filters: 
 }
 
 export async function reportFinanceOptions(organizationId: string) {
-  const [accounts, categories, centers] = await Promise.all([
+  const [accounts, categories] = await Promise.all([
     query(sql`SELECT id,name FROM financial_accounts WHERE organization_id=${organizationId} ORDER BY name`),
     query(sql`SELECT id,name FROM financial_categories WHERE organization_id=${organizationId} ORDER BY name`),
-    query(sql`SELECT id,name FROM financial_cost_centers WHERE organization_id=${organizationId} ORDER BY name`),
   ]);
-  return { accounts, categories, centers };
+  return { accounts, categories };
 }

@@ -7,7 +7,7 @@ import { checkTeamCapacityAfterChange } from "@/lib/commercial-access";
 import { serviceDeletionError } from "@/lib/service-deletion";
 import { roomBookingError } from "@/lib/room-errors";
 
-import { and, eq, ilike, inArray, isNull, or } from "drizzle-orm";
+import { and, eq, ilike, inArray, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -25,7 +25,6 @@ import {
   retailSales,
   financialAccounts,
   financialCategories,
-  financialCostCenters,
   financialBudgets,
   clientHistoryEntries,
   clientClinicalMedia,
@@ -984,19 +983,18 @@ export async function createFinancialEntry(formData: FormData) {
     throw new Error("Informe tipo, descrição, valor e vencimento válidos.");
   }
   const selectedPayment = textValue(formData, "paymentMethod") || realized ? await resolveOrganizationPayment(organization.id, textValue(formData, "paymentMethod"), optionalText(formData, "accountId")) : null;
-  const accountId = selectedPayment?.accountId ?? optionalText(formData, "accountId"); const categoryId = optionalText(formData, "categoryId"); const costCenterId = optionalText(formData, "costCenterId");
-  const [account, category, costCenter] = await Promise.all([
+  const accountId = selectedPayment?.accountId ?? optionalText(formData, "accountId"); const categoryId = optionalText(formData, "categoryId");
+  const [account, category] = await Promise.all([
     accountId ? db.select({ id: financialAccounts.id }).from(financialAccounts).where(and(eq(financialAccounts.id, accountId), eq(financialAccounts.isActive, true), eq(financialAccounts.organizationId, organization.id))).limit(1) : [],
     categoryId ? db.select({ id: financialCategories.id, name: financialCategories.name }).from(financialCategories).where(and(eq(financialCategories.id, categoryId), eq(financialCategories.isActive, true), eq(financialCategories.organizationId, organization.id), eq(financialCategories.type, type))).limit(1) : [],
-    costCenterId ? db.select({ id: financialCostCenters.id }).from(financialCostCenters).where(and(eq(financialCostCenters.id, costCenterId), eq(financialCostCenters.isActive, true), eq(financialCostCenters.organizationId, organization.id))).limit(1) : [],
   ]);
-  if ((accountId && !account.length) || (categoryId && !category.length) || (costCenterId && !costCenter.length)) throw new Error("Conta, categoria ou centro de custo inválido.");
+  if ((accountId && !account.length) || (categoryId && !category.length)) throw new Error("Conta ou categoria inválida.");
   const totalEntries = Math.max(installmentCount, recurrenceMonths); const groupId = totalEntries > 1 ? crypto.randomUUID() : null;
   const baseDate = new Date(`${dueDate}T12:00:00Z`);
   const values = Array.from({ length: totalEntries }, (_, index) => {
     const next = new Date(baseDate); next.setUTCMonth(next.getUTCMonth() + index);
     const entryAmount = installmentCount > 1 ? Math.floor(amountInCents / installmentCount) + (index < amountInCents % installmentCount ? 1 : 0) : amountInCents;
-    return { organizationId: organization.id, type, status: realized && index === 0 ? (type === "payable" ? "paid" : "received") : "pending", source: recurrenceMonths > 1 ? "recurring" : installmentCount > 1 ? "installment" : "manual", description: totalEntries > 1 ? `${description} (${index + 1}/${totalEntries})` : description, category: category[0]?.name ?? optionalText(formData, "category"), categoryId, accountId, costCenterId, amountInCents: entryAmount, dueDate: next.toISOString().slice(0, 10), realizedDate: realized && index === 0 ? (optionalText(formData, "realizedDate") ?? dueDate) : null, paymentMethod: selectedPayment?.method ?? null, paymentMethodId: selectedPayment?.paymentMethodId ?? null, paymentMethodName: selectedPayment?.paymentMethodName ?? null, notes: optionalText(formData, "notes"), recurrenceGroupId: groupId, installmentNumber: index + 1, installmentCount: totalEntries, createdByUserId: session.user.id };
+    return { organizationId: organization.id, type, status: realized && index === 0 ? (type === "payable" ? "paid" : "received") : "pending", source: recurrenceMonths > 1 ? "recurring" : installmentCount > 1 ? "installment" : "manual", description: totalEntries > 1 ? `${description} (${index + 1}/${totalEntries})` : description, category: category[0]?.name ?? optionalText(formData, "category"), categoryId, accountId, amountInCents: entryAmount, dueDate: next.toISOString().slice(0, 10), realizedDate: realized && index === 0 ? (optionalText(formData, "realizedDate") ?? dueDate) : null, paymentMethod: selectedPayment?.method ?? null, paymentMethodId: selectedPayment?.paymentMethodId ?? null, paymentMethodName: selectedPayment?.paymentMethodName ?? null, notes: optionalText(formData, "notes"), recurrenceGroupId: groupId, installmentNumber: index + 1, installmentCount: totalEntries, createdByUserId: session.user.id };
   });
   const [entry] = await db.insert(financialEntries).values(values).returning({ id: financialEntries.id });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "financial_entry", entityId: entry.id });
@@ -1056,23 +1054,38 @@ export async function createFinancialCategory(formData: FormData) {
   await db.insert(financialCategories).values({ organizationId: organization.id, name, type }).onConflictDoNothing(); revalidatePath("/financeiro/lancamentos");
 }
 
-export async function createFinancialCostCenter(formData: FormData) {
-  const { organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage");
-  const name = textValue(formData, "name"); if (name.length < 2) throw new Error("Informe o centro de custo.");
-  await db.insert(financialCostCenters).values({ organizationId: organization.id, name }).onConflictDoNothing(); revalidatePath("/financeiro/lancamentos");
-}
-
 export async function upsertFinancialBudget(formData: FormData) {
   const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage");
-  const categoryId = textValue(formData, "categoryId"); const costCenterId = optionalText(formData, "costCenterId"); const month = textValue(formData, "month"); const amountInCents = optionalMoneyInCents(formData, "amount");
-  if (!categoryId || !/^\d{4}-\d{2}$/.test(month) || amountInCents == null) throw new Error("Informe categoria, mês e orçamento válidos.");
-  const [category] = await db.select({ id: financialCategories.id }).from(financialCategories).where(and(eq(financialCategories.id, categoryId), eq(financialCategories.organizationId, organization.id), inArray(financialCategories.type, ["receivable", "payable"]))).limit(1);
-  const center = costCenterId ? await db.select({ id: financialCostCenters.id }).from(financialCostCenters).where(and(eq(financialCostCenters.id, costCenterId), eq(financialCostCenters.organizationId, organization.id))).limit(1) : [];
-  if (!category || (costCenterId && !center.length)) throw new Error("Categoria ou centro de custo inválido.");
-  const [existing] = await db.select({ id: financialBudgets.id }).from(financialBudgets).where(and(eq(financialBudgets.organizationId, organization.id), eq(financialBudgets.categoryId, categoryId), costCenterId ? eq(financialBudgets.costCenterId, costCenterId) : isNull(financialBudgets.costCenterId), eq(financialBudgets.month, month))).limit(1);
-  if (existing) await db.update(financialBudgets).set({ amountInCents, updatedAt: new Date() }).where(eq(financialBudgets.id, existing.id));
-  else await db.insert(financialBudgets).values({ organizationId: organization.id, categoryId, costCenterId, month, amountInCents, createdByUserId: session.user.id });
-  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "upsert", entityType: "financial_budget", details: { categoryId, costCenterId, month, amountInCents } }); revalidatePath("/financeiro/relatorios");
+  const categoryId = textValue(formData, "categoryId");
+  const month = textValue(formData, "month");
+  const amountInCents = optionalMoneyInCents(formData, "amount");
+  if (!categoryId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || amountInCents == null || !Number.isSafeInteger(amountInCents)) {
+    throw new Error("Informe categoria, mês e orçamento válidos.");
+  }
+  await db.transaction(async (tx) => {
+    const [category] = await tx.select({ id: financialCategories.id }).from(financialCategories).where(and(
+      eq(financialCategories.id, categoryId), eq(financialCategories.organizationId, organization.id),
+      inArray(financialCategories.type, ["receivable", "payable"]),
+    )).for("update");
+    if (!category) throw new Error("Categoria inválida.");
+    const budgets = await tx.select().from(financialBudgets).where(and(
+      eq(financialBudgets.organizationId, organization.id), eq(financialBudgets.categoryId, categoryId), eq(financialBudgets.month, month),
+    )).orderBy(financialBudgets.id);
+    const existing = budgets.find((budget) => budget.costCenterId === null);
+    // Keep historical allocations and adjust only the unallocated share of the category total.
+    const retained = budgets.reduce((total, budget) => total + (budget.id === existing?.id ? 0 : budget.amountInCents), 0);
+    const adjustment = amountInCents - retained;
+    if (!Number.isSafeInteger(adjustment) || adjustment < -2147483648 || adjustment > 2147483647) {
+      throw new Error("O orçamento ultrapassa o limite permitido.");
+    }
+    if (existing) {
+      await tx.update(financialBudgets).set({ amountInCents: adjustment, updatedAt: new Date() }).where(eq(financialBudgets.id, existing.id));
+    } else {
+      await tx.insert(financialBudgets).values({ organizationId: organization.id, categoryId, month, amountInCents: adjustment, createdByUserId: session.user.id });
+    }
+  });
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "upsert", entityType: "financial_budget", details: { categoryId, month, amountInCents } });
+  revalidatePath("/financeiro/relatorios");
 }
 
 export async function updateFinancialEntryStatus(formData: FormData) {

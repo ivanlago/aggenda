@@ -9,11 +9,10 @@ import { ReferenceRecordForm } from "@/components/reference-records";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { financialCategoryLabels, type ReferenceRecord } from "@/lib/reference-records";
 
-type Kind = "financial_account" | "financial_category" | "cost_center";
+type Kind = "financial_account" | "financial_category";
 const names: Record<Kind, { create: string; singular: string }> = {
   financial_account: { create: "Nova conta ou caixa", singular: "conta ou caixa" },
   financial_category: { create: "Nova categoria", singular: "categoria financeira" },
-  cost_center: { create: "Novo centro de custo", singular: "centro de custo" },
 };
 const accountTypes: Record<string, string> = { bank: "Conta bancária", cash: "Caixa físico", digital_wallet: "Carteira digital" };
 
@@ -33,11 +32,11 @@ export function FinancialReferenceCatalog({ kind, records }: { kind: Kind; recor
       <p className="mb-4 text-sm text-muted" role="status">{filtered.length} registro(s)</p>
       <table className="w-full table-fixed text-left text-sm">
         <caption className="sr-only">Lista de cadastros financeiros</caption>
-        <thead><tr className="border-b text-xs uppercase text-muted"><th scope="col" className="px-2 py-3">Nome</th>{kind !== "cost_center" && <th scope="col" className="px-2 py-3">Tipo</th>}<th scope="col" className="w-20 px-2 py-3">Status</th><th scope="col" className="w-20 px-1 py-3 text-center sm:w-24">Ações</th></tr></thead>
+        <thead><tr className="border-b text-xs uppercase text-muted"><th scope="col" className="px-2 py-3">Nome</th><th scope="col" className="px-2 py-3">Tipo</th><th scope="col" className="w-20 px-2 py-3">Status</th><th scope="col" className="w-20 px-1 py-3 text-center sm:w-24">Ações</th></tr></thead>
         <PaginatedCollection as="tbody" label="Cadastros financeiros" className="divide-y">
           {filtered.map(record => <tr key={record.id} className="odd:bg-slate-50/60">
             <td className="break-words px-2 py-4 font-bold">{record.name}</td>
-            {kind !== "cost_center" && <td className="break-words px-2 py-4">{kind === "financial_account" ? accountTypes[record.accountType ?? "bank"] ?? record.accountType : financialCategoryLabels[record.type ?? ""] ?? record.type}</td>}
+            <td className="break-words px-2 py-4">{kind === "financial_account" ? accountTypes[record.accountType ?? "bank"] ?? record.accountType : financialCategoryLabels[record.type ?? ""] ?? record.type}</td>
             <td className="px-2 py-4"><span className={`inline-flex rounded-full px-2 py-1 text-xs font-bold ${record.isActive !== false ? "bg-teal-50 text-brand" : "bg-slate-100 text-slate-600"}`}>{record.isActive !== false ? "Ativo" : "Inativo"}</span></td>
             <td className="px-1 py-4"><div className="flex flex-wrap items-center justify-center gap-1">
               <ModalShell title={`Editar ${record.name}`} variant="edit" closeOnSuccess><ReferenceRecordForm kind={kind} record={record} /></ModalShell>

@@ -54,7 +54,7 @@ test("launch downloads respect applied filters and ignore the visible page", asy
       { ...entry, status: "paid", description: "Baixada" },
       { ...entry, dueDate: "2026-11-11", description: "Outro dia" },
     ],
-    [{ id: "bank", name: "Banco" }], [{ id: "rent", name: "Aluguel" }], [], [],
+    [{ id: "bank", name: "Banco" }], [{ id: "rent", name: "Aluguel" }], [],
   ];
   try {
     const response = await fixture.exports.GET(new Request("http://localhost/api/finance/launches?aba=pagar&mes=2026-11&conta=bank&categoria=rent&status=pending&dia=2026-11-10&linhas=10&pagina=2&formato=xlsx"));

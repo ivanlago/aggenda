@@ -1,10 +1,10 @@
 import { and, eq } from "drizzle-orm";
 import type { db } from "@/db";
-import { financialAccounts, financialCategories, financialCostCenters, financialEntries, inventoryCategories, inventorySubcategories, retailProducts, serviceCategories, services } from "@/db/schema";
+import { financialAccounts, financialCategories, financialEntries, inventoryCategories, inventorySubcategories, retailProducts, serviceCategories, services } from "@/db/schema";
 import type { ReferenceKind } from "./reference-records";
 
 export type ReferenceInput = { kind: ReferenceKind; id?: string; name: string; categoryId?: string; type?: "payable" | "receivable"; accountType?: "bank" | "cash" | "digital_wallet"; openingBalanceInCents?: number };
-const tables = { product_category: inventoryCategories, product_subcategory: inventorySubcategories, service_category: serviceCategories, financial_account: financialAccounts, financial_category: financialCategories, cost_center: financialCostCenters };
+const tables = { product_category: inventoryCategories, product_subcategory: inventorySubcategories, service_category: serviceCategories, financial_account: financialAccounts, financial_category: financialCategories };
 
 export async function saveReferenceRecord(database: typeof db, organizationId: string, input: ReferenceInput) {
   const table = tables[input.kind];
@@ -21,7 +21,6 @@ export async function saveReferenceRecord(database: typeof db, organizationId: s
     switch (input.kind) {
       case "product_category": return (await tx.insert(inventoryCategories).values(common).returning())[0];
       case "service_category": return (await tx.insert(serviceCategories).values(common).returning())[0];
-      case "cost_center": return (await tx.insert(financialCostCenters).values(common).returning())[0];
       case "financial_category": {
         if (!input.type) throw new Error("Escolha receita ou despesa.");
         return (await tx.insert(financialCategories).values({ ...common, type: input.type }).returning())[0];
@@ -41,9 +40,9 @@ export async function changeReferenceRecord(database: typeof db, organizationId:
   await database.transaction(async (tx) => {
     const [current] = await tx.select().from(table).where(and(eq(table.organizationId, organizationId), eq(table.id, id))).for("update");
     if (!current) throw new Error("Cadastro não encontrado.");
-    if (kind === "financial_account" || kind === "financial_category" || kind === "cost_center") {
+    if (kind === "financial_account" || kind === "financial_category") {
       if (operation === "delete") throw new Error("Desative o cadastro financeiro para preservar o histórico.");
-      const financialTable = kind === "financial_account" ? financialAccounts : kind === "financial_category" ? financialCategories : financialCostCenters;
+      const financialTable = kind === "financial_account" ? financialAccounts : financialCategories;
       await tx.update(financialTable).set({ isActive: operation === "activate" }).where(and(eq(financialTable.organizationId, organizationId), eq(financialTable.id, id)));
       return;
     }

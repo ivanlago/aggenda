@@ -24,20 +24,21 @@ test("reference management preserves financial history and enforces organization
     const org = randomUUID(), other = randomUUID();
     const category = await saveReferenceRecord(database, org, { kind: "financial_category", name: "Consultas", type: "receivable" });
     const account = await saveReferenceRecord(database, org, { kind: "financial_account", name: "Banco", accountType: "bank", openingBalanceInCents: 50000 });
-    const center = await saveReferenceRecord(database, org, { kind: "cost_center", name: "Unidade Centro" });
+    const centerId = randomUUID();
+    await pg.query("INSERT INTO financial_cost_centers(id, organization_id, name) VALUES ($1,$2,'Unidade Centro')", [centerId, org]);
     const entryId = randomUUID();
-    await pg.query("INSERT INTO financial_entries(id, organization_id, category_id, category, account_id, cost_center_id, amount_in_cents, status) VALUES ($1,$2,$3,'Consultas',$4,$5,15000,'received')", [entryId, org, category.id, account.id, center.id]);
+    await pg.query("INSERT INTO financial_entries(id, organization_id, category_id, category, account_id, cost_center_id, amount_in_cents, status) VALUES ($1,$2,$3,'Consultas',$4,$5,15000,'received')", [entryId, org, category.id, account.id, centerId]);
     await saveReferenceRecord(database, org, { kind: "financial_category", id: category.id, name: "Atendimentos", type: "payable" });
     assert.equal((await pg.query<{ category: string }>("SELECT category FROM financial_entries WHERE id=$1", [entryId])).rows[0].category, "Atendimentos");
     assert.equal((await pg.query<{ type: string }>("SELECT type FROM financial_categories WHERE id=$1", [category.id])).rows[0].type, "receivable", "Renaming cannot change the category type");
     await saveReferenceRecord(database, org, { kind: "financial_account", id: account.id, name: "Banco principal", accountType: "cash", openingBalanceInCents: 0 });
     assert.deepEqual((await pg.query("SELECT account_type,opening_balance_in_cents FROM financial_accounts WHERE id=$1", [account.id])).rows[0], { account_type: "bank", opening_balance_in_cents: 50000 });
-    for (const [kind, record] of [["financial_account", account], ["financial_category", category], ["cost_center", center]] as const) {
+    for (const [kind, record] of [["financial_account", account], ["financial_category", category]] as const) {
       await changeReferenceRecord(database, org, kind, record.id, "deactivate");
       await assert.rejects(changeReferenceRecord(database, org, kind, record.id, "delete"), /preservar o histórico/);
       await changeReferenceRecord(database, org, kind, record.id, "activate");
     }
-    assert.equal((await pg.query<{ amount_in_cents: number }>("SELECT amount_in_cents FROM financial_entries WHERE id=$1", [entryId])).rows[0].amount_in_cents, 15000);
+    assert.deepEqual((await pg.query("SELECT amount_in_cents,cost_center_id FROM financial_entries WHERE id=$1", [entryId])).rows[0], { amount_in_cents: 15000, cost_center_id: centerId });
     await assert.rejects(saveReferenceRecord(database, other, { kind: "financial_account", id: account.id, name: "Inválido" }), /não encontrado/);
     await assert.rejects(changeReferenceRecord(database, other, "financial_account", account.id, "deactivate"), /não encontrado/);
 

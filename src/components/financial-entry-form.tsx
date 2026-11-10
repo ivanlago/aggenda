@@ -2,7 +2,6 @@
 import { PaymentMethodFields } from "@/components/payment-catalog-context";
 
 import { useState } from "react";
-import Link from "next/link";
 import { createFinancialEntry } from "@/actions/app";
 import { ActionForm } from "@/components/action-form";
 import { FinancialScheduleFields } from "@/components/financial-schedule-fields";
@@ -11,9 +10,9 @@ import { ModalShell } from "@/components/modal-shell";
 import { ReferenceSelect } from "@/components/reference-records";
 import type { ReferenceRecord } from "@/lib/reference-records";
 
-type Props = { categories: ReferenceRecord[]; costCenters: ReferenceRecord[]; today: string; initialType?: string; autoOpen?: boolean };
+type Props = { categories: ReferenceRecord[]; today: string; initialType?: string; autoOpen?: boolean };
 
-function EntryFields({ categories, costCenters, today, initialType }: Props) {
+function EntryFields({ categories, today, initialType }: Props) {
   const [type, setType] = useState(initialType === "payable" ? "payable" : "receivable");
   const [realized, setRealized] = useState(false);
   return <ActionForm action={createFinancialEntry} successMessage="Lançamento financeiro criado." className="grid gap-5 sm:grid-cols-2" resetOnSuccess={false}>
@@ -24,7 +23,6 @@ function EntryFields({ categories, costCenters, today, initialType }: Props) {
     </FormSection>
     <FormSection title="Classificação">
       <ReferenceSelect key={type} kind="financial_category" name="categoryId" label="Categoria" records={categories} financialType={type} />
-      <ReferenceSelect kind="cost_center" name="costCenterId" label="Centro de custo" records={costCenters} />
     </FormSection>
     <FormSection title="Valores e vencimento">
       <label className="grid gap-2 text-sm font-bold">Valor (R$) *<input className="field" name="amount" inputMode="decimal" required placeholder="0,00" /></label>
@@ -42,6 +40,5 @@ function EntryFields({ categories, costCenters, today, initialType }: Props) {
 export function FinancialEntryControls(props: Props) {
   return <div className="flex flex-wrap items-start gap-3" id="novo-lancamento">
     <ModalShell key={props.initialType ?? "new"} title={props.initialType === "payable" ? "Nova conta a pagar" : "Nova conta a receber"} variant="new" wide closeOnSuccess defaultOpen={props.autoOpen}><EntryFields {...props} /></ModalShell>
-    <Link className="secondary-button" href="/financeiro/cadastros">Cadastros financeiros</Link>
   </div>;
 }

@@ -34,10 +34,10 @@ export function parseReportFilters(input: Record<string, unknown>, today: string
   const search = z.string().trim().max(120).parse(input.busca ?? "");
   const status = z.enum(["all", "pending", "received", "paid", "cancelled"]).parse(input.situacao ?? "all");
   const uuid = (value: unknown) => value ? z.uuid().parse(value) : undefined;
-  return { id, from, to, days, inactiveDays: Number(inactiveDays), search, status, account: uuid(input.conta), category: uuid(input.categoria), costCenter: uuid(input.centro) };
+  return { id, from, to, days, inactiveDays: Number(inactiveDays), search, status, account: uuid(input.conta), category: uuid(input.categoria) };
 }
 export function reportQuery(filters: ReportFilters) {
-  return new URLSearchParams({ relatorio: filters.id, de: filters.from, ate: filters.to, inatividade: String(filters.inactiveDays), busca: filters.search, situacao: filters.status, ...(filters.account ? { conta: filters.account } : {}), ...(filters.category ? { categoria: filters.category } : {}), ...(filters.costCenter ? { centro: filters.costCenter } : {}) });
+  return new URLSearchParams({ relatorio: filters.id, de: filters.from, ate: filters.to, inatividade: String(filters.inactiveDays), busca: filters.search, situacao: filters.status, ...(filters.account ? { conta: filters.account } : {}), ...(filters.category ? { categoria: filters.category } : {}) });
 }
 export function formatReportCell(value: ReportCell, column: ReportColumn) {
   if (value === null || value === "") return "—";

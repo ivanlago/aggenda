@@ -37,7 +37,7 @@ test("quick registration preserves the draft, auto-selects categories, and keeps
     builder.onResolve({ filter: /.*/ }, (args) => mocks[args.path] ? { path: args.path, namespace: "fixture" } : undefined);
     builder.onLoad({ filter: /./, namespace: "fixture" }, ({ path }) => ({ contents: mocks[path], resolveDir: process.cwd() }));
   } }] });
-  const compiled = { exports: {} as { StockProductForm: ComponentType<{ categories: []; subcategories: [] }>; FinancialEntryControls: ComponentType<{ accounts: unknown[]; categories: unknown[]; costCenters: []; today: string }> } };
+  const compiled = { exports: {} as { StockProductForm: ComponentType<{ categories: []; subcategories: [] }>; FinancialEntryControls: ComponentType<{ categories: unknown[]; today: string }> } };
   new Function("require", "module", "exports", bundle.outputFiles[0].text)(createRequire(import.meta.url), compiled, compiled.exports);
   const { createRoot } = await import("react-dom/client");
   const root = createRoot(dom.window.document.getElementById("root")!);
@@ -77,9 +77,9 @@ test("quick registration preserves the draft, auto-selects categories, and keeps
     assert.equal(confirmations, 1);
     assert.ok(document.querySelector("dialog"), "Rejecting discard keeps the draft open");
 
-    await act(async () => root.render(<compiled.exports.FinancialEntryControls accounts={[{ id: "inactive", name: "Antiga", isActive: false }]} categories={[{ id: "income", name: "Receita", type: "receivable" }, { id: "expense", name: "Despesa", type: "payable" }]} costCenters={[]} today="2026-10-28" />));
-    await click("Novo lançamento");
-    assert.equal(document.querySelector('dialog select[name="accountId"] option[value="inactive"]'), null);
+    await act(async () => root.render(<compiled.exports.FinancialEntryControls categories={[{ id: "income", name: "Receita", type: "receivable" }, { id: "expense", name: "Despesa", type: "payable" }]} today="2026-10-28" />));
+    await click("Nova conta a receber");
+    assert.equal(document.querySelector('dialog [name="costCenterId"]'), null);
     const category = document.querySelector<HTMLSelectElement>('dialog select[name="categoryId"]')!;
     assert.ok(category.querySelector('option[value="income"]'));
     assert.equal(category.querySelector('option[value="expense"]'), null);

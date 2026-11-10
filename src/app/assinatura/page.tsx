@@ -8,7 +8,7 @@ import { db } from "@/db";
 import { billingPayments, commercialOrders, organizationSubscriptions, pilotInvitations } from "@/db/schema";
 import { requireOrganizationMembership, getPlatformMembership } from "@/lib/session";
 import { assertOrganizationPermission } from "@/lib/permissions";
-import { commercialUsageSummary } from "@/lib/commercial-access";
+import { commercialTeamSlots, commercialUsageSummary } from "@/lib/commercial-access";
 import { signatureAddonQuote } from "@/lib/subscription-addon";
 import { formatBrl } from "@/lib/commercial-catalog";
 import { cancelSubscription } from "@/actions/billing";
@@ -27,10 +27,10 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
   const hasPilot = Boolean(invitation && !invitation.revokedAt && !invitation.redeemedAt && invitation.expiresAt > new Date()
     && invitation.email === session.user.email.toLowerCase() && (!invitation.organizationId || invitation.organizationId === organization.id));
   const initialCycle = query.cycle === "annual" || query.cycle === "semiannual" ? query.cycle : "monthly";
-  const [[subscription], payments, usage, platform] = await Promise.all([
+  const [[subscription], payments, usage, platform, requiredSlots] = await Promise.all([
     db.select().from(organizationSubscriptions).where(eq(organizationSubscriptions.organizationId, organization.id)).limit(1),
     db.select().from(billingPayments).where(eq(billingPayments.organizationId, organization.id)).orderBy(desc(billingPayments.createdAt)).limit(10),
-    commercialUsageSummary(organization.id), getPlatformMembership(session.user.id),
+    commercialUsageSummary(organization.id), getPlatformMembership(session.user.id), commercialTeamSlots(db, organization.id),
   ]);
   const initialProduct: "essential" | "professional" | "complete" = query.product === "complete" || query.product === "professional" || query.product === "essential" ? query.product : usage?.contract.product === "complete" || usage?.contract.product === "professional" ? usage.contract.product : "essential";
   const servicePlan = await getOrganizationServicePlan(organization.id);
@@ -57,7 +57,8 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
       <p className="mt-3 text-sm">Você pode escolher uma contratação abaixo quando desejar. Pagar agora inicia o período contratado.</p>
     </section>}
     {usage && <section className="panel mt-6"><h2 className="text-xl font-extrabold">{usage.contract.kind === "pilot" ? "Piloto anual — Completo" : usage.contract.kind === "trial" ? "Franquias do teste" : `Plano ${usage.contract.product === "complete" ? "Completo" : usage.contract.product === "professional" ? "Profissional" : "Essential"}`}</h2>
-      <p className="mt-2">Acesso até {usage.contract.endsAt.toLocaleDateString("pt-BR")} · até {usage.contract.professionalLimit} profissionais</p>
+      <p className="mt-2">Acesso até {usage.contract.endsAt.toLocaleDateString("pt-BR")} · {usage.contract.professionalLimit} vagas da equipe no plano</p>
+      <p className="mt-2 text-sm text-muted">Sua equipe precisa de {requiredSlots} {requiredSlots === 1 ? "vaga" : "vagas"}. Um administrador e uma secretária sem atendimento estão incluídos.</p>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">{([
         ["responses", "Respostas", usage.available.responses], ["documents", "Documentos", usage.available.documents],
       ] as const).map(([metric, label, limit]) => { const used = usage.quantities[metric] ?? 0; const percent = limit ? used / limit * 100 : 0;

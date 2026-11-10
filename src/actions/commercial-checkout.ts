@@ -6,8 +6,8 @@ import { cookies, headers } from "next/headers";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { commercialOrders, pilotInvitations, commercialContracts, organizationSubscriptions, professionals, legalAcceptances } from "@/db/schema";
-import { count } from "drizzle-orm";
+import { commercialOrders, pilotInvitations, commercialContracts, organizationSubscriptions, legalAcceptances } from "@/db/schema";
+import { commercialTeamSlots } from "@/lib/commercial-access";
 import { requireOrganizationMembership, requirePlatformMember } from "@/lib/session";
 import { signatureAddonQuote } from "@/lib/subscription-addon";
 import { commercialQuote, pilotQuote, extraQuote, type CommercialQuote } from "@/lib/commercial-catalog";
@@ -74,11 +74,11 @@ async function executeCommercialCheckout(data: FormData) {
   const order = await db.transaction(async (tx) => {
     const [existingSubscription] = await tx.select().from(organizationSubscriptions).where(eq(organizationSubscriptions.organizationId, organization.id)).for("update");
     if (!addon && quote.kind !== "extra" && existingSubscription?.billingSubscriptionId && existingSubscription.status !== "trialing" && !existingSubscription.cancelAtPeriodEnd) throw new Error("Cancele a renovação da assinatura atual antes de iniciar outra contratação. O período já pago será preservado.");
-    if (!addon && quote.kind !== "extra") {
-      const [activeProfessionals] = await tx.select({ total: count() }).from(professionals).where(and(eq(professionals.organizationId, organization.id), eq(professionals.isActive, true)));
-      if (activeProfessionals.total > quote.professionals) throw new Error("Escolha um pacote que comporte os profissionais ativos ou desative as agendas excedentes antes de contratar.");
-    }
     const [contract] = await tx.select().from(commercialContracts).where(eq(commercialContracts.organizationId, organization.id)).for("update");
+    if (!addon && quote.kind !== "extra") {
+      const requiredSlots = await commercialTeamSlots(tx, organization.id);
+      if (requiredSlots > quote.professionals) throw new Error(`Sua equipe precisa de ${requiredSlots} vagas. Escolha um pacote compatível ou ajuste a equipe antes de contratar.`);
+    }
     if (addon) {
       if (!contract || contract.kind !== "commercial" || !contract.orderId || contract.endsAt <= new Date() || contract.documentLimit) throw new Error("Este serviço requer plano pago ativo sem assinatura eletrônica incluída.");
       const [base] = await tx.select().from(commercialOrders).where(eq(commercialOrders.id, contract.orderId));
@@ -142,7 +142,7 @@ async function executeCommercialCheckout(data: FormData) {
         ? "Pacote avulso, válido até o fim da franquia atual. Sem renovação automática. Saldo não acumula."
         : pilot
         ? "Piloto: pagamento único por 1 ano; 1.000 respostas, 30 documentos enviados e 10 NFS-e nacionais por mês. Sem renovação automática. Integrações dependem de habilitação."
-        : `${quote.months} mês(es), até ${quote.professionals} profissional(is). Franquias renovam mensalmente e não acumulam.`, quantity: 1, value: quote.amountInCents / 100 }],
+        : `${quote.months} mês(es), ${quote.professionals} vaga(s) de equipe, com 1 administrador sem atendimento e 1 secretária sem atendimento incluídos.`, quantity: 1, value: quote.amountInCents / 100 }],
       subscription: recurring ? { cycle: "MONTHLY", nextDueDate: new Date().toISOString().slice(0, 19).replace("T", " ") } : undefined,
     } });
   } catch (error) {

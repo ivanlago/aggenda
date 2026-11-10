@@ -1,6 +1,6 @@
 import { and, count, eq, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { commercialContracts, commercialUsage, commercialOrders, professionals } from "@/db/schema";
+import { commercialContracts, commercialUsage, commercialOrders, organizationMembers, professionals } from "@/db/schema";
 import { addCalendarMonths } from "./commercial-catalog";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -33,11 +33,41 @@ export async function reserveCommercialUsage(tx: Tx, organizationId: string, met
   return true;
 }
 
-export async function assertProfessionalCapacity(tx: Tx, organizationId: string, excludingId?: string) {
+export async function commercialTeamSlots(database: Pick<typeof db, "select">, organizationId: string) {
+  const [activeProfessionals, members] = await Promise.all([
+    database.select({ userId: professionals.userId }).from(professionals)
+      .where(and(eq(professionals.organizationId, organizationId), eq(professionals.isActive, true))),
+    database.select({ userId: organizationMembers.userId, role: organizationMembers.role }).from(organizationMembers)
+      .where(eq(organizationMembers.organizationId, organizationId)),
+  ]);
+  const linkedUsers = new Set(activeProfessionals.map(professional => professional.userId));
+  let attendants = activeProfessionals.length;
+  let administrators = 0;
+  let receptionists = 0;
+  let otherMembers = 0;
+  for (const member of members) {
+    if (linkedUsers.has(member.userId)) continue;
+    if (member.role === "professional") attendants++;
+    else if (member.role === "owner" || member.role === "admin") administrators++;
+    else if (member.role === "receptionist") receptionists++;
+    else otherMembers++;
+  }
+  // The first paid slot is reserved for an attendant. The two included logins are role-specific.
+  return Math.max(1, attendants) + Math.max(0, administrators - 1) + Math.max(0, receptionists - 1) + otherMembers;
+}
+
+export class CommercialTeamCapacityError extends Error {}
+
+export async function checkTeamCapacityAfterChange(tx: Tx, organizationId: string) {
   const [contract] = await tx.select().from(commercialContracts).where(eq(commercialContracts.organizationId, organizationId)).for("update");
-  if (!contract) return;
-  const [usage] = await tx.select({ total: count() }).from(professionals).where(and(eq(professionals.organizationId, organizationId), eq(professionals.isActive, true), excludingId ? ne(professionals.id, excludingId) : undefined));
-  if (usage.total >= contract.professionalLimit) throw new Error("Limite de profissionais com agenda ativa atingido. Consulte Plano e cobrança.");
+  if (!contract) return async () => {};
+  const before = await commercialTeamSlots(tx, organizationId);
+  return async () => {
+    const after = await commercialTeamSlots(tx, organizationId);
+    if (after > Math.max(before, contract.professionalLimit)) {
+      throw new CommercialTeamCapacityError("Este cadastro precisa de uma vaga adicional. Consulte Plano e cobrança.");
+    }
+  };
 }
 
 export async function commercialUsageSummary(organizationId: string) {

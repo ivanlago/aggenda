@@ -43,7 +43,7 @@ export function TeamCreateForm({ professions, specialties }: { professions: Prof
             <option value="no">Não</option><option value="yes">Sim</option>
           </select>
           {role === "professional" && <input type="hidden" name="isAttendant" value="yes" />}
-          <span className="text-xs font-normal text-muted">Uma agenda ativa ocupa uma vaga de profissional no plano. Quem só usa o painel para recepção ou administração não precisa de agenda.</span>
+          <span className="text-xs font-normal text-muted">O plano inclui 1 administrador e 1 secretária sem atendimento. O atendente e cada pessoa adicional usam uma vaga do plano.</span>
         </label>
       </div>
 

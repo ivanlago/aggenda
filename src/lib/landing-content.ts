@@ -175,7 +175,7 @@ export const landingFaqs = [
   ],
   [
     "Quanto custa o Aggenda?",
-    "O app para um profissional custa R$ 49,90 no mensal ou R$ 478,80 por ano, equivalente a R$ 39,90/mês. Há pacotes por equipe, agentes e assinatura eletrônica opcionais. Você pode testar por 30 dias sem cartão e sem cobrança automática. Confira o total antes de pagar.",
+    "O plano de entrada inclui um administrador que não atende, uma secretária que não atende e um atendente. Custa R$ 49,90 no mensal ou R$ 478,80 por ano, equivalente a R$ 39,90 por mês. Você pode testar por 30 dias sem cartão e sem cobrança automática.",
   ],
   [
     "Posso usar no celular?",
@@ -187,7 +187,7 @@ export const landingFaqs = [
   ],
   [
     "Posso gerenciar vários profissionais?",
-    "Sim. Cadastre a equipe e organize agendas e permissões. A oferta de entrada contempla um profissional; profissionais adicionais são contratados separadamente.",
+    "Sim. O plano inclui acesso para um administrador e uma secretária que não atendem, além das vagas contratadas. Cada pessoa adicional ocupa uma vaga cobrada na mesma faixa de preço de um profissional, mesmo que só use a recepção ou a administração.",
   ],
   [
     "Posso controlar pacotes e sessões?",
@@ -233,14 +233,14 @@ export const landingPlans = [
     subtitle: "Seu negócio começa bem organizado.",
     monthly: landingOffer.monthlyInCents,
     annual: landingOffer.annualTotalInCents,
-    tag: "APP PARA 1 PROFISSIONAL",
+    tag: "INCLUI 1 PROFISSIONAL ATIVO",
     features: [
       "Agenda e agendamento online",
       "Clientes e histórico",
       "Vendas, pacotes e estoque",
       "Financeiro e comissões",
     ],
-    note: "Amplie a equipe com profissionais adicionais.",
+    note: "Inclui 1 atendente, 1 administrador e 1 secretária sem atendimento. Cada pessoa adicional ocupa uma vaga do plano.",
   },
   {
     name: "Profissional",

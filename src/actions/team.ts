@@ -1,5 +1,5 @@
 "use server";
-import { assertProfessionalCapacity } from "@/lib/commercial-access";
+import { checkTeamCapacityAfterChange, CommercialTeamCapacityError } from "@/lib/commercial-access";
 
 import { and, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -87,7 +87,8 @@ export async function createUnifiedTeamMember(formData: FormData) {
     body: { name: fullName, email, password: `${crypto.randomUUID()}-${crypto.randomUUID()}` },
   })).user;
 
-  await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "professionals", persist: (image) => db.transaction(async (tx) => {
+  const result = await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "professionals", persist: (image) => db.transaction(async (tx) => {
+    const checkCapacity = await checkTeamCapacityAfterChange(tx, organization.id);
     await tx.update(users).set({
       name: fullName,
       shortName,
@@ -95,8 +96,7 @@ export async function createUnifiedTeamMember(formData: FormData) {
       updatedAt: new Date(),
     }).where(eq(users.id, provisionedUser.id));
     await tx.insert(organizationMembers).values({ organizationId: organization.id, userId: provisionedUser.id, role });
-    if (!isAttendant) return;
-    await assertProfessionalCapacity(tx, organization.id);
+    if (!isAttendant) return checkCapacity();
     const [professional] = await tx.insert(professionals).values({
       organizationId: organization.id,
       userId: provisionedUser.id,
@@ -109,6 +109,7 @@ export async function createUnifiedTeamMember(formData: FormData) {
       ...image,
       isBookable: true,
     }).returning({ id: professionals.id });
+    await checkCapacity();
     if (specialtyIds.length) await tx.insert(professionalSpecialties).values(specialtyIds.map((specialtyId) => ({
       organizationId: organization.id, professionalId: professional.id, specialtyId,
     })));
@@ -119,7 +120,11 @@ export async function createUnifiedTeamMember(formData: FormData) {
       registrationNumber,
       state: field(formData, "registrationState").toUpperCase() || null,
     });
-  }) });
+  }) }).catch((error: unknown) => {
+    if (error instanceof CommercialTeamCapacityError) return { error: error.message };
+    throw error;
+  });
+  if (result?.error) return result;
 
   await auth.api.requestPasswordReset({
     body: { email, redirectTo: `/redefinir-senha?primeiroAcesso=1&email=${encodeURIComponent(email)}` },
@@ -147,9 +152,11 @@ export async function updateUnifiedTeamMember(formData: FormData) {
   if (role === "professional" && !professionalId) throw new Error("O perfil Atendente precisa ser atendente.");
   const [currentProfessional] = professionalId ? await db.select({ imagePublicId: professionals.imagePublicId }).from(professionals).where(and(eq(professionals.id, professionalId), eq(professionals.organizationId, organization.id), eq(professionals.userId, userId))).limit(1) : [];
   if (professionalId && !currentProfessional) throw new Error("Profissional não vinculado a este membro.");
-  await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "professionals", currentPublicId: currentProfessional?.imagePublicId, persist: (image) => db.transaction(async (tx) => {
+  const result = await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "professionals", currentPublicId: currentProfessional?.imagePublicId, persist: (image) => db.transaction(async (tx) => {
+    const checkCapacity = await checkTeamCapacityAfterChange(tx, organization.id);
     await tx.update(users).set({ name: fullName, shortName, updatedAt: new Date() }).where(eq(users.id, userId));
     await tx.update(organizationMembers).set({ role }).where(and(eq(organizationMembers.organizationId, organization.id), eq(organizationMembers.userId, userId)));
+    await checkCapacity();
     if (!professionalId) return;
     await tx.update(professionals).set({
       name: shortName,
@@ -169,7 +176,11 @@ export async function updateUnifiedTeamMember(formData: FormData) {
       organizationId: organization.id, professionalId, council, registrationNumber,
       state: field(formData, "registrationState").toUpperCase() || null,
     });
-  }) });
+  }) }).catch((error: unknown) => {
+    if (error instanceof CommercialTeamCapacityError) return { error: error.message };
+    throw error;
+  });
+  if (result?.error) return result;
   revalidatePath("/equipe");
 }
 
@@ -255,11 +266,13 @@ export async function inviteTeamMember(formData: FormData) {
   })).user;
 
   await db.transaction(async (tx) => {
+    const checkCapacity = await checkTeamCapacityAfterChange(tx, organization.id);
     await tx.insert(organizationMembers).values({
       organizationId: organization.id,
       userId: provisionedUser.id,
       role,
     });
+    await checkCapacity();
     await tx.delete(organizationInvitations).where(and(
       eq(organizationInvitations.organizationId, organization.id),
       eq(organizationInvitations.email, email),
@@ -334,6 +347,7 @@ export async function acceptInvitation(token: string) {
   }
 
   await db.transaction(async (tx) => {
+    const checkCapacity = await checkTeamCapacityAfterChange(tx, invitation.organizationId);
     await tx
       .insert(organizationMembers)
       .values({
@@ -376,6 +390,7 @@ export async function acceptInvitation(token: string) {
             or(isNull(professionals.userId), eq(professionals.userId, session.user.id))));
       }
     }
+    await checkCapacity();
     await tx
       .update(organizationInvitations)
       .set({ acceptedAt: new Date() })
@@ -447,6 +462,7 @@ export async function updateTeamMemberAccess(
   }
 
   await db.transaction(async (tx) => {
+    const checkCapacity = await checkTeamCapacityAfterChange(tx, organization.id);
     const [updatedMember] = await tx.update(organizationMembers).set({ role }).where(and(
       eq(organizationMembers.organizationId, organization.id),
       eq(organizationMembers.userId, userId),
@@ -467,10 +483,12 @@ export async function updateTeamMemberAccess(
       )).returning({ id: professionals.id });
       if (!updated.length) throw new Error("Profissional inválido para esta empresa.");
     }
+    await checkCapacity();
   });
   revalidatePath("/equipe");
   return { success: true, savedRole: role, submissionId: crypto.randomUUID() };
   } catch (error) {
+    if (error instanceof CommercialTeamCapacityError) return { error: error.message };
     console.error(JSON.stringify({
       level: "error",
       message: "Falha ao atualizar acesso da equipe",

@@ -314,11 +314,11 @@ export function LandingPricing() {
           </p>
           <ul>
             <li>
-              Segundo e terceiro profissionais <strong>R$ 18,90/mês por profissional</strong>
+              Segunda e terceira vagas da equipe <strong>R$ 18,90/mês por vaga</strong>
             </li>
-            <li>App para até 3 profissionais <strong>R$ 87,70/mês</strong></li>
-            <li>App para até 5 profissionais <strong>R$ 106,70/mês</strong></li>
-            <li>App para até 10 profissionais <strong>R$ 134,20/mês</strong></li>
+            <li>App com 3 vagas da equipe <strong>R$ 87,70/mês</strong></li>
+            <li>App com 5 vagas da equipe <strong>R$ 106,70/mês</strong></li>
+            <li>App com 10 vagas da equipe <strong>R$ 134,20/mês</strong></li>
             <li>
               Assinatura eletrônica: 50 documentos <strong>R$ 19,90/mês</strong>
             </li>

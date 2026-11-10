@@ -34,9 +34,9 @@ export function CommercialCheckout({ pilot = false, disabled = false, extras = f
         </label>)}
       </fieldset>
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="grid gap-2 font-bold">Profissionais com agenda ativa
+        <label className="grid gap-2 font-bold">Vagas da equipe
           <select className="field" name="professionals" value={selection.professionals} onChange={(e) => setSelection({ ...selection, professionals: Number(e.target.value) })}>
-            {[1, 2, 3, 5, 10].map((n) => <option key={n} value={n}>Até {n} {n === 1 ? "profissional" : "profissionais"}</option>)}
+            {[1, 2, 3, 5, 10].map((n) => <option key={n} value={n}>{n} {n === 1 ? "vaga" : "vagas"}</option>)}
           </select>
         </label>
         <label className="grid gap-2 font-bold">Período
@@ -45,6 +45,7 @@ export function CommercialCheckout({ pilot = false, disabled = false, extras = f
           </select>
         </label>
       </div>
+      <p className="text-sm text-muted">O plano inclui 1 administrador e 1 secretária sem atendimento, além das vagas selecionadas acima. A primeira vaga é do atendente. Cada pessoa adicional ocupa outra vaga, mesmo que só use a recepção ou a administração.</p>
       <SubscriptionServices signatureControl={<label className="flex items-start gap-3 text-sm font-bold"><input className="mt-1" type="checkbox" name="signatures" checked={selection.signatures} onChange={e => setSelection({ ...selection, signatures: e.target.checked })} />Adicionar assinatura eletrônica à contratação</label>} />
       <div className="rounded-2xl bg-brand/5 p-5" aria-live="polite"><strong className="text-3xl">{formatBrl(quote.amountInCents)}</strong>
         <p>{quote.months === 1 ? "Por mês. Cartão com renovação mensal; Pix com renovação manual." : `Pagamento antecipado por ${quote.months} meses; equivalente a ${formatBrl(quote.equivalentInCents!)} por mês. Sem renovação automática.`}</p>

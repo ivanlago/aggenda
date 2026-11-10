@@ -3,7 +3,7 @@
 import { resolveOrganizationPayment } from "@/lib/payment-methods";
 import { parseClinicalVisitDate, validateClinicalPhotoPair } from "@/lib/clinical-photo";
 import { serviceCatalogReference } from "@/lib/reference-snapshots";
-import { assertProfessionalCapacity } from "@/lib/commercial-access";
+import { checkTeamCapacityAfterChange } from "@/lib/commercial-access";
 import { serviceDeletionError } from "@/lib/service-deletion";
 import { roomBookingError } from "@/lib/room-errors";
 
@@ -320,7 +320,7 @@ export async function createProfessional(formData: FormData) {
   })).user;
 
   await db.transaction(async (tx) => {
-    await assertProfessionalCapacity(tx, organization.id);
+    const checkCapacity = await checkTeamCapacityAfterChange(tx, organization.id);
     const [professional] = await tx
       .insert(professionals)
       .values({
@@ -347,6 +347,7 @@ export async function createProfessional(formData: FormData) {
         role: "professional",
       });
     }
+    await checkCapacity();
     if (!existingUser) {
       await tx
         .update(users)
@@ -513,7 +514,7 @@ export async function updateProfessional(formData: FormData) {
     if (valid.length !== specialtyIds.length) throw new Error("Uma ou mais especialidades não pertencem à profissão.");
   }
   await db.transaction(async (tx) => {
-    if (formData.get("isActive") === "on") await assertProfessionalCapacity(tx, organization.id, id);
+    const checkCapacity = await checkTeamCapacityAfterChange(tx, organization.id);
     const [updated] = await tx.update(professionals).set({
       name,
       professionId: professionId === "other" ? null : professionId,
@@ -530,6 +531,7 @@ export async function updateProfessional(formData: FormData) {
       updatedAt: new Date(),
     }).where(and(eq(professionals.id, id), eq(professionals.organizationId, organization.id))).returning({ id: professionals.id });
     if (!updated) throw new Error("Profissional não encontrado.");
+    await checkCapacity();
     await tx.delete(professionalSpecialties).where(and(
       eq(professionalSpecialties.professionalId, id),
       eq(professionalSpecialties.organizationId, organization.id)

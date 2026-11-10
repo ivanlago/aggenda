@@ -28,7 +28,7 @@ type Payment = { id: number; method: string; amount: string };
 
 const currency = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export function RetailSaleForm({ variants: productVariants, commissionChoices = [], offerings = [], clients, canDiscount, attendanceId, initialClientId, initialCart = [], pendingAttendanceItems = [], packageBalances = [], timezone, quoteId, paymentProviders = [], defaultPaymentProvider = "manual", initialItemType = "all", cashRegisters, canOpenCash = false, operatorName }: { variants: Variant[]; commissionChoices?: CommissionBeneficiaryOption[]; offerings?: Variant[]; clients: Client[]; canDiscount: boolean; attendanceId?: string; initialClientId?: string; initialCart?: CartItem[]; pendingAttendanceItems?: { id: string; catalogId: string; quantity: number }[]; packageBalances?: PosPackageBalance[]; timezone?: string; quoteId?: string; customPaymentMethods?: { id: string; name: string }[]; paymentProviders?: { id: string; name: string; environment: string }[]; defaultPaymentProvider?: string; initialItemType?: "all" | "product" | "service" | "package"; cashRegisters: Awaited<ReturnType<typeof getPosCashRegisters>>; canOpenCash?: boolean; operatorName?: string }) {
+export function RetailSaleForm({ variants: productVariants, commissionChoices = [], defaultCommissionBeneficiary = "", offerings = [], clients, canDiscount, attendanceId, initialClientId, initialCart = [], pendingAttendanceItems = [], packageBalances = [], timezone, quoteId, paymentProviders = [], defaultPaymentProvider = "manual", initialItemType = "all", cashRegisters, canOpenCash = false, operatorName }: { variants: Variant[]; commissionChoices?: CommissionBeneficiaryOption[]; defaultCommissionBeneficiary?: string; offerings?: Variant[]; clients: Client[]; canDiscount: boolean; attendanceId?: string; initialClientId?: string; initialCart?: CartItem[]; pendingAttendanceItems?: { id: string; catalogId: string; quantity: number }[]; packageBalances?: PosPackageBalance[]; timezone?: string; quoteId?: string; customPaymentMethods?: { id: string; name: string }[]; paymentProviders?: { id: string; name: string; environment: string }[]; defaultPaymentProvider?: string; initialItemType?: "all" | "product" | "service" | "package"; cashRegisters: Awaited<ReturnType<typeof getPosCashRegisters>>; canOpenCash?: boolean; operatorName?: string }) {
   const { methods, accounts } = usePaymentCatalog();
   const usableMethods = methods.filter(method => accounts.some(account => account.id === method.defaultAccountId));
   const manualMethods = usableMethods.filter(method => method.provider === "manual");
@@ -61,7 +61,9 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
   const discountInCents = discountedCart.reduce((sum, item) => sum + item.discountInCents, 0);
   const total = Math.max(0, subtotal - discountInCents);
   const paymentsPayload = payments.map((payment) => ({ method: payment.method, amountInCents: Math.max(0, Math.round((Number(payment.amount.replace(",", ".")) || 0) * 100)) }));
-  const [commissionBeneficiary, setCommissionBeneficiary] = useState("");
+  const [withCommission, setWithCommission] = useState(false);
+  const [commissionBeneficiary, setCommissionBeneficiary] = useState(defaultCommissionBeneficiary);
+  const selectedCommission = withCommission && commissionChoices.some(option => option.value === commissionBeneficiary) ? commissionBeneficiary : "";
   const [selectedCashId, setSelectedCashId] = useState("");
   const openRegisters = cashRegisters.filter(register => register.sessionId);
   const cashRegister = openRegisters.find(register => register.sessionId === selectedCashId) ?? (openRegisters.length === 1 ? openRegisters[0] : undefined);
@@ -91,14 +93,26 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
 
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,0.55fr)_minmax(0,0.7fr)_minmax(0,0.75fr)] xl:items-start">
-      <section className="panel grid min-w-0 gap-4" aria-label="Dados da venda">
-        <div className="grid min-w-0 items-start gap-4">
+      <div className="grid min-w-0 gap-5 xl:self-stretch">
+        <section className="panel grid min-w-0 content-start gap-4" aria-label="Cliente">
           <ClientSearch clients={clients} value={clientId} fixed={Boolean(attendanceId || (quoteId && initialClientId))} required={requiresClient} onChange={(id) => { const client = clients.find((item) => item.id === id); setClientId(id); setReceiptEmail(client?.email ?? ""); setReceiptPhone(client?.phone ?? ""); }} />
-          <label className="grid gap-2 text-sm font-bold">Beneficiário das comissões dos itens vendidos<select className="field" value={commissionBeneficiary} onChange={event => setCommissionBeneficiary(event.target.value)}><option value="">Definir depois / sem comissão</option>{commissionChoices.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select><span className="text-xs font-normal text-muted">Separado do operador do caixa. O serviço principal do atendimento continua vinculado ao profissional responsável. Pacotes são comissionados por sessão utilizada.</span></label>
-        </div>
-        <PosPackageNotice balances={packageBalances.filter((balance) => balance.clientId === clientId)} timezone={timezone} />
-      </section>
-      <section className="panel grid min-w-0 gap-3" aria-label="Caixa">
+          <PosPackageNotice balances={packageBalances.filter((balance) => balance.clientId === clientId)} timezone={timezone} />
+        </section>
+        <section className="panel grid min-w-0 content-start gap-3" aria-label="Comissão">
+          <label className="flex items-center gap-2 text-sm font-bold">
+            <input type="checkbox" checked={withCommission} onChange={event => setWithCommission(event.target.checked)} />
+            Venda com comissão?
+          </label>
+          {withCommission && (commissionChoices.length ? <label className="grid gap-2 text-sm font-bold">
+            Beneficiário da comissão
+            <select className="field" value={selectedCommission} onChange={event => setCommissionBeneficiary(event.target.value)}>
+              <option value="">Selecione</option>
+              {commissionChoices.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label> : <p className="text-sm text-muted">Nenhum beneficiário com regra de comissão de venda ativa.</p>)}
+        </section>
+      </div>
+      <section className="panel grid min-w-0 content-start gap-3 xl:self-stretch" aria-label="Caixa">
         <h2 className="text-lg font-extrabold">Caixa</h2>
         {operatorName && <p className="text-sm text-muted">Operador: {operatorName}</p>}
         {openRegisters.length ? <label className="grid gap-2 text-sm font-bold">Caixa da venda
@@ -117,13 +131,21 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
           </ActionForm>
         </ModalShell>}
       </section>
-      <section className="panel grid min-w-0 gap-3" aria-label="Informações da venda">
+      <section className="panel grid min-w-0 content-start gap-3 xl:self-stretch" aria-label="Informações da venda">
         <h2 className="text-lg font-extrabold">Informações da venda</h2>
         <p className="text-sm text-muted">{cart.length} {cart.length === 1 ? "item" : "itens"} no carrinho</p>
         <p className="text-xl font-extrabold text-brand">Total: {currency(total)}</p>
         {requiresClient && !clientId && <p className="text-sm text-muted">Identifique o cliente para vender serviços ou pacotes.</p>}
-        <ModalShell title="Pagamento da venda" triggerLabel="Concluir venda" variant="payment" closeOnSuccess wide triggerDisabled={!cart.length || Boolean(discountError) || (requiresClient && !clientId)}>
-          <ActionForm action={async data => { if (onlinePayment) { checkoutKeyRef.current ??= crypto.randomUUID(); data.set("checkoutKey", checkoutKeyRef.current); } return registerRetailSale(data); }} successMessage="Venda registrada com sucesso." onSuccess={() => { checkoutKeyRef.current = null; setCart([]); setDiscountValue(""); setPayments([{ id: Date.now(), method: "", amount: "" }]); }} className="grid gap-4">
+        {withCommission && commissionChoices.length > 0 && !selectedCommission && <p className="text-sm text-muted">Selecione o beneficiário da comissão.</p>}
+        <ModalShell title="Pagamento da venda" triggerLabel="Concluir venda" variant="payment" closeOnSuccess wide triggerDisabled={!cart.length || Boolean(discountError) || (requiresClient && !clientId) || (withCommission && !selectedCommission)}>
+          <ActionForm action={async data => { if (onlinePayment) { checkoutKeyRef.current ??= crypto.randomUUID(); data.set("checkoutKey", checkoutKeyRef.current); } return registerRetailSale(data); }} successMessage="Venda registrada com sucesso." onSuccess={() => {
+            checkoutKeyRef.current = null;
+            setCart([]);
+            setDiscountValue("");
+            setPayments([{ id: Date.now(), method: "", amount: "" }]);
+            setWithCommission(false);
+            setCommissionBeneficiary(defaultCommissionBeneficiary);
+          }} className="grid gap-4">
             {attendanceId && <input type="hidden" name="attendanceId" value={attendanceId} />}
             <input type="hidden" name="pendingAttendanceItemIds" value={JSON.stringify(pendingItemsInCart(pendingAttendanceItems, cart))} />
             <input type="hidden" name="checkoutProvider" value={checkoutProvider} />
@@ -131,7 +153,7 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
             <input type="hidden" name="payments" value={JSON.stringify(paymentsPayload)} />
             <input type="hidden" name="clientId" value={clientId} />
             {quoteId && <input type="hidden" name="quoteId" value={quoteId} />}
-            <input type="hidden" name="commissionBeneficiary" value={commissionBeneficiary} />
+            <input type="hidden" name="commissionBeneficiary" value={selectedCommission} />
             <input type="hidden" name="cashClosingId" value={cashRegister?.sessionId ?? ""} />
             <p className="text-lg font-extrabold">Total a pagar: {currency(total)}</p>
             <label className="grid gap-2 text-sm font-bold">Recebimento<select className="field" value={checkoutProvider} onChange={event => { setCheckoutProvider(event.target.value); setOnlineMethodId(""); }}><option value="manual">Recebimento manual / maquininha externa</option>{availableProviders.map(provider => <option key={provider.id} value={provider.id}>Receber pelo {provider.name}{provider.environment === "sandbox" ? " (testes)" : ""}</option>)}</select></label>
@@ -150,7 +172,7 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
             </fieldset>}
             {!onlinePayment && <div className="grid gap-2 rounded-2xl border p-3"><div className="flex flex-wrap items-center gap-4"><p className="text-sm font-extrabold">Enviar recibo</p><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" name="sendReceiptWhatsapp" checked={sendReceiptWhatsapp} onChange={(event) => setSendReceiptWhatsapp(event.target.checked)} /> WhatsApp</label><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" name="sendReceiptEmail" checked={sendReceiptEmail} onChange={(event) => setSendReceiptEmail(event.target.checked)} /> E-mail</label></div>{sendReceiptWhatsapp ? <PhoneInput name="receiptPhone" value={receiptPhone} onValueChange={setReceiptPhone} placeholder="WhatsApp: (71) 99999-9999" /> : null}{sendReceiptEmail ? <input className="field" name="receiptEmail" type="email" value={receiptEmail} onChange={(event) => setReceiptEmail(event.target.value)} placeholder="E-mail do comprador" /> : null}<p className="text-xs text-muted">O recibo para impressora térmica será aberto ao concluir.</p></div>}
             {cashError && <p className="text-sm text-amber-800" role="status">{cashError}</p>}
-            <button className="primary-button justify-center" disabled={Boolean(cashError) || !cart.length || (!onlinePayment && paidTotal !== total) || Boolean(discountError) || (requiresClient && !clientId)}>{onlinePayment ? `Gerar cobrança ${paymentProviders.find(provider => provider.id === checkoutProvider)?.name ?? "integrada"}` : "Confirmar pagamento"}</button>
+            <button className="primary-button justify-center" disabled={Boolean(cashError) || !cart.length || (!onlinePayment && paidTotal !== total) || Boolean(discountError) || (requiresClient && !clientId) || (withCommission && !selectedCommission)}>{onlinePayment ? `Gerar cobrança ${paymentProviders.find(provider => provider.id === checkoutProvider)?.name ?? "integrada"}` : "Confirmar pagamento"}</button>
           </ActionForm>
         </ModalShell>
       </section>

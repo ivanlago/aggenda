@@ -11,6 +11,7 @@ import type { db } from "../src/db";
 import * as schema from "../src/db/schema";
 import { CommissionRepository } from "../src/lib/commission-repository";
 import { commissionAmount, packageSessionBase } from "../src/lib/commission-beneficiary";
+import { saleCommissionBeneficiaries } from "../src/lib/commission-beneficiaries";
 
 test("commission math uses net cents, fixed quantities and exact package allocation",()=>{
   assert.equal(commissionAmount(9000,"percentage",1000),900);
@@ -62,6 +63,14 @@ test("commission migration, unified ledger, settlement, replay, refund adjustmen
     await pg.exec(await readFile(new URL("../drizzle/0076_commission_ledger.sql",import.meta.url),"utf8"));
     assert.equal((await pg.query<{source_key:string}>("SELECT source_key FROM commission_entries WHERE id=$1",[legacy])).rows[0].source_key,`appointment:${visit}`);
     const database=drizzle(pg,{schema}) as unknown as typeof db,repo=new CommissionRepository(database);
+    const saleRule = randomUUID();
+    await pg.query("INSERT INTO commission_rules(id,organization_id,beneficiary_user_id,source_type,calculation_type,value,trigger,is_active) VALUES ($1,$2,'seller','product','percentage',1000,'received',true)",[saleRule,org]);
+    assert.deepEqual(await saleCommissionBeneficiaries(database,org,"seller"), {
+      choices: [{value:"user:seller",label:"Beneficiário teste · equipe"}], defaultBeneficiary:"user:seller",
+    });
+    assert.equal((await saleCommissionBeneficiaries(database,org,"cashier")).defaultBeneficiary, "");
+    await pg.query("UPDATE commission_rules SET is_active=false WHERE id=$1",[saleRule]);
+    assert.deepEqual(await saleCommissionBeneficiaries(database,org,"seller"), {choices:[],defaultBeneficiary:""});
     const sale=randomUUID(),product=randomUUID(),bill=randomUUID(),item=randomUUID();
     await pg.query("INSERT INTO retail_product_variants(id,organization_id) VALUES ($1,$2)",[product,org]);
     await pg.query("INSERT INTO financial_entries(id,organization_id,type,status,amount_in_cents) VALUES ($1,$2,'receivable','received',9000)",[bill,org]);

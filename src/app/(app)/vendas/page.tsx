@@ -3,7 +3,7 @@ import { activePaymentMethods } from "@/lib/payment-methods";
 import { formatOrganizationDateTime } from "@/lib/organization-time";
 import { paymentMethodLabel } from "@/lib/presentation-labels";
 import { PaginatedCollection } from "@/components/paginated-collection";
-import { commissionBeneficiaries } from "@/lib/commission-beneficiaries";
+import { saleCommissionBeneficiaries } from "@/lib/commission-beneficiaries";
 import { SalesWorkspace } from "@/components/sales-workspace";
 import { RetailQuoteForm } from "@/components/retail-quote-form";
 import { RetailQuoteLibrary } from "@/components/retail-quote-library";
@@ -34,7 +34,7 @@ export const metadata = { title: "Venda e orçamento" };
 export default async function SalesPage({ searchParams }: { searchParams: Promise<{ inicio?: string; novo?: string; convert?: string; quote?: string; search?: string; page?: string; history?: string; pacote?: string; tipo?: string; modo?: string }> }) {
   const params = await searchParams;
   const { organization, session } = await requireOrganization();
-  const [commissionChoices, customPaymentMethods] = await Promise.all([commissionBeneficiaries(db, organization.id), activePaymentMethods(organization.id)]);
+  const [saleCommission, customPaymentMethods] = await Promise.all([saleCommissionBeneficiaries(db, organization.id, session.user.id), activePaymentMethods(organization.id)]);
   const canSell = hasOrganizationPermission(organization.role, "sales.sell") || hasOrganizationPermission(organization.role, "inventory.manage");
   const canDiscount = hasOrganizationPermission(organization.role, "sales.discount");
   const canCancel = hasOrganizationPermission(organization.role, "sales.cancel");
@@ -77,7 +77,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
   }
 
   return <div className="page-wrap">
-    {canSell && <SalesWorkspace initialMode={params.modo === "orcamento" ? "quote" : "sale"} key={sourceQuote?.id ?? `new-${params.pacote ?? params.inicio ?? (params.novo === "1" ? "sale" : "default")}-${params.tipo ?? "all"}`} sale={conversionBlocked || missingStock ? <p className="panel text-sm text-amber-800">{conversionBlocked || "Há itens indisponíveis ou sem estoque suficiente. Atualize o catálogo/estoque antes de converter este orçamento."}</p> : <RetailSaleForm cashRegisters={cashRegisters} canOpenCash={hasOrganizationPermission(organization.role, "finance.manage")} operatorName={session.user.name} customPaymentMethods={customPaymentMethods} initialItemType={params.pacote || params.tipo === "package" ? "package" : "all"} paymentProviders={posSettings.providers} defaultPaymentProvider={posSettings.defaultProvider} commissionChoices={commissionChoices} quoteId={sourceQuote?.id} initialClientId={sourceQuote?.clientId ?? undefined} initialCart={sourceQuote?.items ?? packageSelection.cart} offerings={sourceQuote ? [] : offerings} variants={saleCatalog} clients={clientRows} canDiscount={canDiscount} packageBalances={packageBalances} timezone={organization.timezone} />} quote={<RetailQuoteForm catalog={[...quoteProducts, ...offerings]} clients={clientRows} canDiscount={canDiscount} defaultValidity={organizationDate(new Date(new Date().getTime() + 30 * 86400000), organization.timezone)} />} />}
+    {canSell && <SalesWorkspace initialMode={params.modo === "orcamento" ? "quote" : "sale"} key={sourceQuote?.id ?? `new-${params.pacote ?? params.inicio ?? (params.novo === "1" ? "sale" : "default")}-${params.tipo ?? "all"}`} sale={conversionBlocked || missingStock ? <p className="panel text-sm text-amber-800">{conversionBlocked || "Há itens indisponíveis ou sem estoque suficiente. Atualize o catálogo/estoque antes de converter este orçamento."}</p> : <RetailSaleForm cashRegisters={cashRegisters} canOpenCash={hasOrganizationPermission(organization.role, "finance.manage")} operatorName={session.user.name} customPaymentMethods={customPaymentMethods} initialItemType={params.pacote || params.tipo === "package" ? "package" : "all"} paymentProviders={posSettings.providers} defaultPaymentProvider={posSettings.defaultProvider} commissionChoices={saleCommission.choices} defaultCommissionBeneficiary={saleCommission.defaultBeneficiary} quoteId={sourceQuote?.id} initialClientId={sourceQuote?.clientId ?? undefined} initialCart={sourceQuote?.items ?? packageSelection.cart} offerings={sourceQuote ? [] : offerings} variants={saleCatalog} clients={clientRows} canDiscount={canDiscount} packageBalances={packageBalances} timezone={organization.timezone} />} quote={<RetailQuoteForm catalog={[...quoteProducts, ...offerings]} clients={clientRows} canDiscount={canDiscount} defaultValidity={organizationDate(new Date(new Date().getTime() + 30 * 86400000), organization.timezone)} />} />}
     <nav className="my-5 flex flex-wrap gap-2"><Link className="secondary-button" href="/vendas/historico">Histórico completo</Link><Link className="secondary-button" href="/vendas/relatorios">Relatórios do PDV</Link></nav>
     <section className="grid gap-4 sm:grid-cols-3">
       <article className="panel"><ShoppingBag className="size-5 text-brand" /><p className="mt-4 text-3xl font-extrabold">{sales.length}</p><p className="text-sm text-muted">vendas recentes</p></article>

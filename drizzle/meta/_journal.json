@@ -680,6 +680,13 @@
       "when": 1794308266395,
       "tag": "0096_default_financial_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1794310238724,
+      "tag": "0097_pos_operator_cash",
+      "breakpoints": true
     }
   ]
 }

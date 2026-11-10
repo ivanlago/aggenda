@@ -17,9 +17,9 @@ async function loadPage(path: string) {
       builder.onLoad({ filter: /./, namespace: "fixture" }, ({ path }) => {
         if (path === "@/lib/charge-list") return { contents: 'export async function loadChargeList(){return globalThis.chargeListing} export async function loadChargeableEntries(){return globalThis.financeRows[1]}' };
         if (path === "@/db") return { contents: `let index=0; export const db={transaction(work){return work(db)},selectDistinct(){return db.select()},select(){const rows=globalThis.financeRows[index++];const query=new Proxy({}, {get(_,key){return key==='then' ? (resolve)=>Promise.resolve(rows).then(resolve) : ()=>query}});return query}};` };
-        if (path === "@/lib/session") return { contents: 'export async function requireOrganization(){return {organization:{id:"org",role:"owner",timezone:"America/Bahia"}}}' };
+        if (path === "@/lib/session") return { contents: 'export async function requireOrganization(){return {organization:{id:"org",role:"owner",timezone:"America/Bahia"},session:{user:{id:"operator"}}}}' };
         if (path === "@/components/action-form") return { resolveDir: process.cwd(), contents: 'import React from "react"; export function ActionForm({children, className}){return React.createElement("form",{className},children)}' };
-        return { contents: "export const saveServicePackage=async()=>{},toggleServicePackage=async()=>{},saveReference=async()=>{},changeReference=async()=>{},createFinancialAccount=async()=>{},createFinancialCategory=async()=>{},createFinancialCostCenter=async()=>{},createFinancialEntry=async()=>{},deleteFinancialEntry=async()=>{},updateFinancialEntryStatus=async()=>{},cancelPaymentCharge=async()=>{},refundPaymentCharge=async()=>{},sendPaymentChargeWhatsApp=async()=>{},updatePaymentCharge=async()=>{},createProviderCharge=async()=>{},openCash=async()=>{},closeCash=async()=>{};" };
+        return { contents: "export const saveServicePackage=async()=>{},toggleServicePackage=async()=>{},saveReference=async()=>{},changeReference=async()=>{},createFinancialAccount=async()=>{},createFinancialCategory=async()=>{},createFinancialCostCenter=async()=>{},createFinancialEntry=async()=>{},deleteFinancialEntry=async()=>{},updateFinancialEntryStatus=async()=>{},cancelPaymentCharge=async()=>{},refundPaymentCharge=async()=>{},sendPaymentChargeWhatsApp=async()=>{},updatePaymentCharge=async()=>{},createProviderCharge=async()=>{},openCash=async()=>{},closeCash=async()=>{},adjustPosCash=async()=>{};" };
       });
     } }],
   });
@@ -98,20 +98,21 @@ test("Meus Caixas keeps current operations available while displaying a filtered
   const page = await loadPage("./src/app/(app)/financeiro/meus-caixas/page.tsx");
   const openedAt = new Date("2026-10-01T12:00:00Z");
   const closedAt = new Date("2026-10-01T15:00:00Z");
-  const accounts = [{ id: "safe", name: "Cofre" }, { id: "bank", name: "Banco" }];
   globals.financeRows = [
-    accounts,
-    [{ id: "open", accountId: "safe", account: "Cofre", openedAt, opening: 10000 }],
-    accounts,
-    [{ id: "operator", name: "Operador de teste" }],
+    [{ id: "open", openedAt }],
     [{ id: "closed", account: "Banco", operator: "Operador de teste", openedAt, closedAt, expected: 20000, counted: 19900, difference: -100 }],
-    [{ name: "Dinheiro", amount: 3500 }],
+    [{ id: "operator", name: "Operador de teste" }],
+    [{ id: "open", ownerId: "operator", operator: "Operador de teste", accountId: null, openedAt, opening: 10000 }],
+    [{ id: 1, method: "cash", name: "Dinheiro", amount: 3500, occurredAt: openedAt }, { id: 2, method: "pix", name: "Pix", amount: 2500, occurredAt: openedAt }],
+    [{ id: "adjustment", kind: "supply", reason: "Troco", amountInCents: 1000, createdAt: openedAt }],
   ];
   try {
-    const html = renderToStaticMarkup(await page({ searchParams: Promise.resolve({ status: "fechado" }) }));
-    assert.match(html, /Abrir novo caixa/);
-    assert.match(html, /Fechar e conferir/);
-    assert.match(html, /Saldo esperado agora.*135,00/);
+    const html = await renderAsync(await page({ searchParams: Promise.resolve({ status: "fechado" }) }));
+    assert.match(html, /Suprimento/);
+    assert.match(html, /Sangria/);
+    assert.match(html, /Fechar caixa/);
+    assert.match(html, /Dinheiro esperado.*145,00/);
+    assert.match(html, /Pix.*25,00/);
     assert.match(html, /Histórico de caixas/);
     assert.match(html, /Operador de teste/);
     assert.match(html, /Conferido.*199,00/);

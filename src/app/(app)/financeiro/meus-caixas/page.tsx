@@ -1,92 +1,220 @@
+import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import Link from "next/link";
-import { closeCash, openCash } from "@/actions/financial-operations";
+import { z } from "zod";
+
+import { adjustPosCash, closeCash, openCash } from "@/actions/financial-operations";
 import { ActionForm } from "@/components/action-form";
+import { ModalShell } from "@/components/modal-shell";
 import { PageHeader } from "@/components/page-header";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { db } from "@/db";
 import { cashClosings, cashMovements, financialAccounts, users } from "@/db/schema";
-import { financeMonth, financeQuery, launchesPath, nextFinanceMonth, type FinanceSearchParams } from "@/lib/finance-navigation";
+import { financeMonth, financeQuery, nextFinanceMonth, type FinanceSearchParams } from "@/lib/finance-navigation";
 import { organizationDate, zonedDate } from "@/lib/organization-time";
 import { hasOrganizationPermission } from "@/lib/permissions";
+import { canOperatePosCash, getOpenPosCash, loadPosCashActivity, posCashBalance } from "@/lib/pos-cash";
 import { requireOrganization } from "@/lib/session";
 
 export const metadata = { title: "Meus Caixas" };
+const path = "/financeiro/meus-caixas";
 const money = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+const cashSelection = {
+  id: cashClosings.id, accountId: cashClosings.accountId, account: financialAccounts.name, operator: users.name,
+  ownerId: cashClosings.openedByUserId, opening: cashClosings.openingBalanceInCents, expected: cashClosings.expectedBalanceInCents,
+  counted: cashClosings.countedBalanceInCents, difference: cashClosings.differenceInCents, openedAt: cashClosings.openedAt,
+  closedAt: cashClosings.closedAt, notes: cashClosings.notes,
+};
+
+function cashRows() {
+  return db.select(cashSelection).from(cashClosings)
+    .leftJoin(financialAccounts, and(eq(financialAccounts.id, cashClosings.accountId), eq(financialAccounts.organizationId, cashClosings.organizationId)))
+    .leftJoin(users, eq(users.id, cashClosings.openedByUserId));
+}
+
+type Cash = Awaited<ReturnType<typeof cashRows>>[number];
+const cashName = (cash: Cash) => cash.account ? "Caixa por conta · " + cash.account : "Caixa " + cash.id.slice(0, 8);
+
 export default async function CashClosingPage({ searchParams }: { searchParams: Promise<FinanceSearchParams> }) {
-  const { organization } = await requireOrganization();
-  if (!hasOrganizationPermission(organization.role, "finance.read")) return <div className="page-wrap"><p className="panel">Acesso restrito ao financeiro.</p></div>;
-  const canManage = hasOrganizationPermission(organization.role, "finance.manage");
-  const date = (value: Date) => value.toLocaleString("pt-BR", { timeZone: organization.timezone });
+  const { session, organization } = await requireOrganization();
+  const actor = session.user.id;
+  const canOperate = canOperatePosCash(organization.role);
+  const manageLegacy = hasOrganizationPermission(organization.role, "finance.manage");
+  const manageAll = hasOrganizationPermission(organization.role, "cash.close");
+  const readAll = hasOrganizationPermission(organization.role, "finance.read") || manageAll;
+  if (!canOperate && !readAll) return <div className="page-wrap"><p className="panel">Acesso restrito ao caixa.</p></div>;
+
   const query = financeQuery(await searchParams);
-  const today = organizationDate(new Date(), organization.timezone);
-  const month = query.get("mes") ? financeMonth(query.get("mes") ?? undefined, today) : "";
-  const accountId = query.get("conta");
-  const operatorId = query.get("operador");
+  const month = query.get("mes") ? financeMonth(query.get("mes") ?? undefined, organizationDate(new Date(), organization.timezone)) : "";
+  const operator = query.get("operador");
   const status = query.get("status");
-  const [accounts, openCashList, historyAccounts, operators] = await Promise.all([
-    db.select({ id: financialAccounts.id, name: financialAccounts.name }).from(financialAccounts).where(and(eq(financialAccounts.organizationId, organization.id), eq(financialAccounts.isActive, true))).orderBy(asc(financialAccounts.name)),
-    db.select({ id: cashClosings.id, accountId: cashClosings.accountId, account: financialAccounts.name, opening: cashClosings.openingBalanceInCents, openedAt: cashClosings.openedAt }).from(cashClosings).innerJoin(financialAccounts, eq(financialAccounts.id, cashClosings.accountId)).where(and(eq(cashClosings.organizationId, organization.id), isNull(cashClosings.closedAt))),
-    db.select({ id: financialAccounts.id, name: financialAccounts.name }).from(financialAccounts).where(eq(financialAccounts.organizationId, organization.id)).orderBy(asc(financialAccounts.name)),
-    db.selectDistinct({ id: users.id, name: users.name }).from(cashClosings).innerJoin(users, eq(users.id, cashClosings.openedByUserId)).where(eq(cashClosings.organizationId, organization.id)).orderBy(asc(users.name)),
-  ]);
-  const filteredAccount = historyAccounts.find((account) => account.id === accountId);
-  const history = await db.select({
-    id: cashClosings.id, account: financialAccounts.name, operator: users.name, opening: cashClosings.openingBalanceInCents,
-    expected: cashClosings.expectedBalanceInCents, counted: cashClosings.countedBalanceInCents, difference: cashClosings.differenceInCents,
-    openedAt: cashClosings.openedAt, closedAt: cashClosings.closedAt, notes: cashClosings.notes,
-  }).from(cashClosings)
-    .innerJoin(financialAccounts, eq(financialAccounts.id, cashClosings.accountId))
-    .leftJoin(users, eq(users.id, cashClosings.openedByUserId))
-    .where(and(
-      eq(cashClosings.organizationId, organization.id),
-      filteredAccount ? eq(cashClosings.accountId, filteredAccount.id) : undefined,
-      operatorId ? eq(cashClosings.openedByUserId, operatorId) : undefined,
+  const selected = z.uuid().safeParse(query.get("caixa"));
+  const date = (value: Date) => value.toLocaleString("pt-BR", { timeZone: organization.timezone });
+  const scope = and(eq(cashClosings.organizationId, organization.id), readAll ? undefined :
+    and(eq(cashClosings.openedByUserId, actor), isNull(cashClosings.accountId)));
+
+  const [ownCash, history, operators] = await Promise.all([
+    canOperate ? getOpenPosCash(db, organization.id, actor) : null,
+    cashRows().where(and(scope,
+      readAll && operator ? eq(cashClosings.openedByUserId, operator) : undefined,
       status === "aberto" ? isNull(cashClosings.closedAt) : status === "fechado" ? isNotNull(cashClosings.closedAt) : undefined,
       month ? gte(cashClosings.openedAt, zonedDate(month + "-01", "00:00", organization.timezone)) : undefined,
       month ? lt(cashClosings.openedAt, zonedDate(nextFinanceMonth(month) + "-01", "00:00", organization.timezone)) : undefined,
-    )).orderBy(desc(cashClosings.openedAt));
-  const availableAccounts = accounts.filter((account) => !openCashList.some((cash) => cash.accountId === account.id));
-  const summaries = await Promise.all(openCashList.map(cash => db.select({ name: cashMovements.paymentMethodName, amount: sql<number>`coalesce(sum(${cashMovements.amountInCents}),0)`.mapWith(Number) }).from(cashMovements).where(and(eq(cashMovements.organizationId, organization.id), eq(cashMovements.accountId, cash.accountId), isNull(cashMovements.cashClosingId), gte(cashMovements.occurredAt, cash.openedAt))).groupBy(cashMovements.paymentMethodName)));
+    )).orderBy(desc(cashClosings.openedAt)),
+    readAll ? db.selectDistinct({ id: users.id, name: users.name }).from(cashClosings)
+      .innerJoin(users, eq(users.id, cashClosings.openedByUserId)).where(scope).orderBy(asc(users.name)) : [],
+  ]);
+  const detailId = selected.success ? selected.data : ownCash?.id;
+  const [detail] = detailId ? await cashRows().where(and(scope, eq(cashClosings.id, detailId))).limit(1) : [];
 
   return <div className="page-wrap grid gap-5">
-    <Link className="inline-flex text-sm font-bold text-brand" href={launchesPath}>← Lançamentos</Link>
-    <PageHeader eyebrow="Financeiro" title="Meus Caixas" description="Abra, confira e acompanhe o histórico de cada caixa." />
-    <p className="text-sm text-muted">Saldo esperado = abertura + entradas − saídas. Pagamentos divididos entram em seus respectivos destinos. O fechamento registra o saldo conferido; não movimenta dinheiro entre contas.</p>
-    {!accounts.length && <p className="panel text-sm text-amber-900">Cadastre uma conta ou caixa ativo. <Link className="font-bold underline" href="/financeiro/cadastros">Cadastrar conta</Link></p>}
-    <section className="grid gap-5 lg:grid-cols-2">
-      {canManage && <ActionForm action={openCash} successMessage="Caixa aberto." className="panel grid content-start gap-3"><h2 className="text-lg font-extrabold">Abrir novo caixa</h2><label className="grid gap-2 text-sm font-bold">Conta / caixa<select className="field" name="accountId" required><option value="">Selecione</option>{availableAccounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label><label className="grid gap-2 text-sm font-bold">Saldo contado na abertura<input className="field" name="openingBalance" inputMode="decimal" required /></label><button className="primary-button" disabled={!availableAccounts.length}>Abrir caixa</button></ActionForm>}
-      <article className="panel"><h2 className="text-lg font-extrabold">Caixas abertos</h2><div className="mt-4 grid gap-4">{openCashList.map((cash, index) => <div className="rounded-xl border p-4" key={cash.id}>
-        <h3 className="font-extrabold">{cash.account}</h3><p className="text-sm text-muted">Aberto em {date(cash.openedAt)} · abertura {money(cash.opening)}</p>
-        <ul className="my-3 grid gap-1 text-sm">{summaries[index].map((group, position) => <li className="flex justify-between gap-3" key={position}><span>{group.name || "Histórico sem identificação da forma"}</span><strong>{money(group.amount)}</strong></li>)}</ul>
-        <p className="font-bold text-brand">Saldo esperado agora: {money(cash.opening + summaries[index].reduce((sum, item) => sum + item.amount, 0))}</p>
-        {canManage && <ActionForm action={closeCash} successMessage="Caixa fechado e conferido." className="mt-4 grid gap-3"><input type="hidden" name="id" value={cash.id} /><label className="grid gap-2 text-sm font-bold">Saldo contado no fechamento<input className="field" name="countedBalance" inputMode="decimal" required /></label><label className="grid gap-2 text-sm font-bold">Observação<input className="field" name="notes" maxLength={2000} /></label><button className="secondary-button">Fechar e conferir</button></ActionForm>}
-      </div>)}{!openCashList.length && <p className="empty-state">Nenhum caixa aberto.</p>}</div></article>
-    </section>
+    <PageHeader eyebrow="Financeiro" title="Meus Caixas" description="Abra seu caixa, consulte os movimentos e confira o dinheiro no fechamento." />
+    <div className="flex flex-wrap gap-3">
+      <Link className="secondary-button" href="/vendas">Ir para Venda e Orçamento</Link>
+      {canOperate && !ownCash && <ModalShell title="Abrir caixa" variant="new" compact closeOnSuccess>
+        <ActionForm action={openCash} successMessage="Caixa aberto." className="grid gap-4">
+          <label className="grid gap-2 text-sm font-bold">Saldo inicial em dinheiro (R$)<input className="field" name="openingBalance" inputMode="decimal" placeholder="0,00" /></label>
+          <button className="primary-button w-fit">Abrir caixa</button>
+        </ActionForm>
+      </ModalShell>}
+      {ownCash && detailId !== ownCash.id && <Link className="primary-button" href={path + "?caixa=" + ownCash.id}>Ver meu caixa aberto</Link>}
+    </div>
+    {detail && <CashDetails cash={detail} organizationId={organization.id} date={date} canManage={detail.accountId ? manageLegacy : manageAll || (canOperate && detail.ownerId === actor)} />}
+    {selected.success && !detail && <p className="empty-state">Caixa indisponível.</p>}
+
     <section className="panel">
       <h2 className="text-lg font-extrabold">Histórico de caixas</h2>
-      <form method="get" className="mt-4 grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <form method="get" className="mt-4 grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <label className="grid gap-1 text-xs font-bold">Mês da abertura<input className="field" type="month" name="mes" defaultValue={month} /></label>
-        <label className="grid gap-1 text-xs font-bold">Caixa<select className="field" name="conta" defaultValue={accountId ?? ""}><option value="">Todos</option>{historyAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
-        <label className="grid gap-1 text-xs font-bold">Operador da abertura<select className="field" name="operador" defaultValue={operatorId ?? ""}><option value="">Todos</option>{operators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name}</option>)}</select></label>
+        {readAll && <label className="grid gap-1 text-xs font-bold">Operador<select className="field" name="operador" defaultValue={operator ?? ""}><option value="">Todos</option>{operators.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
         <label className="grid gap-1 text-xs font-bold">Situação<select className="field" name="status" defaultValue={status ?? ""}><option value="">Todas</option><option value="aberto">Aberto</option><option value="fechado">Fechado</option></select></label>
-        <div className="flex flex-wrap gap-2"><button className="primary-button">Filtrar</button><Link className="secondary-button" href="/financeiro/meus-caixas">Limpar</Link></div>
+        <div className="flex flex-wrap gap-2"><button className="primary-button">Filtrar</button><Link className="secondary-button" href={path}>Limpar</Link></div>
       </form>
       <PaginatedCollection key={query.toString()} label="Caixas" className="mt-4 divide-y">
-        {history.map((cash) => <article className="grid gap-2 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start" key={cash.id}>
+        {history.map((cash) => <article className="flex flex-wrap items-center justify-between gap-2 py-4" key={cash.id}>
           <div>
-            <div className="flex flex-wrap items-center gap-2"><h3 className="font-bold">{cash.account}</h3><span className="status-pill">{cash.closedAt ? "Fechado" : "Aberto"}</span></div>
-            <p className="mt-1 text-sm text-muted">Abertura {date(cash.openedAt)}{cash.closedAt && " · fechamento " + date(cash.closedAt)}{cash.operator && " · " + cash.operator}</p>
-            {cash.notes && <p className="mt-2 text-sm text-muted">{cash.notes}</p>}
+            <div className="flex flex-wrap items-center gap-2"><h3 className="font-bold">{cashName(cash)}</h3><span className="status-pill">{cash.closedAt ? "Fechado" : "Aberto"}</span></div>
+            <p className="mt-1 text-sm text-muted">{date(cash.openedAt)}{cash.closedAt && " · fechado em " + date(cash.closedAt)}{cash.operator && " · " + cash.operator}</p>
+            {cash.closedAt && <p className="text-sm">Conferido {money(cash.counted ?? 0)} · diferença {money(cash.difference ?? 0)}</p>}
           </div>
-          <div className="sm:text-right">
-            <p className="text-sm font-bold">{cash.closedAt ? "Conferido " + money(cash.counted ?? 0) : "Saldo de abertura " + money(cash.opening)}</p>
-            {cash.closedAt && <p className="text-xs text-muted">Esperado {money(cash.expected ?? 0)} · diferença {money(cash.difference ?? 0)}</p>}
-          </div>
+          <Link className="secondary-button" href={path + "?" + new URLSearchParams([...query].filter(([key]) => key !== "caixa").concat([["caixa", cash.id]]))}>Ver resumo</Link>
         </article>)}
         {!history.length && <p className="empty-state">Nenhum caixa encontrado para os filtros.</p>}
       </PaginatedCollection>
     </section>
   </div>;
+}
+
+async function CashDetails({ cash, organizationId, date, canManage }: { cash: Cash; organizationId: string; date: (value: Date) => string; canManage: boolean }) {
+  if (cash.accountId) {
+    const [total] = !cash.closedAt ? await db.select({ amount: sql<number>`coalesce(sum(${cashMovements.amountInCents}), 0)`.mapWith(Number) })
+      .from(cashMovements).where(and(eq(cashMovements.organizationId, organizationId), eq(cashMovements.accountId, cash.accountId),
+        isNull(cashMovements.cashClosingId), gte(cashMovements.occurredAt, cash.openedAt))) : [];
+    return <section className="panel grid gap-3">
+      <h2 className="text-lg font-extrabold">{cashName(cash)}</h2>
+      <p className="text-sm text-muted">Abertura em {date(cash.openedAt)} · {cash.operator}</p>
+      <p className="font-bold">Saldo esperado {money(cash.expected ?? cash.opening + (total?.amount ?? 0))}</p>
+      {cash.closedAt ? <ClosedSummary cash={cash} /> : canManage && <CloseForm cashId={cash.id} countedLabel="Saldo conferido (R$)" />}
+    </section>;
+  }
+
+  const activity = await loadPosCashActivity(db, organizationId, cash.id);
+  const totals = new Map<string, { name: string; sales: number; reversals: number }>();
+  let afterClosing = 0;
+  let lateCount = 0;
+  for (const payment of activity.payments) {
+    if (cash.closedAt && payment.occurredAt > cash.closedAt) {
+      lateCount++;
+      afterClosing += payment.amount;
+      continue;
+    }
+    const name = payment.name || payment.method;
+    const key = payment.methodId ?? name;
+    const total = totals.get(key) ?? { name, sales: 0, reversals: 0 };
+    if (payment.amount > 0) total.sales += payment.amount;
+    else total.reversals -= payment.amount;
+    totals.set(key, total);
+  }
+  const movements = [
+    ...activity.payments.map(item => ({
+      id: "p-" + item.id, at: item.occurredAt, label: item.amount < 0 ? "Estorno" : "Recebimento",
+      description: item.name || item.method, amount: item.amount,
+    })),
+    ...activity.adjustments.map(item => ({
+      id: item.id, at: item.createdAt, label: item.kind === "supply" ? "Suprimento" : "Sangria", description: item.reason,
+      amount: item.kind === "supply" ? item.amountInCents : -item.amountInCents,
+    })),
+  ].sort((a, b) => b.at.getTime() - a.at.getTime());
+  const expected = cash.expected ?? posCashBalance(cash.opening, activity);
+
+  return <section className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]" aria-label="Resumo do caixa">
+    <div className="panel grid min-w-0 gap-4">
+      <div>
+        <div className="flex flex-wrap items-center gap-2"><h2 className="text-lg font-extrabold">{cashName(cash)}</h2><span className="status-pill">{cash.closedAt ? "Fechado" : "Aberto"}</span></div>
+        <p className="mt-1 text-sm text-muted">Abertura em {date(cash.openedAt)} · {cash.operator}</p>
+      </div>
+      <div>
+        <h3 className="mb-2 font-extrabold">Pagamentos por forma</h3>
+        {totals.size ? <dl className="divide-y">{[...totals].map(([key, total]) => <div className="flex flex-wrap justify-between gap-2 py-2" key={key}>
+          <dt className="font-bold">{total.name}</dt><dd className="text-right"><strong>{money(total.sales - total.reversals)}</strong><p className="text-xs text-muted">Recebido {money(total.sales)} · estornado {money(total.reversals)}</p></dd>
+        </div>)}</dl> : <p className="empty-state">Nenhum pagamento registrado.</p>}
+        {lateCount > 0 && <p className="mt-2 text-sm text-muted">Movimentos após o fechamento ({lateCount}) · saldo líquido {money(afterClosing)}</p>}
+      </div>
+      <div>
+        <h3 className="mb-2 font-extrabold">Movimentações</h3>
+        <PaginatedCollection key={cash.id} label="Movimentações" className="divide-y">
+          {movements.map(item => <article key={item.id} className="flex flex-wrap justify-between gap-2 py-2">
+            <div className="min-w-0 break-words"><p className="font-bold">{item.label} · {item.description}</p><p className="text-xs text-muted">{date(item.at)}{cash.closedAt && item.at > cash.closedAt && " · após o fechamento"}</p></div>
+            <p className={item.amount < 0 ? "font-bold text-red-700" : "font-bold text-emerald-700"}>{money(item.amount)}</p>
+          </article>)}
+          {!movements.length && <p className="empty-state">Nenhuma movimentação registrada.</p>}
+        </PaginatedCollection>
+      </div>
+    </div>
+    <aside className="panel grid gap-4" aria-label="Conferência do dinheiro">
+      <h3 className="text-lg font-extrabold">Conferência do dinheiro</h3>
+      <p className="text-sm">Saldo inicial {money(cash.opening)}</p>
+      <p className="font-extrabold text-brand">Dinheiro esperado {money(expected)}</p>
+      {cash.closedAt ? <ClosedSummary cash={cash} /> : canManage && <>
+        <div className="flex flex-wrap gap-2">
+          <AdjustmentForm cashId={cash.id} kind="supply" label="Suprimento" />
+          <AdjustmentForm cashId={cash.id} kind="withdrawal" label="Sangria" />
+        </div>
+        <CloseForm cashId={cash.id} />
+      </>}
+    </aside>
+  </section>;
+}
+
+function ClosedSummary({ cash }: { cash: Cash }) {
+  return <div className="grid gap-2 text-sm">
+    <p>Valor contado {money(cash.counted ?? 0)}</p>
+    <p className={cash.difference ? "font-bold text-amber-800" : "font-bold text-brand"}>Diferença {money(cash.difference ?? 0)}</p>
+    {cash.notes && <p className="break-words text-muted">{cash.notes}</p>}
+  </div>;
+}
+
+function CloseForm({ cashId, countedLabel = "Dinheiro contado (R$)" }: { cashId: string; countedLabel?: string }) {
+  return <ModalShell title="Fechar caixa" variant="edit" triggerLabel="Fechar caixa" secondary compact closeOnSuccess>
+    <ActionForm action={closeCash} successMessage="Caixa fechado." className="grid gap-3">
+      <input type="hidden" name="id" value={cashId} />
+      <label className="grid gap-2 text-sm font-bold">{countedLabel}<input className="field" name="countedBalance" inputMode="decimal" required /></label>
+      <label className="grid gap-2 text-sm font-bold">Observação<textarea className="field" name="notes" maxLength={2000} /></label>
+      <button className="primary-button">Fechar e conferir</button>
+    </ActionForm>
+  </ModalShell>;
+}
+
+function AdjustmentForm({ cashId, kind, label }: { cashId: string; kind: "supply" | "withdrawal"; label: string }) {
+  return <ModalShell title={label} variant="new" secondary compact closeOnSuccess>
+    <ActionForm action={adjustPosCash} successMessage={label + " registrado."} className="grid gap-3">
+      <input type="hidden" name="id" value={cashId} />
+      <input type="hidden" name="adjustmentId" value={randomUUID()} />
+      <input type="hidden" name="kind" value={kind} />
+      <label className="grid gap-2 text-sm font-bold">Valor (R$)<input className="field" name="amount" inputMode="decimal" required /></label>
+      <label className="grid gap-2 text-sm font-bold">Motivo<textarea className="field" name="reason" maxLength={500} required /></label>
+      <button className="primary-button">Registrar {label.toLowerCase()}</button>
+    </ActionForm>
+  </ModalShell>;
 }

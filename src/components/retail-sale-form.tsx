@@ -10,8 +10,9 @@ import { PosCatalog, type CatalogItem } from "@/components/pos-catalog";
 import { registerRetailSale } from "@/actions/retail";
 import { ActionForm } from "@/components/action-form";
 import { ModalShell } from "@/components/modal-shell";
+import Link from "next/link";
 import { openCash } from "@/actions/financial-operations";
-import type { getPosCashRegisters } from "@/lib/pos-cash";
+import type { getOpenPosCash } from "@/lib/pos-cash";
 import { PhoneInput } from "@/components/phone-input";
 import { ClientSearch } from "@/components/client-search";
 import { OrderDiscountField } from "@/components/order-discount-field";
@@ -28,7 +29,7 @@ type Payment = { id: number; method: string; amount: string };
 
 const currency = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export function RetailSaleForm({ variants: productVariants, commissionChoices = [], defaultCommissionBeneficiary = "", offerings = [], clients, canDiscount, attendanceId, initialClientId, initialCart = [], pendingAttendanceItems = [], packageBalances = [], timezone, quoteId, paymentProviders = [], defaultPaymentProvider = "manual", initialItemType = "all", cashRegisters, canOpenCash = false, operatorName }: { variants: Variant[]; commissionChoices?: CommissionBeneficiaryOption[]; defaultCommissionBeneficiary?: string; offerings?: Variant[]; clients: Client[]; canDiscount: boolean; attendanceId?: string; initialClientId?: string; initialCart?: CartItem[]; pendingAttendanceItems?: { id: string; catalogId: string; quantity: number }[]; packageBalances?: PosPackageBalance[]; timezone?: string; quoteId?: string; customPaymentMethods?: { id: string; name: string }[]; paymentProviders?: { id: string; name: string; environment: string }[]; defaultPaymentProvider?: string; initialItemType?: "all" | "product" | "service" | "package"; cashRegisters: Awaited<ReturnType<typeof getPosCashRegisters>>; canOpenCash?: boolean; operatorName?: string }) {
+export function RetailSaleForm({ variants: productVariants, commissionChoices = [], defaultCommissionBeneficiary = "", offerings = [], clients, canDiscount, attendanceId, initialClientId, initialCart = [], pendingAttendanceItems = [], packageBalances = [], timezone, quoteId, paymentProviders = [], defaultPaymentProvider = "manual", initialItemType = "all", cashSession, operatorName }: { variants: Variant[]; commissionChoices?: CommissionBeneficiaryOption[]; defaultCommissionBeneficiary?: string; offerings?: Variant[]; clients: Client[]; canDiscount: boolean; attendanceId?: string; initialClientId?: string; initialCart?: CartItem[]; pendingAttendanceItems?: { id: string; catalogId: string; quantity: number }[]; packageBalances?: PosPackageBalance[]; timezone?: string; quoteId?: string; customPaymentMethods?: { id: string; name: string }[]; paymentProviders?: { id: string; name: string; environment: string }[]; defaultPaymentProvider?: string; initialItemType?: "all" | "product" | "service" | "package"; cashSession: Awaited<ReturnType<typeof getOpenPosCash>>; operatorName?: string }) {
   const { methods, accounts } = usePaymentCatalog();
   const usableMethods = methods.filter(method => accounts.some(account => account.id === method.defaultAccountId));
   const manualMethods = usableMethods.filter(method => method.provider === "manual");
@@ -64,14 +65,7 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
   const [withCommission, setWithCommission] = useState(false);
   const [commissionBeneficiary, setCommissionBeneficiary] = useState(defaultCommissionBeneficiary);
   const selectedCommission = withCommission && commissionChoices.some(option => option.value === commissionBeneficiary) ? commissionBeneficiary : "";
-  const [selectedCashId, setSelectedCashId] = useState("");
-  const openRegisters = cashRegisters.filter(register => register.sessionId);
-  const cashRegister = openRegisters.find(register => register.sessionId === selectedCashId) ?? (openRegisters.length === 1 ? openRegisters[0] : undefined);
-  const closedRegisters = cashRegisters.filter(register => !register.sessionId);
-  const cashMethods = onlinePayment ? [] : paymentsPayload.flatMap(payment => payment.amountInCents > 0
-    ? manualMethods.filter(method => method.id === payment.method && method.kind === "cash") : []);
-  const cashError = cashMethods.length && (!cashRegister || cashMethods.some(method => method.defaultAccountId !== cashRegister.accountId))
-    ? "Volte à venda e selecione ou abra o caixa vinculado ao pagamento em dinheiro." : "";
+  const cashError = cashSession ? "" : "Abra seu caixa antes de confirmar a venda.";
   const paidTotal = paymentsPayload.reduce((sum, payment) => sum + payment.amountInCents, 0);
 
   const addToCart = (variantId: string) => setCart((current) => {
@@ -115,21 +109,19 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
       <section className="panel grid min-w-0 content-start gap-3 xl:self-stretch" aria-label="Caixa">
         <h2 className="text-lg font-extrabold">Caixa</h2>
         {operatorName && <p className="text-sm text-muted">Operador: {operatorName}</p>}
-        {openRegisters.length ? <label className="grid gap-2 text-sm font-bold">Caixa da venda
-          <select className="field" value={cashRegister?.sessionId ?? ""} onChange={event => setSelectedCashId(event.target.value)}>
-            <option value="">Selecione um caixa aberto</option>
-            {openRegisters.map(register => <option key={register.sessionId} value={register.sessionId!}>{register.name}</option>)}
-          </select>
-        </label> : <p className="text-sm text-muted">Nenhum caixa aberto.</p>}
-        {cashRegister?.openedAt && <p className="text-sm text-brand">Aberto às {new Date(cashRegister.openedAt).toLocaleTimeString("pt-BR", { timeZone: timezone, hour: "2-digit", minute: "2-digit" })}</p>}
-        <p className="text-xs text-muted">É necessário abrir um caixa para receber em dinheiro.</p>
-        {canOpenCash && closedRegisters.length > 0 && <ModalShell title="Abrir caixa" variant="new" secondary closeOnSuccess compact>
-          <ActionForm action={openCash} successMessage="Caixa aberto." className="grid gap-4">
-            <label className="grid gap-2 text-sm font-bold">Conta do caixa<select className="field" name="accountId" required defaultValue={closedRegisters.length === 1 ? closedRegisters[0].accountId : ""}><option value="" disabled>Selecione</option>{closedRegisters.map(register => <option key={register.accountId} value={register.accountId}>{register.name}</option>)}</select></label>
-            <label className="grid gap-2 text-sm font-bold">Saldo inicial (R$)<input className="field" name="openingBalance" inputMode="decimal" required defaultValue="0,00" /></label>
-            <button className="primary-button w-fit" type="submit">Abrir caixa</button>
-          </ActionForm>
-        </ModalShell>}
+        {cashSession ? <>
+          <p className="text-sm font-bold text-brand">Caixa aberto às {new Date(cashSession.openedAt).toLocaleTimeString("pt-BR", { timeZone: timezone, hour: "2-digit", minute: "2-digit" })}</p>
+          <Link className="secondary-button w-fit" href={"/financeiro/meus-caixas?caixa=" + cashSession.id}>Resumo e movimentos</Link>
+        </> : <>
+          <p className="text-sm text-muted">Abra seu caixa para registrar vendas.</p>
+          <ModalShell title="Abrir caixa" variant="new" secondary closeOnSuccess compact>
+            <ActionForm action={openCash} successMessage="Caixa aberto." className="grid gap-4">
+              <label className="grid gap-2 text-sm font-bold">Saldo inicial em dinheiro (R$)<input className="field" name="openingBalance" inputMode="decimal" placeholder="0,00" /></label>
+              <button className="primary-button w-fit" type="submit">Abrir caixa</button>
+            </ActionForm>
+          </ModalShell>
+          <Link className="text-sm font-bold text-brand" href="/financeiro/meus-caixas">Ver histórico de caixas</Link>
+        </>}
       </section>
       <section className="panel grid min-w-0 content-start gap-3 xl:self-stretch" aria-label="Informações da venda">
         <h2 className="text-lg font-extrabold">Informações da venda</h2>
@@ -154,7 +146,7 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
             <input type="hidden" name="clientId" value={clientId} />
             {quoteId && <input type="hidden" name="quoteId" value={quoteId} />}
             <input type="hidden" name="commissionBeneficiary" value={selectedCommission} />
-            <input type="hidden" name="cashClosingId" value={cashRegister?.sessionId ?? ""} />
+            <input type="hidden" name="cashClosingId" value={cashSession?.id ?? ""} />
             <p className="text-lg font-extrabold">Total a pagar: {currency(total)}</p>
             <label className="grid gap-2 text-sm font-bold">Recebimento<select className="field" value={checkoutProvider} onChange={event => { setCheckoutProvider(event.target.value); setOnlineMethodId(""); }}><option value="manual">Recebimento manual / maquininha externa</option>{availableProviders.map(provider => <option key={provider.id} value={provider.id}>Receber pelo {provider.name}{provider.environment === "sandbox" ? " (testes)" : ""}</option>)}</select></label>
             {onlinePayment && <p className="rounded-xl bg-blue-50 p-3 text-sm text-blue-900">O cliente escolhe os meios disponíveis no provedor selecionado. A venda ficará aguardando confirmação; não registre o recebimento manualmente. O recibo será liberado após o pagamento.</p>}

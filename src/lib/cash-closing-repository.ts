@@ -21,14 +21,14 @@ export class CashClosingRepository {
     if (!Number.isSafeInteger(counted) || counted < 0 || counted > 2147483647) throw new Error("Informe um saldo contado válido.");
     return this.database.transaction(async tx => {
       const [candidate] = await tx.select().from(cashClosings).where(and(eq(cashClosings.id, id), eq(cashClosings.organizationId, org)));
-      if (!candidate) throw new Error("Caixa não encontrado.");
+      if (!candidate?.accountId) throw new Error("Caixa por conta não encontrado.");
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`cash-account:${org}:${candidate.accountId}`},0))`);
       const [cash] = await tx.select().from(cashClosings).where(and(eq(cashClosings.id, id), eq(cashClosings.organizationId, org), isNull(cashClosings.closedAt))).for("update");
       if (!cash) throw new Error("Este caixa já foi fechado.");
       const [{ at: closedAt }] = await tx.select({ at: sql`clock_timestamp()`.mapWith(value => new Date(value as string)) }).from(cashClosings).where(eq(cashClosings.id, id)).limit(1);
       const [unassigned] = await tx.select({ id: financialEntries.id }).from(financialEntries).where(and(eq(financialEntries.organizationId, org), isNull(financialEntries.accountId), eq(financialEntries.cashManagedBySale, false), gte(financialEntries.updatedAt, cash.openedAt), sql`${financialEntries.status} in ('received','paid')`)).limit(1);
       if (unassigned) throw new Error("Há lançamentos pagos ou recebidos sem conta de destino neste período. Regularize-os no financeiro antes de fechar.");
-      const filter = and(eq(cashMovements.organizationId, org), eq(cashMovements.accountId, cash.accountId), isNull(cashMovements.cashClosingId), gte(cashMovements.occurredAt, cash.openedAt), lte(cashMovements.occurredAt, closedAt));
+      const filter = and(eq(cashMovements.organizationId, org), eq(cashMovements.accountId, candidate.accountId), isNull(cashMovements.cashClosingId), gte(cashMovements.occurredAt, cash.openedAt), lte(cashMovements.occurredAt, closedAt));
       const movements = await tx.select().from(cashMovements).where(filter);
       const expected = cash.openingBalanceInCents + movements.reduce((sum, movement) => sum + movement.amountInCents, 0);
       const difference = counted - expected;

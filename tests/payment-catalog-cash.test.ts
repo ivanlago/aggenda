@@ -9,6 +9,7 @@ import type { db } from "../src/db";
 import * as schema from "../src/db/schema";
 import { choosePayment, hostedPaymentTypes, mercadoPagoMethodSettings } from "../src/lib/payment-catalog-policy";
 import { CashClosingRepository } from "../src/lib/cash-closing-repository";
+import { closePosCash, getOpenPosCash, loadPosCashActivity, openPosCash, recordPosCashAdjustment, requireOpenPosCash } from "../src/lib/pos-cash";
 
 test("catalog selection requires an active organization method and an active destination, preserving its identity and type", () => {
   const methods = [{ id: "one", name: "Pix no banco", kind: "pix", provider: "manual", defaultAccountId: "bank" }];
@@ -92,5 +93,46 @@ test("cash migration and closing: split destinations, no double counting, expens
     await assert.rejects(database.update(schema.financialEntries).set({ accountId: other }).where(eq(schema.financialEntries.id, unassigned.id)));
     await database.update(schema.financialEntries).set({ accountId: cash }).where(eq(schema.financialEntries.id, unassigned.id));
     assert.equal((await repository.close(org, "operator", guarded.id, 12800, "Regularizado")).expected, 12800);
+
+    await pg.exec("CREATE TABLE retail_sales(id uuid PRIMARY KEY, organization_id uuid NOT NULL, cash_closing_id uuid); INSERT INTO users VALUES ('second')");
+    await pg.exec(await readFile(new URL("../drizzle/0097_pos_operator_cash.sql", import.meta.url), "utf8"));
+    const posDatabase = database as unknown as typeof db;
+    await openPosCash(posDatabase, org, "operator", 10000);
+    await openPosCash(posDatabase, org, "operator", 0);
+    await openPosCash(posDatabase, org, "second", 5000);
+    const operatorCash = (await getOpenPosCash(posDatabase, org, "operator"))!;
+    const secondCash = (await getOpenPosCash(posDatabase, org, "second"))!;
+    assert.notEqual(operatorCash.id, secondCash.id);
+    await assert.rejects(posDatabase.transaction(tx => requireOpenPosCash(tx, org, "second", operatorCash.id)), /Abra seu caixa/);
+    const posSale = randomUUID();
+    await pg.query("INSERT INTO retail_sales VALUES ($1,$2,$3)", [posSale, org, operatorCash.id]);
+    const [physicalPayment] = await database.insert(schema.retailSalePayments).values([
+      { organizationId: org, saleId: posSale, method: "cash", paymentMethodId: cashId, paymentMethodName: "Dinheiro", accountId: cash, amountInCents: 4000, status: "received" },
+      { organizationId: org, saleId: posSale, method: "pix", paymentMethodId: pixId, paymentMethodName: "Pix", accountId: bank, amountInCents: 6000, status: "received" },
+    ]).returning();
+    const supply = { organizationId: org, userId: "operator", sessionId: operatorCash.id, adjustmentId: randomUUID(), manageAll: false, kind: "supply" as const, amount: 1000, reason: "Troco" };
+    await recordPosCashAdjustment(posDatabase, supply);
+    await recordPosCashAdjustment(posDatabase, supply);
+    await recordPosCashAdjustment(posDatabase, { ...supply, adjustmentId: randomUUID(), kind: "withdrawal", amount: 500, reason: "Retirada" });
+    const activity = await loadPosCashActivity(posDatabase, org, operatorCash.id);
+    assert.deepEqual(activity.payments.map(row => [row.method, row.amount]), [["cash", 4000], ["pix", 6000]]);
+    assert.equal(activity.adjustments.length, 2);
+    await assert.rejects(closePosCash(posDatabase, org, "second", operatorCash.id, false, 14500, ""), /indisponível/);
+    assert.deepEqual(await closePosCash(posDatabase, org, "operator", operatorCash.id, false, 14400, ""), { expected: 14500, counted: 14400, difference: -100 });
+    await assert.rejects(recordPosCashAdjustment(posDatabase, { ...supply, adjustmentId: randomUUID() }), /já foi fechado/);
+    const [latePix] = await database.insert(schema.retailSalePayments).values({
+      organizationId: org, saleId: posSale, method: "pix", paymentMethodId: pixId, paymentMethodName: "Pix",
+      accountId: bank, amountInCents: 2000, status: "pending",
+    }).returning();
+    await database.update(schema.retailSalePayments).set({ status: "received" }).where(eq(schema.retailSalePayments.id, latePix.id));
+    const [closed] = await database.select().from(schema.cashClosings).where(eq(schema.cashClosings.id, operatorCash.id));
+    assert.equal(closed.expectedBalanceInCents, 14500);
+    assert.ok((await loadPosCashActivity(posDatabase, org, operatorCash.id)).payments.some(row => row.amount === 2000));
+    await pg.transaction(async tx => {
+      await tx.query("SELECT set_config('aggenda.pos_cash_reversal_session', $1, true)", [secondCash.id]);
+      await tx.query("UPDATE retail_sale_payments SET status='refunded' WHERE id=$1", [physicalPayment.id]);
+    });
+    assert.deepEqual((await loadPosCashActivity(posDatabase, org, secondCash.id)).payments.map(row => row.amount), [-4000]);
+    assert.deepEqual(await closePosCash(posDatabase, org, "second", secondCash.id, false, 1000, ""), { expected: 1000, counted: 1000, difference: 0 });
   } finally { await pg.close(); }
 });

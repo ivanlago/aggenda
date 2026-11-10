@@ -2,8 +2,9 @@
 
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { db } from "@/db";
-import { auditLogs, bankImportTransactions, financialEntries, fiscalDocuments, organizationFinancialIntegrations, commercialContracts } from "@/db/schema";
+import { auditLogs, bankImportTransactions, cashClosings, financialEntries, fiscalDocuments, organizationFinancialIntegrations, commercialContracts } from "@/db/schema";
 import { CashClosingRepository } from "@/lib/cash-closing-repository";
 import { writeAuditLog } from "@/lib/audit";
 import { encryptFinancialCredential } from "@/lib/financial-secret";
@@ -11,7 +12,8 @@ import { nfseVault, openNfseCertificate } from "@/lib/nfse/vault";
 import { readFiscalCertificate } from "@/lib/nfse/certificate";
 import { governmentTransport } from "@/lib/nfse/government";
 import { checkGovernmentNfseCompatibility, readNfseProfile, selectNfseRoute, type NfseCertificateSecret, type NfseFiscalProfile } from "@/lib/nfse-routing";
-import { assertOrganizationPermission } from "@/lib/permissions";
+import { assertOrganizationPermission, hasOrganizationPermission } from "@/lib/permissions";
+import { canOperatePosCash, closePosCash, openPosCash, recordPosCashAdjustment } from "@/lib/pos-cash";
 import { requireOrganization } from "@/lib/session";
 
 const value = (data: FormData, key: string) => String(data.get(key) ?? "").trim();
@@ -19,19 +21,53 @@ const cents = (data: FormData, key: string) => { const input = value(data, key);
 
 export async function openCash(data: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "finance.manage");
-  const accountId = value(data, "accountId");
-  if (!/^[0-9a-f-]{36}$/i.test(accountId)) throw new Error("Selecione uma conta válida.");
-  await new CashClosingRepository(db).open(organization.id, session.user.id, accountId, cents(data, "openingBalance"));
+  if (!canOperatePosCash(organization.role)) throw new Error("Seu perfil não pode operar o caixa do PDV.");
+  await openPosCash(db, organization.id, session.user.id, posAmount(data, "openingBalance", true));
+  revalidatePath("/financeiro/meus-caixas");
+  revalidatePath("/vendas");
+}
+
+function posAmount(data: FormData, key: string, optional = false) {
+  const raw = value(data, key);
+  if (!raw && optional) return 0;
+  if (!/^(?:\d{1,3}(?:\.\d{3})+,\d{1,2}|\d+(?:[,.]\d{1,2})?)$/.test(raw)) throw new Error("Informe um valor válido.");
+  const amount = cents(data, key);
+  if (!Number.isSafeInteger(amount) || amount > 2147483647) throw new Error("O valor ultrapassa o limite permitido.");
+  return amount;
+}
+
+export async function adjustPosCash(data: FormData) {
+  const { session, organization } = await requireOrganization();
+  const manageAll = hasOrganizationPermission(organization.role, "cash.close");
+  if (!canOperatePosCash(organization.role) && !manageAll) throw new Error("Seu perfil não pode movimentar este caixa.");
+  const amount = posAmount(data, "amount");
+  if (amount === 0) throw new Error("Informe um valor maior que zero.");
+  await recordPosCashAdjustment(db, {
+    organizationId: organization.id, userId: session.user.id, manageAll, amount,
+    sessionId: z.uuid().parse(value(data, "id")), adjustmentId: z.uuid().parse(value(data, "adjustmentId")),
+    kind: z.enum(["supply", "withdrawal"]).parse(value(data, "kind")),
+    reason: z.string().min(1, "Informe o motivo.").max(500).parse(value(data, "reason")),
+  });
   revalidatePath("/financeiro/meus-caixas");
 }
 
 export async function closeCash(data: FormData) {
   const { session, organization } = await requireOrganization();
-  assertOrganizationPermission(organization.role, "finance.manage");
-  const result = await new CashClosingRepository(db).close(organization.id, session.user.id, value(data, "id"), cents(data, "countedBalance"), value(data, "notes"));
-  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "close", entityType: "cash_closing", entityId: value(data, "id"), details: result });
+  const id = z.uuid().parse(value(data, "id"));
+  const counted = posAmount(data, "countedBalance");
+  const notes = z.string().max(2000).parse(value(data, "notes"));
+  const manageAll = hasOrganizationPermission(organization.role, "cash.close");
+  if (!canOperatePosCash(organization.role) && !manageAll) throw new Error("Seu perfil não pode fechar este caixa.");
+  const [cash] = await db.select({ accountId: cashClosings.accountId }).from(cashClosings)
+    .where(and(eq(cashClosings.id, id), eq(cashClosings.organizationId, organization.id))).limit(1);
+  if (!cash) throw new Error("Caixa não encontrado.");
+  if (cash.accountId) assertOrganizationPermission(organization.role, "finance.manage");
+  const result = cash.accountId
+    ? await new CashClosingRepository(db).close(organization.id, session.user.id, id, counted, notes)
+    : await closePosCash(db, organization.id, session.user.id, id, manageAll, counted, notes);
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "close", entityType: "cash_closing", entityId: id, details: result });
   revalidatePath("/financeiro/meus-caixas");
+  revalidatePath("/vendas");
 }
 
 export async function importOfx(data: FormData) { const { organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage"); const accountId = value(data, "accountId"); const file = data.get("file"); if (!(file instanceof File) || file.size > 5_000_000) throw new Error("Selecione um OFX de até 5 MB."); const content = await file.text(); const blocks = content.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi) ?? []; if (!blocks.length) throw new Error("Nenhuma transação encontrada no arquivo OFX."); for (const block of blocks) { const field = (name: string) => block.match(new RegExp(`<${name}>([^<\\r\\n]+)`, "i"))?.[1]?.trim() ?? ""; const externalId = field("FITID") || `${field("DTPOSTED")}-${field("TRNAMT")}-${field("MEMO")}`; const date = field("DTPOSTED").slice(0, 8).replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3"); const amount = Math.round(Number(field("TRNAMT")) * 100); if (!date || !Number.isFinite(amount)) continue; await db.insert(bankImportTransactions).values({ organizationId: organization.id, accountId, externalId, occurredOn: date, description: field("MEMO") || field("NAME") || "Movimentação bancária", amountInCents: amount }).onConflictDoNothing(); } revalidatePath("/financeiro/conciliacao-ofx"); }

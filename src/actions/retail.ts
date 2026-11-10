@@ -7,7 +7,7 @@ import { z } from "zod";
 import { parseBeneficiary } from "@/lib/commission-beneficiary";
 import { assertCommissionBeneficiary } from "@/lib/commission-beneficiaries";
 
-import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireAttendance } from "@/lib/attendance";
 import { matchesQuoteItems } from "@/lib/retail-quote-items";
@@ -19,7 +19,6 @@ import {
   appointmentInventoryConsumptions,
   appointments, packageUsages,
   clients,
-  cashClosings, financialAccounts,
   services, servicePackages, servicePackageItems, clientPackages, clientPackageBalances,
   financialEntries,
   inventoryLots,
@@ -45,6 +44,7 @@ import { persistWithCatalogImage } from "@/lib/catalog-image";
 import { deleteCatalogImage } from "@/lib/cloudinary";
 import { assertOrganizationPermission, hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
+import { requireOpenPosCash } from "@/lib/pos-cash";
 import { getMercadoPagoCredential } from "@/lib/mercado-pago";
 import { checkoutInputHash } from "@/lib/pos-payments-policy";
 import { ensurePosCheckout, posOtherContext } from "@/lib/pos-checkout";
@@ -323,7 +323,6 @@ export async function registerRetailSale(data: FormData) {
   });
   const paymentMethod = online ? selectedProvider : normalizedPayments.length > 1 ? "mixed" : normalizedPayments[0].method;
   const cashClosingId = z.uuid("Selecione um caixa válido.").optional().parse(text(data, "cashClosingId") || undefined);
-  const cashPayments = normalizedPayments.filter(payment => payment.method === "cash" && payment.amountInCents > 0);
   // Concluir a venda representa a confirmação de recebimento do valor total.
   const received = !online;
   const commissionBeneficiary = text(data, "commissionBeneficiary") ? parseBeneficiary(text(data, "commissionBeneficiary")) : null;
@@ -431,19 +430,10 @@ export async function registerRetailSale(data: FormData) {
     if (normalizedPayments.reduce((sum, payment) => sum + payment.amountInCents, 0) !== totalInCents) throw new Error("A soma dos pagamentos deve ser igual ao total da venda.");
     const procedureTotal = additionalLines.find((item) => item.id.startsWith("appointment:"))?.total ?? 0;
     const { additionalInCents } = splitCheckoutTotal(totalInCents, procedureTotal);
-    if (cashPayments.length && !cashClosingId) throw new Error("Abra ou selecione um caixa para receber em dinheiro.");
-    if (cashClosingId) {
-      const [candidate] = await tx.select({ accountId: cashClosings.accountId }).from(cashClosings).where(and(eq(cashClosings.id, cashClosingId), eq(cashClosings.organizationId, organization.id)));
-      if (!candidate) throw new Error("Caixa indisponível.");
-      if (cashPayments.some(payment => payment.accountId !== candidate.accountId)) throw new Error("Selecione o caixa da conta vinculada ao pagamento em dinheiro.");
-      const accountIds = new Set([candidate.accountId, ...normalizedPayments.map(payment => payment.accountId)]);
-      for (const accountId of [...accountIds].sort()) {
-        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`cash-account:${organization.id}:${accountId}`},0))`);
-      }
-      const [openCash] = await tx.select({ id: cashClosings.id }).from(cashClosings)
-        .innerJoin(financialAccounts, and(eq(financialAccounts.id, cashClosings.accountId), eq(financialAccounts.organizationId, organization.id), eq(financialAccounts.isActive, true), eq(financialAccounts.accountType, "cash")))
-        .where(and(eq(cashClosings.id, cashClosingId), eq(cashClosings.organizationId, organization.id), isNull(cashClosings.closedAt)));
-      if (!openCash) throw new Error("O caixa selecionado está fechado ou indisponível.");
+    const sessionCashId = await requireOpenPosCash(tx, organization.id, session.user.id, cashClosingId);
+    const accountIds = new Set(normalizedPayments.map(payment => payment.accountId));
+    for (const accountId of [...accountIds].sort()) {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`cash-account:${organization.id}:${accountId}`},0))`);
     }
     const singlePayment = normalizedPayments.length === 1 ? normalizedPayments[0] : null;
     const paymentSnapshot = { accountId: singlePayment?.accountId ?? null, paymentMethodId: singlePayment?.paymentMethodId ?? null, paymentMethodName: singlePayment?.paymentMethodName ?? "Pagamento dividido", cashManagedBySale: true };
@@ -463,7 +453,7 @@ export async function registerRetailSale(data: FormData) {
         paymentMethod, clientId, notes: [text(data, "notes"), ...normalizedPayments.filter((payment) => payment.method === "other").map((payment) => `Outros: ${payment.otherPaymentMethod}`)].filter(Boolean).join("\n") || null, createdByUserId: session.user.id,
     }).returning({ id: financialEntries.id }) : [{ id: appointmentFinancialEntryId }];
     const [sale] = await tx.insert(retailSales).values({
-      cashClosingId,
+      cashClosingId: sessionCashId,
       commissionProfessionalId: commissionBeneficiary?.professionalId, commissionUserId: commissionBeneficiary?.beneficiaryUserId,
       organizationId: organization.id, clientId, attendanceId: sourceQuote?.attendanceId ?? attendanceId, financialEntryId: financialEntry.id, appointmentFinancialEntryId, paymentMethod,
       receiptEmail, receiptPhone: receiptPhoneDigits,
@@ -583,6 +573,16 @@ export async function reverseRetailSale(data: FormData) {
       const newBalance = product.balance + restored.sale;
       await tx.update(inventoryProducts).set({ currentQuantityMillis: newBalance, updatedAt: new Date() }).where(eq(inventoryProducts.id, item.productId));
       await tx.insert(inventoryMovements).values({ organizationId: organization.id, productId: item.productId, retailSaleId: saleId, type: operation === "refunded" ? "sale_refund" : "sale_cancellation", quantityMillis, balanceAfterMillis: newBalance, notes: reason, createdByUserId: session.user.id });
+    }
+    const payments = await tx.select({ method: retailSalePayments.method, accountId: retailSalePayments.accountId, amount: retailSalePayments.amountInCents })
+      .from(retailSalePayments).where(and(eq(retailSalePayments.saleId, saleId), eq(retailSalePayments.organizationId, organization.id)));
+    if (payments.some(payment => payment.method === "cash" && payment.accountId && payment.amount > 0)) {
+      const sessionId = await requireOpenPosCash(tx, organization.id, session.user.id);
+      await tx.execute(sql`select set_config('aggenda.pos_cash_reversal_session', ${sessionId}, true)`);
+    }
+    const accountIds = new Set(payments.flatMap(payment => payment.accountId ? [payment.accountId] : []));
+    for (const accountId of [...accountIds].sort()) {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`cash-account:${organization.id}:${accountId}`},0))`);
     }
     await tx.update(retailSales).set({ status: operation, cancelledAt: new Date(), cancelledByUserId: session.user.id, cancellationReason: reason }).where(eq(retailSales.id, saleId));
     await tx.update(retailSalePayments).set({ status: operation }).where(and(eq(retailSalePayments.saleId, saleId), eq(retailSalePayments.organizationId, organization.id)));

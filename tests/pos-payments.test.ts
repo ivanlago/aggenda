@@ -56,7 +56,13 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
     client_package_balances:schema.clientPackageBalances, audit_logs:schema.auditLogs, inventory_products:schema.inventoryProducts,
     inventory_lots:schema.inventoryLots, inventory_lot_allocations:schema.inventoryLotAllocations, inventory_lot_recalls:schema.inventoryLotRecalls,
     inventory_movements:schema.inventoryMovements, appointments:schema.appointments, package_usages:schema.packageUsages };
-  const omitted: Record<string,string[]> = { retail_sales:["payment_provider","checkout_key","checkout_input_hash","stock_restored_at","cash_closing_id"], organization_financial_integrations:["is_default_pos"] };
+  const omitted: Record<string,string[]> = {
+    retail_sales:["payment_provider","checkout_key","checkout_input_hash","stock_restored_at","cash_closing_id"],
+    organization_financial_integrations:["is_default_pos"],
+    financial_entries:["payment_method_id","payment_method_name","cash_managed_by_sale"],
+    payment_methods:["kind","provider","default_account_id"],
+    retail_sale_payments:["payment_method_id","payment_method_name","account_id","refunded_in_cents"],
+  };
   try {
     for (const [name, table] of Object.entries(tables)) {
       const columns = Object.values(getTableColumns(table)).filter(column => !omitted[name]?.includes(column.name)).map(column => {
@@ -71,11 +77,15 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
       await pg.exec(`CREATE TABLE "${name}" (${columns.join(",")})`);
     }
     await pg.exec(await readFile(new URL("../drizzle/0085_pos_online_payments.sql",import.meta.url),"utf8"));
+    await pg.exec(await readFile(new URL("../drizzle/0093_payment_catalog_cash_ledger.sql",import.meta.url),"utf8"));
     await pg.exec(await readFile(new URL("../drizzle/0095_pos_cash_session.sql",import.meta.url),"utf8"));
+    await pg.exec(await readFile(new URL("../drizzle/0097_pos_operator_cash.sql",import.meta.url),"utf8"));
     await pg.exec("CREATE UNIQUE INDEX payment_charge_events_provider_event_unique ON payment_charge_events(provider_event_id)");
     const org = randomUUID(), outside = randomUUID(), client = randomUUID(), stock = randomUUID(), product = randomUUID(), variant = randomUUID(), procedure = randomUUID(), pack = randomUUID();
     await pg.query("INSERT INTO users(id,name) VALUES ('cashier','Operador teste')");
     await pg.query("INSERT INTO organizations(id,name,timezone) VALUES ($1,'Clínica teste','America/Bahia'),($2,'Outra clínica','America/Bahia')",[org,outside]);
+    const originalCash = randomUUID();
+    await pg.query("INSERT INTO cash_closings(id,organization_id,opened_by_user_id,opening_balance_in_cents,opened_at) VALUES ($1,$2,'cashier',0,now())",[originalCash,org]);
     await pg.query("INSERT INTO clients(id,organization_id,name) VALUES ($1,$2,'Cliente sintético')",[client,org]);
     await pg.query("INSERT INTO inventory_products(id,organization_id,name,current_quantity_millis,consumption_quantity_millis,cost_in_cents,lot_tracking,is_active) VALUES ($1,$2,'Produto teste',10000,0,100,false,true)",[stock,org]);
     await pg.query("INSERT INTO retail_products(id,organization_id,name,is_active) VALUES ($1,$2,'Produto teste',true)",[product,org]);
@@ -84,10 +94,10 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
     await pg.query("INSERT INTO service_packages(id,organization_id,name,price_in_cents,validity_days,is_active) VALUES ($1,$2,'Pacote teste',2000,30,true)",[pack,org]);
     await pg.query("INSERT INTO service_package_items(package_id,service_id,organization_id,quantity) VALUES ($1,$2,$3,2)",[pack,procedure,org]);
     await pg.query("INSERT INTO organization_financial_integrations(id,organization_id,provider,status,environment,metadata) VALUES ($1,$2,'mercado_pago','active','production',$3)",[randomUUID(),org,JSON.stringify({accountId:99,webhookStatus:"configured"})]);
-    const accountId = randomUUID();
-    await pg.query("INSERT INTO financial_accounts(id,organization_id,name,account_type,is_active) VALUES ($1,$2,'Conta teste','cash',true)",[accountId,org]);
+    const accountId = randomUUID(), bankAccount = randomUUID();
+    await pg.query("INSERT INTO financial_accounts(id,organization_id,name,account_type,is_active) VALUES ($1,$2,'Cofre','cash',true),($3,$2,'Banco','bank',true)",[accountId,org,bankAccount]);
     const catalogIds = Object.fromEntries(["cash","pix","mercado_pago","asaas","pagbank","efi"].map(key => [key, randomUUID()]));
-    for (const [key,id] of Object.entries(catalogIds)) await pg.query("INSERT INTO payment_methods(id,organization_id,name,kind,provider,default_account_id,is_active) VALUES ($1,$2,$3,$4,$5,$6,true)",[id,org,key,["cash","pix","efi"].includes(key)?key==="efi"?"pix":key:"link",["cash","pix"].includes(key)?"manual":key,accountId]);
+    for (const [key,id] of Object.entries(catalogIds)) await pg.query("INSERT INTO payment_methods(id,organization_id,name,kind,provider,default_account_id,is_active) VALUES ($1,$2,$3,$4,$5,$6,true)",[id,org,key,["cash","pix","efi"].includes(key)?key==="efi"?"pix":key:"link",["cash","pix"].includes(key)?"manual":key,key==="pix"?bankAccount:accountId]);
     const database = drizzle(pg,{schema}) as unknown as typeof db;
     const globals = globalThis as unknown as { __posDb: typeof db; __posContext: unknown };
     globals.__posDb = database;
@@ -298,18 +308,20 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
     });
     await t.test("recebimento manual misto continua concluído e sem cobrança externa; sem permissão não vende",async()=>{
       const form=new FormData(); form.set("checkoutProvider","manual"); form.set("items",JSON.stringify([{variantId:variant,quantity:1,discountInCents:0}])); form.set("payments",JSON.stringify([{method:catalogIds.cash,accountId,amountInCents:200},{method:catalogIds.pix,accountId,amountInCents:300}]));
-      await assert.rejects(register(form), /Abra ou selecione um caixa/);
+      await pg.query("UPDATE cash_closings SET closed_at=now() WHERE id=$1",[originalCash]);
+      await assert.rejects(register(form), /Abra seu caixa/);
       const cashClosingId = randomUUID();
-      await pg.query("INSERT INTO cash_closings(id,organization_id,account_id,opened_by_user_id,opening_balance_in_cents,opened_at,closed_at) VALUES ($1,$2,$3,'cashier',0,now(),now())",[cashClosingId,org,accountId]);
+      await pg.query("INSERT INTO cash_closings(id,organization_id,opened_by_user_id,opening_balance_in_cents,opened_at) VALUES ($1,$2,'cashier',0,now())",[cashClosingId,org]);
+      form.set("cashClosingId",originalCash);
+      await assert.rejects(register(form), /Abra seu caixa/);
       form.set("cashClosingId",cashClosingId);
-      await assert.rejects(register(form), /fechado ou indisponível/);
-      await pg.query("UPDATE cash_closings SET closed_at=null WHERE id=$1",[cashClosingId]);
       const result=await register(form);
       assert.ok(result.openUrl?.startsWith("/recibo/"));
       const receipt=result.openUrl!.split("/").at(-1)!;
       const sale=(await pg.query<{id:string;status:string;payment_provider:string|null}>("SELECT id,status,payment_provider FROM retail_sales WHERE receipt_token=$1",[receipt])).rows[0];
       assert.equal(sale.status,"completed"); assert.equal(sale.payment_provider,null);
       assert.equal((await pg.query<{cash_closing_id:string}>("SELECT cash_closing_id FROM retail_sales WHERE id=$1",[sale.id])).rows[0].cash_closing_id,cashClosingId);
+      assert.deepEqual((await pg.query("SELECT p.method, m.account_id FROM cash_movements m JOIN retail_sale_payments p ON p.id=m.source_id WHERE p.sale_id=$1 AND m.cash_closing_id=$2 ORDER BY p.method",[sale.id,cashClosingId])).rows,[{method:"cash",account_id:accountId},{method:"pix",account_id:bankAccount}]);
       assert.equal((await pg.query("SELECT id FROM payment_charges WHERE origin_id=$1",[sale.id])).rows.length,0);
       globals.__posContext={organization:{id:org,name:"Clínica teste",role:"viewer",timezone:"America/Bahia"},session:{user:{id:"cashier"}}};
       await assert.rejects(register(form),/permissão/);

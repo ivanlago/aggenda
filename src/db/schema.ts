@@ -1928,8 +1928,24 @@ export const commissionPaymentItems = pgTable("commission_payment_items", {
 }, table => [primaryKey({ columns: [table.paymentId, table.entryId] })]);
 
 export const cashClosings = pgTable("cash_closings", {
-  id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), accountId: uuid("account_id").notNull().references(() => financialAccounts.id, { onDelete: "restrict" }), openedByUserId: text("opened_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }), closedByUserId: text("closed_by_user_id").references(() => users.id, { onDelete: "restrict" }), openedAt: timestamp("opened_at").defaultNow().notNull(), closedAt: timestamp("closed_at"), openingBalanceInCents: integer("opening_balance_in_cents").notNull(), expectedBalanceInCents: integer("expected_balance_in_cents"), countedBalanceInCents: integer("counted_balance_in_cents"), differenceInCents: integer("difference_in_cents"), notes: text("notes"),
-}, (table) => [index("cash_closings_org_open_idx").on(table.organizationId, table.openedAt)]);
+  id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), accountId: uuid("account_id").references(() => financialAccounts.id, { onDelete: "restrict" }), openedByUserId: text("opened_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }), closedByUserId: text("closed_by_user_id").references(() => users.id, { onDelete: "restrict" }), openedAt: timestamp("opened_at").defaultNow().notNull(), closedAt: timestamp("closed_at"), openingBalanceInCents: integer("opening_balance_in_cents").notNull(), expectedBalanceInCents: integer("expected_balance_in_cents"), countedBalanceInCents: integer("counted_balance_in_cents"), differenceInCents: integer("difference_in_cents"), notes: text("notes"),
+}, (table) => [
+  index("cash_closings_org_open_idx").on(table.organizationId, table.openedAt),
+  uniqueIndex("pos_cash_one_open_per_operator").on(table.organizationId, table.openedByUserId).where(sql`${table.accountId} is null and ${table.closedAt} is null`),
+]);
+
+export const posCashAdjustments = pgTable("pos_cash_adjustments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  cashClosingId: uuid("cash_closing_id").notNull().references(() => cashClosings.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  kind: text("kind", { enum: ["supply", "withdrawal"] }).notNull(),
+  amountInCents: integer("amount_in_cents").notNull(),
+  reason: text("reason").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("pos_cash_adjustments_session_idx").on(table.cashClosingId, table.createdAt),
+  check("pos_cash_adjustments_valid_check", sql`${table.kind} in ('supply', 'withdrawal') and ${table.amountInCents} > 0`),
+]);
 
 export const bankImportTransactions = pgTable("bank_import_transactions", {
   id: uuid("id").defaultRandom().primaryKey(), organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), accountId: uuid("account_id").notNull().references(() => financialAccounts.id, { onDelete: "cascade" }), externalId: text("external_id").notNull(), occurredOn: date("occurred_on", { mode: "string" }).notNull(), description: text("description").notNull(), amountInCents: integer("amount_in_cents").notNull(), financialEntryId: uuid("financial_entry_id").references(() => financialEntries.id, { onDelete: "set null" }), status: text("status").default("unmatched").notNull(), importedAt: timestamp("imported_at").defaultNow().notNull(),
@@ -2409,4 +2425,4 @@ export const cashMovements = pgTable("cash_movements", {
   occurredAt: timestamp("occurred_at").defaultNow().notNull(),
   cashClosingId: uuid("cash_closing_id").references(() => cashClosings.id, { onDelete: "restrict" }),
   isLegacy: boolean("is_legacy").default(false).notNull(),
-}, table => [index("cash_movements_account_time_idx").on(table.organizationId, table.accountId, table.occurredAt), index("cash_movements_source_idx").on(table.sourceType, table.sourceId)]);
+}, table => [index("cash_movements_account_time_idx").on(table.organizationId, table.accountId, table.occurredAt), index("cash_movements_source_idx").on(table.sourceType, table.sourceId), index("cash_movements_session_time_idx").on(table.cashClosingId, table.occurredAt)]);

@@ -1,4 +1,4 @@
-import { getPosCashRegisters } from "@/lib/pos-cash";
+import { getOpenPosCash } from "@/lib/pos-cash";
 import { activePaymentMethods } from "@/lib/payment-methods";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { saleCommissionBeneficiaries } from "@/lib/commission-beneficiaries";
@@ -35,10 +35,10 @@ export async function AttendancePos({ appointmentId }: { appointmentId: string }
     db.select({ id: retailSales.id, total: retailSales.totalInCents, status: retailSales.status, receiptToken: retailSales.receiptToken, soldAt: retailSales.soldAt, paymentStatus: financialEntries.status }).from(retailSales).leftJoin(financialEntries, eq(financialEntries.id, retailSales.financialEntryId)).where(and(eq(retailSales.organizationId, organization.id), eq(retailSales.attendanceId, appointment.id))).orderBy(desc(retailSales.soldAt)),
     canReadFinance ? db.select().from(financialEntries).where(and(eq(financialEntries.organizationId, organization.id), eq(financialEntries.attendanceId, appointment.id), eq(financialEntries.source, "attendance_extra"))).orderBy(desc(financialEntries.createdAt)) : Promise.resolve([]),
   ]);
-  const [allOfferings, packageBalances, cashRegisters] = await Promise.all([
+  const [allOfferings, packageBalances, cashSession] = await Promise.all([
     canSell ? getPosOfferings(organization.id) : Promise.resolve([]),
     getPosPackageBalances(organization.id, appointment.clientId),
-    canSell ? getPosCashRegisters(organization.id) : Promise.resolve([]),
+    canSell ? getOpenPosCash(db, organization.id, session.user.id) : Promise.resolve(null),
   ]);
   const catalog = allOfferings.filter((item) => appointment.metadata?.primaryProcedureRemoved === true || item.id !== `service:${appointment.serviceId}`);
   const payment = paymentRows[0];
@@ -59,7 +59,7 @@ export async function AttendancePos({ appointmentId }: { appointmentId: string }
     {paymentState === "blocked" && <p className="mb-4 text-sm text-muted">Revise a situação do atendimento antes de cobrar o serviço.</p>}
     {canSell && <p className="panel mb-4 text-sm text-muted">Este recebimento fica vinculado ao atendimento e aceita pagamento manual ou saldo de pacote. Produtos e pacotes avulsos com pagamento integrado são vendidos em <Link className="font-bold text-brand underline" href="/vendas">Venda e orçamento</Link>.</p>}
     {canPay && paymentState === "pending" && payment?.id && <p className="mb-4 text-sm">Para cobrar online o serviço, <Link className="font-bold text-brand underline" href={`/financeiro/lancamentos?visao=cobrancas&lancamento=${payment.id}#nova-cobranca`}>abra a cobrança vinculada à conta a receber</Link>. A confirmação do provedor registra o recebimento automaticamente.</p>}
-    {canSell && <SalesWorkspace sale={<RetailSaleForm cashRegisters={cashRegisters} canOpenCash={canPay} operatorName={session.user.name} customPaymentMethods={customPaymentMethods} commissionChoices={saleCommission.choices} defaultCommissionBeneficiary={saleCommission.defaultBeneficiary} key={`${appointment.id}:${paymentState}:${prefillProcedure}:${pending.map((item) => item.id).join(",")}`} offerings={offerings} attendanceId={appointment.id} initialClientId={client.id} initialCart={initialCart} pendingAttendanceItems={pending} clients={[client]} variants={variants} timezone={organization.timezone} packageBalances={packageBalances} canDiscount={hasOrganizationPermission(organization.role, "sales.discount")} />} quote={<AttendanceQuote appointmentId={appointmentId} />} />}
+    {canSell && <SalesWorkspace sale={<RetailSaleForm cashSession={cashSession} operatorName={session.user.name} customPaymentMethods={customPaymentMethods} commissionChoices={saleCommission.choices} defaultCommissionBeneficiary={saleCommission.defaultBeneficiary} key={`${appointment.id}:${paymentState}:${prefillProcedure}:${pending.map((item) => item.id).join(",")}`} offerings={offerings} attendanceId={appointment.id} initialClientId={client.id} initialCart={initialCart} pendingAttendanceItems={pending} clients={[client]} variants={variants} timezone={organization.timezone} packageBalances={packageBalances} canDiscount={hasOrganizationPermission(organization.role, "sales.discount")} />} quote={<AttendanceQuote appointmentId={appointmentId} />} />}
     <section className="panel mt-4"><h3 className="font-extrabold">Vendas e adicionais deste atendimento</h3>
       <PaginatedCollection label="Registros" className="mt-4">{sales.map((sale) => <div key={sale.id} className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t pt-3"><div><p className="font-bold">Venda · {currency(sale.total)}</p><p className="text-xs text-muted">{formatOrganizationDateTime(sale.soldAt, organization.timezone)} · {sale.status !== "completed" ? "Cancelada / estornada" : sale.paymentStatus === "received" ? "Pagamento recebido" : "Pagamento pendente"}</p></div><Link className="secondary-button" href={`/recibo/${sale.receiptToken}`} target="_blank">Abrir recibo</Link></div>)}</PaginatedCollection>
       <PaginatedCollection label="Registros" className="mt-4">{extras.map((extra) => <div key={extra.id} className="mt-3 border-t pt-3"><p className="font-bold">{extra.description} · {currency(extra.amountInCents)}</p><p className="text-xs text-muted">{formatOrganizationDateTime(extra.createdAt, organization.timezone)} · {extra.status === "received" ? "Pagamento recebido" : extra.status}</p></div>)}</PaginatedCollection>

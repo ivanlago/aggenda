@@ -10,9 +10,8 @@ import { ModalShell } from "@/components/modal-shell";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { paymentKindLabels, paymentKinds, type PaymentKind } from "@/lib/payment-catalog-policy";
 
-type Method = { id: string; name: string; kind: string; provider: string; defaultAccountId: string | null; isActive: boolean };
+type Method = { id: string; name: string; kind: string; defaultAccountId: string | null; isActive: boolean };
 type Account = { id: string; name: string; isActive: boolean };
-const providers: Record<string, string> = { manual: "Manual / maquininha externa", mercado_pago: "Mercado Pago", asaas: "Asaas", pagbank: "PagBank", efi: "Efí Bank" };
 
 function MethodForm({ method, accounts }: { method?: Method; accounts: Account[] }) {
   return <ActionForm action={savePaymentMethod} successMessage="Forma de pagamento salva." resetOnSuccess={false} className="grid gap-4 sm:grid-cols-2">
@@ -20,7 +19,6 @@ function MethodForm({ method, accounts }: { method?: Method; accounts: Account[]
     <label className="grid gap-2 text-sm font-bold sm:col-span-2">Nome *<input className="field" name="name" required minLength={2} maxLength={80} defaultValue={method?.name} /></label>
     <label className="grid gap-2 text-sm font-bold">Tipo *<select className="field" name="kind" defaultValue={method?.kind ?? "other"}>{paymentKinds.map(kind => <option key={kind} value={kind}>{paymentKindLabels[kind]}</option>)}</select></label>
     <label className="grid gap-2 text-sm font-bold">Conta de pagamento *<select className="field" name="defaultAccountId" required defaultValue={method?.defaultAccountId ?? ""}><option value="" disabled>Selecione uma conta</option>{accounts.filter(account => account.isActive || account.id === method?.defaultAccountId).map(account => <option key={account.id} value={account.id}>{account.name}{!account.isActive ? " (inativa)" : ""}</option>)}</select></label>
-    <label className="grid gap-2 text-sm font-bold sm:col-span-2">Recebimento *<select className="field" name="provider" defaultValue={method?.provider ?? "manual"}>{Object.entries(providers).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
     <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" name="active" defaultChecked={method?.isActive ?? true} /> Disponível para novos pagamentos</label>
     <p className="text-xs text-muted sm:col-span-2">Campos com * são obrigatórios.</p>
     <FormActions editing={Boolean(method)} />
@@ -47,21 +45,18 @@ export function PaymentMethodsCatalog({ methods, accounts }: { methods: Method[]
       <table className="w-full table-auto text-left text-sm">
         <caption className="sr-only">Formas de pagamento cadastradas</caption>
         <thead><tr className="border-b text-xs uppercase text-muted">
-          <th scope="col" className="px-2 py-3">Nome do pagamento</th><th scope="col" className="hidden px-2 py-3 md:table-cell">Tipo</th><th scope="col" className="hidden px-2 py-3 lg:table-cell">Recebimento</th><th scope="col" className="hidden px-2 py-3 sm:table-cell">Conta de pagamento</th><th scope="col" className="w-20 px-2 py-3">Status</th><th scope="col" className="w-20 px-1 py-3 text-center sm:w-24">Ações</th>
+          <th scope="col" className="px-2 py-3">Nome do pagamento</th><th scope="col" className="hidden px-2 py-3 md:table-cell">Tipo</th><th scope="col" className="hidden px-2 py-3 sm:table-cell">Conta de pagamento</th><th scope="col" className="w-20 px-2 py-3">Status</th><th scope="col" className="w-20 px-1 py-3 text-center sm:w-24">Ações</th>
         </tr></thead>
-        <PaginatedCollection as="tbody" tableColumns={6} label="Formas de pagamento" className="divide-y">
+        <PaginatedCollection as="tbody" tableColumns={5} label="Formas de pagamento" className="divide-y">
           {filtered.map(method => {
             const kind = paymentKindLabels[method.kind as PaymentKind] ?? method.kind;
-            const provider = providers[method.provider] ?? method.provider;
             const account = method.defaultAccountId ? accountNames.get(method.defaultAccountId) ?? "Conta indisponível" : "Sem conta cadastrada";
             return <tr key={method.id} className="odd:bg-slate-50/60">
               <td className="px-2 py-4 font-bold [overflow-wrap:anywhere]">{method.name}
                 <span className="mt-1 block text-xs font-normal text-muted md:hidden">{kind}</span>
-                <span className="mt-1 block text-xs font-normal text-muted lg:hidden">{provider}</span>
                 <span className="mt-1 block text-xs font-normal text-muted sm:hidden">{account}</span>
               </td>
               <td className="hidden px-2 py-4 [overflow-wrap:anywhere] md:table-cell">{kind}</td>
-              <td className="hidden px-2 py-4 [overflow-wrap:anywhere] lg:table-cell">{provider}</td>
               <td className="hidden px-2 py-4 [overflow-wrap:anywhere] sm:table-cell">{account}</td>
               <td className="px-2 py-4"><span className={`inline-flex rounded-full px-2 py-1 text-xs font-bold ${method.isActive ? "bg-teal-50 text-brand" : "bg-slate-100 text-slate-600"}`}>{method.isActive ? "Ativo" : "Inativo"}</span></td>
               <td className="px-1 py-4"><div className="flex flex-wrap items-center justify-center gap-1">

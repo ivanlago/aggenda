@@ -26,7 +26,7 @@ export async function PaymentProvidersSettingsContent({ institution }: { institu
   const mercadoPago = integrationRows.find((item) => item.provider === "mercado_pago"); const mercadoPagoMetadata = (mercadoPago?.metadata ?? {}) as Record<string, unknown>;
   const pagBank = integrationRows.find((item) => item.provider === "pagbank"); const pagBankMetadata = (pagBank?.metadata ?? {}) as Record<string, unknown>;
   const efi = integrationRows.find((item) => item.provider === "efi"); const efiMetadata = (efi?.metadata ?? {}) as Record<string, unknown>;
-  return <section><p className="mb-4 text-sm text-muted">Conecte as contas da empresa e escolha o provedor padrão do PDV. Emissão e acompanhamento das cobranças ficam em Financeiro → Cobranças.</p>
+  return <section><p className="mb-4 text-sm text-muted">Conecte as contas da empresa e escolha o provedor padrão para cobranças online em Venda e orçamento e em Contas a receber. Acompanhe as cobranças em Financeiro → Lançamentos.</p>
     <h2 className="mb-3 text-lg font-extrabold text-brand">Provedores de pagamento</h2>
     <PaymentProviderTabs
       key={institution}

@@ -9,8 +9,7 @@ import { registerAppointmentPayment } from "@/actions/app";
 import { ActionForm } from "@/components/action-form";
 
 export function AppointmentPaymentForm({ appointmentId, client, description, defaultAmount, packages, action = registerAppointmentPayment }: { appointmentId: string; client: string; description: string; defaultAmount: string; packages: Array<{ id: string; name: string; remaining: number; current: boolean }>; action?: (data: FormData) => Promise<void | { error?: string }> }) {
-  const { methods, accounts } = usePaymentCatalog();
-  const manualMethods = methods.filter(method => method.provider === "manual");
+  const { methods: manualMethods, accounts } = usePaymentCatalog();
   const [accountId, setAccountId] = useState("");
   const [method, setMethod] = useState("");
   return <ActionForm action={action} successMessage="Pagamento registrado com sucesso." className="grid gap-4 sm:grid-cols-2">

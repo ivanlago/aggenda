@@ -4,7 +4,7 @@ import { paymentMethods, financialAccounts } from "@/db/schema";
 import { choosePayment } from "./payment-catalog-policy";
 
 export function activePaymentMethods(organizationId: string) {
-  return db.select({ id: paymentMethods.id, name: paymentMethods.name, kind: paymentMethods.kind, provider: paymentMethods.provider, defaultAccountId: paymentMethods.defaultAccountId }).from(paymentMethods)
+  return db.select({ id: paymentMethods.id, name: paymentMethods.name, kind: paymentMethods.kind, defaultAccountId: paymentMethods.defaultAccountId }).from(paymentMethods)
     .where(and(eq(paymentMethods.organizationId, organizationId), eq(paymentMethods.isActive, true)))
     .orderBy(asc(paymentMethods.name));
 }

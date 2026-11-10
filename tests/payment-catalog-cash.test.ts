@@ -20,7 +20,9 @@ test("catalog selection requires an active organization method and an active des
   assert.throws(() => choosePayment([], accounts, "one"));
   assert.throws(() => choosePayment(methods, accounts, "one", "outside"));
   assert.throws(() => choosePayment(methods, [], "one"));
-  assert.throws(() => choosePayment(methods, accounts, "one", "bank", "efi"));
+  assert.equal(choosePayment(methods, accounts, "one", "cash", "efi").accountId, "bank");
+  assert.equal(choosePayment(methods, accounts, "one", undefined, "mercado_pago").paymentMethodId, "one");
+  assert.throws(() => choosePayment([{ ...methods[0], kind: "cash" }], accounts, "one", undefined, "efi"));
   assert.deepEqual(hostedPaymentTypes("asaas", "pix"), ["PIX"]);
   assert.throws(() => hostedPaymentTypes("asaas", "boleto"));
   assert.deepEqual(hostedPaymentTypes("efi", "pix"), ["PIX"]);

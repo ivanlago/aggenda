@@ -120,8 +120,8 @@ test("quick registration preserves the draft, auto-selects categories, and keeps
     await act(async () => root.render(<PaymentCatalogProvider catalog={{
       accounts: [{ id: "bank", name: "Banco" }],
       methods: [
-        { id: "pix", name: "Pix", provider: "asaas", kind: "pix", defaultAccountId: "bank" },
-        { id: "boleto", name: "Boleto", provider: "pagbank", kind: "boleto", defaultAccountId: "bank" },
+        { id: "pix", name: "Pix", kind: "pix", defaultAccountId: "bank" },
+        { id: "boleto", name: "Boleto", kind: "boleto", defaultAccountId: "bank" },
       ],
     }}><FinancialEntryControls categories={[]} today="2027-01-31" providers={[
       { id: "asaas", name: "Asaas", isDefault: false, environment: "sandbox" },
@@ -132,6 +132,7 @@ test("quick registration preserves the draft, auto-selects categories, and keeps
     const chargeToggle = [...document.querySelectorAll("label")].find(label => label.textContent?.includes("Emitir cobrança online"))!.querySelector("input")!;
     await act(async () => chargeToggle.click());
     assert.equal(document.querySelector<HTMLSelectElement>('select[name="chargeProvider"]')?.value, "pagbank");
+    assert.ok(document.querySelector('select[name="chargePaymentMethod"] option[value="pix"]'));
     const schedule = document.querySelector<HTMLSelectElement>("dialog select:not([name])")!;
     await act(async () => { schedule.value = "installment"; schedule.dispatchEvent(new dom.window.Event("change", { bubbles: true })); });
     assert.match(document.querySelector("dialog")!.textContent!, /28\/02\/2027/);

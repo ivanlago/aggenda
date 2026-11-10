@@ -39,11 +39,9 @@ function EntryFields({ categories, today, initialType, providers = [] }: Props) 
   const [result, setResult] = useState<IssuanceResult[] | null>(null);
   const requestId = useRef<string | null>(null);
   const completed = useRef<IssuanceResult[] | null>(null);
-  const compatibleMethods = methods.filter(method => paymentKindSupported(method.kind, method.provider) && accounts.some(account => account.id === method.defaultAccountId));
-  const eligible = providers.filter(provider => compatibleMethods.some(method => method.provider === provider.id));
-  const provider = providers.find(item => item.id === selectedProvider) ?? eligible.find(item => item.isDefault) ?? eligible[0] ?? providers.find(item => item.isDefault) ?? providers[0];
+  const provider = providers.find(item => item.id === selectedProvider) ?? providers.find(item => item.isDefault) ?? providers[0];
   const choosingCharge = type === "receivable" && !realized && withCharge && Boolean(provider);
-  const providerMethods = compatibleMethods.filter(method => method.provider === provider?.id);
+  const providerMethods = provider ? methods.filter(method => paymentKindSupported(method.kind, provider.id) && accounts.some(account => account.id === method.defaultAccountId)) : [];
   const emit = choosingCharge && providerMethods.length > 0;
   const showSectionTitles = initialType === "payable";
   const installments = Array.from({ length: Number.isInteger(count) && count > 0 && count <= 60 ? count : 0 }, (_, i) => i + 1);
@@ -145,7 +143,7 @@ function EntryFields({ categories, today, initialType, providers = [] }: Props) 
       {choosingCharge && provider && <label className="grid min-w-0 gap-2 text-sm font-bold">Provedor<select className="field" name="chargeProvider" value={provider.id} onChange={event => setSelectedProvider(event.target.value)}>{providers.map(item => <option key={item.id} value={item.id}>{item.name}{item.environment === "sandbox" ? " (testes)" : ""}</option>)}</select></label>}
       {realized ? <p className="col-span-full text-sm text-muted">Desmarque “{realizedLabel}” para emitir cobrança pelo formulário.</p>
         : !providers.length ? <p className="col-span-full text-sm text-muted">Conecte e valide um provedor em <Link className="font-bold text-brand underline" href="/configuracoes?aba=payments">Provedores de pagamento</Link> para liberar a emissão.</p>
-          : choosingCharge && !emit ? <p className="col-span-full text-sm text-muted">Para emitir pelo {provider?.name}, vincule uma forma compatível e uma conta de destino ativa em <Link className="font-bold text-brand underline" href="/financeiro/formas-de-pagamento">Formas de pagamento</Link>. Você pode salvar a conta e emitir a cobrança depois.</p>
+          : choosingCharge && !emit ? <p className="col-span-full text-sm text-muted">Para emitir pelo {provider?.name}, cadastre uma forma compatível com uma conta de destino ativa em <Link className="font-bold text-brand underline" href="/financeiro/formas-de-pagamento">Formas de pagamento</Link>. Você pode salvar a conta e emitir a cobrança depois.</p>
             : !choosingCharge && <p className="col-span-full text-sm text-muted">Marque a opção acima para selecionar o provedor e escolher as parcelas que deseja cobrar.</p>}
       {emit && provider && <>
         <label className="grid gap-2 text-sm font-bold">Forma de pagamento *<select key={provider.id} className="field" name="chargePaymentMethod" required><option value="">Selecione</option>{providerMethods.map(method => <option key={method.id} value={method.id}>{method.name}</option>)}</select></label>

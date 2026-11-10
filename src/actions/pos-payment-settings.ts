@@ -13,11 +13,11 @@ export async function setPosPaymentDefault(data: FormData) {
   assertOrganizationPermission(organization.role, "integrations.manage");
   const enabled = data.get("enabled") === "true";
   const provider = String(data.get("provider") ?? "mercado_pago");
-  if (!Object.hasOwn(posProviderNames,provider)) return { error: "Provedor indisponível no PDV." };
+  if (!Object.hasOwn(posProviderNames,provider)) return { error: "Provedor indisponível para cobranças online." };
   await db.transaction(async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`pos-default:${organization.id}`},0))`);
     const [selected] = await tx.select().from(organizationFinancialIntegrations).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, provider))).for("update");
-    if (enabled && (!selected || !posProviderReady(selected))) throw new Error("Conecte, valide e configure o webhook deste provedor antes de defini-lo como padrão do PDV.");
+    if (enabled && (!selected || !posProviderReady(selected))) throw new Error("Conecte, valide e configure os avisos de pagamento deste provedor antes de defini-lo como padrão.");
     await tx.update(organizationFinancialIntegrations).set({ isDefaultPos: false }).where(enabled ? eq(organizationFinancialIntegrations.organizationId, organization.id) : and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, provider)));
     if (enabled) await tx.update(organizationFinancialIntegrations).set({ isDefaultPos: true }).where(and(
       eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, provider), eq(organizationFinancialIntegrations.status, "active")));

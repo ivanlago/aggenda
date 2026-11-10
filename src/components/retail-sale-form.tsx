@@ -1,6 +1,6 @@
 "use client";
 
-import { hostedPaymentTypes } from "@/lib/payment-catalog-policy";
+import { hostedPaymentKindSupported } from "@/lib/payment-catalog-policy";
 import { usePaymentCatalog } from "@/components/payment-catalog-context";
 import { pendingItemsInCart } from "@/lib/attendance-pending-items";
 import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
@@ -31,13 +31,13 @@ const currency = (value: number) => (value / 100).toLocaleString("pt-BR", { styl
 
 export function RetailSaleForm({ variants: productVariants, commissionChoices = [], defaultCommissionBeneficiary = "", offerings = [], clients, canDiscount, attendanceId, initialClientId, initialCart = [], pendingAttendanceItems = [], packageBalances = [], timezone, quoteId, paymentProviders = [], defaultPaymentProvider = "manual", initialItemType = "all", cashSession, operatorName }: { variants: Variant[]; commissionChoices?: CommissionBeneficiaryOption[]; defaultCommissionBeneficiary?: string; offerings?: Variant[]; clients: Client[]; canDiscount: boolean; attendanceId?: string; initialClientId?: string; initialCart?: CartItem[]; pendingAttendanceItems?: { id: string; catalogId: string; quantity: number }[]; packageBalances?: PosPackageBalance[]; timezone?: string; quoteId?: string; customPaymentMethods?: { id: string; name: string }[]; paymentProviders?: { id: string; name: string; environment: string }[]; defaultPaymentProvider?: string; initialItemType?: "all" | "product" | "service" | "package"; cashSession: Awaited<ReturnType<typeof getOpenPosCash>>; operatorName?: string }) {
   const { methods, accounts } = usePaymentCatalog();
-  const usableMethods = methods.filter(method => accounts.some(account => account.id === method.defaultAccountId));
-  const manualMethods = usableMethods.filter(method => method.provider === "manual");
-  const posMethods = usableMethods.filter(method => { if (method.provider === "manual") return true; try { hostedPaymentTypes(method.provider, method.kind); return true; } catch { return false; } });
-  const availableProviders = paymentProviders.filter(provider => posMethods.some(method => method.provider === provider.id));
-  const [checkoutProvider, setCheckoutProvider] = useState(availableProviders.some(provider => provider.id === defaultPaymentProvider) ? defaultPaymentProvider : "manual");
+  const manualMethods = methods.filter(method => accounts.some(account => account.id === method.defaultAccountId));
+  const [withOnlinePayment, setWithOnlinePayment] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState("");
+  const onlineProvider = paymentProviders.find(provider => provider.id === selectedProvider) ?? paymentProviders.find(provider => provider.id === defaultPaymentProvider) ?? paymentProviders[0];
+  const checkoutProvider = withOnlinePayment ? onlineProvider?.id ?? "manual" : "manual";
   const [onlineMethodId, setOnlineMethodId] = useState("");
-  const onlineMethods = posMethods.filter(method => method.provider === checkoutProvider);
+  const onlineMethods = manualMethods.filter(method => hostedPaymentKindSupported(method.kind, checkoutProvider));
   const onlinePayment = checkoutProvider !== "manual";
   const checkoutKeyRef = useRef<string | null>(null);
   const variants = useMemo(() => [...productVariants, ...offerings], [productVariants, offerings]);
@@ -148,7 +148,10 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
             <input type="hidden" name="commissionBeneficiary" value={selectedCommission} />
             <input type="hidden" name="cashClosingId" value={cashSession?.id ?? ""} />
             <p className="text-lg font-extrabold">Total a pagar: {currency(total)}</p>
-            <label className="grid gap-2 text-sm font-bold">Recebimento<select className="field" value={checkoutProvider} onChange={event => { setCheckoutProvider(event.target.value); setOnlineMethodId(""); }}><option value="manual">Recebimento manual / maquininha externa</option>{availableProviders.map(provider => <option key={provider.id} value={provider.id}>Receber pelo {provider.name}{provider.environment === "sandbox" ? " (testes)" : ""}</option>)}</select></label>
+            <label className="grid gap-2 text-sm font-bold">Recebimento<select className="field" value={onlinePayment ? "online" : "manual"} onChange={event => setWithOnlinePayment(event.target.value === "online")}><option value="manual">Registrar recebimento manual</option><option value="online" disabled={!onlineProvider}>Emitir cobrança online</option></select></label>
+            {onlinePayment && <label className="grid gap-2 text-sm font-bold">Provedor<select className="field" value={checkoutProvider} onChange={event => { setSelectedProvider(event.target.value); setOnlineMethodId(""); }}>{paymentProviders.map(provider => <option key={provider.id} value={provider.id}>{provider.name}{provider.environment === "sandbox" ? " (testes)" : ""}</option>)}</select></label>}
+            {!attendanceId && !onlineProvider && <p className="text-sm text-muted">Para emitir cobranças online, conecte um provedor em <Link className="font-bold text-brand underline" href="/configuracoes?aba=payments">Provedores de pagamento</Link>.</p>}
+            {onlinePayment && !onlineMethods.length && <p className="text-sm text-muted">Cadastre uma forma compatível com uma conta de destino ativa em <Link className="font-bold text-brand underline" href="/financeiro/formas-de-pagamento">Formas de pagamento</Link>.</p>}
             {onlinePayment && <p className="rounded-xl bg-blue-50 p-3 text-sm text-blue-900">O cliente escolhe os meios disponíveis no provedor selecionado. A venda ficará aguardando confirmação; não registre o recebimento manualmente. O recibo será liberado após o pagamento.</p>}
             {onlinePayment && <div className="grid gap-3">
               <label className="grid gap-2 text-sm font-bold">Forma de pagamento *<select className="field" name="onlinePaymentMethodId" required value={onlineMethodId} onChange={event => setOnlineMethodId(event.target.value)}><option value="">Selecione</option>{onlineMethods.map(method => <option key={method.id} value={method.id}>{method.name}</option>)}</select></label>
@@ -164,7 +167,7 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
             </fieldset>}
             {!onlinePayment && <div className="grid gap-2 rounded-2xl border p-3"><div className="flex flex-wrap items-center gap-4"><p className="text-sm font-extrabold">Enviar recibo</p><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" name="sendReceiptWhatsapp" checked={sendReceiptWhatsapp} onChange={(event) => setSendReceiptWhatsapp(event.target.checked)} /> WhatsApp</label><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" name="sendReceiptEmail" checked={sendReceiptEmail} onChange={(event) => setSendReceiptEmail(event.target.checked)} /> E-mail</label></div>{sendReceiptWhatsapp ? <PhoneInput name="receiptPhone" value={receiptPhone} onValueChange={setReceiptPhone} placeholder="WhatsApp: (71) 99999-9999" /> : null}{sendReceiptEmail ? <input className="field" name="receiptEmail" type="email" value={receiptEmail} onChange={(event) => setReceiptEmail(event.target.value)} placeholder="E-mail do comprador" /> : null}<p className="text-xs text-muted">O recibo para impressora térmica será aberto ao concluir.</p></div>}
             {cashError && <p className="text-sm text-amber-800" role="status">{cashError}</p>}
-            <button className="primary-button justify-center" disabled={Boolean(cashError) || !cart.length || (!onlinePayment && paidTotal !== total) || Boolean(discountError) || (requiresClient && !clientId) || (withCommission && !selectedCommission)}>{onlinePayment ? `Gerar cobrança ${paymentProviders.find(provider => provider.id === checkoutProvider)?.name ?? "integrada"}` : "Confirmar pagamento"}</button>
+            <button className="primary-button justify-center" disabled={Boolean(cashError) || !cart.length || (onlinePayment ? !onlineMethods.some(method => method.id === onlineMethodId) : paidTotal !== total) || Boolean(discountError) || (requiresClient && !clientId) || (withCommission && !selectedCommission)}>{onlinePayment ? `Gerar cobrança ${onlineProvider?.name ?? "integrada"}` : "Confirmar pagamento"}</button>
           </ActionForm>
         </ModalShell>
       </section>

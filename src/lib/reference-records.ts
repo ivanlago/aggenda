@@ -8,4 +8,10 @@ export const referenceLabels: Record<ReferenceKind, { singular: string; plural: 
   financial_category: { singular: "categoria", plural: "Categorias", permission: "finance.manage" },
   cost_center: { singular: "centro de custo", plural: "Centros de custo", permission: "finance.manage" },
 };
+export const financialCategoryLabels: Record<string, string> = {
+  payable: "Despesa",
+  receivable: "Receita",
+  transfer: "Transferência",
+};
+
 export const isFinancialReference = (kind: ReferenceKind) => ["financial_account", "financial_category", "cost_center"].includes(kind);

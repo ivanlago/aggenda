@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequire } from "node:module";
+import { PassThrough } from "node:stream";
 import { build } from "esbuild";
 import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToPipeableStream, renderToStaticMarkup } from "react-dom/server";
 
 const globals = globalThis as typeof globalThis & { financeRows?: unknown[][]; chargeListing?: unknown };
 
@@ -15,10 +16,10 @@ async function loadPage(path: string) {
       builder.onResolve({ filter: /^@\/(db$|actions\/|lib\/session$|lib\/charge-list$|components\/action-form$)/ }, ({ path }) => ({ path, namespace: "fixture" }));
       builder.onLoad({ filter: /./, namespace: "fixture" }, ({ path }) => {
         if (path === "@/lib/charge-list") return { contents: 'export async function loadChargeList(){return globalThis.chargeListing} export async function loadChargeableEntries(){return globalThis.financeRows[1]}' };
-        if (path === "@/db") return { contents: `let index=0; export const db={select(){const rows=globalThis.financeRows[index++];const query=new Proxy({}, {get(_,key){return key==='then' ? (resolve)=>Promise.resolve(rows).then(resolve) : ()=>query}});return query}};` };
+        if (path === "@/db") return { contents: `let index=0; export const db={transaction(work){return work(db)},selectDistinct(){return db.select()},select(){const rows=globalThis.financeRows[index++];const query=new Proxy({}, {get(_,key){return key==='then' ? (resolve)=>Promise.resolve(rows).then(resolve) : ()=>query}});return query}};` };
         if (path === "@/lib/session") return { contents: 'export async function requireOrganization(){return {organization:{id:"org",role:"owner",timezone:"America/Bahia"}}}' };
         if (path === "@/components/action-form") return { resolveDir: process.cwd(), contents: 'import React from "react"; export function ActionForm({children, className}){return React.createElement("form",{className},children)}' };
-        return { contents: "export const saveServicePackage=async()=>{},toggleServicePackage=async()=>{},saveReference=async()=>{},changeReference=async()=>{},createFinancialAccount=async()=>{},createFinancialCategory=async()=>{},createFinancialCostCenter=async()=>{},createFinancialEntry=async()=>{},deleteFinancialEntry=async()=>{},updateFinancialEntryStatus=async()=>{},cancelPaymentCharge=async()=>{},refundPaymentCharge=async()=>{},sendPaymentChargeWhatsApp=async()=>{},updatePaymentCharge=async()=>{},createProviderCharge=async()=>{};" };
+        return { contents: "export const saveServicePackage=async()=>{},toggleServicePackage=async()=>{},saveReference=async()=>{},changeReference=async()=>{},createFinancialAccount=async()=>{},createFinancialCategory=async()=>{},createFinancialCostCenter=async()=>{},createFinancialEntry=async()=>{},deleteFinancialEntry=async()=>{},updateFinancialEntryStatus=async()=>{},cancelPaymentCharge=async()=>{},refundPaymentCharge=async()=>{},sendPaymentChargeWhatsApp=async()=>{},updatePaymentCharge=async()=>{},createProviderCharge=async()=>{},openCash=async()=>{},closeCash=async()=>{};" };
       });
     } }],
   });
@@ -27,15 +28,29 @@ async function loadPage(path: string) {
   return pageModule.exports.default;
 }
 
+function renderAsync(node: React.ReactNode) {
+  return new Promise<string>((resolve, reject) => {
+    const output = new PassThrough().setEncoding("utf8");
+    let html = "";
+    output.on("data", (chunk: string) => { html += chunk; });
+    output.on("end", () => resolve(html));
+    output.on("error", reject);
+    const stream = renderToPipeableStream(node, { onAllReady: () => stream.pipe(output), onError: reject });
+  });
+}
+
 const baseEntry = { id: "entry", status: "pending", type: "receivable", source: "manual", description: "Consulta", dueDate: "2026-10-10", realizedDate: null, amountInCents: 10000, categoryId: null, accountId: null, costCenterId: null };
 const baseCharge = { id: "charge", financialEntryId: "entry", status: "pending", provider: "mercado_pago", originType: "financial", chargeMode: "single", description: "Consulta online", customerName: "Cliente", dueDate: "2026-10-10", amountInCents: 10000, invoiceUrl: "https://example.com/checkout" };
 
 test("cash flow links integrated entries to charges and PDV instead of offering manual settlement", async () => {
-  const page = await loadPage("./src/app/(app)/financeiro/page.tsx");
-  globals.financeRows = [[baseEntry, { ...baseEntry, id: "pdv", source: "retail_sale" }], [], [], [], [baseCharge], [{ id: "sale", financialEntryId: "pdv" }]];
+  const page = await loadPage("./src/app/(app)/financeiro/lancamentos/page.tsx");
+  globals.financeRows = [[baseEntry, { ...baseEntry, id: "pdv", source: "retail_sale" }], [], [], [], [baseCharge], [{ id: "sale", financialEntryId: "pdv" }], []];
   try {
-    const html = renderToStaticMarkup(await page({ searchParams: Promise.resolve({ mes: "2026-10" }) }));
-    assert.match(html, /Contas e fluxo de caixa/);
+    const html = await renderAsync(await page({ searchParams: Promise.resolve({ mes: "2026-10" }) }));
+    assert.match(html, /Contas a receber/);
+    assert.match(html, /Contas a pagar/);
+    assert.match(html, /Extrato/);
+    assert.match(html, /visao=cobrancas&amp;mes=2026-10&amp;cobranca=charge/);
     assert.match(html, /Ver cobrança vinculada/);
     assert.match(html, /Gerenciar no PDV/);
     assert.doesNotMatch(html, /Salvar baixa manual|Gerar cobrança Asaas|Cobranças emitidas/);
@@ -44,11 +59,13 @@ test("cash flow links integrated entries to charges and PDV instead of offering 
 });
 
 test("charge filters affect totals and do not preselect an unrelated receivable", async () => {
-  const page = await loadPage("./src/app/(app)/financeiro/cobrancas/page.tsx");
-  globals.financeRows = [[{ provider: "mercado_pago", status: "active" }], [{ ...baseEntry, id: "available" }]];
+  const page = await loadPage("./src/app/(app)/financeiro/lancamentos/page.tsx");
+  globals.financeRows = [[], [{ provider: "mercado_pago", status: "active" }]];
+  globals.financeRows[2] = [{ ...baseEntry, id: "available" }];
   globals.chargeListing = { charges: [{ ...baseCharge, id: "paid", financialEntryId: "other", status: "paid", amountInCents: 90000 }], events: [], pages: 1, currentPage: 1, totals: { count: 1, paidCount: 1, paidAmount: 90000, openCount: 0, openAmount: 0, overdueCount: 0, overdueAmount: 0 } };
   try {
-    const html = renderToStaticMarkup(await page({ searchParams: Promise.resolve({ status: "paid" }) }));
+    const html = await renderAsync(await page({ searchParams: Promise.resolve({ aba: "receber", visao: "cobrancas", status: "paid" }) }));
+    assert.match(html, /Cobranças online/);
     assert.match(html, /Recebido online/);
     assert.match(html, /900,00/);
     assert.doesNotMatch(html, /1\.000,00/);
@@ -59,6 +76,47 @@ test("charge filters affect totals and do not preselect an unrelated receivable"
   } finally { delete globals.financeRows; delete globals.chargeListing; }
 });
 
+test("the statement accumulates recorded movements over the starting balance", async () => {
+  const page = await loadPage("./src/app/(app)/financeiro/lancamentos/page.tsx");
+  globals.financeRows = [
+    [{ id: "bank", name: "Banco", openingBalanceInCents: 10_000, createdAt: new Date("2026-09-01T12:00:00Z") }],
+    [{ amount: 5000 }],
+    [
+      { id: 1, accountId: "bank", description: "Recebimento da venda", paymentMethodName: "Pix", amountInCents: 7500, occurredAt: new Date("2026-10-10T12:00:00Z") },
+      { id: 2, accountId: "bank", description: "Estorno", paymentMethodName: "Pix", amountInCents: -2500, occurredAt: new Date("2026-10-11T12:00:00Z") },
+    ],
+  ];
+  try {
+    const html = await renderAsync(await page({ searchParams: Promise.resolve({ aba: "extrato", mes: "2026-10", conta: "bank" }) }));
+    assert.match(html, /Saldo anterior.*150,00/);
+    assert.match(html, /Recebimento da venda.*Saldo.*225,00/);
+    assert.match(html, /Saldo ao fim do período.*200,00/);
+  } finally { delete globals.financeRows; }
+});
+
+test("Meus Caixas keeps current operations available while displaying a filtered history", async () => {
+  const page = await loadPage("./src/app/(app)/financeiro/meus-caixas/page.tsx");
+  const openedAt = new Date("2026-10-01T12:00:00Z");
+  const closedAt = new Date("2026-10-01T15:00:00Z");
+  const accounts = [{ id: "safe", name: "Cofre" }, { id: "bank", name: "Banco" }];
+  globals.financeRows = [
+    accounts,
+    [{ id: "open", accountId: "safe", account: "Cofre", openedAt, opening: 10000 }],
+    accounts,
+    [{ id: "operator", name: "Operador de teste" }],
+    [{ id: "closed", account: "Banco", operator: "Operador de teste", openedAt, closedAt, expected: 20000, counted: 19900, difference: -100 }],
+    [{ name: "Dinheiro", amount: 3500 }],
+  ];
+  try {
+    const html = renderToStaticMarkup(await page({ searchParams: Promise.resolve({ status: "fechado" }) }));
+    assert.match(html, /Abrir novo caixa/);
+    assert.match(html, /Fechar e conferir/);
+    assert.match(html, /Saldo esperado agora.*135,00/);
+    assert.match(html, /Histórico de caixas/);
+    assert.match(html, /Operador de teste/);
+    assert.match(html, /Conferido.*199,00/);
+  } finally { delete globals.financeRows; }
+});
 
 test("packages separate the catalog from client availability and link sales to the PDV", async () => {
   const page = await loadPage("./src/app/(app)/pacotes/page.tsx");

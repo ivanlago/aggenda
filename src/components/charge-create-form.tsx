@@ -24,7 +24,7 @@ export function ChargeCreateForm({ entries, providers, initialEntryId = "" }: { 
     <FormSection title="Conta a receber"><label className="grid gap-2 text-sm font-bold sm:col-span-2">Conta a receber *<select className="field" name="financialEntryId" required value={selected?.id ?? ""} onChange={(event) => setEntryId(event.target.value)}><option value="">Selecione</option>{entries.map((entry) => <option key={entry.id} value={entry.id}>{entry.description} · {entry.amount} · {entry.dueDate}</option>)}</select></label>
     <p className="sm:col-span-2 text-sm text-muted">A cobrança oferece um meio de pagar uma conta a receber já cadastrada. A confirmação do provedor registra o recebimento automaticamente.</p>
     {!providers.length && <p className="sm:col-span-2 text-sm text-amber-800">Conecte um provedor em <Link className="font-bold text-brand" href="/configuracoes?aba=payments">Configurações de pagamento</Link> para emitir cobranças.</p>}
-    <Link className="sm:col-span-2 text-sm font-bold text-brand" href="/financeiro?novo=receivable#novo-lancamento">Não encontrou a conta? Cadastrar conta a receber</Link>
+    <Link className="sm:col-span-2 text-sm font-bold text-brand" href="/financeiro/lancamentos?novo=receivable#novo-lancamento">Não encontrou a conta? Cadastrar conta a receber</Link>
     </FormSection>
     <FormSection title="Pagador">
       <label className="grid gap-2 text-sm font-bold">Nome do pagador *<input key={`${selected?.id ?? ""}:name`} aria-label="Nome do pagador" className="field" name="customerName" required defaultValue={selected?.clientName} placeholder="Nome do pagador" /></label>

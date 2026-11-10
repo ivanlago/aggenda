@@ -11,7 +11,7 @@ import { ModalShell } from "@/components/modal-shell";
 import { ReferenceSelect } from "@/components/reference-records";
 import type { ReferenceRecord } from "@/lib/reference-records";
 
-type Props = { accounts: ReferenceRecord[]; categories: ReferenceRecord[]; costCenters: ReferenceRecord[]; today: string; initialType?: string };
+type Props = { categories: ReferenceRecord[]; costCenters: ReferenceRecord[]; today: string; initialType?: string; autoOpen?: boolean };
 
 function EntryFields({ categories, costCenters, today, initialType }: Props) {
   const [type, setType] = useState(initialType === "payable" ? "payable" : "receivable");
@@ -40,8 +40,8 @@ function EntryFields({ categories, costCenters, today, initialType }: Props) {
 }
 
 export function FinancialEntryControls(props: Props) {
-  return <div className="mb-5 flex flex-wrap items-start gap-3" id="novo-lancamento">
-    <ModalShell key={props.initialType ?? "new"} title="Novo lançamento" variant="new" wide closeOnSuccess defaultOpen={props.initialType === "payable" || props.initialType === "receivable"}><EntryFields {...props} /></ModalShell>
+  return <div className="flex flex-wrap items-start gap-3" id="novo-lancamento">
+    <ModalShell key={props.initialType ?? "new"} title={props.initialType === "payable" ? "Nova conta a pagar" : "Nova conta a receber"} variant="new" wide closeOnSuccess defaultOpen={props.autoOpen}><EntryFields {...props} /></ModalShell>
     <Link className="secondary-button" href="/financeiro/cadastros">Cadastros financeiros</Link>
   </div>;
 }

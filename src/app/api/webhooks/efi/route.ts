@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     const [charge] = await db.select().from(paymentCharges).where(and(eq(paymentCharges.organizationId, organizationId), eq(paymentCharges.provider, "efi"), eq(paymentCharges.providerPaymentId, item.txid))).limit(1); if (!charge) continue;
     if(charge.originType === "retail_sale") {
       await refreshPosPayment(organizationId,charge.originId);
-      revalidatePath("/vendas");revalidatePath("/financeiro");revalidatePath("/financeiro/cobrancas");revalidatePath("/pacotes");revalidatePath(`/vendas/pagamento/${charge.originId}`);
+      revalidatePath("/vendas");revalidatePath("/financeiro/lancamentos");revalidatePath("/pacotes");revalidatePath(`/vendas/pagamento/${charge.originId}`);
       continue;
     }
     const status = cob.status === "CONCLUIDA" ? "paid" : cob.status === "REMOVIDA_PELO_USUARIO_RECEBEDOR" || cob.status === "REMOVIDA_PELO_PSP" ? "cancelled" : "pending";

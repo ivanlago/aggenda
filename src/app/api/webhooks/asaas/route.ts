@@ -124,7 +124,7 @@ async function processOrganizationCharge(organizationId: string, event: AsaasWeb
   if (!charge) return false;
   if (charge.originType === "retail_sale") {
     await refreshPosPayment(organizationId, charge.originId);
-    revalidatePath("/vendas"); revalidatePath("/financeiro"); revalidatePath("/financeiro/cobrancas"); revalidatePath("/pacotes");
+    revalidatePath("/vendas"); revalidatePath("/financeiro/lancamentos"); revalidatePath("/pacotes");
     revalidatePath(`/vendas/pagamento/${charge.originId}`);
     return true;
   }

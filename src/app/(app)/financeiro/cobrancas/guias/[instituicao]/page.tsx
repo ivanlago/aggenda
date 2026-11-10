@@ -45,10 +45,10 @@ export default async function PaymentConnectionGuidePage({ params }: Props) {
     {guide.mode === "connection" && <section className="panel mt-5">
       <h2 className="text-lg font-extrabold">Como testar de ponta a ponta</h2>
       <ol className="mt-3 list-decimal space-y-3 pl-5 text-sm leading-7">
-        <li>Em Contas e fluxo de caixa, cadastre uma conta a receber pendente, de pequeno valor, com descrição de teste e vencimento futuro. Use dados corretos do pagador.</li>
+        <li>Em Lançamentos → Contas a receber, cadastre uma conta a receber pendente, de pequeno valor, com descrição de teste e vencimento futuro. Use dados corretos do pagador.</li>
         <li>Em Cobranças → Nova cobrança, escolha {guide.name}, selecione essa conta a receber e clique em Gerar cobrança.</li>
         <li>Abra o link ou QR Code e confira recebedor, descrição e valor. Em Produção, prossiga apenas se quiser efetuar esse pagamento real. Não repita uma cobrança já paga.</li>
-        <li>Após a aprovação na instituição, atualize Cobranças. Confira Pago e o histórico da confirmação. Em Contas e fluxo de caixa, confira Recebido, sem baixa manual.</li>
+        <li>Após a aprovação na instituição, atualize Cobranças online. Confira Pago e o histórico da confirmação. Em Lançamentos → Contas a receber, confira Recebido, sem baixa manual.</li>
       </ol>
       <p className="mt-4 text-sm font-bold">O botão Testar conexão atual valida o acesso. O teste completo acima valida também a confirmação automática. Um teste Pix não valida automaticamente cartão, boleto, recorrência ou estorno.</p>
     </section>}

@@ -29,7 +29,7 @@ export async function POST(request: Request) {
   if (!charge) return Response.json({ received: true });
   if (charge.originType === "retail_sale") {
     await refreshPosPayment(organizationId, charge.originId);
-    revalidatePath("/vendas"); revalidatePath("/financeiro"); revalidatePath("/financeiro/cobrancas"); revalidatePath("/pacotes");
+    revalidatePath("/vendas"); revalidatePath("/financeiro/lancamentos"); revalidatePath("/pacotes");
     revalidatePath(`/vendas/pagamento/${charge.originId}`);
     return Response.json({ received: true });
   }

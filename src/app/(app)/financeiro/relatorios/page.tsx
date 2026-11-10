@@ -1,5 +1,5 @@
 import { PaginatedCollection } from "@/components/paginated-collection";
-import { and, asc, eq, gte, lt } from "drizzle-orm";
+import { inArray, and, asc, eq, gte, lt } from "drizzle-orm";
 import Link from "next/link";
 
 import { upsertFinancialBudget } from "@/actions/app";
@@ -20,7 +20,7 @@ export default async function FinancialReportsPage({ searchParams }: { searchPar
   const [entries, previousEntries, categories, centers, budgets, delinquent] = await Promise.all([
     db.select().from(financialEntries).where(and(eq(financialEntries.organizationId, organization.id), gte(financialEntries.dueDate, start), lt(financialEntries.dueDate, end))),
     db.select().from(financialEntries).where(and(eq(financialEntries.organizationId, organization.id), gte(financialEntries.dueDate, previousStart), lt(financialEntries.dueDate, previousEnd))),
-    db.select().from(financialCategories).where(eq(financialCategories.organizationId, organization.id)).orderBy(asc(financialCategories.name)),
+    db.select().from(financialCategories).where(and(eq(financialCategories.organizationId, organization.id), inArray(financialCategories.type, ["receivable", "payable"]))).orderBy(asc(financialCategories.name)),
     db.select().from(financialCostCenters).where(eq(financialCostCenters.organizationId, organization.id)).orderBy(asc(financialCostCenters.name)),
     db.select().from(financialBudgets).where(and(eq(financialBudgets.organizationId, organization.id), eq(financialBudgets.month, month))),
     db.select({ clientId: clients.id, clientName: clients.name, amount: financialEntries.amountInCents, dueDate: financialEntries.dueDate }).from(financialEntries).innerJoin(clients, eq(clients.id, financialEntries.clientId)).where(and(eq(financialEntries.organizationId, organization.id), eq(financialEntries.type, "receivable"), eq(financialEntries.status, "pending"), lt(financialEntries.dueDate, today))).orderBy(asc(financialEntries.dueDate)),

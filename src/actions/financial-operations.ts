@@ -23,7 +23,7 @@ export async function openCash(data: FormData) {
   const accountId = value(data, "accountId");
   if (!/^[0-9a-f-]{36}$/i.test(accountId)) throw new Error("Selecione uma conta válida.");
   await new CashClosingRepository(db).open(organization.id, session.user.id, accountId, cents(data, "openingBalance"));
-  revalidatePath("/financeiro/fechamento-caixa");
+  revalidatePath("/financeiro/meus-caixas");
 }
 
 export async function closeCash(data: FormData) {
@@ -31,7 +31,7 @@ export async function closeCash(data: FormData) {
   assertOrganizationPermission(organization.role, "finance.manage");
   const result = await new CashClosingRepository(db).close(organization.id, session.user.id, value(data, "id"), cents(data, "countedBalance"), value(data, "notes"));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "close", entityType: "cash_closing", entityId: value(data, "id"), details: result });
-  revalidatePath("/financeiro/fechamento-caixa");
+  revalidatePath("/financeiro/meus-caixas");
 }
 
 export async function importOfx(data: FormData) { const { organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage"); const accountId = value(data, "accountId"); const file = data.get("file"); if (!(file instanceof File) || file.size > 5_000_000) throw new Error("Selecione um OFX de até 5 MB."); const content = await file.text(); const blocks = content.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi) ?? []; if (!blocks.length) throw new Error("Nenhuma transação encontrada no arquivo OFX."); for (const block of blocks) { const field = (name: string) => block.match(new RegExp(`<${name}>([^<\\r\\n]+)`, "i"))?.[1]?.trim() ?? ""; const externalId = field("FITID") || `${field("DTPOSTED")}-${field("TRNAMT")}-${field("MEMO")}`; const date = field("DTPOSTED").slice(0, 8).replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3"); const amount = Math.round(Number(field("TRNAMT")) * 100); if (!date || !Number.isFinite(amount)) continue; await db.insert(bankImportTransactions).values({ organizationId: organization.id, accountId, externalId, occurredOn: date, description: field("MEMO") || field("NAME") || "Movimentação bancária", amountInCents: amount }).onConflictDoNothing(); } revalidatePath("/financeiro/conciliacao-ofx"); }
@@ -109,7 +109,7 @@ export async function diagnoseNfseCompatibility() {
   revalidatePath("/financeiro/nfse");
 }
 
-export async function saveClientFinancialIntegration(data: FormData) { const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "integrations.manage"); const provider = value(data, "provider"); const credential = value(data, "credential"); if (provider !== "asaas" || credential.length < 8) throw new Error("Integração financeira inválida."); const encryptedCredential = encryptFinancialCredential(credential); await db.insert(organizationFinancialIntegrations).values({ organizationId: organization.id, provider, environment: value(data, "environment") || "sandbox", encryptedCredential, metadata: { billingOwner: "client", costsPaidBy: "client" } }).onConflictDoUpdate({ target: [organizationFinancialIntegrations.organizationId, organizationFinancialIntegrations.provider], set: { encryptedCredential, environment: value(data, "environment") || "sandbox", status: "configured", metadata: { billingOwner: "client", costsPaidBy: "client" }, updatedAt: new Date() } }); await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "configure", entityType: `financial_integration:${provider}` }); revalidatePath("/financeiro/cobrancas"); }
+export async function saveClientFinancialIntegration(data: FormData) { const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "integrations.manage"); const provider = value(data, "provider"); const credential = value(data, "credential"); if (provider !== "asaas" || credential.length < 8) throw new Error("Integração financeira inválida."); const encryptedCredential = encryptFinancialCredential(credential); await db.insert(organizationFinancialIntegrations).values({ organizationId: organization.id, provider, environment: value(data, "environment") || "sandbox", encryptedCredential, metadata: { billingOwner: "client", costsPaidBy: "client" } }).onConflictDoUpdate({ target: [organizationFinancialIntegrations.organizationId, organizationFinancialIntegrations.provider], set: { encryptedCredential, environment: value(data, "environment") || "sandbox", status: "configured", metadata: { billingOwner: "client", costsPaidBy: "client" }, updatedAt: new Date() } }); await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "configure", entityType: `financial_integration:${provider}` }); revalidatePath("/financeiro/lancamentos"); }
 
 export async function registerFiscalDocument(data: FormData) {
   const { session, organization } = await requireOrganization();

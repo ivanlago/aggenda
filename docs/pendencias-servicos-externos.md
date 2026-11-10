@@ -1,11 +1,21 @@
 # Pendências dos serviços externos
 
-Atualizado em 18/08/2026.
+Registro original de 18/08/2026. Validação dos fluxos de agenda no WhatsApp atualizada em 10/11/2026.
+
+### WhatsApp — cenários validados em 10/11/2026
+
+Teste realizado pelo usuário no canal Aggenda WhatsApp Business da Clínica Aura Estética, com capturas das conversas:
+
+- Agendamento: seleção de serviço e profissional, consulta de disponibilidade e confirmação da reserva para 13/11/2026 às 10h.
+- Reagendamento: consulta de uma data sem disponibilidade, preservação do horário original até a confirmação e alteração para 16/11/2026 às 11h.
+- Cancelamento: seleção do agendamento reagendado, confirmação explícita e retorno de cancelamento.
+
+Esses três cenários foram concluídos no teste informado pelo usuário. Confirmação de presença, repasse humano e notificações proativas ficam como cenários separados, sem validação registrada neste teste.
 
 ## Item 1 — Coolify, n8n e atendimento pelo WhatsApp
 
 - Aguardar o novo número comercial do WhatsApp.
-- Depois do cadastro do número na Meta, registrar o canal na organização e repetir o teste completo: mensagem recebida, processamento no n8n e resposta no WhatsApp.
+- Para um novo número, registrar o canal na organização e validar o recebimento e as respostas do Aggenda. Os três fluxos de agenda já foram validados no canal usado no teste de 10/11/2026.
 
 ## Item 2 — Notificações por e-mail e SMS
 
@@ -19,7 +29,7 @@ Atualizado em 18/08/2026.
 - Aplicativo publicado e dados públicos atualizados para a marca Aggenda.
 - Aguardar o novo número para cadastrá-lo e validá-lo na Meta.
 - Cadastrar a forma de pagamento da conta do WhatsApp Business após a inclusão do número.
-- Realizar o teste real de envio e recebimento depois da ativação.
+- Envio e recebimento reais validados no canal testado em 10/11/2026 para os três fluxos de agenda descritos acima. Repetir ao ativar outro número.
 - Opcional e recomendado: concluir a verificação da empresa, que exige documentos empresariais e análise da Meta.
 
 ## Item 4 — Inteligência artificial e orquestrações comerciais
@@ -29,7 +39,7 @@ Atualizado em 18/08/2026.
 - O n8n fica reservado ao evento `commercial.automation.requested`, para templates comerciais publicados e configuráveis.
 - `AI_API_URL`, `AI_API_KEY`, `AI_MODEL` e `AGGENDA_INTERNAL_API_KEY` estão configurados na Vercel; `AGGENDA_INTERNAL_API_URL` e o mesmo segredo interno estão configurados no worker do Coolify.
 - A aplicação foi reimplantada em produção com a configuração completa da IA.
-- Pendência de homologação: repetir o teste ponta a ponta depois do cadastro do novo número do WhatsApp.
+- Homologação dos fluxos de agenda concluída no canal testado em 10/11/2026. Validar os demais cenários separadamente e repetir os testes ao ativar outro número.
 
 ## Item 5 — Demais serviços externos
 

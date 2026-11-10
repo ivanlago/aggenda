@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   if (!chargeId) return Response.json({ received: true }); const [charge] = await db.select().from(paymentCharges).where(and(eq(paymentCharges.id, chargeId), eq(paymentCharges.organizationId, organizationId), eq(paymentCharges.provider, "mercado_pago"))).limit(1); if (!charge) return Response.json({ received: true });
   if (charge.originType === "retail_sale") {
     await new PosPaymentRepository(db).apply(organizationId, charge.id, payment);
-    revalidatePath("/vendas"); revalidatePath("/vendas/historico"); revalidatePath("/vendas/relatorios"); revalidatePath("/financeiro"); revalidatePath("/financeiro/cobrancas"); revalidatePath("/pacotes");
+    revalidatePath("/vendas"); revalidatePath("/vendas/historico"); revalidatePath("/vendas/relatorios"); revalidatePath("/financeiro/lancamentos"); revalidatePath("/pacotes");
     revalidatePath(`/vendas/pagamento/${charge.originId}`);
     return Response.json({ received: true });
   }

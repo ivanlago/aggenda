@@ -288,6 +288,6 @@ export async function rescheduleAppointment(formData: FormData) {
   });
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
-  revalidatePath("/financeiro");
+  revalidatePath("/financeiro/lancamentos");
   revalidatePath(`/clientes/${item.clientId}`);
 }

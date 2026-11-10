@@ -523,7 +523,7 @@ export async function registerRetailSale(data: FormData) {
   if (online) {
     await ensurePosCheckout(organization.id, createdSale.id);
     revalidatePath("/vendas"); revalidatePath("/estoque");
-  revalidatePath("/produtos-servicos"); revalidatePath("/financeiro"); revalidatePath("/financeiro/cobrancas");
+  revalidatePath("/produtos-servicos"); revalidatePath("/financeiro/lancamentos");
     return { openUrl: `/vendas/pagamento/${createdSale.id}`, warning: "Venda aguardando pagamento. Os itens estão reservados; a liberação depende da confirmação do provedor." };
   }
   const receiptPath = `/recibo/${createdSale.receiptToken}`;
@@ -540,7 +540,7 @@ export async function registerRetailSale(data: FormData) {
   const notificationResults = await Promise.allSettled(notifications);
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "retail_sale", entityId: createdSale.id });
   revalidatePath("/vendas"); revalidatePath("/produtos"); revalidatePath("/estoque");
-  revalidatePath("/produtos-servicos"); revalidatePath("/financeiro");
+  revalidatePath("/produtos-servicos"); revalidatePath("/financeiro/lancamentos");
   if (attendanceId) revalidatePath(`/atendimento/${attendanceId}`);
   if (sourceQuote?.attendanceId) revalidatePath(`/atendimento/${sourceQuote.attendanceId}`);
   revalidatePath("/agenda"); revalidatePath("/dashboard");
@@ -591,7 +591,7 @@ export async function reverseRetailSale(data: FormData) {
   });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: operation, entityType: "retail_sale", entityId: saleId, details: { reason } });
   revalidatePath("/vendas"); revalidatePath("/vendas/historico"); revalidatePath("/vendas/relatorios"); revalidatePath("/estoque");
-  revalidatePath("/produtos-servicos"); revalidatePath("/financeiro");
+  revalidatePath("/produtos-servicos"); revalidatePath("/financeiro/lancamentos");
   revalidatePath("/pacotes");
   revalidatePath("/produtos-servicos");
   revalidatePath("/atendimento/[id]", "page");

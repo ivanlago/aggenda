@@ -17,7 +17,7 @@ async function contextForSale(data: FormData) {
   return { ...context, saleId };
 }
 function refresh(saleId: string) {
-  revalidatePath(`/vendas/pagamento/${saleId}`); revalidatePath("/vendas"); revalidatePath("/estoque"); revalidatePath("/financeiro"); revalidatePath("/financeiro/cobrancas"); revalidatePath("/pacotes");
+  revalidatePath(`/vendas/pagamento/${saleId}`); revalidatePath("/vendas"); revalidatePath("/estoque"); revalidatePath("/financeiro/lancamentos"); revalidatePath("/pacotes");
 }
 export async function consultPosPayment(data: FormData) {
   const { organization, saleId } = await contextForSale(data);

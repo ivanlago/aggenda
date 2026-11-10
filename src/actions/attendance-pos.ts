@@ -74,5 +74,5 @@ export async function payAttendanceExtra(data: FormData) {
   }).onConflictDoNothing({ target: financialEntries.id }).returning({ id: financialEntries.id });
   if (created) await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "payment", entityType: "financial_entry", entityId: created.id, details: { appointmentId: appointment.id, amountInCents: amount } });
   revalidatePath(`/atendimento/${appointment.id}`);
-  revalidatePath("/financeiro");
+  revalidatePath("/financeiro/lancamentos");
 }

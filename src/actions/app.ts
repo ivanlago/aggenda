@@ -1000,7 +1000,7 @@ export async function createFinancialEntry(formData: FormData) {
   });
   const [entry] = await db.insert(financialEntries).values(values).returning({ id: financialEntries.id });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "financial_entry", entityId: entry.id });
-  revalidatePath("/financeiro");
+  revalidatePath("/financeiro/lancamentos");
 }
 
 export async function registerAppointmentPayment(formData: FormData) {
@@ -1024,7 +1024,7 @@ export async function registerAppointmentPayment(formData: FormData) {
     await db.delete(financialEntries).where(and(eq(financialEntries.organizationId, organization.id), eq(financialEntries.appointmentId, appointmentId)));
     if (appointment.status === "completed" || appointment.status === "no_show") await reconcilePackageUsage(appointmentId, appointment.status);
     await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "payment:package", entityType: "appointment", entityId: appointmentId, details: { clientPackageId } });
-    revalidatePath("/dashboard"); revalidatePath("/financeiro"); revalidatePath(`/clientes/${appointment.clientId}`); revalidatePath("/pacotes");
+    revalidatePath("/dashboard"); revalidatePath("/financeiro/lancamentos"); revalidatePath(`/clientes/${appointment.clientId}`); revalidatePath("/pacotes");
   revalidatePath("/produtos-servicos");
     return;
   }
@@ -1038,7 +1038,7 @@ export async function registerAppointmentPayment(formData: FormData) {
     amountInCents: amountInCents!, dueDate: realizedDate, realizedDate, paymentMethod: selectedPayment.method, paymentMethodId: selectedPayment.paymentMethodId, paymentMethodName: selectedPayment.paymentMethodName, accountId: selectedPayment.accountId, notes, createdByUserId: session.user.id,
   }).onConflictDoUpdate({ target: financialEntries.appointmentId, set: { status: "received", description, amountInCents: amountInCents!, realizedDate, paymentMethod: selectedPayment.method, paymentMethodId: selectedPayment.paymentMethodId, paymentMethodName: selectedPayment.paymentMethodName, accountId: selectedPayment.accountId, notes, updatedAt: new Date() } }).returning({ id: financialEntries.id });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "payment", entityType: "appointment", entityId: appointmentId, details: { financialEntryId: entry.id, amountInCents, paymentMethod } });
-  revalidatePath("/dashboard"); revalidatePath("/financeiro");
+  revalidatePath("/dashboard"); revalidatePath("/financeiro/lancamentos");
 }
 
 export async function createFinancialAccount(formData: FormData) {
@@ -1046,27 +1046,27 @@ export async function createFinancialAccount(formData: FormData) {
   const name = textValue(formData, "name"); const accountType = textValue(formData, "accountType");
   if (name.length < 2 || !["bank", "cash", "digital_wallet"].includes(accountType)) throw new Error("Informe nome e tipo da conta.");
   await db.insert(financialAccounts).values({ organizationId: organization.id, name, accountType, openingBalanceInCents: optionalMoneyInCents(formData, "openingBalance") ?? 0 }).onConflictDoNothing();
-  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "financial_account" }); revalidatePath("/financeiro");
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "financial_account" }); revalidatePath("/financeiro/lancamentos");
 }
 
 export async function createFinancialCategory(formData: FormData) {
   const { organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage");
   const name = textValue(formData, "name"); const type = textValue(formData, "type");
   if (name.length < 2 || !["payable", "receivable"].includes(type)) throw new Error("Informe nome e tipo da categoria.");
-  await db.insert(financialCategories).values({ organizationId: organization.id, name, type }).onConflictDoNothing(); revalidatePath("/financeiro");
+  await db.insert(financialCategories).values({ organizationId: organization.id, name, type }).onConflictDoNothing(); revalidatePath("/financeiro/lancamentos");
 }
 
 export async function createFinancialCostCenter(formData: FormData) {
   const { organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage");
   const name = textValue(formData, "name"); if (name.length < 2) throw new Error("Informe o centro de custo.");
-  await db.insert(financialCostCenters).values({ organizationId: organization.id, name }).onConflictDoNothing(); revalidatePath("/financeiro");
+  await db.insert(financialCostCenters).values({ organizationId: organization.id, name }).onConflictDoNothing(); revalidatePath("/financeiro/lancamentos");
 }
 
 export async function upsertFinancialBudget(formData: FormData) {
   const { session, organization } = await requireOrganization(); assertOrganizationPermission(organization.role, "finance.manage");
   const categoryId = textValue(formData, "categoryId"); const costCenterId = optionalText(formData, "costCenterId"); const month = textValue(formData, "month"); const amountInCents = optionalMoneyInCents(formData, "amount");
   if (!categoryId || !/^\d{4}-\d{2}$/.test(month) || amountInCents == null) throw new Error("Informe categoria, mês e orçamento válidos.");
-  const [category] = await db.select({ id: financialCategories.id }).from(financialCategories).where(and(eq(financialCategories.id, categoryId), eq(financialCategories.organizationId, organization.id))).limit(1);
+  const [category] = await db.select({ id: financialCategories.id }).from(financialCategories).where(and(eq(financialCategories.id, categoryId), eq(financialCategories.organizationId, organization.id), inArray(financialCategories.type, ["receivable", "payable"]))).limit(1);
   const center = costCenterId ? await db.select({ id: financialCostCenters.id }).from(financialCostCenters).where(and(eq(financialCostCenters.id, costCenterId), eq(financialCostCenters.organizationId, organization.id))).limit(1) : [];
   if (!category || (costCenterId && !center.length)) throw new Error("Categoria ou centro de custo inválido.");
   const [existing] = await db.select({ id: financialBudgets.id }).from(financialBudgets).where(and(eq(financialBudgets.organizationId, organization.id), eq(financialBudgets.categoryId, categoryId), costCenterId ? eq(financialBudgets.costCenterId, costCenterId) : isNull(financialBudgets.costCenterId), eq(financialBudgets.month, month))).limit(1);
@@ -1103,7 +1103,7 @@ export async function updateFinancialEntryStatus(formData: FormData) {
     updatedAt: new Date(),
   }).where(and(eq(financialEntries.id, id), eq(financialEntries.organizationId, organization.id)));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: `status:${status}`, entityType: "financial_entry", entityId: id });
-  revalidatePath("/financeiro");
+  revalidatePath("/financeiro/lancamentos");
 }
 
 export async function deleteFinancialEntry(formData: FormData) {
@@ -1121,7 +1121,7 @@ export async function deleteFinancialEntry(formData: FormData) {
   )).returning({ id: financialEntries.id });
   if (!deleted) throw new Error("Somente lançamentos criados manualmente podem ser excluídos.");
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "delete", entityType: "financial_entry", entityId: id });
-  revalidatePath("/financeiro");
+  revalidatePath("/financeiro/lancamentos");
 }
 
 export async function createAppointment(formData: FormData) {
@@ -1231,7 +1231,7 @@ export async function createAppointment(formData: FormData) {
   }
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
-  revalidatePath("/financeiro");
+  revalidatePath("/financeiro/lancamentos");
   revalidatePath(`/clientes/${clientId}`);
 }
 
@@ -1310,7 +1310,7 @@ export async function updateAppointmentStatus(formData: FormData) {
   });
   revalidatePath("/agendamentos");
   revalidatePath("/dashboard");
-  revalidatePath("/financeiro");
+  revalidatePath("/financeiro/lancamentos");
   revalidatePath("/estoque");
   revalidatePath("/produtos-servicos");
   revalidatePath("/crescimento");

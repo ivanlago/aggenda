@@ -30,5 +30,5 @@ export async function removeAttendancePrimaryProcedure(data: FormData) {
     });
   } catch (error) { return { error: error instanceof Error ? error.message : "Não foi possível remover o procedimento." }; }
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "procedure:remove", entityType: "appointment", entityId: appointment.id });
-  revalidatePath(`/atendimento/${appointment.id}`); revalidatePath(`/clientes/${appointment.clientId}`); revalidatePath("/pacotes"); revalidatePath("/agenda"); revalidatePath("/financeiro");
+  revalidatePath(`/atendimento/${appointment.id}`); revalidatePath(`/clientes/${appointment.clientId}`); revalidatePath("/pacotes"); revalidatePath("/agenda"); revalidatePath("/financeiro/lancamentos");
 }

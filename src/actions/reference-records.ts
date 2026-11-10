@@ -9,7 +9,7 @@ import { referenceLabels, type ReferenceRecord } from "@/lib/reference-records";
 import { changeReferenceRecord, saveReferenceRecord } from "@/lib/reference-record-repository";
 
 const kindSchema = z.enum(["product_category", "product_subcategory", "service_category", "financial_account", "financial_category", "cost_center"]);
-function refresh() { revalidatePath("/estoque"); revalidatePath("/servicos"); revalidatePath("/financeiro"); revalidatePath("/financeiro/cadastros"); revalidatePath("/", "layout"); }
+function refresh() { revalidatePath("/estoque"); revalidatePath("/servicos"); revalidatePath("/financeiro/lancamentos"); revalidatePath("/financeiro/cadastros"); revalidatePath("/", "layout"); }
 function failure(error: unknown) {
   if (error instanceof z.ZodError) return { error: error.issues[0]?.message ?? "Revise os dados informados." };
   const cause = error instanceof Error ? (error as Error & { cause?: { code?: string }; code?: string }) : undefined;

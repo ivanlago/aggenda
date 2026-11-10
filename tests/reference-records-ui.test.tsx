@@ -95,6 +95,7 @@ test("quick registration preserves the draft, auto-selects categories, and keeps
     assert.equal(document.querySelector<HTMLInputElement>('dialog input[name="description"]')?.required, false);
     assert.equal(document.querySelector('dialog [name="costCenterId"]'), null);
     assert.ok(document.querySelector('dialog a[href="/configuracoes?aba=payments"]'));
+    assert.equal(document.querySelector<HTMLInputElement>('fieldset[aria-label="Cobrança online"] input[type="checkbox"]')?.disabled, true);
     assert.ok([...document.querySelectorAll<HTMLButtonElement>("dialog button")].some(button => button.textContent === "Salvar e emitir cobranças" && button.disabled));
     const category = document.querySelector<HTMLSelectElement>('dialog select[name="categoryId"]')!;
     assert.ok(category.querySelector('option[value="income"]'));
@@ -107,8 +108,14 @@ test("quick registration preserves the draft, auto-selects categories, and keeps
     await act(async () => root.render(<FinancialEntryControls key="sem-metodo" categories={[]} today="2027-01-31"
       providers={[{ id: "asaas", name: "Asaas", isDefault: true, environment: "sandbox" }]} />));
     await click("Nova conta a receber");
-    assert.match(document.querySelector("dialog")!.textContent!, /Provedores ativos: Asaas/);
+    assert.equal(document.querySelector('select[name="chargeProvider"]'), null);
+    const unconfiguredToggle = document.querySelector<HTMLInputElement>('fieldset[aria-label="Cobrança online"] input[type="checkbox"]')!;
+    assert.equal(unconfiguredToggle.disabled, false);
+    await act(async () => unconfiguredToggle.click());
+    assert.equal(unconfiguredToggle.checked, true);
+    assert.equal(document.querySelector<HTMLSelectElement>('select[name="chargeProvider"]')?.value, "asaas");
     assert.ok(document.querySelector('dialog a[href="/financeiro/formas-de-pagamento"]'));
+    assert.ok([...document.querySelectorAll<HTMLButtonElement>("dialog button")].some(button => button.textContent === "Salvar e emitir cobranças" && button.disabled));
 
     await act(async () => root.render(<PaymentCatalogProvider catalog={{
       accounts: [{ id: "bank", name: "Banco" }],
@@ -121,7 +128,7 @@ test("quick registration preserves the draft, auto-selects categories, and keeps
       { id: "pagbank", name: "PagBank", isDefault: true, environment: "sandbox" },
     ]} /></PaymentCatalogProvider>));
     await click("Nova conta a receber");
-    assert.equal(document.querySelector<HTMLSelectElement>('select[name="chargeProvider"]')?.value, "pagbank");
+    assert.equal(document.querySelector('select[name="chargeProvider"]'), null);
     const chargeToggle = [...document.querySelectorAll("label")].find(label => label.textContent?.includes("Emitir cobrança online"))!.querySelector("input")!;
     await act(async () => chargeToggle.click());
     assert.equal(document.querySelector<HTMLSelectElement>('select[name="chargeProvider"]')?.value, "pagbank");

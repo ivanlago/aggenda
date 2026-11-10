@@ -33,7 +33,7 @@ export function FinancialReferenceCatalog({ kind, records }: { kind: Kind; recor
       <table className="w-full table-fixed text-left text-sm">
         <caption className="sr-only">Lista de cadastros financeiros</caption>
         <thead><tr className="border-b text-xs uppercase text-muted"><th scope="col" className="px-2 py-3">Nome</th><th scope="col" className="px-2 py-3">Tipo</th><th scope="col" className="w-20 px-2 py-3">Status</th><th scope="col" className="w-20 px-1 py-3 text-center sm:w-24">Ações</th></tr></thead>
-        <PaginatedCollection as="tbody" label="Cadastros financeiros" className="divide-y">
+        <PaginatedCollection as="tbody" tableColumns={4} label="Cadastros financeiros" className="divide-y">
           {filtered.map(record => <tr key={record.id} className="odd:bg-slate-50/60">
             <td className="break-words px-2 py-4 font-bold">{record.name}</td>
             <td className="break-words px-2 py-4">{kind === "financial_account" ? accountTypes[record.accountType ?? "bank"] ?? record.accountType : financialCategoryLabels[record.type ?? ""] ?? record.type}</td>

@@ -4,6 +4,8 @@ import { saveInventorySupplier } from "@/actions/inventory-purchases";
 import { ActionForm } from "@/components/action-form";
 import { FormActions } from "@/components/form-dialog-context";
 import { ModalShell } from "@/components/modal-shell";
+import { ListPagination } from "@/components/list-pagination";
+import { parseListPage, parseListPageSize } from "@/lib/list-pagination";
 import { PageHeader } from "@/components/page-header";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { db } from "@/db";
@@ -28,15 +30,20 @@ function SupplierForm({ supplier }: { supplier?: typeof inventorySuppliers.$infe
   </ActionForm>;
 }
 
-export default async function InventoryPurchasesPage() {
+export default async function InventoryPurchasesPage({ searchParams }: { searchParams: Promise<{ pagina?: string; linhas?: string }> }) {
   const { organization } = await requireOrganization();
   if (!hasOrganizationPermission(organization.role, "inventory.manage")) return <div className="page-wrap"><p className="panel">Acesso restrito à gestão de estoque.</p></div>;
 
+  const query = await searchParams;
+  const pageSize = parseListPageSize(query.linhas);
+  const purchaseCondition = eq(inventoryPurchases.organizationId, organization.id);
+  const total = await db.$count(inventoryPurchases, purchaseCondition);
+  const page = Math.min(parseListPage(query.pagina), Math.max(1, Math.ceil(total / pageSize)));
   const [suppliers, products, purchases] = await Promise.all([
     db.select().from(inventorySuppliers).where(eq(inventorySuppliers.organizationId, organization.id)).orderBy(asc(inventorySuppliers.name)),
     db.select({ id: inventoryProducts.id, name: inventoryProducts.name, lotTracking: inventoryProducts.lotTracking, unit: inventoryProducts.unit })
       .from(inventoryProducts).where(and(eq(inventoryProducts.organizationId, organization.id), eq(inventoryProducts.isActive, true))).orderBy(asc(inventoryProducts.name)),
-    db.select().from(inventoryPurchases).where(eq(inventoryPurchases.organizationId, organization.id)).orderBy(desc(inventoryPurchases.purchasedOn), desc(inventoryPurchases.createdAt)).limit(100),
+    db.select().from(inventoryPurchases).where(purchaseCondition).orderBy(desc(inventoryPurchases.purchasedOn), desc(inventoryPurchases.createdAt), desc(inventoryPurchases.id)).limit(pageSize).offset((page - 1) * pageSize),
   ]);
   const activeSuppliers = suppliers.filter(supplier => supplier.isActive);
   const items = purchases.length ? await db.select().from(inventoryPurchaseItems)
@@ -80,7 +87,7 @@ export default async function InventoryPurchasesPage() {
       </div>
       {(!activeSuppliers.length || !products.length) && <p className="text-sm text-muted">Cadastre um fornecedor ativo e um produto no estoque para registrar a compra.</p>}
       <p className="text-sm text-muted">Até 100 compras recentes.</p>
-      <PaginatedCollection label="Compras registradas" className="grid gap-3">
+      <div className="grid gap-3 max-h-[40rem] overflow-y-auto">
         {purchases.map(purchase => <details key={purchase.id} className="rounded-xl border p-3">
           <summary className="cursor-pointer font-bold">{purchase.purchasedOn.split("-").reverse().join("/")} · {purchase.supplierName} · {money.format(purchase.totalInCents / 100)}</summary>
           {purchase.reference && <p className="mt-2 text-sm">Referência: {purchase.reference}</p>}
@@ -91,7 +98,8 @@ export default async function InventoryPurchasesPage() {
             </li>)}
           </ul>
         </details>)}
-      </PaginatedCollection>
+      </div>
+      <ListPagination path="/estoque/compras" query={{}} page={page} pageSize={pageSize} total={total} label="Compras registradas" />
       {!purchases.length && <p className="text-sm text-muted">Nenhuma compra registrada.</p>}
     </section>
   </div>;

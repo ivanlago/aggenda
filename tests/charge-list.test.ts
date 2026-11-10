@@ -33,6 +33,10 @@ test("charge pages filter in SQL, preserve full totals and fetch only visible hi
     assert.equal(first.totals.paidAmount, 25000);
     assert.equal(first.totals.overdueAmount, 20000);
     assert.deepEqual(first.totals, second.totals);
+    const larger = await loadChargeList(database, org, { linhas: "50" }, "2026-10-28");
+    assert.equal(larger.charges.length, 45);
+    assert.equal(larger.pages, 1);
+    assert.deepEqual(larger.totals, first.totals);
     assert.equal(new Set([...first.charges, ...second.charges].map(row => row.id)).size, 40, "Stable ID tiebreaker avoids duplicate rows");
     assert.equal(first.events.length, 20);
     assert.ok(first.events.every(event => first.charges.some(charge => charge.id === event.chargeId)));

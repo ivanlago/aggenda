@@ -5,6 +5,7 @@ import { PassThrough } from "node:stream";
 import { build } from "esbuild";
 import React from "react";
 import { renderToPipeableStream, renderToStaticMarkup } from "react-dom/server";
+import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
 
 const globals = globalThis as typeof globalThis & { financeRows?: unknown[][]; chargeListing?: unknown };
 
@@ -35,7 +36,8 @@ function renderAsync(node: React.ReactNode) {
     output.on("data", (chunk: string) => { html += chunk; });
     output.on("end", () => resolve(html));
     output.on("error", reject);
-    const stream = renderToPipeableStream(node, { onAllReady: () => stream.pipe(output), onError: reject });
+    const router = { bfcacheId: "test", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, prefetch() {} };
+    const stream = renderToPipeableStream(<AppRouterContext.Provider value={router}>{node}</AppRouterContext.Provider>, { onAllReady: () => stream.pipe(output), onError: reject });
   });
 }
 
@@ -50,6 +52,7 @@ test("cash flow links integrated entries to charges and PDV instead of offering 
     assert.match(html, /Contas a receber/);
     assert.match(html, /Contas a pagar/);
     assert.match(html, /Extrato/);
+    assert.match(html, /\/api\/finance\/launches\?mes=2026-10&amp;aba=receber&amp;formato=xlsx|\/api\/finance\/launches\?aba=receber&amp;mes=2026-10&amp;formato=xlsx/);
     assert.match(html, /visao=cobrancas&amp;mes=2026-10&amp;cobranca=charge/);
     assert.match(html, /Ver cobrança vinculada/);
     assert.match(html, /Gerenciar no PDV/);
@@ -91,6 +94,7 @@ test("the statement accumulates recorded movements over the starting balance", a
     assert.match(html, /Saldo anterior.*150,00/);
     assert.match(html, /Recebimento da venda.*Saldo.*225,00/);
     assert.match(html, /Saldo ao fim do período.*200,00/);
+    assert.match(html, /\/api\/finance\/launches\?aba=extrato&amp;mes=2026-10&amp;conta=bank&amp;formato=pdf/);
   } finally { delete globals.financeRows; }
 });
 

@@ -9,8 +9,9 @@ import { isSalvadorRequest, salvadorStoredDraftSchema } from "@/lib/nfse/salvado
 import { readSalvadorSandboxContract } from "@/lib/nfse/salvador/transport";
 import { readNfseOnboarding } from "@/lib/nfse/onboarding";
 import { nfseEmissionMode } from "@/lib/nfse/emission-options";
-import { PaginatedCollection } from "@/components/paginated-collection";
-import { and, desc, eq } from "drizzle-orm";
+import { ListPagination } from "@/components/list-pagination";
+import { parseListPage, parseListPageSize } from "@/lib/list-pagination";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { diagnoseNfseCompatibility, registerFiscalDocument, requestNfseActivation, saveNfseFiscalProfile } from "@/actions/financial-operations";
 import { cancelNfse, consultNfse, revokeNfseCertificate, saveNfseDraft, submitNfse } from "@/actions/nfse";
@@ -30,20 +31,27 @@ const money = (value: number) => (value / 100).toLocaleString("pt-BR", { style: 
 const eventLabels: Record<string, string> = { municipal_batch_received: "Lote municipal recebido", draft_created: "Rascunho criado", draft_updated: "Rascunho atualizado", submission_started: "Envio iniciado", rejected: "Rejeição confirmada", result_unconfirmed: "Resultado aguardando confirmação", consultation_requested: "Consulta solicitada", authorized: "Autorização confirmada", cancellation_started: "Cancelamento solicitado", cancellation_unconfirmed: "Cancelamento aguardando confirmação", cancellation_consultation: "Consulta de cancelamento", cancelled: "Cancelamento confirmado", custody_rotated: "Proteção do documento atualizada", xml_downloaded: "XML baixado", xml_exported: "XML exportado", cancellation_event_downloaded: "Comprovante de cancelamento baixado" };
 const labels: Record<string, string> = { draft: "Rascunho", rejected: "Rejeitada antes da autorização", processing: "Em processamento", uncertain: "Resultado pendente de consulta", authorized: "Autorizada em homologação", cancellation_processing: "Cancelamento em processamento", cancellation_uncertain: "Cancelamento pendente de consulta", cancelled: "Cancelada em homologação" };
 
-export default async function NfsePage({ searchParams }: { searchParams: Promise<{ recebimento?: string; modo?: string; municipio?: string; regime?: string }> }) {
+export default async function NfsePage({ searchParams }: { searchParams: Promise<{ recebimento?: string; modo?: string; municipio?: string; regime?: string; notasPagina?: string; notasLinhas?: string; externosPagina?: string; externosLinhas?: string }> }) {
   const { organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "finance.read");
   const manage = hasOrganizationPermission(organization.role, "finance.manage");
   const configure = hasOrganizationPermission(organization.role, "integrations.manage");
   const query = await searchParams;
   const [contract] = await db.select().from(commercialContracts).where(eq(commercialContracts.organizationId, organization.id));
-  const [integrations, requests, entries, external, events] = await Promise.all([
+  const requestFilter = eq(nfseRequests.organizationId, organization.id);
+  const externalFilter = eq(fiscalDocuments.organizationId, organization.id);
+  const [requestTotal, externalTotal] = await Promise.all([db.$count(nfseRequests, requestFilter), db.$count(fiscalDocuments, externalFilter)]);
+  const requestSize = parseListPageSize(query.notasLinhas);
+  const externalSize = parseListPageSize(query.externosLinhas);
+  const requestPage = Math.min(parseListPage(query.notasPagina), Math.max(1, Math.ceil(requestTotal / requestSize)));
+  const externalPage = Math.min(parseListPage(query.externosPagina), Math.max(1, Math.ceil(externalTotal / externalSize)));
+  const [integrations, requests, entries, external] = await Promise.all([
     db.select({ status: organizationFinancialIntegrations.status, environment: organizationFinancialIntegrations.environment, metadata: organizationFinancialIntegrations.metadata }).from(organizationFinancialIntegrations).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "nfse"))).limit(1),
-    db.select().from(nfseRequests).where(eq(nfseRequests.organizationId, organization.id)).orderBy(desc(nfseRequests.createdAt)).limit(50),
+    db.select().from(nfseRequests).where(requestFilter).orderBy(desc(nfseRequests.createdAt), desc(nfseRequests.id)).limit(requestSize).offset((requestPage - 1) * requestSize),
     db.select({ id: financialEntries.id, description: financialEntries.description, amount: financialEntries.amountInCents, name: clients.name, cpf: clients.cpf }).from(financialEntries).leftJoin(clients, and(eq(clients.id, financialEntries.clientId), eq(clients.organizationId, organization.id))).where(and(eq(financialEntries.organizationId, organization.id), eq(financialEntries.type, "receivable"), eq(financialEntries.status, "received"))).orderBy(desc(financialEntries.createdAt)).limit(100),
-    db.select({ id: fiscalDocuments.id, number: fiscalDocuments.number, amount: fiscalDocuments.amountInCents, verificationUrl: fiscalDocuments.verificationUrl }).from(fiscalDocuments).where(eq(fiscalDocuments.organizationId, organization.id)).orderBy(desc(fiscalDocuments.createdAt)).limit(20),
-    db.select({ id: nfseRequestEvents.id, requestId: nfseRequestEvents.requestId, type: nfseRequestEvents.type, createdAt: nfseRequestEvents.createdAt }).from(nfseRequestEvents).where(eq(nfseRequestEvents.organizationId, organization.id)).orderBy(desc(nfseRequestEvents.createdAt)).limit(100),
+    db.select({ id: fiscalDocuments.id, number: fiscalDocuments.number, amount: fiscalDocuments.amountInCents, verificationUrl: fiscalDocuments.verificationUrl }).from(fiscalDocuments).where(externalFilter).orderBy(desc(fiscalDocuments.createdAt), desc(fiscalDocuments.id)).limit(externalSize).offset((externalPage - 1) * externalSize),
   ]);
+  const events = requests.length ? await db.select({ id: nfseRequestEvents.id, requestId: nfseRequestEvents.requestId, type: nfseRequestEvents.type, createdAt: nfseRequestEvents.createdAt }).from(nfseRequestEvents).where(and(eq(nfseRequestEvents.organizationId, organization.id), inArray(nfseRequestEvents.requestId, requests.map(request => request.id)))).orderBy(desc(nfseRequestEvents.createdAt)).limit(100) : [];
   const integration = integrations[0];
   const onboarding = readNfseOnboarding(integration?.metadata);
   const profile = readNfseProfile(integration?.metadata);
@@ -117,7 +125,7 @@ export default async function NfsePage({ searchParams }: { searchParams: Promise
     <article className="panel mt-5"><h2 className="text-lg font-extrabold">Solicitações recentes</h2><p className="mt-1 text-sm text-muted">Homologação não consome a franquia de produção. Em caso de falha, consulte a mesma solicitação.</p>
       <details className="mt-4"><summary className="cursor-pointer font-bold">Exportar XMLs de teste</summary><form action="/api/nfse/export" method="get" className="mt-3 flex flex-wrap items-end gap-3"><label className="grid gap-2 text-sm font-bold">De<input className="field" name="from" type="date" required /></label><label className="grid gap-2 text-sm font-bold">Até<input className="field" name="to" type="date" required /></label><button className="secondary-button">Baixar ZIP</button><p className="w-full text-xs text-muted">Por data de criação da solicitação, em UTC. Até 31 dias, 500 notas e 25 MB; inclui eventos de cancelamento confirmados. O manifesto informa o status de cada documento no momento da leitura.</p></form></details>
       {!requests.length && <p className="mt-4 text-sm text-muted">Nenhuma solicitação de emissão.</p>}
-      <PaginatedCollection label="Registros" className="mt-4 grid gap-4">{requests.map((request) => {
+      <div className="mt-4 grid gap-4 max-h-[40rem] overflow-y-auto">{requests.map((request) => {
         const municipal = isSalvadorRequest(request.dpsId);
         const stored = JSON.parse(readStoredNfseValue(organization.id, `${request.id}/draft`, request.encryptedDraft));
         const draft = municipal ? salvadorStoredDraftSchema.parse(stored).input : fiscalDraftSchema.parse(stored);
@@ -137,9 +145,10 @@ export default async function NfsePage({ searchParams }: { searchParams: Promise
           {request.status === "cancelled" && <a className="secondary-button mt-3" href={`/api/nfse/${request.id}/event`}>Baixar confirmação de cancelamento</a>}
           <details className="mt-3"><summary className="cursor-pointer text-sm font-bold">Histórico recente de operações</summary>{events.filter((event) => event.requestId === request.id).map((event) => <p className="mt-1 text-xs text-muted" key={event.id}>{event.createdAt.toLocaleString("pt-BR", { timeZone: organization.timezone })} · {eventLabels[event.type] ?? "Operação fiscal registrada"}</p>)}</details>
         </section>;
-      })}</PaginatedCollection>
+      })}</div>
+      <ListPagination path="/financeiro/nfse" query={query} page={requestPage} pageSize={requestSize} total={requestTotal} parameter="notasPagina" sizeParameter="notasLinhas" label="Solicitações de emissão" />
     </article>
-    <article id="notas-externas" className="panel mt-5"><h2 className="font-extrabold">Notas registradas externamente</h2><p className="text-sm text-muted">Notas emitidas em outro sistema, separadas das emissões de teste do Aggenda.</p><PaginatedCollection label="Registros" className="mt-3">{external.map((note) => <p className="mt-2 text-sm" key={note.id}>Nota {note.number ?? "sem número"} · {money(note.amount)}{note.verificationUrl && <a className="ml-3 font-bold text-brand underline" href={note.verificationUrl} target="_blank" rel="noopener noreferrer">Abrir verificação externa</a>}</p>)}</PaginatedCollection>
+    <article id="notas-externas" className="panel mt-5"><h2 className="font-extrabold">Notas registradas externamente</h2><p className="text-sm text-muted">Notas emitidas em outro sistema, separadas das emissões de teste do Aggenda.</p><div className="mt-3 max-h-[40rem] overflow-y-auto">{external.map((note) => <p className="mt-2 text-sm" key={note.id}>Nota {note.number ?? "sem número"} · {money(note.amount)}{note.verificationUrl && <a className="ml-3 font-bold text-brand underline" href={note.verificationUrl} target="_blank" rel="noopener noreferrer">Abrir verificação externa</a>}</p>)}</div><ListPagination path="/financeiro/nfse" query={query} page={externalPage} pageSize={externalSize} total={externalTotal} parameter="externosPagina" sizeParameter="externosLinhas" label="Notas externas" />
       {manage && <details className="mt-4"><summary className="cursor-pointer font-bold">Registrar nota já emitida</summary><ActionForm action={registerFiscalDocument} successMessage="Nota externa registrada." className="mt-3 grid gap-3 md:grid-cols-2"><label className="grid gap-2 text-sm font-bold">Recebimento<select className="field" name="financialEntryId"><option value="">Sem recebimento vinculado</option>{entries.map((entry) => <option key={entry.id} value={entry.id}>{entry.description} · {money(entry.amount)}</option>)}</select></label><label className="grid gap-2 text-sm font-bold">Número da nota<input className="field" name="number" required maxLength={60} /></label><label className="grid gap-2 text-sm font-bold">Valor<input className="field" name="amount" inputMode="decimal" required /></label><label className="grid gap-2 text-sm font-bold">Endereço de verificação<input className="field" name="verificationUrl" type="url" placeholder="https://..." /></label><button className="secondary-button">Registrar nota externa</button></ActionForm></details>}
     </article>
   </div>;

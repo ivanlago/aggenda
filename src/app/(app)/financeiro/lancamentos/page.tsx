@@ -1,5 +1,5 @@
-import { and, asc, desc, eq } from "drizzle-orm";
-import { Download, Trash2 } from "lucide-react";
+import { asc, desc, eq } from "drizzle-orm";
+import { Trash2 } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -10,10 +10,12 @@ import { PageHeader } from "@/components/page-header";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { PaymentMethodFields } from "@/components/payment-catalog-context";
 import { db } from "@/db";
-import { financialAccounts, financialCategories, financialCostCenters, financialEntries, paymentCharges, paymentMethods, retailSales } from "@/db/schema";
+import { financialAccounts, financialCategories, financialCostCenters, paymentCharges, paymentMethods, retailSales } from "@/db/schema";
 import { organizationDate } from "@/lib/appointment-safety";
 import { financeMonth, financeQuery, launchesPath, launchesUrl, nextFinanceMonth, onlineChargesPath, type FinanceSearchParams } from "@/lib/finance-navigation";
-import { financePeriod, isManagedCharge, matchesFinanceFilters } from "@/lib/finance-view";
+import { launchEntries, loadLaunchEntries, sourceLabels } from "@/lib/financial-launch-entries";
+import { FinancialDownloadButtons } from "./financial-download-buttons";
+import { isManagedCharge, matchesFinanceFilters } from "@/lib/finance-view";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 import { FinancialStatement } from "./financial-statement";
@@ -22,15 +24,6 @@ import OnlineCharges from "./online-charges";
 export const metadata = { title: "Lançamentos" };
 
 const money = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const sourceLabels: Record<string, string> = {
-  commission_payment: "Quitação de comissões",
-  manual: "Manual",
-  appointment: "Agendamento",
-  package: "Pacote",
-  installment: "Parcelado",
-  recurring: "Recorrente",
-  retail_sale: "Venda no PDV",
-};
 const tabs = [
   { id: "receber", label: "Contas a receber" },
   { id: "pagar", label: "Contas a pagar" },
@@ -80,7 +73,7 @@ async function AccountsView({ organization, query, today, month, nextMonth, tab 
   const type = incoming ? "receivable" : "payable";
   const canManage = hasOrganizationPermission(organization.role, "finance.manage");
   const [allEntries, accounts, categories, costCenters, charges, sales, methods] = await Promise.all([
-    db.select().from(financialEntries).where(and(eq(financialEntries.organizationId, organization.id), eq(financialEntries.type, type))).orderBy(asc(financialEntries.dueDate)),
+    loadLaunchEntries(db, organization.id, type),
     db.select().from(financialAccounts).where(eq(financialAccounts.organizationId, organization.id)).orderBy(asc(financialAccounts.name)),
     db.select().from(financialCategories).where(eq(financialCategories.organizationId, organization.id)).orderBy(asc(financialCategories.name)),
     db.select().from(financialCostCenters).where(eq(financialCostCenters.organizationId, organization.id)).orderBy(asc(financialCostCenters.name)),
@@ -89,7 +82,7 @@ async function AccountsView({ organization, query, today, month, nextMonth, tab 
     db.select({ id: paymentMethods.id, name: paymentMethods.name }).from(paymentMethods).where(eq(paymentMethods.organizationId, organization.id)),
   ]);
   const filters = { ...query, tipo: type };
-  const { entries, received, paid, receivable, payable, overdue } = financePeriod(allEntries, filters, today, month + "-01", nextMonth + "-01");
+  const { entries, received, paid, receivable, payable, overdue } = launchEntries(allEntries, filters, today, month, nextMonth);
   const realized = incoming ? received : paid;
   const pending = incoming ? receivable : payable;
   const overdueTotal = overdue.reduce((total, entry) => total + entry.amountInCents, 0);
@@ -125,13 +118,14 @@ async function AccountsView({ organization, query, today, month, nextMonth, tab 
     <div className="mb-5 flex flex-wrap items-start gap-3">
       {canManage && <FinancialEntryControls key={type} categories={categories} costCenters={costCenters} today={today} initialType={type} autoOpen={query.novo === type} />}
       {incoming && <Link className="secondary-button" href={chargesPath}>{canManage ? "Emitir ou consultar cobrança online" : "Consultar cobranças online"}</Link>}
-      <a className="secondary-button" href={"/api/finance/report?mes=" + month}><Download className="mr-2 size-4" />Relatório mensal PDF</a>
+      <FinancialDownloadButtons filters={{ ...query, aba: tab, mes: month }} />
+      <a className="self-center text-sm font-bold text-brand" href={"/api/finance/report?mes=" + month}>Relatório mensal consolidado</a>
     </div>
     <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_16rem]">
       <section className="panel min-w-0" aria-label={incoming ? "Contas a receber do período" : "Contas a pagar do período"}>
         <h2 className="text-lg font-extrabold">{incoming ? "Contas a receber" : "Contas a pagar"}</h2>
         <p className="mt-1 text-sm text-muted">Contas com vencimento ou baixa no período.</p>
-      <PaginatedCollection key={JSON.stringify(query)} label="Registros" className="mt-4 divide-y">{[...entries].sort((a, b) => Number(b.id === query.lancamento) - Number(a.id === query.lancamento)).map((entry) => {
+      <PaginatedCollection key={JSON.stringify(query)} label="Registros" className="mt-4 divide-y">{entries.map((entry) => {
         const account = accounts.find((item) => item.id === entry.accountId)?.name;
         const costCenter = costCenters.find((item) => item.id === entry.costCenterId)?.name;
         const linkedCharges = charges.filter((item) => item.financialEntryId === entry.id);

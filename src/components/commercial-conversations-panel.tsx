@@ -1,8 +1,10 @@
-import { and, desc, eq, exists, gte, ilike, isNull, lt, ne, or } from "drizzle-orm";
+import { and, desc, eq, exists, gte, ilike, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { Bot, MessageCircle, UserRoundCheck } from "lucide-react";
 import Link from "next/link";
 
 import { createCrmLeadFromConversation, updateCrmHandoff } from "@/actions/crm";
+import { ListPagination } from "@/components/list-pagination";
+import { parseListPage, parseListPageSize } from "@/lib/list-pagination";
 import { ActionForm } from "@/components/action-form";
 import { db } from "@/db";
 import { chatConversations, chatMessages, clients, crmLeads, organizationMembers, users } from "@/db/schema";
@@ -11,7 +13,7 @@ import { formatPhone } from "@/lib/phone";
 
 export type ConversationFilters = {
   conversationFrom?: string; conversationTo?: string; conversationSearch?: string;
-  conversationClient?: string; conversationStatus?: string; conversationOwner?: string; conversationPage?: string;
+  conversationClient?: string; conversationStatus?: string; conversationOwner?: string; conversationPage?: string; conversationRows?: string;
 };
 
 function validDate(value: string | undefined) {
@@ -19,7 +21,6 @@ function validDate(value: string | undefined) {
 }
 
 const statuses: Record<string, string> = { open: "Em aberto", attention: "Repasses da IA pendentes", bot: "Com a IA", requested: "Aguardando equipe", human: "Com a equipe", resolved: "Resolvida" };
-const pageSize = 50;
 
 export async function CommercialConversationsPanel({ organizationId, timezone, canManage, canCreateLead, filters }: { organizationId: string; timezone: string; canManage: boolean; canCreateLead: boolean; filters: ConversationFilters }) {
   const today = new Intl.DateTimeFormat("sv-SE", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -35,10 +36,10 @@ export async function CommercialConversationsPanel({ organizationId, timezone, c
   const status = filters.conversationStatus === undefined ? "open" : Object.hasOwn(statuses, filters.conversationStatus ?? "") ? filters.conversationStatus! : "";
   const client = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(filters.conversationClient ?? "") ? filters.conversationClient! : "";
   const owner = filters.conversationOwner ?? "";
-  const pageNumber = Number(filters.conversationPage);
-  const page = Number.isFinite(pageNumber) ? Math.min(10000, Math.max(1, Math.floor(pageNumber))) : 1;
+  const page = parseListPage(filters.conversationPage);
+  const pageSize = parseListPageSize(filters.conversationRows, 50);
   const [rows, members, customerRows] = await Promise.all([
-    invalid ? Promise.resolve([]) : db.select({ id: chatConversations.id, contactName: chatConversations.contactName, phone: chatConversations.externalContactId, lastMessageAt: chatConversations.lastMessageAt, handoffStatus: chatConversations.handoffStatus, needsHumanAttention: chatConversations.needsHumanAttention, handoffResolvedAt: chatConversations.handoffResolvedAt, automationPaused: chatConversations.automationPaused, leadId: chatConversations.leadId, leadName: crmLeads.name, clientName: clients.name, assignedUserId: chatConversations.assignedUserId, owner: users.name })
+    invalid ? Promise.resolve([]) : db.select({ id: chatConversations.id, contactName: chatConversations.contactName, phone: chatConversations.externalContactId, lastMessageAt: chatConversations.lastMessageAt, handoffStatus: chatConversations.handoffStatus, needsHumanAttention: chatConversations.needsHumanAttention, handoffResolvedAt: chatConversations.handoffResolvedAt, automationPaused: chatConversations.automationPaused, leadId: chatConversations.leadId, leadName: crmLeads.name, clientName: clients.name, assignedUserId: chatConversations.assignedUserId, owner: users.name, total: sql<number>`count(*) over ()`.mapWith(Number) })
       .from(chatConversations)
       .leftJoin(crmLeads, and(eq(crmLeads.id, chatConversations.leadId), eq(crmLeads.organizationId, organizationId)))
       .leftJoin(clients, and(eq(clients.id, chatConversations.clientId), eq(clients.organizationId, organizationId)))
@@ -49,22 +50,14 @@ export async function CommercialConversationsPanel({ organizationId, timezone, c
         client ? eq(chatConversations.clientId, client) : undefined,
         status === "attention" ? and(eq(chatConversations.needsHumanAttention, true), or(eq(chatConversations.handoffStatus, "requested"), eq(chatConversations.handoffStatus, "human"))) : status === "open" ? ne(chatConversations.handoffStatus, "resolved") : status ? eq(chatConversations.handoffStatus, status) : undefined,
         owner === "unassigned" ? isNull(chatConversations.assignedUserId) : owner ? eq(chatConversations.assignedUserId, owner) : undefined,
-      )).orderBy(desc(chatConversations.lastMessageAt), desc(chatConversations.id)).limit(pageSize + 1).offset((page - 1) * pageSize),
+      )).orderBy(desc(chatConversations.lastMessageAt), desc(chatConversations.id)).limit(pageSize).offset((page - 1) * pageSize),
     db.select({ id: users.id, name: users.name }).from(organizationMembers).innerJoin(users, eq(users.id, organizationMembers.userId)).where(eq(organizationMembers.organizationId, organizationId)).orderBy(users.name),
     db.select({ id: clients.id, name: clients.name }).from(clients).where(eq(clients.organizationId, organizationId)).orderBy(clients.name),
   ]);
-  function pageLink(number: number) {
-    const params = new URLSearchParams({ tab: "conversas", conversationFrom: from, conversationTo: to, conversationPage: String(number) });
-    if (search) params.set("conversationSearch", search);
-    if (client) params.set("conversationClient", client);
-    params.set("conversationStatus", status);
-    if (owner) params.set("conversationOwner", owner);
-    return `/crescimento?${params}`;
-  }
   return <section className="mt-5 grid gap-4">
     <div className="panel"><h2 className="text-lg font-extrabold">Conversas comerciais</h2><p className="mt-1 text-sm text-muted">Contatos com mensagens no período selecionado. Por padrão, mostramos as conversas em aberto, incluindo as de dias anteriores. As encerradas permanecem disponíveis no filtro de situação.</p>
       <form action="/crescimento" method="get" className="mt-5 grid items-end gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <input type="hidden" name="tab" value="conversas" />
+        <input type="hidden" name="tab" value="conversas" /><input type="hidden" name="conversationRows" value={pageSize} />
         <label className="grid gap-2 text-sm font-bold">De<input className="field" name="conversationFrom" type="date" defaultValue={from} required /></label>
         <label className="grid gap-2 text-sm font-bold">Até<input className="field" name="conversationTo" type="date" defaultValue={to} required /></label>
         <label className="grid gap-2 text-sm font-bold">Nome ou telefone<input className="field" name="conversationSearch" defaultValue={search} placeholder="Cliente, contato ou lead" maxLength={120} /></label>
@@ -74,9 +67,9 @@ export async function CommercialConversationsPanel({ organizationId, timezone, c
         <div className="flex flex-wrap gap-2 sm:col-span-2 xl:col-span-3"><button className="primary-button">Buscar conversas</button><Link className="secondary-button" href="/crescimento?tab=conversas">Conversas abertas / Limpar filtros</Link></div>
       </form>
       {invalid && <p role="alert" className="mt-4 text-sm font-bold text-red-700">Informe datas válidas, com a data final igual ou posterior à inicial.</p>}
-      {!invalid && <p className="mt-4 text-xs text-muted">{rows.slice(0, pageSize).length} conversa(s) nesta página · {new Date(`${from}T12:00:00Z`).toLocaleDateString("pt-BR", { timeZone: "UTC" })} a {new Date(`${to}T12:00:00Z`).toLocaleDateString("pt-BR", { timeZone: "UTC" })}</p>}
+      {!invalid && <p className="mt-4 text-xs text-muted">{rows.length} conversa(s) nesta página · {new Date(`${from}T12:00:00Z`).toLocaleDateString("pt-BR", { timeZone: "UTC" })} a {new Date(`${to}T12:00:00Z`).toLocaleDateString("pt-BR", { timeZone: "UTC" })}</p>}
     </div>
-    {rows.slice(0, pageSize).map((conversation) => <article className="panel" key={conversation.id}>
+    {rows.map((conversation) => <article className="panel" key={conversation.id}>
       <div className="flex flex-wrap items-start justify-between gap-4"><div className="flex gap-3"><MessageCircle className="mt-1 size-5 text-brand" /><div><h3 className="font-extrabold">{conversation.clientName || conversation.contactName || conversation.leadName || formatPhone(conversation.phone)}</h3><p className="text-sm text-muted">{formatPhone(conversation.phone)} · última mensagem {conversation.lastMessageAt.toLocaleString("pt-BR", { timeZone: timezone })}</p><p className="mt-1 text-xs font-bold">{conversation.owner ?? "Sem responsável"} · {statuses[conversation.handoffStatus] ?? conversation.handoffStatus}</p></div></div><span className="status-pill">{conversation.handoffStatus === "resolved" ? "Encerrada" : conversation.needsHumanAttention ? "Repasse da IA pendente" : conversation.automationPaused ? "IA pausada" : "IA ativa"}</span></div>
       <div className="mt-4 flex flex-wrap gap-2">
         {conversation.leadId ? <Link className="secondary-button" href={`/crm/leads/${conversation.leadId}`}>Abrir {conversation.leadName}</Link> : canCreateLead && <ActionForm action={createCrmLeadFromConversation} successMessage="Conversa adicionada ao CRM."><input type="hidden" name="conversationId" value={conversation.id} /><button className="primary-button">Criar lead no funil</button></ActionForm>}
@@ -87,6 +80,6 @@ export async function CommercialConversationsPanel({ organizationId, timezone, c
       {conversation.handoffStatus === "resolved" && conversation.handoffResolvedAt && <p className="mt-3 text-xs text-muted">Encerrada em {conversation.handoffResolvedAt.toLocaleString("pt-BR", { timeZone: timezone })}.</p>}
     </article>)}
     {!invalid && !rows.length && <div className="panel empty-state">Nenhuma conversa encontrada neste período com os filtros selecionados.</div>}
-    {(page > 1 || rows.length > pageSize) && <nav className="flex items-center justify-between gap-3" aria-label="Páginas de conversas">{page > 1 ? <Link className="secondary-button" href={pageLink(page - 1)}>Anterior</Link> : <span />}<span className="text-sm text-muted">Página {page}</span>{rows.length > pageSize ? <Link className="secondary-button" href={pageLink(page + 1)}>Próxima</Link> : <span />}</nav>}
+    {!invalid && <ListPagination path="/crescimento" query={{ ...filters, tab: "conversas", conversationFrom: from, conversationTo: to, conversationSearch: search, conversationClient: client, conversationStatus: status, conversationOwner: owner }} page={page} total={rows[0]?.total ?? (page === 1 ? 0 : undefined)} pageSize={pageSize} parameter="conversationPage" sizeParameter="conversationRows" label="Conversas" />}
   </section>;
 }

@@ -3,7 +3,7 @@ import { formatOrganizationDateTime } from "@/lib/organization-time";
 import { auditPresentation } from "@/lib/audit-presentation";
 import { count } from "drizzle-orm";
 import { ListPagination } from "@/components/list-pagination";
-import { parseListPage } from "@/lib/list-pagination";
+import { parseListPage, parseListPageSize } from "@/lib/list-pagination";
 import { and, desc, eq, ilike, or } from "drizzle-orm";
 
 import { PageHeader } from "@/components/page-header";
@@ -14,7 +14,7 @@ import { requireOrganization } from "@/lib/session";
 
 export const metadata = { title: "Auditoria" };
 
-export default async function AuditPage({ searchParams }: { searchParams: Promise<{ pagina?: string; q?: string; acao?: string; tipo?: string }> }) {
+export default async function AuditPage({ searchParams }: { searchParams: Promise<{ pagina?: string; linhas?: string; q?: string; acao?: string; tipo?: string }> }) {
   const { organization } = await requireOrganization();
   if (!hasOrganizationPermission(organization.role, "audit.read")) {
     return (
@@ -30,7 +30,8 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
   const condition = and(eq(auditLogs.organizationId, organization.id), search ? or(ilike(auditLogs.action, `%${search}%`), ilike(auditLogs.entityType, `%${search}%`), ilike(auditLogs.entityId, `%${search}%`)) : undefined, action ? eq(auditLogs.action, action) : undefined, entity ? eq(auditLogs.entityType, entity) : undefined);
   const options = await db.selectDistinct({ action: auditLogs.action, entity: auditLogs.entityType }).from(auditLogs).where(eq(auditLogs.organizationId, organization.id));
   const [{ total }] = await db.select({ total: count() }).from(auditLogs).where(condition);
-  const page = Math.min(parseListPage(query.pagina), Math.max(1, Math.ceil(total / 20)));
+  const pageSize = parseListPageSize(query.linhas);
+  const page = Math.min(parseListPage(query.pagina), Math.max(1, Math.ceil(total / pageSize)));
   const entries = await db
     .select({
       id: auditLogs.id,
@@ -44,7 +45,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
     .leftJoin(users, eq(users.id, auditLogs.userId))
     .where(condition)
     .orderBy(desc(auditLogs.createdAt), desc(auditLogs.id))
-    .limit(20).offset((page - 1) * 20);
+    .limit(pageSize).offset((page - 1) * pageSize);
   return (
     <div className="page-wrap">
       <PageHeader
@@ -52,7 +53,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
         title="Trilha de auditoria"
         description="Registro das alterações operacionais importantes da organização."
       />
-      <form method="get" className="panel mb-5 grid gap-3 sm:grid-cols-3"><label className="grid gap-1 text-sm font-bold">Buscar evento ou identificador<input className="field" name="q" defaultValue={search} /></label><label className="grid gap-1 text-sm font-bold">Ação<select className="field" name="acao" defaultValue={action}><option value="">Todas</option>{[...new Set(options.map(item => item.action))].sort().map(value => <option key={value} value={value}>{auditPresentation(value, "", null).label} · {value}</option>)}</select></label><label className="grid gap-1 text-sm font-bold">Tipo de registro<select className="field" name="tipo" defaultValue={entity}><option value="">Todos</option>{[...new Set(options.map(item => item.entity))].sort().map(value => <option key={value} value={value}>{auditPresentation("", value, null).object} · {value}</option>)}</select></label><button className="primary-button w-fit">Filtrar</button><Link className="secondary-button w-fit" href="/auditoria">Limpar</Link></form>
+      <form method="get" className="panel mb-5 grid gap-3 sm:grid-cols-3"><input type="hidden" name="linhas" value={pageSize} /><label className="grid gap-1 text-sm font-bold">Buscar evento ou identificador<input className="field" name="q" defaultValue={search} /></label><label className="grid gap-1 text-sm font-bold">Ação<select className="field" name="acao" defaultValue={action}><option value="">Todas</option>{[...new Set(options.map(item => item.action))].sort().map(value => <option key={value} value={value}>{auditPresentation(value, "", null).label} · {value}</option>)}</select></label><label className="grid gap-1 text-sm font-bold">Tipo de registro<select className="field" name="tipo" defaultValue={entity}><option value="">Todos</option>{[...new Set(options.map(item => item.entity))].sort().map(value => <option key={value} value={value}>{auditPresentation("", value, null).object} · {value}</option>)}</select></label><button className="primary-button w-fit">Filtrar</button><Link className="secondary-button w-fit" href="/auditoria">Limpar</Link></form>
       <section className="panel">
         <div className="divide-y">
           {entries.map((entry) => (
@@ -70,7 +71,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
           ))}
           {!entries.length && <p className="empty-state">Nenhum evento registrado.</p>}
         </div>
-        <ListPagination path="/auditoria" query={{ q: search, acao: action, tipo: entity }} page={page} total={total} />
+        <ListPagination path="/auditoria" query={{ q: search, acao: action, tipo: entity }} page={page} total={total} pageSize={pageSize} />
       </section>
     </div>
   );

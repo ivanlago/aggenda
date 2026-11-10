@@ -1,10 +1,9 @@
-import { and, asc, eq, gte, lt, sql } from "drizzle-orm";
 import Link from "next/link";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { db } from "@/db";
-import { cashMovements, financialAccounts } from "@/db/schema";
 import { launchesPath } from "@/lib/finance-navigation";
-import { zonedDate } from "@/lib/organization-time";
+import { loadFinancialStatement } from "@/lib/financial-statement";
+import { FinancialDownloadButtons } from "./financial-download-buttons";
 
 const money = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -15,41 +14,8 @@ export async function FinancialStatement({ organizationId, timezone, month, next
   nextMonth: string;
   selectedAccount?: string;
 }) {
-  const start = zonedDate(month + "-01", "00:00", timezone);
-  const end = zonedDate(nextMonth + "-01", "00:00", timezone);
+  const { accounts, accountNames, initialBalance, balance, rows } = await loadFinancialStatement(db, { organizationId, timezone, month, nextMonth, selectedAccount });
   const date = new Intl.DateTimeFormat("pt-BR", { timeZone: timezone });
-
-  const { accounts, scopedAccounts, previous, movements } = await db.transaction(async (tx) => {
-    const accounts = await tx.select().from(financialAccounts)
-      .where(eq(financialAccounts.organizationId, organizationId))
-      .orderBy(asc(financialAccounts.name));
-    const account = accounts.find((item) => item.id === selectedAccount);
-    const scopedAccounts = account ? [account] : accounts;
-    const scope = and(eq(cashMovements.organizationId, organizationId), account ? eq(cashMovements.accountId, account.id) : undefined);
-    const [previous] = await tx.select({ amount: sql<number>`coalesce(sum(${cashMovements.amountInCents}), 0)`.mapWith(Number) })
-      .from(cashMovements).where(and(scope, lt(cashMovements.occurredAt, start)));
-    const movements = await tx.select().from(cashMovements)
-      .where(and(scope, gte(cashMovements.occurredAt, start), lt(cashMovements.occurredAt, end)))
-      .orderBy(asc(cashMovements.occurredAt), asc(cashMovements.id));
-    return { accounts, scopedAccounts, previous, movements };
-  }, { isolationLevel: "repeatable read", accessMode: "read only" });
-
-  const accountNames = new Map(accounts.map((item) => [item.id, item.name]));
-  const initialBalance = scopedAccounts.filter((item) => item.createdAt < start)
-    .reduce((total, item) => total + item.openingBalanceInCents, previous.amount);
-  const accountOpenings = scopedAccounts
-    .filter((item) => item.createdAt >= start && item.createdAt < end && item.openingBalanceInCents !== 0)
-    .map((item) => ({
-      id: "abertura-" + item.id, accountId: item.id, occurredAt: item.createdAt, description: "Saldo inicial da conta",
-      paymentMethodName: null, amountInCents: item.openingBalanceInCents,
-    }));
-  const ordered = [...accountOpenings, ...movements].sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
-  const rows: (typeof ordered[number] & { balance: number })[] = [];
-  let balance = initialBalance;
-  for (const item of ordered) {
-    balance += item.amountInCents;
-    rows.push({ ...item, balance });
-  }
 
   return <>
     <form method="get" className="panel mb-5 grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
@@ -58,6 +24,7 @@ export async function FinancialStatement({ organizationId, timezone, month, next
       <label className="grid gap-1 text-xs font-bold">Conta<select className="field" name="conta" defaultValue={selectedAccount ?? "all"}><option value="all">Todas</option>{accounts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
       <div className="flex flex-wrap gap-2"><button className="primary-button">Filtrar</button><Link className="secondary-button" href={launchesPath + "?aba=extrato"}>Limpar</Link></div>
     </form>
+    <FinancialDownloadButtons filters={{ aba: "extrato", mes: month, conta: selectedAccount }} />
     <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_16rem]">
       <section className="panel min-w-0">
         <h2 className="text-lg font-extrabold">Movimentações</h2>

@@ -1,7 +1,7 @@
 import { FormActions } from "@/components/form-dialog-context";
 import { count } from "drizzle-orm";
 import { ListPagination } from "@/components/list-pagination";
-import { DEFAULT_PAGE_SIZE, parseListPage } from "@/lib/list-pagination";
+import { parseListPage, parseListPageSize } from "@/lib/list-pagination";
 import { and, eq, ilike, inArray } from "drizzle-orm";
 import { Search, Trash2, X } from "lucide-react";
 import Link from "next/link";
@@ -23,7 +23,7 @@ export const metadata = { title: "Clientes" };
 export default async function ClientsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ busca?: string; pagina?: string }>;
+  searchParams: Promise<{ busca?: string; pagina?: string; linhas?: string }>;
 }) {
   const { session, organization } = await requireOrganization();
   const professionalScopeId = organization.role === "professional"
@@ -39,8 +39,9 @@ export default async function ClientsPage({
         search ? ilike(clients.name, `%${search}%`) : undefined
       );
   const [{ total }] = await db.select({ total: count() }).from(clients).where(condition);
-  const page = Math.min(parseListPage(query.pagina), Math.max(1, Math.ceil(total / DEFAULT_PAGE_SIZE)));
-  const items = await db.select().from(clients).where(condition).orderBy(clients.name, clients.id).limit(DEFAULT_PAGE_SIZE).offset((page - 1) * DEFAULT_PAGE_SIZE);
+  const pageSize = parseListPageSize(query.linhas);
+  const page = Math.min(parseListPage(query.pagina), Math.max(1, Math.ceil(total / pageSize)));
+  const items = await db.select().from(clients).where(condition).orderBy(clients.name, clients.id).limit(pageSize).offset((page - 1) * pageSize);
 
   return (
     <div className="page-wrap">
@@ -80,7 +81,7 @@ export default async function ClientsPage({
               ).toLowerCase()}
               {search ? " encontrados" : ""}
             </h2>
-            <form method="get" className="flex gap-2" role="search">
+            <form method="get" className="flex gap-2" role="search"><input type="hidden" name="linhas" value={pageSize} />
               <label className="relative min-w-0 flex-1">
                 <span className="sr-only">Buscar por nome</span>
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
@@ -133,7 +134,7 @@ export default async function ClientsPage({
               </p>
             )}
           </div>
-          <ListPagination path="/clientes" query={{ busca: search }} page={page} total={total} />
+          <ListPagination path="/clientes" query={{ busca: search }} page={page} total={total} pageSize={pageSize} />
         </section>
       </div>
     </div>

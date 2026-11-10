@@ -1,4 +1,9 @@
 export const DEFAULT_PAGE_SIZE = 20;
+export const LIST_PAGE_SIZES = [10, 20, 50, 100] as const;
+export function parseListPageSize(value: unknown, fallback = DEFAULT_PAGE_SIZE) {
+  const size = typeof value === "string" && /^\d+$/.test(value) ? Number(value) : 0;
+  return LIST_PAGE_SIZES.some(option => option === size) ? size : fallback;
+}
 export function parseListPage(value: unknown) {
   if (typeof value !== "string" || !/^\d{1,7}$/.test(value)) return 1;
   const page = Number(value);

@@ -19,17 +19,20 @@ test("collections bound rows, keep every record reachable, reset filters and pre
   const { createRoot } = await import("react-dom/client");
   const container = dom.window.document.getElementById("root")!;
   const root = createRoot(container);
-  const click = async (text: string) => { const button = Array.from(container.querySelectorAll("button")).find(button => button.textContent === text)!; assert.ok(button); await act(async () => button.click()); };
+  const click = async (label: string) => { const button = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!; assert.ok(button); await act(async () => button.click()); };
   const cards = Array.from({ length: 25 }, (_, i) => <article key={i}>Cliente {i + 1}</article>);
   try {
     await act(async () => root.render(<PaginatedCollection>{cards}</PaginatedCollection>));
     assert.equal(container.querySelectorAll("article").length, 10);
     assert.equal(container.querySelectorAll("button")[0].disabled, true);
-    await click("Próxima");
+    await click("Próxima página");
     assert.equal(container.querySelector("article")!.textContent, "Cliente 11");
-    await click("Próxima");
+    await click("Última página");
     assert.equal(container.querySelectorAll("article").length, 5);
-    assert.equal(container.querySelectorAll("button")[1].disabled, true);
+    assert.equal(container.querySelector<HTMLButtonElement>('button[aria-label="Próxima página"]')?.disabled, true);
+    await click("Primeira página");
+    assert.equal(container.querySelector("article")!.textContent, "Cliente 1");
+    await click("Próxima página");
     await act(async () => root.render(<PaginatedCollection>{cards.slice(0, 12)}</PaginatedCollection>));
     assert.equal(container.querySelector("article")!.textContent, "Cliente 1", "filter changes reset the page");
     await act(async () => { const select = container.querySelector("select")!; select.value = "20"; select.dispatchEvent(new dom.window.Event("change", { bubbles: true })); });

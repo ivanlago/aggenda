@@ -3,6 +3,7 @@
 import { ImageIcon, Plus, ScanBarcode, Search } from "lucide-react";
 import Image from "next/image";
 import { useDeferredValue, useMemo, useState } from "react";
+import { PaginatedCollection } from "@/components/paginated-collection";
 
 export type CatalogItem = { id: string; label: string; barcode: string | null; priceInCents: number; stock: number; imageUrl?: string | null; kind?: "product" | "service" | "package"; unavailableReason?: string };
 const currency = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -33,7 +34,7 @@ export function PosCatalog({ variants, cart, addToCart, quoteMode = false, initi
         <div><h2 className="text-lg font-extrabold">Produtos / Serviços</h2>{quoteMode && <p className="text-sm text-muted">Selecione os itens para compor o orçamento.</p>}</div>
         <select aria-label="Filtrar por tipo de item" className="field" value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">Todos os itens</option><option value="product">Produtos</option><option value="service">Serviços</option><option value="package">Pacotes</option></select>
         <div className="grid gap-2 sm:grid-cols-2"><label className="relative block"><span className="sr-only">Buscar item</span><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" /><input className="field w-full pl-9" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar item" /></label><label className="relative block"><span className="sr-only">Ler código de barras</span><ScanBarcode className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" /><input className="field w-full pl-9" value={barcode} onChange={(event) => setBarcode(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); readBarcode(); } }} placeholder="Leia o código e pressione Enter" /></label></div>{barcodeMessage && <p className="text-xs font-bold text-brand" role="status">{barcodeMessage}</p>}
-        <div className="grid max-h-[560px] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+        <PaginatedCollection className="grid gap-2 pr-1 sm:grid-cols-2" label="Produtos e serviços do PDV">
           {visibleVariants.map((variant) => {
             const inCart = cart.find((item) => item.variantId === variant.id)?.quantity ?? 0;
             return <article className="flex items-start gap-3 rounded-2xl border bg-slate-50/60 p-4" key={variant.id}>
@@ -43,8 +44,8 @@ export function PosCatalog({ variants, cart, addToCart, quoteMode = false, initi
               <div className="flex min-w-0 flex-1 flex-col justify-between gap-3 self-stretch"><div><p className="break-words font-extrabold">{variant.label}</p><p className="mt-1 text-sm font-bold text-brand">{currency(variant.priceInCents)}</p><p className="break-words text-xs text-muted">{variant.barcode ? `Código ${variant.barcode} · ` : "Sem código · "}{variant.kind === "service" ? "Serviço" : variant.kind === "package" ? "Pacote" : `${variant.stock} disponíveis para venda`}{inCart ? ` · ${inCart} selecionados` : ""}</p>{variant.unavailableReason && <p className="mt-2 text-xs font-bold text-amber-700">{variant.unavailableReason}</p>}</div><button className="secondary-button justify-center" type="button" disabled={inCart >= (quoteMode ? (variant.kind === "package" ? 100 : 10000) : variant.stock) || Boolean(variant.unavailableReason)} title={variant.unavailableReason} onClick={() => addToCart(variant.id)}><Plus className="size-4" /> {inCart ? "Adicionar mais" : "Adicionar"}</button></div>
             </article>;
           })}
-          {visibleVariants.length === 0 && <p className="py-8 text-center text-sm text-muted sm:col-span-2">Nenhum item disponível.</p>}
-        </div>
+        </PaginatedCollection>
+        {visibleVariants.length === 0 && <p className="empty-state">Nenhum item disponível.</p>}
       </section>
   );
 }

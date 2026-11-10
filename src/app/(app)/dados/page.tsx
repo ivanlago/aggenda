@@ -1,4 +1,5 @@
-import { PaginatedCollection } from "@/components/paginated-collection";
+import { ListPagination } from "@/components/list-pagination";
+import { parseListPage, parseListPageSize } from "@/lib/list-pagination";
 import { desc, eq } from "drizzle-orm";
 import { Download, RotateCcw, Upload } from "lucide-react";
 
@@ -12,10 +13,15 @@ import { requireOrganization } from "@/lib/session";
 
 export const metadata = { title: "Importar e exportar dados" };
 
-export default async function DataPage() {
+export default async function DataPage({ searchParams }: { searchParams: Promise<{ pagina?: string; linhas?: string }> }) {
   const { organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "clients.manage", organization.teamPermissionOverrides);
-  const history = await db.select().from(dataImports).where(eq(dataImports.organizationId, organization.id)).orderBy(desc(dataImports.createdAt)).limit(20);
+  const query = await searchParams;
+  const pageSize = parseListPageSize(query.linhas);
+  const condition = eq(dataImports.organizationId, organization.id);
+  const total = await db.$count(dataImports, condition);
+  const page = Math.min(parseListPage(query.pagina), Math.max(1, Math.ceil(total / pageSize)));
+  const history = await db.select().from(dataImports).where(condition).orderBy(desc(dataImports.createdAt), desc(dataImports.id)).limit(pageSize).offset((page - 1) * pageSize);
   return <div className="page-wrap">
     <PageHeader eyebrow="Portabilidade" title="Importar e exportar dados" description="Traga sua carteira de outra plataforma ou baixe uma cópia dos dados cadastrados no Aggenda." />
     <p className="mb-5 text-sm text-muted">Importações e exportações gratuitas nesta fase inicial.</p>
@@ -29,7 +35,8 @@ export default async function DataPage() {
     </section>
     <section className="panel mt-6">
       <div className="flex items-center gap-2"><Upload className="size-5 text-brand" /><h2 className="text-lg font-extrabold">Histórico de importações</h2></div>
-      <PaginatedCollection label="Registros" className="mt-4 divide-y">{history.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-4"><div><p className="font-bold">{item.fileName}</p><p className="text-sm text-muted">{item.entityType === "clients" ? "Clientes" : "Serviços"} · {item.createdRows} criados · {item.updatedRows} atualizados · {item.errorRows} erros · {item.createdAt.toLocaleString("pt-BR")}</p></div>{item.status === "completed" && !item.undoneAt && <form action={undoDataImport}><input type="hidden" name="id" value={item.id} /><button className="secondary-button flex items-center gap-2"><RotateCcw className="size-4" /> Desfazer</button></form>}{item.undoneAt && <span className="status-pill">Desfeita</span>}</div>)}{!history.length && <p className="empty-state">Nenhuma importação realizada.</p>}</PaginatedCollection>
+      <div className="mt-4 max-h-[40rem] overflow-y-auto divide-y">{history.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-4"><div><p className="font-bold">{item.fileName}</p><p className="text-sm text-muted">{item.entityType === "clients" ? "Clientes" : "Serviços"} · {item.createdRows} criados · {item.updatedRows} atualizados · {item.errorRows} erros · {item.createdAt.toLocaleString("pt-BR")}</p></div>{item.status === "completed" && !item.undoneAt && <form action={undoDataImport}><input type="hidden" name="id" value={item.id} /><button className="secondary-button flex items-center gap-2"><RotateCcw className="size-4" /> Desfazer</button></form>}{item.undoneAt && <span className="status-pill">Desfeita</span>}</div>)}{!history.length && <p className="empty-state">Nenhuma importação realizada.</p>}</div>
+      <ListPagination path="/dados" query={{}} page={page} pageSize={pageSize} total={total} label="Importações" />
     </section>
   </div>;
 }

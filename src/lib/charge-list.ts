@@ -2,10 +2,11 @@ import { and, asc, desc, eq, gte, inArray, lt, lte, ne, notExists, or, sql, type
 import { z } from "zod";
 import type { db } from "@/db";
 import { clients, financialEntries, paymentChargeEvents, paymentCharges } from "@/db/schema";
+import { DEFAULT_PAGE_SIZE, parseListPageSize } from "./list-pagination";
 import { managedChargeStatuses } from "./finance-view";
 
-export type ChargeListFilters = { busca?: string; status?: string; meio?: string; inicio?: string; fim?: string; pagina?: string; cobranca?: string };
-export const chargePageSize = 20;
+export type ChargeListFilters = { busca?: string; status?: string; meio?: string; inicio?: string; fim?: string; pagina?: string; linhas?: string; cobranca?: string };
+export const chargePageSize = DEFAULT_PAGE_SIZE;
 
 export function chargeListCondition(organizationId: string, filters: ChargeListFilters, today: string) {
   const conditions: SQL[] = [eq(paymentCharges.organizationId, organizationId)];
@@ -38,17 +39,18 @@ export async function loadChargeList(database: typeof db, organizationId: string
     overdueCount: sql<number>`count(*) filter (where ${overdue})`.mapWith(Number),
     overdueAmount: sql<number>`coalesce(sum(${paymentCharges.amountInCents}) filter (where ${overdue}), 0)`.mapWith(Number),
   }).from(paymentCharges).where(condition);
-  const pages = Math.max(1, Math.ceil(totals.count / chargePageSize));
+  const pageSize = parseListPageSize(filters.linhas, chargePageSize);
+  const pages = Math.max(1, Math.ceil(totals.count / pageSize));
   const requested = Number(filters.pagina);
   const currentPage = Math.min(pages, Number.isFinite(requested) ? Math.max(1, Math.floor(requested)) : 1);
   const charges = await database.select().from(paymentCharges).where(condition)
-    .orderBy(desc(paymentCharges.createdAt), desc(paymentCharges.id)).limit(chargePageSize).offset((currentPage - 1) * chargePageSize);
+    .orderBy(desc(paymentCharges.createdAt), desc(paymentCharges.id)).limit(pageSize).offset((currentPage - 1) * pageSize);
   const events = charges.length ? await database.select({
     id: paymentChargeEvents.id, chargeId: paymentChargeEvents.chargeId, eventType: paymentChargeEvents.eventType,
     status: paymentChargeEvents.status, createdAt: paymentChargeEvents.createdAt,
   }).from(paymentChargeEvents).where(and(eq(paymentChargeEvents.organizationId, organizationId), inArray(paymentChargeEvents.chargeId, charges.map(charge => charge.id))))
     .orderBy(desc(paymentChargeEvents.createdAt), desc(paymentChargeEvents.id)) : [];
-  return { totals, charges, events, pages, currentPage };
+  return { totals, charges, events, pages, currentPage, pageSize };
 }
 
 export async function loadChargeableEntries(database: typeof db, organizationId: string) {

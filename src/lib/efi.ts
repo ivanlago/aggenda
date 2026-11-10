@@ -1,3 +1,4 @@
+import { ProviderRequestError } from "./provider-request-error";
 import { request as httpsRequest } from "node:https";
 import { and, eq } from "drizzle-orm";
 
@@ -19,7 +20,7 @@ function mtlsRequest<T>(url: string, credential: EfiCredential, init: { method?:
       response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
       response.on("end", () => {
         const raw = Buffer.concat(chunks).toString("utf8");
-        if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) return reject(new Error(`Efí recusou a operação (${response.statusCode ?? 0}): ${raw.slice(0, 350)}`));
+        if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) return reject(new ProviderRequestError(`Efí recusou a operação (${response.statusCode ?? 0}): ${raw.slice(0, 350)}`, response.statusCode ?? 0));
         try { resolve((raw ? JSON.parse(raw) : {}) as T); } catch { reject(new Error("A Efí retornou uma resposta inválida.")); }
       });
     });

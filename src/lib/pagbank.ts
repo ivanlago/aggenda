@@ -1,3 +1,4 @@
+import { ProviderRequestError } from "./provider-request-error";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
@@ -24,7 +25,7 @@ export async function pagBankRequest<T>(path: string, credential: PagBankCredent
   });
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(`PagBank recusou a operação (${response.status}): ${detail.slice(0, 350)}`);
+    throw new ProviderRequestError(`PagBank recusou a operação (${response.status}): ${detail.slice(0, 350)}`, response.status);
   }
   return response.json() as Promise<T>;
 }

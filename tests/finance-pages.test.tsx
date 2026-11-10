@@ -20,7 +20,7 @@ async function loadPage(path: string) {
         if (path === "@/db") return { contents: `let index=0; export const db={transaction(work){return work(db)},selectDistinct(){return db.select()},select(){const rows=globalThis.financeRows[index++];const query=new Proxy({}, {get(_,key){return key==='then' ? (resolve)=>Promise.resolve(rows).then(resolve) : ()=>query}});return query}};` };
         if (path === "@/lib/session") return { contents: 'export async function requireOrganization(){return {organization:{id:"org",role:"owner",timezone:"America/Bahia"},session:{user:{id:"operator"}}}}' };
         if (path === "@/components/action-form") return { resolveDir: process.cwd(), contents: 'import React from "react"; export function ActionForm({children, className}){return React.createElement("form",{className},children)}' };
-        return { contents: "export const saveServicePackage=async()=>{},toggleServicePackage=async()=>{},saveReference=async()=>{},changeReference=async()=>{},createFinancialAccount=async()=>{},createFinancialCategory=async()=>{},createFinancialCostCenter=async()=>{},createFinancialEntry=async()=>{},deleteFinancialEntry=async()=>{},updateFinancialEntryStatus=async()=>{},cancelPaymentCharge=async()=>{},refundPaymentCharge=async()=>{},sendPaymentChargeWhatsApp=async()=>{},updatePaymentCharge=async()=>{},createProviderCharge=async()=>{},openCash=async()=>{},closeCash=async()=>{},adjustPosCash=async()=>{};" };
+        return { contents: "export const saveServicePackage=async()=>{},toggleServicePackage=async()=>{},saveReference=async()=>{},changeReference=async()=>{},createFinancialAccount=async()=>{},createFinancialCategory=async()=>{},createFinancialCostCenter=async()=>{},createFinancialEntry=async()=>{},prepareReceivableCharges=async()=>{},deleteFinancialEntry=async()=>{},updateFinancialEntryStatus=async()=>{},cancelPaymentCharge=async()=>{},refundPaymentCharge=async()=>{},sendPaymentChargeWhatsApp=async()=>{},updatePaymentCharge=async()=>{},createProviderCharge=async()=>{},openCash=async()=>{},closeCash=async()=>{},adjustPosCash=async()=>{};" };
       });
     } }],
   });
@@ -46,7 +46,7 @@ const baseCharge = { id: "charge", financialEntryId: "entry", status: "pending",
 
 test("cash flow links integrated entries to charges and PDV instead of offering manual settlement", async () => {
   const page = await loadPage("./src/app/(app)/financeiro/lancamentos/page.tsx");
-  globals.financeRows = [[baseEntry, { ...baseEntry, id: "pdv", source: "retail_sale" }], [], [], [baseCharge], [{ id: "sale", financialEntryId: "pdv" }], []];
+  globals.financeRows = [[baseEntry, { ...baseEntry, id: "pdv", source: "retail_sale" }], [], [], [baseCharge], [{ id: "sale", financialEntryId: "pdv" }], [], []];
   try {
     const html = await renderAsync(await page({ searchParams: Promise.resolve({ mes: "2026-10" }) }));
     assert.match(html, /Contas a receber/);

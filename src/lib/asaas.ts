@@ -1,3 +1,4 @@
+import { ProviderRequestError } from "./provider-request-error";
 type AsaasErrorResponse = {
   errors?: Array<{ code?: string; description?: string }>;
 };
@@ -42,7 +43,7 @@ async function requestWithCredential<T>(
   if (!response.ok) {
     const errorData = typeof data === "object" && data !== null ? data as AsaasErrorResponse : null;
     const descriptions = errorData?.errors?.map((error) => error.description).filter((description): description is string => Boolean(description)) ?? [];
-    throw new Error(descriptions.length ? descriptions.join(" ") : `Erro ${response.status} ao comunicar com o Asaas.`);
+    throw new ProviderRequestError(descriptions.length ? descriptions.join(" ") : `Erro ${response.status} ao comunicar com o Asaas.`, response.status);
   }
   return data as T;
 }

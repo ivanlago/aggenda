@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { startTransition, useActionState, useEffect, useId, useRef, useState } from "react";
 import type { ReferenceRecord } from "@/lib/reference-records";
 
-export type ActionResult = void | { error?: string; warning?: string; openUrl?: string; record?: ReferenceRecord };
+export type ActionResult = void | { error?: string; warning?: string; openUrl?: string; record?: ReferenceRecord; chargeId?: string };
 
 type ActionState = {
   id: number;

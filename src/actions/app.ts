@@ -7,7 +7,9 @@ import { checkTeamCapacityAfterChange } from "@/lib/commercial-access";
 import { serviceDeletionError } from "@/lib/service-deletion";
 import { roomBookingError } from "@/lib/room-errors";
 
-import { and, eq, ilike, inArray, or } from "drizzle-orm";
+import { and, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { receivableChargeOptions } from "@/lib/receivable-charge-options";
+import { financialDueDate } from "@/lib/financial-schedule";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -969,6 +971,41 @@ export async function assignPackageToClient() {
 }
 
 export async function createFinancialEntry(formData: FormData) {
+  await persistFinancialEntries(formData);
+}
+
+export async function prepareReceivableCharges(formData: FormData) {
+  let mayHaveSaved = false;
+  try {
+    const { organization } = await requireOrganization();
+    assertOrganizationPermission(organization.role, "finance.manage");
+    const provider = textValue(formData, "chargeProvider");
+    const requestId = textValue(formData, "chargeRequestId");
+    const selected = new Set(formData.getAll("chargeInstallment").map(Number));
+    const count = Math.max(Number(textValue(formData, "installmentCount") || "1"), Number(textValue(formData, "recurrenceMonths") || "1"));
+    if (textValue(formData, "type") !== "receivable" || formData.get("realized") === "on") throw new Error("Emita cobranças apenas para contas a receber em aberto.");
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) throw new Error("Identificador de lançamento inválido.");
+    if (!Number.isInteger(count) || count > 60 || !selected.size || [...selected].some(index => !Number.isInteger(index) || index < 1 || index > count)) {
+      throw new Error("Selecione as parcelas a cobrar.");
+    }
+    const providers = await receivableChargeOptions(organization.id);
+    if (!providers.some(option => option.id === provider)) throw new Error("Selecione um provedor ativo.");
+    const document = textValue(formData, "customerDocument").replace(/\D/g, "");
+    if (textValue(formData, "customerName").length < 2 || (provider !== "mercado_pago" && ![11, 14].includes(document.length))) {
+      throw new Error("Informe os dados obrigatórios do pagador.");
+    }
+    await resolveOrganizationPayment(organization.id, textValue(formData, "chargePaymentMethod"), null, provider);
+    const installments = Number(textValue(formData, "installmentCount") || "1");
+    if ((optionalMoneyInCents(formData, "amount") ?? 0) < installments) throw new Error("Informe um valor que deixe todas as parcelas acima de zero.");
+    mayHaveSaved = true;
+    const entries = await persistFinancialEntries(formData, requestId);
+    return { entries: entries.filter(entry => selected.has(entry.installmentNumber)).sort((a, b) => a.installmentNumber - b.installmentNumber) };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Não foi possível preparar a cobrança.", mayHaveSaved };
+  }
+}
+
+async function persistFinancialEntries(formData: FormData, requestId?: string) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "finance.manage");
   const type = textValue(formData, "type");
@@ -993,16 +1030,37 @@ export async function createFinancialEntry(formData: FormData) {
   const categoryName = category[0]?.name ?? optionalText(formData, "category");
   const description = customDescription ?? categoryName;
   if (!description) throw new Error("Selecione uma categoria ou informe uma descrição.");
-  const totalEntries = Math.max(installmentCount, recurrenceMonths); const groupId = totalEntries > 1 ? crypto.randomUUID() : null;
-  const baseDate = new Date(`${dueDate}T12:00:00Z`);
+  const totalEntries = Math.max(installmentCount, recurrenceMonths); const groupId = totalEntries > 1 ? requestId ?? crypto.randomUUID() : null;
   const values = Array.from({ length: totalEntries }, (_, index) => {
-    const next = new Date(baseDate); next.setUTCMonth(next.getUTCMonth() + index);
     const entryAmount = installmentCount > 1 ? Math.floor(amountInCents / installmentCount) + (index < amountInCents % installmentCount ? 1 : 0) : amountInCents;
-    return { organizationId: organization.id, type, status: realized && index === 0 ? (type === "payable" ? "paid" : "received") : "pending", source: recurrenceMonths > 1 ? "recurring" : installmentCount > 1 ? "installment" : "manual", description: totalEntries > 1 ? `${description} (${index + 1}/${totalEntries})` : description, category: categoryName, categoryId, accountId, amountInCents: entryAmount, dueDate: next.toISOString().slice(0, 10), realizedDate: realized && index === 0 ? (optionalText(formData, "realizedDate") ?? dueDate) : null, paymentMethod: selectedPayment?.method ?? null, paymentMethodId: selectedPayment?.paymentMethodId ?? null, paymentMethodName: selectedPayment?.paymentMethodName ?? null, notes: optionalText(formData, "notes"), recurrenceGroupId: groupId, installmentNumber: index + 1, installmentCount: totalEntries, createdByUserId: session.user.id };
+    return { organizationId: organization.id, type, status: realized && index === 0 ? (type === "payable" ? "paid" : "received") : "pending", source: recurrenceMonths > 1 ? "recurring" : installmentCount > 1 ? "installment" : "manual", description: totalEntries > 1 ? `${description} (${index + 1}/${totalEntries})` : description, category: categoryName, categoryId, accountId, amountInCents: entryAmount, dueDate: financialDueDate(dueDate, index), realizedDate: realized && index === 0 ? (optionalText(formData, "realizedDate") ?? dueDate) : null, paymentMethod: selectedPayment?.method ?? null, paymentMethodId: selectedPayment?.paymentMethodId ?? null, paymentMethodName: selectedPayment?.paymentMethodName ?? null, notes: optionalText(formData, "notes"), recurrenceGroupId: groupId, installmentNumber: index + 1, installmentCount: totalEntries, createdByUserId: session.user.id };
   });
-  const [entry] = await db.insert(financialEntries).values(values).returning({ id: financialEntries.id });
-  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "financial_entry", entityId: entry.id });
+  const columns = { id: financialEntries.id, installmentNumber: financialEntries.installmentNumber, description: financialEntries.description, dueDate: financialEntries.dueDate, amountInCents: financialEntries.amountInCents };
+  const result = await db.transaction(async tx => {
+    if (requestId) {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"receivable-charge:" + requestId}, 0))`);
+      const scope = and(eq(financialEntries.organizationId, organization.id), eq(financialEntries.createdByUserId, session.user.id));
+      const existing = await tx.select(columns).from(financialEntries).where(and(scope,
+        or(eq(financialEntries.id, requestId), eq(financialEntries.recurrenceGroupId, requestId)),
+      )).orderBy(financialEntries.installmentNumber);
+      if (existing.length) {
+        if (existing.length !== values.length || existing.some((entry, index) => {
+          const expected = values[index];
+          return entry.description !== expected.description || entry.dueDate !== expected.dueDate || entry.amountInCents !== expected.amountInCents;
+        })) throw new Error("Este lançamento já foi salvo com outros dados. Consulte Contas a receber.");
+        return { entries: existing, created: false };
+      }
+    }
+    const entries = await tx.insert(financialEntries).values(values.map((entry, index) => ({
+      ...entry, id: requestId && index === 0 ? requestId : undefined,
+    }))).returning(columns);
+    return { entries, created: true };
+  });
+  if (result.created) {
+    await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "financial_entry", entityId: result.entries[0].id });
+  }
   revalidatePath("/financeiro/lancamentos");
+  return result.entries;
 }
 
 export async function registerAppointmentPayment(formData: FormData) {
@@ -1092,6 +1150,16 @@ export async function upsertFinancialBudget(formData: FormData) {
   revalidatePath("/financeiro/relatorios");
 }
 
+async function lockUnchargedEntry(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], organizationId: string, id: string) {
+  const [entry] = await tx.select({ id: financialEntries.id }).from(financialEntries)
+    .where(and(eq(financialEntries.id, id), eq(financialEntries.organizationId, organizationId))).for("update");
+  if (!entry) throw new Error("Lançamento financeiro não encontrado.");
+  const [linkedCharge] = await tx.select({ id: paymentCharges.id }).from(paymentCharges).where(and(
+    eq(paymentCharges.organizationId, organizationId), eq(paymentCharges.financialEntryId, id), inArray(paymentCharges.status, managedChargeStatuses),
+  )).limit(1);
+  if (linkedCharge) throw new Error("Esta conta possui uma cobrança online vinculada. Gerencie o recebimento pela cobrança.");
+}
+
 export async function updateFinancialEntryStatus(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "finance.manage");
@@ -1103,8 +1171,6 @@ export async function updateFinancialEntryStatus(formData: FormData) {
   if (!current) throw new Error("Lançamento financeiro não encontrado.");
   if (current.source === "commission_payment") throw new Error("Gerencie esta quitação pela tela de comissões para preservar o saldo e o histórico.");
   if (current.source === "retail_sale") throw new Error("Gerencie o recebimento pela venda no PDV. Pagamentos integrados dependem da confirmação do provedor.");
-  const [linkedCharge] = await db.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.organizationId, organization.id), eq(paymentCharges.financialEntryId, id), inArray(paymentCharges.status, managedChargeStatuses))).limit(1);
-  if (linkedCharge) throw new Error("Esta conta possui uma cobrança online vinculada. Gerencie o recebimento pela cobrança para preservar a confirmação do provedor.");
   const [linkedSale] = await db.select({ id: retailSales.id }).from(retailSales).where(and(eq(retailSales.organizationId, organization.id), or(eq(retailSales.financialEntryId, id), eq(retailSales.appointmentFinancialEntryId, id)))).limit(1);
   if (linkedSale) throw new Error("Gerencie o recebimento pela venda no PDV.");
   const status = requestedStatus === "realized"
@@ -1113,12 +1179,15 @@ export async function updateFinancialEntryStatus(formData: FormData) {
   if (!["pending", "paid", "received", "cancelled"].includes(status)) throw new Error("Status financeiro inválido.");
   const isRealized = status === "paid" || status === "received";
   const selectedPayment = isRealized ? await resolveOrganizationPayment(organization.id, textValue(formData, "paymentMethod") || current.paymentMethodId || "", optionalText(formData, "accountId") || current.accountId) : null;
-  await db.update(financialEntries).set({
-    status,
-    realizedDate: isRealized ? (optionalText(formData, "realizedDate") ?? organizationDate(new Date(), organization.timezone)) : null,
-    ...(selectedPayment ? { paymentMethod: selectedPayment.method, paymentMethodId: selectedPayment.paymentMethodId, paymentMethodName: selectedPayment.paymentMethodName, accountId: selectedPayment.accountId } : {}),
-    updatedAt: new Date(),
-  }).where(and(eq(financialEntries.id, id), eq(financialEntries.organizationId, organization.id)));
+  await db.transaction(async tx => {
+    await lockUnchargedEntry(tx, organization.id, id);
+    await tx.update(financialEntries).set({
+      status,
+      realizedDate: isRealized ? (optionalText(formData, "realizedDate") ?? organizationDate(new Date(), organization.timezone)) : null,
+      ...(selectedPayment ? { paymentMethod: selectedPayment.method, paymentMethodId: selectedPayment.paymentMethodId, paymentMethodName: selectedPayment.paymentMethodName, accountId: selectedPayment.accountId } : {}),
+      updatedAt: new Date(),
+    }).where(and(eq(financialEntries.id, id), eq(financialEntries.organizationId, organization.id)));
+  });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: `status:${status}`, entityType: "financial_entry", entityId: id });
   revalidatePath("/financeiro/lancamentos");
 }
@@ -1127,15 +1196,16 @@ export async function deleteFinancialEntry(formData: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "finance.manage");
   const id = textValue(formData, "id");
-  const [linkedCharge] = await db.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.organizationId, organization.id), eq(paymentCharges.financialEntryId, id), inArray(paymentCharges.status, managedChargeStatuses))).limit(1);
-  if (linkedCharge) throw new Error("Esta conta possui uma cobrança online vinculada. Gerencie o recebimento pela cobrança para preservar a confirmação do provedor.");
   const [linkedSale] = await db.select({ id: retailSales.id }).from(retailSales).where(and(eq(retailSales.organizationId, organization.id), or(eq(retailSales.financialEntryId, id), eq(retailSales.appointmentFinancialEntryId, id)))).limit(1);
   if (linkedSale) throw new Error("Gerencie o recebimento pela venda no PDV.");
-  const [deleted] = await db.delete(financialEntries).where(and(
-    eq(financialEntries.id, id),
-    eq(financialEntries.organizationId, organization.id),
-    inArray(financialEntries.source, ["manual", "installment", "recurring"])
-  )).returning({ id: financialEntries.id });
+  const [deleted] = await db.transaction(async tx => {
+    await lockUnchargedEntry(tx, organization.id, id);
+    return tx.delete(financialEntries).where(and(
+      eq(financialEntries.id, id),
+      eq(financialEntries.organizationId, organization.id),
+      inArray(financialEntries.source, ["manual", "installment", "recurring"])
+    )).returning({ id: financialEntries.id });
+  });
   if (!deleted) throw new Error("Somente lançamentos criados manualmente podem ser excluídos.");
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "delete", entityType: "financial_entry", entityId: id });
   revalidatePath("/financeiro/lancamentos");

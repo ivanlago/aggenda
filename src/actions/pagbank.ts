@@ -1,10 +1,11 @@
 "use server";
+
+import { failFinancialCharge, finishFinancialCharge, reserveFinancialCharge } from "@/lib/financial-charge-issuance";
 import { hostedPaymentTypes } from "@/lib/payment-catalog-policy";
 import { resolveOrganizationPayment } from "@/lib/payment-methods";
 
-import { managedChargeStatuses } from "@/lib/finance-view";
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/db";
@@ -85,8 +86,6 @@ export async function createPagBankCharge(data: FormData) {
   if (customerName.length < 2 || ![11, 14].includes(customerDocument.length)) return { error: "Informe nome e CPF/CNPJ do pagador." };
   const [entry] = await db.select({ id: financialEntries.id, description: financialEntries.description, amountInCents: financialEntries.amountInCents, dueDate: financialEntries.dueDate, clientId: financialEntries.clientId, clientEmail: clients.email, clientPhone: clients.phone }).from(financialEntries).leftJoin(clients, eq(clients.id, financialEntries.clientId)).where(and(eq(financialEntries.id, financialEntryId), eq(financialEntries.organizationId, organization.id), eq(financialEntries.type, "receivable"), eq(financialEntries.status, "pending"))).limit(1);
   if (!entry) return { error: "Selecione uma conta a receber pendente." };
-  const [active] = await db.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.financialEntryId, entry.id), inArray(paymentCharges.status, managedChargeStatuses))).orderBy(desc(paymentCharges.createdAt)).limit(1);
-  if (active) return { error: "Este lançamento já possui uma cobrança online vinculada. Acompanhe-a em Cobranças." };
   const credential = await getPagBankCredential(organization.id);
   const chargeId = crypto.randomUUID();
   const expiration = new Date(`${entry.dueDate}T23:59:59-03:00`).toISOString();
@@ -96,6 +95,13 @@ export async function createPagBankCharge(data: FormData) {
   const paymentMethod = chargeMode === "recurring" || chargeMode === "installment" ? "credit_card" : requestedPaymentMethod;
   const availableMethods = hostedPaymentTypes("pagbank", paymentMethod);
   const methods = availableMethods;
+  const reservation = await reserveFinancialCharge({
+    id: chargeId, organizationId: organization.id, provider: "pagbank",
+    originType: entry.clientId ? "client" : "financial", originId: entry.clientId ?? entry.id, financialEntryId: entry.id, clientId: entry.clientId,
+    amountInCents: entry.amountInCents, description: entry.description, dueDate: entry.dueDate, createdByUserId: session.user.id,
+    paymentMethod, chargeMode, installmentCount: chargeMode === "installment" ? installmentCount : 1, customerName, customerDocument, customerEmail: customerEmail || entry.clientEmail, customerPhone: customerPhone || entry.clientPhone,
+  }, selectedPayment);
+  if (reservation) return reservation;
   let checkout: PagBankCheckout;
   try {
     checkout = await pagBankRequest<PagBankCheckout>("/checkouts", credential, { method: "POST", idempotencyKey: chargeId, body: {
@@ -113,15 +119,16 @@ export async function createPagBankCharge(data: FormData) {
       notification_urls: [webhookUrl],
       payment_notification_urls: [webhookUrl],
     } });
-  } catch (error) { return { error: message(error, "Não foi possível criar o Checkout PagBank.") }; }
-  const paymentUrl = checkout.links?.find((link) => link.rel === "PAY")?.href;
-  if (!paymentUrl) return { error: "O PagBank criou o checkout sem fornecer o link de pagamento." };
-  await db.transaction(async (tx) => { await tx.update(financialEntries).set({ accountId: selectedPayment.accountId, paymentMethodId: selectedPayment.paymentMethodId, paymentMethodName: selectedPayment.paymentMethodName, paymentMethod: selectedPayment.method, updatedAt: new Date() }).where(and(eq(financialEntries.id, entry.id), eq(financialEntries.organizationId, organization.id)));
-    await tx.insert(paymentCharges).values({ id: chargeId, organizationId: organization.id, provider: "pagbank", providerPaymentId: checkout.id, providerSubscriptionId: checkout.recurrence_plan?.id, originType: entry.clientId ? "client" : "financial", originId: entry.clientId ?? entry.id, financialEntryId: entry.id, clientId: entry.clientId, paymentMethod, chargeMode, installmentCount: chargeMode === "installment" ? installmentCount : 1, status: "pending", amountInCents: entry.amountInCents, description: entry.description, customerName, customerDocument, customerEmail: customerEmail || entry.clientEmail, customerPhone: customerPhone || entry.clientPhone, dueDate: entry.dueDate, invoiceUrl: paymentUrl, metadata: { checkoutId: checkout.id, recurrencePlanId: checkout.recurrence_plan?.id ?? null }, createdByUserId: session.user.id });
+  } catch (error) { return failFinancialCharge(chargeId, error); }
+  const paymentUrl = checkout?.links?.find((link) => link.rel === "PAY")?.href;
+  if (!checkout?.id || !paymentUrl) return failFinancialCharge(chargeId, null);
+  await db.transaction(async (tx) => {
+    await finishFinancialCharge(tx, chargeId, { providerPaymentId: checkout.id, providerSubscriptionId: checkout.recurrence_plan?.id, invoiceUrl: paymentUrl, metadata: { checkoutId: checkout.id, recurrencePlanId: checkout.recurrence_plan?.id ?? null } });
     await tx.insert(paymentChargeEvents).values({ organizationId: organization.id, chargeId, eventType: "PAGBANK_CHECKOUT_CREATED", status: "pending", payload: { checkoutId: checkout.id, paymentMethod, chargeMode, installmentCount } });
   });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "payment_charge:pagbank", entityId: chargeId, details: { checkoutId: checkout.id, amountInCents: entry.amountInCents, paymentMethod, chargeMode } });
   refresh();
+  return { chargeId };
 }
 
 export async function cancelPagBankCharge(charge: typeof paymentCharges.$inferSelect, userId: string) {

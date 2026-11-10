@@ -1,14 +1,15 @@
 "use server";
+
+import { failFinancialCharge, finishFinancialCharge, reserveFinancialCharge } from "@/lib/financial-charge-issuance";
 import { resolveOrganizationPayment } from "@/lib/payment-methods";
 
-import { managedChargeStatuses } from "@/lib/finance-view";
 
 import { randomBytes } from "node:crypto";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/db";
-import { clients, financialEntries, organizationFinancialIntegrations, paymentChargeEvents, paymentCharges } from "@/db/schema";
+import { clients, financialEntries, organizationFinancialIntegrations, paymentChargeEvents } from "@/db/schema";
 import { writeAuditLog } from "@/lib/audit";
 import { efiRequest, getEfiCredential, type EfiCredential } from "@/lib/efi";
 import { encryptFinancialCredential } from "@/lib/financial-secret";
@@ -70,12 +71,22 @@ export async function createEfiCharge(data: FormData) {
   if (customerName.length < 2 || ![11, 14].includes(customerDocument.length)) return { error: "Informe nome e CPF/CNPJ do pagador." };
   const [entry] = await db.select({ id: financialEntries.id, description: financialEntries.description, amountInCents: financialEntries.amountInCents, dueDate: financialEntries.dueDate, clientId: financialEntries.clientId, clientEmail: clients.email, clientPhone: clients.phone }).from(financialEntries).leftJoin(clients, eq(clients.id, financialEntries.clientId)).where(and(eq(financialEntries.id, financialEntryId), eq(financialEntries.organizationId, organization.id), eq(financialEntries.type, "receivable"), eq(financialEntries.status, "pending"))).limit(1);
   if (!entry) return { error: "Selecione uma conta a receber pendente." };
-  const [active] = await db.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.financialEntryId, entry.id), inArray(paymentCharges.status, managedChargeStatuses))).orderBy(desc(paymentCharges.createdAt)).limit(1); if (active) return { error: "Este lançamento já possui uma cobrança online vinculada. Acompanhe-a em Cobranças." };
   const credential = await getEfiCredential(organization.id); const chargeId = crypto.randomUUID(); const txid = chargeId.replace(/-/g, "").slice(0, 32); const expiration = Math.max(60, Math.floor((new Date(`${entry.dueDate}T23:59:59-03:00`).getTime() - Date.now()) / 1000));
-  let cob: Cob; let qr: QrCode;
-  try { cob = await efiRequest<Cob>(`/v2/cob/${txid}`, credential, { method: "PUT", body: { calendario: { expiracao: expiration }, devedor: customerDocument.length === 11 ? { cpf: customerDocument, nome: customerName } : { cnpj: customerDocument, nome: customerName }, valor: { original: (entry.amountInCents / 100).toFixed(2) }, chave: credential.pixKey, solicitacaoPagador: entry.description.slice(0, 140), infoAdicionais: [{ nome: "Aggenda", valor: `charge:${chargeId}` }] } }); if (!cob.loc?.id) throw new Error("A Efí não retornou a localização do QR Code."); qr = await efiRequest<QrCode>(`/v2/loc/${cob.loc.id}/qrcode`, credential); }
-  catch (error) { return { error: message(error, "Não foi possível criar o Pix Efí.") }; }
+  const reservation = await reserveFinancialCharge({
+    id: chargeId, organizationId: organization.id, provider: "efi",
+    originType: entry.clientId ? "client" : "financial", originId: entry.clientId ?? entry.id, financialEntryId: entry.id, clientId: entry.clientId,
+    amountInCents: entry.amountInCents, description: entry.description, dueDate: entry.dueDate, createdByUserId: session.user.id,
+    paymentMethod: "pix", customerName, customerDocument, customerEmail: text(data, "customerEmail") || entry.clientEmail, customerPhone: text(data, "customerPhone") || entry.clientPhone,
+  }, selectedPayment);
+  if (reservation) return reservation;
+  let cob: Cob; let qr: QrCode; let cobCreated = false;
+  try { cob = await efiRequest<Cob>(`/v2/cob/${txid}`, credential, { method: "PUT", body: { calendario: { expiracao: expiration }, devedor: customerDocument.length === 11 ? { cpf: customerDocument, nome: customerName } : { cnpj: customerDocument, nome: customerName }, valor: { original: (entry.amountInCents / 100).toFixed(2) }, chave: credential.pixKey, solicitacaoPagador: entry.description.slice(0, 140), infoAdicionais: [{ nome: "Aggenda", valor: `charge:${chargeId}` }] } }); cobCreated = true; if (!cob?.loc?.id) throw new Error("A Efí não retornou a localização do QR Code."); qr = await efiRequest<QrCode>(`/v2/loc/${cob.loc.id}/qrcode`, credential); }
+  catch (error) { return failFinancialCharge(chargeId, error, !cobCreated); }
+  if (!qr?.qrcode) return failFinancialCharge(chargeId, null);
   const image = qr.imagemQrcode?.replace(/^data:image\/png;base64,/, "") ?? null;
-  await db.transaction(async (tx) => { await tx.update(financialEntries).set({ accountId: selectedPayment.accountId, paymentMethodId: selectedPayment.paymentMethodId, paymentMethodName: selectedPayment.paymentMethodName, paymentMethod: selectedPayment.method, updatedAt: new Date() }).where(and(eq(financialEntries.id, entry.id), eq(financialEntries.organizationId, organization.id))); await tx.insert(paymentCharges).values({ id: chargeId, organizationId: organization.id, provider: "efi", providerPaymentId: txid, originType: entry.clientId ? "client" : "financial", originId: entry.clientId ?? entry.id, financialEntryId: entry.id, clientId: entry.clientId, paymentMethod: "pix", status: "pending", amountInCents: entry.amountInCents, description: entry.description, customerName, customerDocument, customerEmail: text(data, "customerEmail") || entry.clientEmail, customerPhone: text(data, "customerPhone") || entry.clientPhone, dueDate: entry.dueDate, invoiceUrl: qr.linkVisualizacao ?? cob.loc?.location, pixQrCodePayload: qr.qrcode, pixQrCodeImage: image, metadata: { locationId: cob.loc?.id }, createdByUserId: session.user.id }); await tx.insert(paymentChargeEvents).values({ organizationId: organization.id, chargeId, eventType: "EFI_COB_CREATED", status: "pending", payload: { txid } }); });
+  await db.transaction(async (tx) => {
+    await finishFinancialCharge(tx, chargeId, { providerPaymentId: txid, invoiceUrl: qr.linkVisualizacao ?? cob.loc?.location, pixQrCodePayload: qr.qrcode, pixQrCodeImage: image, metadata: { locationId: cob.loc?.id } });
+    await tx.insert(paymentChargeEvents).values({ organizationId: organization.id, chargeId, eventType: "EFI_COB_CREATED", status: "pending", payload: { txid } }); });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "payment_charge:efi", entityId: chargeId, details: { txid, amountInCents: entry.amountInCents } }); refresh();
+  return { chargeId };
 }

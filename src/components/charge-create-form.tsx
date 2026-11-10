@@ -13,9 +13,11 @@ export type ChargeEntry = { id: string; description: string; amount: string; due
 
 export type ChargeProvider = "asaas" | "mercado_pago" | "pagbank" | "efi";
 
-export function ChargeCreateForm({ entries, providers, initialEntryId = "" }: { entries: ChargeEntry[]; providers: ChargeProvider[]; initialEntryId?: string }) {
+type Props = { entries: ChargeEntry[]; providers: ChargeProvider[]; initialEntryId?: string; defaultProvider?: ChargeProvider };
+
+export function ChargeCreateForm({ entries, providers, initialEntryId = "", defaultProvider }: Props) {
   const [entryId, setEntryId] = useState(entries.some((entry) => entry.id === initialEntryId) ? initialEntryId : "");
-  const [provider, setProvider] = useState<ChargeProvider>(providers[0] ?? "asaas");
+  const [provider, setProvider] = useState<ChargeProvider>(defaultProvider ?? providers[0] ?? "asaas");
   const selected = entries.find((entry) => entry.id === entryId);
   const [chargeMode, setChargeMode] = useState("single");
   return <ActionForm action={createProviderCharge} successMessage="Cobrança criada com sucesso." className="grid gap-5 sm:grid-cols-2" resetOnSuccess={false}>
@@ -43,6 +45,6 @@ export function ChargeCreateForm({ entries, providers, initialEntryId = "" }: { 
   </ActionForm>;
 }
 
-export function ChargeCreateDialog(props: { entries: ChargeEntry[]; providers: ChargeProvider[]; initialEntryId?: string }) {
+export function ChargeCreateDialog(props: Props) {
   return <ModalShell key={props.initialEntryId ?? "nova"} title="Nova cobrança" variant="new" wide closeOnSuccess defaultOpen={Boolean(props.initialEntryId)}><ChargeCreateForm {...props} /></ModalShell>;
 }

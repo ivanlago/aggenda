@@ -1,10 +1,11 @@
 "use server";
+
+import { failFinancialCharge, finishFinancialCharge, reserveFinancialCharge } from "@/lib/financial-charge-issuance";
 import { mercadoPagoMethodSettings } from "@/lib/payment-catalog-policy";
 import { resolveOrganizationPayment } from "@/lib/payment-methods";
 
-import { managedChargeStatuses } from "@/lib/finance-view";
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { createFinancialCharge } from "@/actions/payment-charges";
@@ -59,12 +60,23 @@ async function createMercadoPagoCharge(data: FormData) {
   const financialEntryId = text(data, "financialEntryId"); const customerName = text(data, "customerName"); const customerEmail = text(data, "customerEmail");
   const [entry] = await db.select({ id: financialEntries.id, description: financialEntries.description, amountInCents: financialEntries.amountInCents, dueDate: financialEntries.dueDate, clientId: financialEntries.clientId, clientEmail: clients.email, clientPhone: clients.phone }).from(financialEntries).leftJoin(clients, eq(clients.id, financialEntries.clientId)).where(and(eq(financialEntries.id, financialEntryId), eq(financialEntries.organizationId, organization.id), eq(financialEntries.type, "receivable"), eq(financialEntries.status, "pending"))).limit(1);
   if (!entry || customerName.length < 2) return { error: "Selecione uma conta a receber e informe o pagador." };
-  const [active] = await db.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.financialEntryId, entry.id), inArray(paymentCharges.status, managedChargeStatuses))).orderBy(desc(paymentCharges.createdAt)).limit(1); if (active) return { error: "Este lançamento já possui uma cobrança online vinculada. Acompanhe-a em Cobranças." };
   const credential = await getMercadoPagoCredential(organization.id); const chargeId = crypto.randomUUID();
-  let preference: MpPreference; try { preference = await mercadoPagoRequest<MpPreference>("/checkout/preferences", credential.accessToken, { method: "POST", idempotencyKey: chargeId, body: { payment_methods: mercadoPagoMethodSettings(selectedPayment.method), items: [{ id: entry.id, title: entry.description.slice(0, 120), quantity: 1, currency_id: "BRL", unit_price: entry.amountInCents / 100 }], payer: { name: customerName, email: customerEmail || entry.clientEmail || undefined }, external_reference: `charge:${chargeId}`, notification_url: `${appUrl()}/api/webhooks/mercado-pago?organizationId=${organization.id}`, back_urls: { success: `${appUrl()}/financeiro/cobrancas`, pending: `${appUrl()}/financeiro/cobrancas`, failure: `${appUrl()}/financeiro/cobrancas` }, auto_return: "approved", expires: true, expiration_date_to: `${entry.dueDate}T23:59:59.000-03:00` } }); } catch (error) { return { error: error instanceof Error ? error.message : "Não foi possível criar o checkout Mercado Pago." }; }
+  const reservation = await reserveFinancialCharge({
+    id: chargeId, organizationId: organization.id, provider: "mercado_pago",
+    originType: entry.clientId ? "client" : "financial", originId: entry.clientId ?? entry.id, financialEntryId: entry.id, clientId: entry.clientId,
+    amountInCents: entry.amountInCents, description: entry.description, dueDate: entry.dueDate, createdByUserId: session.user.id,
+    paymentMethod: "link", customerName, customerEmail: customerEmail || entry.clientEmail, customerPhone: text(data, "customerPhone") || entry.clientPhone, customerDocument: text(data, "customerDocument") || null,
+  }, selectedPayment);
+  if (reservation) return reservation;
+  let preference: MpPreference; try { preference = await mercadoPagoRequest<MpPreference>("/checkout/preferences", credential.accessToken, { method: "POST", idempotencyKey: chargeId, body: { payment_methods: mercadoPagoMethodSettings(selectedPayment.method), items: [{ id: entry.id, title: entry.description.slice(0, 120), quantity: 1, currency_id: "BRL", unit_price: entry.amountInCents / 100 }], payer: { name: customerName, email: customerEmail || entry.clientEmail || undefined }, external_reference: `charge:${chargeId}`, notification_url: `${appUrl()}/api/webhooks/mercado-pago?organizationId=${organization.id}`, back_urls: { success: `${appUrl()}/financeiro/cobrancas`, pending: `${appUrl()}/financeiro/cobrancas`, failure: `${appUrl()}/financeiro/cobrancas` }, auto_return: "approved", expires: true, expiration_date_to: `${entry.dueDate}T23:59:59.000-03:00` } }); } catch (error) { return failFinancialCharge(chargeId, error); }
+  if (!preference?.id) return failFinancialCharge(chargeId, null);
   const invoiceUrl = credential.environment === "production" ? preference.init_point : preference.sandbox_init_point ?? preference.init_point;
-  await db.transaction(async (tx) => { await tx.update(financialEntries).set({ accountId: selectedPayment.accountId, paymentMethodId: selectedPayment.paymentMethodId, paymentMethodName: selectedPayment.paymentMethodName, paymentMethod: selectedPayment.method, updatedAt: new Date() }).where(and(eq(financialEntries.id, entry.id), eq(financialEntries.organizationId, organization.id))); await tx.insert(paymentCharges).values({ id: chargeId, organizationId: organization.id, provider: "mercado_pago", providerPaymentId: preference.id, originType: entry.clientId ? "client" : "financial", originId: entry.clientId ?? entry.id, financialEntryId: entry.id, clientId: entry.clientId, paymentMethod: "link", status: "pending", amountInCents: entry.amountInCents, description: entry.description, customerName, customerEmail: customerEmail || entry.clientEmail, customerPhone: text(data, "customerPhone") || entry.clientPhone, customerDocument: text(data, "customerDocument") || null, dueDate: entry.dueDate, invoiceUrl, createdByUserId: session.user.id, metadata: { preferenceId: preference.id } }); await tx.insert(paymentChargeEvents).values({ organizationId: organization.id, chargeId, eventType: "mercado_pago_preference_created", status: "pending", payload: { preferenceId: preference.id } }); });
+  if (!invoiceUrl) return failFinancialCharge(chargeId, null);
+  await db.transaction(async (tx) => {
+    await finishFinancialCharge(tx, chargeId, { providerPaymentId: preference.id, invoiceUrl, metadata: { preferenceId: preference.id } });
+    await tx.insert(paymentChargeEvents).values({ organizationId: organization.id, chargeId, eventType: "mercado_pago_preference_created", status: "pending", payload: { preferenceId: preference.id } }); });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "payment_charge:mercado_pago", entityId: chargeId }); refresh();
+  return { chargeId };
 }
 
 export async function createProviderCharge(data: FormData) {

@@ -14,7 +14,7 @@ export const runtime = "nodejs";
 
 const statusLabels: Record<string, string> = {
   pending: "Pendente", overdue: "Vencido", paid: "Pago", received: "Recebido", cancelled: "Cancelado",
-  refunded: "Estornado", payment_review: "Conferência necessária", partially_refunded: "Estorno parcial",
+  refunded: "Estornado", payment_review: "Conferência necessária", issuance_failed: "Emissão recusada", partially_refunded: "Estorno parcial",
 };
 
 const dayColumn = (label: string) => ({ label, width: 76, kind: "date" as const });

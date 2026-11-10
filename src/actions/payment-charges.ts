@@ -1,10 +1,11 @@
 "use server";
+
+import { failFinancialCharge, finishFinancialCharge, reserveFinancialCharge } from "@/lib/financial-charge-issuance";
 import { resolveOrganizationPayment } from "@/lib/payment-methods";
 
-import { managedChargeStatuses } from "@/lib/finance-view";
 
 import { randomBytes } from "node:crypto";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { clients, financialEntries, organizationFinancialIntegrations, outboxEvents, paymentChargeEvents, paymentCharges, whatsappChannels } from "@/db/schema";
@@ -103,26 +104,33 @@ export async function createFinancialCharge(data: FormData) {
   if (customerName.length < 2 || ![11, 14].includes(customerDocument.length)) return { error: "Informe nome e CPF/CNPJ do pagador." };
   const [entry] = await db.select({ id: financialEntries.id, type: financialEntries.type, status: financialEntries.status, description: financialEntries.description, amountInCents: financialEntries.amountInCents, dueDate: financialEntries.dueDate, clientId: financialEntries.clientId, clientEmail: clients.email, clientPhone: clients.phone }).from(financialEntries).leftJoin(clients, eq(clients.id, financialEntries.clientId)).where(and(eq(financialEntries.id, financialEntryId), eq(financialEntries.organizationId, organization.id))).limit(1);
   if (!entry || entry.type !== "receivable" || entry.status !== "pending") return { error: "Selecione uma conta a receber pendente." };
-  const [active] = await db.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.financialEntryId, entry.id), inArray(paymentCharges.status, managedChargeStatuses))).orderBy(desc(paymentCharges.createdAt)).limit(1);
-  if (active) return { error: "Este lançamento já possui uma cobrança online vinculada. Acompanhe-a em Cobranças." };
   let credential: Credential; try { credential = await getOrganizationAsaasCredential(organization.id); } catch (error) { return { error: errorMessage(error, "Conecte a conta Asaas.") }; }
   const chargeId = crypto.randomUUID(); let customerId: string;
   try { customerId = await ensureCustomer(credential, { name: customerName, cpfCnpj: customerDocument, email: customerEmail ?? entry.clientEmail ?? undefined, phone: customerPhone ?? entry.clientPhone ?? undefined }); } catch (error) { return { error: errorMessage(error, "Não foi possível cadastrar o pagador.") }; }
   const billingType = paymentMethod === "pix" ? "PIX" : paymentMethod === "boleto" ? "BOLETO" : paymentMethod === "credit_card" ? "CREDIT_CARD" : "UNDEFINED";
+  const reservation = await reserveFinancialCharge({
+    id: chargeId, organizationId: organization.id, provider: "asaas",
+    originType: entry.clientId ? "client" : "financial", originId: entry.clientId ?? entry.id, financialEntryId: entry.id, clientId: entry.clientId,
+    amountInCents: entry.amountInCents, description: entry.description, dueDate: entry.dueDate, createdByUserId: session.user.id,
+    paymentMethod, chargeMode, installmentCount: chargeMode === "installment" ? installmentCount : 1, customerName, customerDocument, customerEmail: customerEmail ?? entry.clientEmail, customerPhone: customerPhone ?? entry.clientPhone,
+  }, selectedPayment);
+  if (reservation) return reservation;
   let payment: AsaasPayment | null = null; let subscription: AsaasSubscription | null = null;
   try {
     const common = { customer: customerId, billingType, value: entry.amountInCents / 100, nextDueDate: entry.dueDate, dueDate: entry.dueDate, description: entry.description.slice(0, 500), externalReference: `charge:${chargeId}` };
     if (chargeMode === "recurring") subscription = await organizationAsaasRequest<AsaasSubscription>("/subscriptions", credential, { method: "POST", body: { ...common, cycle: "MONTHLY" } });
     else payment = await organizationAsaasRequest<AsaasPayment>("/payments", credential, { method: "POST", body: chargeMode === "installment" ? { ...common, installmentCount, totalValue: entry.amountInCents / 100, value: undefined } : common });
-  } catch (error) { return { error: errorMessage(error, "O Asaas não aceitou a cobrança.") }; }
+  } catch (error) { return failFinancialCharge(chargeId, error); }
+  if (!payment?.id && !subscription?.id) return failFinancialCharge(chargeId, null);
   let pix: AsaasPix | null = null; let bankSlip: AsaasBankSlip | null = null;
   if (payment && (billingType === "PIX" || billingType === "UNDEFINED")) pix = await organizationAsaasRequest<AsaasPix>(`/payments/${payment.id}/pixQrCode`, credential).catch(() => null);
   if (payment && billingType === "BOLETO") bankSlip = await organizationAsaasRequest<AsaasBankSlip>(`/payments/${payment.id}/identificationField`, credential).catch(() => null);
-  await db.transaction(async (tx) => { await tx.update(financialEntries).set({ accountId: selectedPayment.accountId, paymentMethodId: selectedPayment.paymentMethodId, paymentMethodName: selectedPayment.paymentMethodName, paymentMethod: selectedPayment.method, updatedAt: new Date() }).where(and(eq(financialEntries.id, entry.id), eq(financialEntries.organizationId, organization.id)));
-    await tx.insert(paymentCharges).values({ id: chargeId, organizationId: organization.id, providerPaymentId: payment?.id, providerSubscriptionId: subscription?.id, providerCustomerId: customerId, originType: entry.clientId ? "client" : "financial", originId: entry.clientId ?? entry.id, financialEntryId: entry.id, clientId: entry.clientId, paymentMethod, chargeMode, installmentCount: chargeMode === "installment" ? installmentCount : 1, status: "pending", amountInCents: entry.amountInCents, description: entry.description, customerName, customerDocument, customerEmail: customerEmail ?? entry.clientEmail, customerPhone: customerPhone ?? entry.clientPhone, dueDate: entry.dueDate, invoiceUrl: payment?.invoiceUrl, bankSlipUrl: payment?.bankSlipUrl, bankSlipIdentificationField: bankSlip?.identificationField, pixQrCodePayload: pix?.payload, pixQrCodeImage: pix?.encodedImage, metadata: { subscriptionCycle: chargeMode === "recurring" ? "MONTHLY" : null }, createdByUserId: session.user.id });
+  await db.transaction(async (tx) => {
+    await finishFinancialCharge(tx, chargeId, { providerPaymentId: payment?.id, providerSubscriptionId: subscription?.id, providerCustomerId: customerId, invoiceUrl: payment?.invoiceUrl, bankSlipUrl: payment?.bankSlipUrl, bankSlipIdentificationField: bankSlip?.identificationField, pixQrCodePayload: pix?.payload, pixQrCodeImage: pix?.encodedImage, metadata: { subscriptionCycle: chargeMode === "recurring" ? "MONTHLY" : null } });
     await tx.insert(paymentChargeEvents).values({ organizationId: organization.id, chargeId, eventType: "charge_created", status: "pending", payload: { providerPaymentId: payment?.id ?? null, providerSubscriptionId: subscription?.id ?? null, billingType, chargeMode, installmentCount } });
   });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "create", entityType: "payment_charge", entityId: chargeId, details: { financialEntryId: entry.id, paymentMethod, chargeMode, amountInCents: entry.amountInCents } }); revalidateCharges();
+  return { chargeId };
 }
 
 export async function updatePaymentCharge(data: FormData) {

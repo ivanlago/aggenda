@@ -18,6 +18,7 @@ import { FinancialDownloadButtons } from "./financial-download-buttons";
 import { isManagedCharge, matchesFinanceFilters } from "@/lib/finance-view";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
+import { receivableChargeOptions } from "@/lib/receivable-charge-options";
 import { FinancialStatement } from "./financial-statement";
 import OnlineCharges from "./online-charges";
 
@@ -72,13 +73,14 @@ async function AccountsView({ organization, query, today, month, nextMonth, tab 
   const incoming = tab === "receber";
   const type = incoming ? "receivable" : "payable";
   const canManage = hasOrganizationPermission(organization.role, "finance.manage");
-  const [allEntries, accounts, categories, charges, sales, methods] = await Promise.all([
+  const [allEntries, accounts, categories, charges, sales, methods, chargeProviders] = await Promise.all([
     loadLaunchEntries(db, organization.id, type),
     db.select().from(financialAccounts).where(eq(financialAccounts.organizationId, organization.id)).orderBy(asc(financialAccounts.name)),
     db.select().from(financialCategories).where(eq(financialCategories.organizationId, organization.id)).orderBy(asc(financialCategories.name)),
     db.select().from(paymentCharges).where(eq(paymentCharges.organizationId, organization.id)).orderBy(desc(paymentCharges.createdAt)),
     db.select({ id: retailSales.id, financialEntryId: retailSales.financialEntryId, appointmentFinancialEntryId: retailSales.appointmentFinancialEntryId }).from(retailSales).where(eq(retailSales.organizationId, organization.id)),
     db.select({ id: paymentMethods.id, name: paymentMethods.name }).from(paymentMethods).where(eq(paymentMethods.organizationId, organization.id)),
+    canManage ? receivableChargeOptions(organization.id) : [],
   ]);
   const filters = { ...query, tipo: type };
   const { entries, received, paid, receivable, payable, overdue } = launchEntries(allEntries, filters, today, month, nextMonth);
@@ -115,7 +117,7 @@ async function AccountsView({ organization, query, today, month, nextMonth, tab 
       <div className="flex flex-wrap gap-2"><button className="primary-button">Filtrar</button><Link className="secondary-button" href={launchesPath + "?aba=" + tab}>Limpar</Link></div>
     </form>
     <div className="mb-5 flex flex-wrap items-start gap-3">
-      {canManage && <FinancialEntryControls key={type} categories={categories} today={today} initialType={type} autoOpen={query.novo === type} />}
+      {canManage && <FinancialEntryControls key={type} categories={categories} today={today} initialType={type} autoOpen={query.novo === type} providers={chargeProviders} />}
       {incoming && <Link className="secondary-button" href={chargesPath}>{canManage ? "Emitir ou consultar cobrança online" : "Consultar cobranças online"}</Link>}
       <FinancialDownloadButtons filters={{ ...query, aba: tab, mes: month }} />
       <a className="self-center text-sm font-bold text-brand" href={"/api/finance/report?mes=" + month}>Relatório mensal consolidado</a>

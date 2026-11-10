@@ -14,10 +14,11 @@ export function useFormDialog() {
   return context;
 }
 
-export function FormActions({ editing = false, submitLabel, disabled = false }: { editing?: boolean; submitLabel?: string; disabled?: boolean }) {
+export function FormActions({ editing = false, submitLabel, disabled = false, extraActions }: { editing?: boolean; submitLabel?: string; disabled?: boolean; extraActions?: ReactNode }) {
   const context = useContext(FormDialogContext);
   return <div className="col-span-full flex flex-wrap justify-end gap-3 border-t pt-5">
     {context && <button type="button" className="secondary-button" onClick={context.close}>Cancelar</button>}
+    {extraActions}
     <button type="submit" className="primary-button" disabled={disabled}>{submitLabel ?? (editing ? "Salvar alterações" : "Salvar")}</button>
   </div>;
 }

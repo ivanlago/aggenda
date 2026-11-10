@@ -9,7 +9,7 @@ test("quick registration preserves the draft, auto-selects categories, and keeps
   const dom = new JSDOM('<div id="root"></div>', { url: "https://example.com", pretendToBeVisual: true });
   const globals = globalThis as unknown as Record<string, unknown>;
   const originals = new Map<string, PropertyDescriptor | undefined>();
-  for (const key of ["window", "document", "navigator", "HTMLElement", "Element", "HTMLFormElement", "HTMLDialogElement", "FormData", "CustomEvent", "requestAnimationFrame", "IS_REACT_ACT_ENVIRONMENT", "referenceTestSave", "referenceTestRefresh"]) {
+  for (const key of ["window", "document", "navigator", "HTMLElement", "Element", "HTMLFormElement", "HTMLDialogElement", "FormData", "CustomEvent", "requestAnimationFrame", "IS_REACT_ACT_ENVIRONMENT", "referenceTestSave", "referenceTestRefresh", "referenceTestPrepare", "referenceTestIssue"]) {
     originals.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
     const value = key === "IS_REACT_ACT_ENVIRONMENT" ? true : key === "requestAnimationFrame" ? dom.window.requestAnimationFrame.bind(dom.window) : (dom.window as unknown as Record<string, unknown>)[key];
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
@@ -18,6 +18,14 @@ test("quick registration preserves the draft, auto-selects categories, and keeps
   let refreshes = 0;
   let confirmations = 0;
   const saves: Record<string, string>[] = [];
+  const attempted: string[] = [];
+  globals.referenceTestPrepare = async (data: FormData) => ({
+    entries: data.getAll("chargeInstallment").map(index => ({ id: String(index), description: "Parcela " + index })),
+  });
+  globals.referenceTestIssue = async (data: FormData) => {
+    attempted.push(String(data.get("financialEntryId")));
+    return { error: "Emissão recusada pelo provedor." };
+  };
   dom.window.confirm = () => { confirmations++; return false; };
   globals.referenceTestRefresh = () => refreshes++;
   globals.referenceTestSave = async (data: FormData) => {
@@ -25,19 +33,24 @@ test("quick registration preserves the draft, auto-selects categories, and keeps
     saves.push(fields);
     return { record: { id: fields.kind === "product_subcategory" ? "new-subcategory" : "new-category", name: fields.name, categoryId: fields.categoryId, type: fields.type, isActive: true } };
   };
-  const bundle = await build({ stdin: { contents: 'export { StockProductForm } from "./src/app/(app)/estoque/stock-product-form"; export { FinancialEntryControls } from "./src/components/financial-entry-form";', resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, format: "cjs", platform: "node", packages: "external", jsx: "automatic", plugins: [{ name: "reference-ui", setup(builder) {
+  const bundle = await build({ stdin: { contents: 'export { StockProductForm } from "./src/app/(app)/estoque/stock-product-form"; export { FinancialEntryControls } from "./src/components/financial-entry-form"; export { PaymentCatalogProvider } from "./src/components/payment-catalog-context";', resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, format: "cjs", platform: "node", packages: "external", jsx: "automatic", plugins: [{ name: "reference-ui", setup(builder) {
     const mocks: Record<string, string> = {
       "next/navigation": "const router={refresh(){globalThis.referenceTestRefresh()}}; export function useRouter(){return router}",
       "next/link": "import {createElement} from 'react'; export default function Link(props){return createElement('a',props)}",
       "@/actions/reference-records": "export const saveReference=(data)=>globalThis.referenceTestSave(data); export async function changeReference(){}",
       "@/actions/retail": "export async function createRetailProduct(){} export async function updateRetailVariant(){}",
-      "@/actions/app": "export async function createFinancialEntry(){}",
+      "@/actions/app": "export async function createFinancialEntry(){} export const prepareReceivableCharges=data=>globalThis.referenceTestPrepare(data);",
+      "@/actions/mercado-pago": "export const createProviderCharge=data=>globalThis.referenceTestIssue(data);",
       "@/components/entity-image-field": "export function EntityImageField(){return null}",
     };
     builder.onResolve({ filter: /.*/ }, (args) => mocks[args.path] ? { path: args.path, namespace: "fixture" } : undefined);
     builder.onLoad({ filter: /./, namespace: "fixture" }, ({ path }) => ({ contents: mocks[path], resolveDir: process.cwd() }));
   } }] });
-  const compiled = { exports: {} as { StockProductForm: ComponentType<{ categories: []; subcategories: [] }>; FinancialEntryControls: ComponentType<{ categories: unknown[]; today: string }> } };
+  const compiled = { exports: {} as {
+    StockProductForm: ComponentType<{ categories: []; subcategories: [] }>;
+    FinancialEntryControls: typeof import("../src/components/financial-entry-form").FinancialEntryControls;
+    PaymentCatalogProvider: typeof import("../src/components/payment-catalog-context").PaymentCatalogProvider;
+  } };
   new Function("require", "module", "exports", bundle.outputFiles[0].text)(createRequire(import.meta.url), compiled, compiled.exports);
   const { createRoot } = await import("react-dom/client");
   const root = createRoot(dom.window.document.getElementById("root")!);
@@ -87,6 +100,30 @@ test("quick registration preserves the draft, auto-selects categories, and keeps
     await act(async () => { const type = document.querySelector<HTMLSelectElement>('dialog select[name="type"]')!; type.value = "payable"; type.dispatchEvent(new dom.window.Event("change", { bubbles: true })); });
     assert.ok(document.querySelector('dialog select[name="categoryId"] option[value="expense"]'));
     assert.equal(document.querySelector('dialog select[name="categoryId"] option[value="income"]'), null);
+
+    const { FinancialEntryControls, PaymentCatalogProvider } = compiled.exports;
+    await act(async () => root.render(<PaymentCatalogProvider catalog={{
+      accounts: [{ id: "bank", name: "Banco" }],
+      methods: [
+        { id: "pix", name: "Pix", provider: "asaas", kind: "pix", defaultAccountId: "bank" },
+        { id: "boleto", name: "Boleto", provider: "pagbank", kind: "boleto", defaultAccountId: "bank" },
+      ],
+    }}><FinancialEntryControls categories={[]} today="2027-01-31" providers={[
+      { id: "asaas", name: "Asaas", isDefault: false, environment: "sandbox" },
+      { id: "pagbank", name: "PagBank", isDefault: true, environment: "sandbox" },
+    ]} /></PaymentCatalogProvider>));
+    await click("Nova conta a receber");
+    const chargeToggle = [...document.querySelectorAll("label")].find(label => label.textContent?.includes("Emitir cobrança online"))!.querySelector("input")!;
+    await act(async () => chargeToggle.click());
+    assert.equal(document.querySelector<HTMLSelectElement>('select[name="chargeProvider"]')?.value, "pagbank");
+    const schedule = document.querySelector<HTMLSelectElement>("dialog select:not([name])")!;
+    await act(async () => { schedule.value = "installment"; schedule.dispatchEvent(new dom.window.Event("change", { bubbles: true })); });
+    assert.match(document.querySelector("dialog")!.textContent!, /28\/02\/2027/);
+    await act(async () => document.querySelector<HTMLInputElement>('[name="chargeInstallment"][value="1"]')!.click());
+    await submit();
+    assert.deepEqual(attempted, ["2"]);
+    assert.match(document.querySelector("dialog")!.textContent!, /0 de 1 cobranças emitidas/);
+    assert.ok(document.querySelector('a[href*="lancamento=2"]'));
   } finally {
     await act(async () => root.unmount());
     dom.window.close();

@@ -1,3 +1,4 @@
+import { pagBankInstallmentPolicy } from "./payment-catalog-policy";
 import { ProviderRequestError } from "./provider-request-error";
 import { and, eq } from "drizzle-orm";
 
@@ -34,5 +35,6 @@ export async function getPagBankCredential(organizationId: string) {
   const [integration] = await db.select().from(organizationFinancialIntegrations).where(and(eq(organizationFinancialIntegrations.organizationId, organizationId), eq(organizationFinancialIntegrations.provider, "pagbank"))).limit(1);
   if (!integration || integration.status !== "active") throw new Error("Conecte e teste a conta PagBank antes de gerar pagamentos.");
   const credential = JSON.parse(decryptFinancialCredential(integration.encryptedCredential)) as PagBankCredential;
-  return { ...credential, environment: integration.environment };
+  const installments = pagBankInstallmentPolicy(integration.metadata?.maxCardInstallments, integration.metadata?.interestFreeCardInstallments);
+  return { ...credential, environment: integration.environment, installments };
 }

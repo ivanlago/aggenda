@@ -91,6 +91,7 @@ async function chargesDownload(organization: Context, query: Filters, today: str
     filters: [
       ...(query.busca ? ["Busca " + query.busca.slice(0, 180)] : []),
       ...(query.cobranca ? ["Cobrança selecionada"] : []),
+      ...(query.serie ? ["Cobranças da série"] : []),
       "Vencimento de " + (query.inicio?.slice(0, 10) || "qualquer data") + " até " + (query.fim?.slice(0, 10) || "qualquer data"),
       "Situação " + (statusLabels[query.status ?? ""] ?? "todas"),
       "Meio " + (query.meio && query.meio !== "all" ? names.get(query.meio) ?? query.meio.slice(0, 60) : "todos"),

@@ -98,6 +98,9 @@ export async function createFinancialCharge(data: FormData) {
   const selectedPayment = await resolveOrganizationPayment(organization.id, text(data, "paymentMethod"), text(data, "accountId"), "asaas");
   const financialEntryId = text(data, "financialEntryId"); const paymentMethod = selectedPayment.method;
   const chargeMode = ["single", "installment", "recurring"].includes(text(data, "chargeMode")) ? text(data, "chargeMode") : "single";
+  if (chargeMode === "installment" && selectedPayment.method === "boleto") {
+    return { error: "Para emitir um boleto por vencimento, use Dividir o valor em parcelas em Contas a receber." };
+  }
   const installmentCount = Math.min(24, Math.max(1, Number(text(data, "installmentCount")) || 1));
   const customerName = text(data, "customerName"); const customerDocument = digits(text(data, "customerDocument")); const customerEmail = text(data, "customerEmail") || undefined; const customerPhone = digits(text(data, "customerPhone")) || undefined;
   if (!["pix", "boleto", "link", "credit_card"].includes(paymentMethod)) return { error: "Forma de cobrança inválida." };

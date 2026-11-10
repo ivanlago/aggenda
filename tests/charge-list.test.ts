@@ -60,6 +60,11 @@ test("charge pages filter in SQL, preserve full totals and fetch only visible hi
     for (const [index, status] of ["pending", "overdue", "paid", "payment_review", "partially_refunded", "cancelled", "refunded"].entries()) await pg.query("INSERT INTO payment_charges(id,organization_id,financial_entry_id,status,created_at) VALUES ($1,$2,$3,$4,'2026-10-01')", [randomUUID(), org, entryIds[index], status]);
     await pg.query("UPDATE financial_entries SET source='retail_sale' WHERE id=$1", [entryIds[7]]);
     await pg.query("INSERT INTO payment_charges(id,organization_id,financial_entry_id,status) VALUES ($1,$2,$3,'pending')", [randomUUID(), other, entryIds[8]]);
+    const series = randomUUID();
+    await pg.query("UPDATE financial_entries SET recurrence_group_id=$1 WHERE id IN ($2,$3,$4)", [series, entryIds[0], entryIds[1], entryIds[8]]);
+    const grouped = await loadChargeList(database, org, { serie: series }, "2026-10-28");
+    assert.equal(grouped.totals.count, 2);
+    assert.deepEqual(new Set(grouped.charges.map(charge => charge.financialEntryId)), new Set(entryIds.slice(0, 2)));
     const eligible = await loadChargeableEntries(database, org);
     assert.deepEqual(new Set(eligible.map(entry => entry.id)), new Set([entryIds[5], entryIds[6], entryIds[8]]), "Eligibility checks every managed charge, independently of current page and filters");
   } finally { await pg.close(); }

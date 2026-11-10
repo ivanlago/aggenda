@@ -687,6 +687,13 @@
       "when": 1794310238724,
       "tag": "0097_pos_operator_cash",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1794310238725,
+      "tag": "0098_retail_card_installments",
+      "breakpoints": true
     }
   ]
 }

@@ -5,12 +5,18 @@ import { clients, financialEntries, paymentChargeEvents, paymentCharges } from "
 import { DEFAULT_PAGE_SIZE, parseListPageSize } from "./list-pagination";
 import { managedChargeStatuses } from "./finance-view";
 
-export type ChargeListFilters = { busca?: string; status?: string; meio?: string; inicio?: string; fim?: string; pagina?: string; linhas?: string; cobranca?: string };
+export type ChargeListFilters = { busca?: string; status?: string; meio?: string; inicio?: string; fim?: string; pagina?: string; linhas?: string; cobranca?: string; serie?: string };
 export const chargePageSize = DEFAULT_PAGE_SIZE;
 
 export function chargeListCondition(organizationId: string, filters: ChargeListFilters, today: string) {
   const conditions: SQL[] = [eq(paymentCharges.organizationId, organizationId)];
   if (filters.cobranca) conditions.push(z.uuid().safeParse(filters.cobranca).success ? eq(paymentCharges.id, filters.cobranca) : sql`false`);
+  if (filters.serie) conditions.push(z.uuid().safeParse(filters.serie).success ? sql`exists (
+    select 1 from ${financialEntries}
+    where ${financialEntries.id} = ${paymentCharges.financialEntryId}
+      and ${financialEntries.organizationId} = ${organizationId}
+      and ${financialEntries.recurrenceGroupId} = ${filters.serie}
+  )` : sql`false`);
   const search = filters.busca?.trim();
   // strpos treats %, _ and backslashes literally, matching the former includes search.
   if (search) conditions.push(sql`strpos(lower(concat(${paymentCharges.customerName}, ' ', ${paymentCharges.description}, ' ', coalesce(${paymentCharges.customerDocument}, ''))), lower(${search})) > 0`);
@@ -44,7 +50,7 @@ export async function loadChargeList(database: typeof db, organizationId: string
   const requested = Number(filters.pagina);
   const currentPage = Math.min(pages, Number.isFinite(requested) ? Math.max(1, Math.floor(requested)) : 1);
   const charges = await database.select().from(paymentCharges).where(condition)
-    .orderBy(desc(paymentCharges.createdAt), desc(paymentCharges.id)).limit(pageSize).offset((currentPage - 1) * pageSize);
+    .orderBy(filters.serie ? asc(paymentCharges.dueDate) : desc(paymentCharges.createdAt), desc(paymentCharges.id)).limit(pageSize).offset((currentPage - 1) * pageSize);
   const events = charges.length ? await database.select({
     id: paymentChargeEvents.id, chargeId: paymentChargeEvents.chargeId, eventType: paymentChargeEvents.eventType,
     status: paymentChargeEvents.status, createdAt: paymentChargeEvents.createdAt,

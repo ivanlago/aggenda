@@ -5,6 +5,8 @@ export interface MercadoPagoPayment {
   transaction_amount?: number; transaction_amount_refunded?: number; currency_id?: string; live_mode?: boolean;
   date_approved?: string; date_last_updated?: string; payment_method_id?: string; payment_type_id?: string;
   fee_details?: { type?: string; amount?: number }[];
+  installments?: number;
+  buyerSurchargeInCents?: number;
   transaction_details?: { net_received_amount?: number };
 }
 

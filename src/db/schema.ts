@@ -1472,6 +1472,8 @@ export const retailSalePayments = pgTable("retail_sale_payments", {
   refundedInCents: integer("refunded_in_cents").notNull().default(0),
   method: text("method").notNull(),
   amountInCents: integer("amount_in_cents").notNull(),
+  cardInstallments: integer("card_installments"),
+  buyerSurchargeInCents: integer("buyer_surcharge_in_cents"),
   status: text("status").default("received").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [index("retail_sale_payments_sale_idx").on(table.saleId), index("retail_sale_payments_org_created_idx").on(table.organizationId, table.createdAt)]);

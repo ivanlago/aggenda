@@ -46,3 +46,19 @@ export function mercadoPagoMethodSettings(kind: string) {
   if (!allowed[kind]) throw new Error("Forma incompatível com Mercado Pago.");
   return { excluded_payment_types: ["credit_card", "debit_card", "prepaid_card", "ticket", "atm", "bank_transfer", "account_money"].filter(type => type !== allowed[kind]).map(id => ({ id })) };
 }
+
+export function pagBankInstallmentPolicy(maximum: unknown, interestFree: unknown) {
+  if (typeof maximum !== "number" || !Number.isInteger(maximum) || maximum < 1 || maximum > 12
+      || typeof interestFree !== "number" || !Number.isInteger(interestFree) || interestFree < 0 || interestFree > maximum) return null;
+  return { maximum, interestFree };
+}
+
+export function pagBankCardConfig(maximum: number, interestFree = 0) {
+  return [{
+    type: "CREDIT_CARD",
+    config_options: [
+      { option: "INSTALLMENTS_LIMIT", value: String(maximum) },
+      ...(interestFree > 0 ? [{ option: "INTEREST_FREE_INSTALLMENTS", value: String(Math.min(interestFree, maximum)) }] : []),
+    ],
+  }];
+}

@@ -140,6 +140,7 @@ async function AccountsView({ organization, query, today, month, nextMonth, tab 
             <p className="mt-1 text-xs text-muted">{entry.category || "Sem categoria"}{account ? ` · ${account}` : ""} · {sourceLabels[entry.source] ?? entry.source}{paymentName ? ` · ${paymentName}` : ""} · vencimento {new Date(`${entry.dueDate}T12:00:00Z`).toLocaleDateString("pt-BR")}{entry.realizedDate ? ` · baixa ${new Date(`${entry.realizedDate}T12:00:00Z`).toLocaleDateString("pt-BR")}` : ""}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {charge && <Link className="secondary-button" href={`${chargesPath}&cobranca=${charge.id}#cobranca-${charge.id}`}>Ver cobrança vinculada</Link>}
+              {charge && entry.recurrenceGroupId && <Link className="secondary-button" href={`${chargesPath}&serie=${entry.recurrenceGroupId}`}>Ver cobranças da série</Link>}
               {canManage && entry.type === "receivable" && entry.status === "pending" && !managed && entry.source !== "retail_sale" && !sale && <Link className="secondary-button" href={`${chargesPath}&lancamento=${entry.id}#nova-cobranca`}>Gerar cobrança</Link>}
               {sale && <Link className="secondary-button" href={`/vendas/pagamento/${sale.id}`}>Gerenciar no PDV</Link>}
               {canManage && entry.source === "commission_payment" && <Link className="secondary-button" href="/financeiro/comissoes">Gerenciar quitação</Link>}

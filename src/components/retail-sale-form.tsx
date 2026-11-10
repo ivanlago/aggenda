@@ -25,7 +25,7 @@ import type { CommissionBeneficiaryOption } from "@/lib/commission-beneficiary";
 type Variant = CatalogItem;
 type Client = { id: string; name: string; email: string | null; phone: string | null };
 type CartItem = { variantId: string; quantity: number; discountInCents: number };
-type Payment = { id: number; method: string; amount: string };
+type Payment = { id: number; method: string; amount: string; cardInstallments?: string; buyerTotal?: string };
 
 const currency = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -61,7 +61,15 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
   const subtotal = cart.reduce((sum, item) => sum + (variantsById.get(item.variantId)?.priceInCents ?? 0) * item.quantity, 0);
   const discountInCents = discountedCart.reduce((sum, item) => sum + item.discountInCents, 0);
   const total = Math.max(0, subtotal - discountInCents);
-  const paymentsPayload = payments.map((payment) => ({ method: payment.method, amountInCents: Math.max(0, Math.round((Number(payment.amount.replace(",", ".")) || 0) * 100)) }));
+  const paymentsPayload = payments.map(payment => {
+    const buyerTotal = Number(payment.buyerTotal?.replace(",", "."));
+    return {
+      method: payment.method,
+      amountInCents: Math.max(0, Math.round((Number(payment.amount.replace(",", ".")) || 0) * 100)),
+      cardInstallments: payment.cardInstallments,
+      buyerTotalInCents: payment.buyerTotal?.trim() ? (Number.isFinite(buyerTotal) ? Math.round(buyerTotal * 100) : -1) : undefined,
+    };
+  });
   const [withCommission, setWithCommission] = useState(false);
   const [commissionBeneficiary, setCommissionBeneficiary] = useState(defaultCommissionBeneficiary);
   const selectedCommission = withCommission && commissionChoices.some(option => option.value === commissionBeneficiary) ? commissionBeneficiary : "";
@@ -158,9 +166,13 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
             </div>}
             {!onlinePayment && <fieldset className="grid min-w-0 gap-3"><legend className="mb-1 text-sm font-bold">Pagamentos</legend>
               {payments.map((payment, index) => <div className="grid min-w-0 gap-2 rounded-xl border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]" key={payment.id}>
-                <label className="grid gap-1 text-sm font-bold">Forma de pagamento *<select className="field" required value={payment.method} onChange={event => setPayments(current => current.map(item => item.id === payment.id ? { ...item, method: event.target.value } : item))}><option value="">Selecione</option>{manualMethods.map(method => <option key={method.id} value={method.id}>{method.name}</option>)}</select></label>
+                <label className="grid gap-1 text-sm font-bold">Forma de pagamento *<select className="field" required value={payment.method} onChange={event => setPayments(current => current.map(item => item.id === payment.id ? { ...item, method: event.target.value, cardInstallments: undefined, buyerTotal: undefined } : item))}><option value="">Selecione</option>{manualMethods.map(method => <option key={method.id} value={method.id}>{method.name}</option>)}</select></label>
                 <label className="grid gap-1 text-sm font-bold">Valor (R$) *<input className="field" required inputMode="decimal" value={payment.amount} onChange={event => setPayments(current => current.map(item => item.id === payment.id ? { ...item, amount: event.target.value } : item))} aria-label={`Valor do pagamento ${index + 1}`} /></label>
                 <button className="icon-button self-end text-red-700" type="button" disabled={payments.length === 1} onClick={() => setPayments(current => current.filter(item => item.id !== payment.id))} aria-label={`Remover pagamento ${index + 1}`}><Trash2 className="size-4" /></button>
+                {manualMethods.find(method => method.id === payment.method)?.kind === "credit_card" && <>
+                  <label className="grid gap-1 text-sm font-bold">Parcelas na maquininha<input className="field" type="number" min="1" max="99" required value={payment.cardInstallments ?? "1"} onChange={event => setPayments(current => current.map(item => item.id === payment.id ? { ...item, cardInstallments: event.target.value } : item))} /></label>
+                  {Number(payment.cardInstallments) > 1 && <label className="grid gap-1 text-sm font-bold">Total cobrado no cartão (R$)<input className="field" inputMode="decimal" value={payment.buyerTotal ?? ""} placeholder="Preencha se confirmado na maquininha" onChange={event => setPayments(current => current.map(item => item.id === payment.id ? { ...item, buyerTotal: event.target.value } : item))} /></label>}
+                </>}
               </div>)}
               {!manualMethods.length && <p className="text-sm text-amber-800">Cadastre uma forma manual com uma conta de pagamento ativa em Formas de Pagamento.</p>}
               <div className="flex flex-wrap gap-2"><button className="secondary-button" type="button" onClick={() => setPayments(current => [...current, { id: Date.now(), method: "", amount: "" }])}>Adicionar pagamento</button><button className="secondary-button" type="button" onClick={() => { const remaining = Math.max(0, total - paidTotal + (paymentsPayload.at(-1)?.amountInCents ?? 0)); setPayments(current => current.map((item, index) => index === current.length - 1 ? { ...item, amount: (remaining / 100).toFixed(2).replace(".", ",") } : item)); }}>Preencher restante</button></div><p className={`text-xs font-bold ${paidTotal === total ? "text-emerald-700" : "text-amber-700"}`}>Informado {currency(paidTotal)} de {currency(total)}</p>

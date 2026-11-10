@@ -1,3 +1,7 @@
+export function financialInstallmentAmount(totalInCents: number, count: number, index: number) {
+  return Math.floor(totalInCents / count) + (index < totalInCents % count ? 1 : 0);
+}
+
 export function financialDueDate(firstDueDate: string, monthOffset: number) {
   const [year, month, day] = firstDueDate.split("-").map(Number);
   const next = new Date(Date.UTC(year, month - 1 + monthOffset, 1));

@@ -61,7 +61,7 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
     organization_financial_integrations:["is_default_pos"],
     financial_entries:["payment_method_id","payment_method_name","cash_managed_by_sale"],
     payment_methods:["kind","provider","default_account_id"],
-    retail_sale_payments:["payment_method_id","payment_method_name","account_id","refunded_in_cents"],
+    retail_sale_payments:["payment_method_id","payment_method_name","account_id","refunded_in_cents","card_installments","buyer_surcharge_in_cents"],
   };
   try {
     for (const [name, table] of Object.entries(tables)) {
@@ -80,6 +80,7 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
     await pg.exec(await readFile(new URL("../drizzle/0093_payment_catalog_cash_ledger.sql",import.meta.url),"utf8"));
     await pg.exec(await readFile(new URL("../drizzle/0095_pos_cash_session.sql",import.meta.url),"utf8"));
     await pg.exec(await readFile(new URL("../drizzle/0097_pos_operator_cash.sql",import.meta.url),"utf8"));
+    await pg.exec(await readFile(new URL("../drizzle/0098_retail_card_installments.sql",import.meta.url),"utf8"));
     await pg.exec("CREATE UNIQUE INDEX payment_charge_events_provider_event_unique ON payment_charge_events(provider_event_id)");
     const org = randomUUID(), outside = randomUUID(), client = randomUUID(), stock = randomUUID(), product = randomUUID(), variant = randomUUID(), procedure = randomUUID(), pack = randomUUID();
     await pg.query("INSERT INTO users(id,name) VALUES ('cashier','Operador teste')");
@@ -96,12 +97,12 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
     await pg.query("INSERT INTO organization_financial_integrations(id,organization_id,provider,status,environment,metadata) VALUES ($1,$2,'mercado_pago','active','production',$3)",[randomUUID(),org,JSON.stringify({accountId:99,webhookStatus:"configured"})]);
     const accountId = randomUUID(), bankAccount = randomUUID();
     await pg.query("INSERT INTO financial_accounts(id,organization_id,name,account_type,is_active) VALUES ($1,$2,'Cofre','cash',true),($3,$2,'Banco','bank',true)",[accountId,org,bankAccount]);
-    const catalogIds = Object.fromEntries(["cash","pix","mercado_pago","asaas","pagbank","efi"].map(key => [key, randomUUID()]));
-    for (const [key,id] of Object.entries(catalogIds)) await pg.query("INSERT INTO payment_methods(id,organization_id,name,kind,provider,default_account_id,is_active) VALUES ($1,$2,$3,$4,$5,$6,true)",[id,org,key,["cash","pix","efi"].includes(key)?key==="efi"?"pix":key:"link",["cash","pix"].includes(key)?"manual":key,key==="pix"?bankAccount:accountId]);
+    const catalogIds = Object.fromEntries(["cash","pix","credit_card","mercado_pago","asaas","pagbank","efi"].map(key => [key, randomUUID()]));
+    for (const [key,id] of Object.entries(catalogIds)) await pg.query("INSERT INTO payment_methods(id,organization_id,name,kind,provider,default_account_id,is_active) VALUES ($1,$2,$3,$4,$5,$6,true)",[id,org,key,["cash","pix","credit_card","efi"].includes(key)?key==="efi"?"pix":key:"link",["cash","pix","credit_card"].includes(key)?"manual":key,["pix","credit_card"].includes(key)?bankAccount:accountId]);
     const database = drizzle(pg,{schema}) as unknown as typeof db;
     const globals = globalThis as unknown as { __posDb: typeof db; __posContext: unknown };
     globals.__posDb = database;
-    Object.assign(globalThis,{__posOtherContext:async (_org:string,provider:string)=>({collectorId:"0",paymentEnvironment:"production",credentialFingerprint:checkoutInputHash({provider,secret:provider==="efi"?JSON.stringify({clientId:"efi-test",clientSecret:"secret-test",pixKey:"key-test",certificateBase64:"certificate-test"}):`${provider}-test`})})});
+    Object.assign(globalThis,{__posOtherContext:async (_org:string,provider:string)=>({collectorId:"0",paymentEnvironment:"production",pagBankInstallments:provider==="pagbank"?{maximum:6,interestFree:3}:null,credentialFingerprint:checkoutInputHash({provider,secret:provider==="efi"?JSON.stringify({clientId:"efi-test",clientSecret:"secret-test",pixKey:"key-test",certificateBase64:"certificate-test"}):`${provider}-test`})})});
     globals.__posContext = { organization: { id:org,name:"Clínica teste",role:"owner",timezone:"America/Bahia" }, session:{user:{id:"cashier"}} };
     const compiled = await build({entryPoints:["src/actions/retail.ts"],bundle:true,write:false,format:"cjs",platform:"node",packages:"external",plugins:[{name:"pos-mocks",setup(builder){
       const mocks:Record<string,string> = { "@/db":"export const db=globalThis.__posDb;", "@/lib/session":"export async function requireOrganization(){return globalThis.__posContext;}",
@@ -138,7 +139,11 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
           throw new Error(`Unexpected Asaas request ${path}`);
         },
         __posPagBank:async(path:string,_credential:unknown,init:{method?:string;body?:Record<string,unknown>}={})=>{
-          if(path==="/checkouts"&&init.method==="POST"){pagBankCreates++;pagBankReference=String(init.body?.reference_id);return {id:pagBankId,links:[{rel:"PAY",href:"https://pagamento.pagbank.com.br/pagamento?test"}]};}
+          if(path==="/checkouts"&&init.method==="POST"){
+            pagBankCreates++;pagBankReference=String(init.body?.reference_id);
+            assert.deepEqual(init.body?.payment_methods_configs, [{type:"CREDIT_CARD",config_options:[{option:"INSTALLMENTS_LIMIT",value:"6"},{option:"INTEREST_FREE_INSTALLMENTS",value:"3"}]}]);
+            return {id:pagBankId,links:[{rel:"PAY",href:"https://pagamento.pagbank.com.br/pagamento?test"}]};
+          }
           if(path.endsWith("/inactivate"))return {};
           if(path.startsWith("/checkouts/"))return {id:pagBankId,reference_id:pagBankReference,payments:[{id:"ORDE_test",charges:pagBankCharges}]};
           throw new Error(`Unexpected PagBank request ${path}`);
@@ -157,9 +162,10 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
         await Promise.all([loaded.exports.ensurePosCheckout(org,created.saleId),loaded.exports.ensurePosCheckout(org,created.saleId)]);
         const before=(await pg.query<{status:string}>("SELECT status FROM retail_sales WHERE id=$1",[created.saleId])).rows[0];assert.equal(before.status,"pending_payment");
         if(provider==="asaas")asaasPayments=[{id:"pay_test",checkoutSession:asaasId,status:"CONFIRMED",value:5,netValue:4.5,billingType:"PIX"}];
-        else pagBankCharges=[{id:"CHAR_test",status:"PAID",amount:{value:500,currency:"BRL",summary:{paid:500,refunded:0}},payment_method:{type:"PIX"}}];
+        else pagBankCharges=[{id:"CHAR_test",status:"PAID",amount:{value:500,currency:"BRL",summary:{paid:525,refunded:0},fees:{buyer:{interest:{total:25}}}},payment_method:{type:"CREDIT_CARD",installments:4}}];
         await loaded.exports.refreshPosPayment(org,created.saleId);await loaded.exports.refreshPosPayment(org,created.saleId);
         assert.equal((await pg.query<{status:string}>("SELECT status FROM retail_sales WHERE id=$1",[created.saleId])).rows[0].status,"completed");
+        if(provider==="pagbank") assert.deepEqual((await pg.query("SELECT card_installments,buyer_surcharge_in_cents FROM retail_sale_payments WHERE sale_id=$1",[created.saleId])).rows,[{card_installments:4,buyer_surcharge_in_cents:25}]);
         if(provider==="asaas")asaasPayments=[{id:"pay_test",checkoutSession:asaasId,status:"CONFIRMED",value:5,refunds:[{value:1,status:"DONE"}]}];
         else pagBankCharges=[{id:"CHAR_test",status:"PAID",amount:{value:500,currency:"BRL",summary:{paid:500,refunded:100}}}];
         await loaded.exports.refreshPosPayment(org,created.saleId);
@@ -307,7 +313,7 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
       await pg.query("INSERT INTO organization_financial_integrations(id,organization_id,provider,is_default_pos) VALUES ($1,$2,'other',true)",[randomUUID(),outside]);
     });
     await t.test("recebimento manual misto continua concluído e sem cobrança externa; sem permissão não vende",async()=>{
-      const form=new FormData(); form.set("checkoutProvider","manual"); form.set("items",JSON.stringify([{variantId:variant,quantity:1,discountInCents:0}])); form.set("payments",JSON.stringify([{method:catalogIds.cash,accountId,amountInCents:200},{method:catalogIds.pix,accountId,amountInCents:300}]));
+      const form=new FormData(); form.set("checkoutProvider","manual"); form.set("items",JSON.stringify([{variantId:variant,quantity:1,discountInCents:0}])); form.set("payments",JSON.stringify([{method:catalogIds.cash,accountId,amountInCents:200},{method:catalogIds.credit_card,accountId,amountInCents:300,cardInstallments:3,buyerTotalInCents:330}]));
       await pg.query("UPDATE cash_closings SET closed_at=now() WHERE id=$1",[originalCash]);
       await assert.rejects(register(form), /Abra seu caixa/);
       const cashClosingId = randomUUID();
@@ -321,7 +327,10 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
       const sale=(await pg.query<{id:string;status:string;payment_provider:string|null}>("SELECT id,status,payment_provider FROM retail_sales WHERE receipt_token=$1",[receipt])).rows[0];
       assert.equal(sale.status,"completed"); assert.equal(sale.payment_provider,null);
       assert.equal((await pg.query<{cash_closing_id:string}>("SELECT cash_closing_id FROM retail_sales WHERE id=$1",[sale.id])).rows[0].cash_closing_id,cashClosingId);
-      assert.deepEqual((await pg.query("SELECT p.method, m.account_id FROM cash_movements m JOIN retail_sale_payments p ON p.id=m.source_id WHERE p.sale_id=$1 AND m.cash_closing_id=$2 ORDER BY p.method",[sale.id,cashClosingId])).rows,[{method:"cash",account_id:accountId},{method:"pix",account_id:bankAccount}]);
+      assert.deepEqual((await pg.query("SELECT p.method, m.account_id, p.card_installments, p.buyer_surcharge_in_cents FROM cash_movements m JOIN retail_sale_payments p ON p.id=m.source_id WHERE p.sale_id=$1 AND m.cash_closing_id=$2 ORDER BY p.method",[sale.id,cashClosingId])).rows,[
+        {method:"cash",account_id:accountId,card_installments:null,buyer_surcharge_in_cents:null},
+        {method:"credit_card",account_id:bankAccount,card_installments:3,buyer_surcharge_in_cents:30},
+      ]);
       assert.equal((await pg.query("SELECT id FROM payment_charges WHERE origin_id=$1",[sale.id])).rows.length,0);
       globals.__posContext={organization:{id:org,name:"Clínica teste",role:"viewer",timezone:"America/Bahia"},session:{user:{id:"cashier"}}};
       await assert.rejects(register(form),/permissão/);

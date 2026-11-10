@@ -1,11 +1,11 @@
 "use server";
 
 import { failFinancialCharge, finishFinancialCharge, reserveFinancialCharge } from "@/lib/financial-charge-issuance";
-import { hostedPaymentTypes } from "@/lib/payment-catalog-policy";
+import { hostedPaymentTypes, pagBankCardConfig, pagBankInstallmentPolicy } from "@/lib/payment-catalog-policy";
 import { resolveOrganizationPayment } from "@/lib/payment-methods";
 
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/db";
@@ -43,9 +43,24 @@ export async function connectPagBankAccount(data: FormData) {
   catch (error) { return { error: message(error, "Não foi possível validar o token PagBank.") }; }
   const webhookStatus = appUrl().startsWith("https://") ? "configured" : "pending_https";
   const metadata = { accountName: "Conta PagBank", billingOwner: "client", webhookStatus, testedAt: new Date().toISOString(), capabilities: ["pix", "boleto", "credit_card", "installment", "recurring", "cancel", "refund"] };
-  await db.insert(organizationFinancialIntegrations).values({ organizationId: organization.id, provider: "pagbank", environment, encryptedCredential: encryptFinancialCredential(JSON.stringify({ token })), status: "active", metadata }).onConflictDoUpdate({ target: [organizationFinancialIntegrations.organizationId, organizationFinancialIntegrations.provider], set: { environment, encryptedCredential: encryptFinancialCredential(JSON.stringify({ token })), status: "active", metadata, updatedAt: new Date() } });
+  await db.insert(organizationFinancialIntegrations).values({ organizationId: organization.id, provider: "pagbank", environment, encryptedCredential: encryptFinancialCredential(JSON.stringify({ token })), status: "active", metadata }).onConflictDoUpdate({ target: [organizationFinancialIntegrations.organizationId, organizationFinancialIntegrations.provider], set: { environment, encryptedCredential: encryptFinancialCredential(JSON.stringify({ token })), status: "active", metadata: sql`coalesce(${organizationFinancialIntegrations.metadata}, '{}'::jsonb) || ${JSON.stringify(metadata)}::jsonb`, updatedAt: new Date() } });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "connect_and_test", entityType: "financial_integration:pagbank", details: { environment, webhookStatus } });
   refresh();
+}
+
+export async function savePagBankInstallments(data: FormData) {
+  const { session, organization } = await requireOrganization();
+  assertOrganizationPermission(organization.role, "integrations.manage");
+  const policy = pagBankInstallmentPolicy(Number(text(data, "maximum")), Number(text(data, "interestFree")));
+  if (!policy) return { error: "Informe de 1 a 12 parcelas e um limite sem juros entre zero e o máximo." };
+  const values = { maxCardInstallments: policy.maximum, interestFreeCardInstallments: policy.interestFree };
+  const [integration] = await db.update(organizationFinancialIntegrations).set({
+    metadata: sql`coalesce(${organizationFinancialIntegrations.metadata}, '{}'::jsonb) || ${JSON.stringify(values)}::jsonb`, updatedAt: new Date(),
+  }).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "pagbank"), eq(organizationFinancialIntegrations.status, "active"))).returning({ id: organizationFinancialIntegrations.id });
+  if (!integration) return { error: "Conecte a conta PagBank para salvar o parcelamento." };
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "set_card_installments", entityType: "financial_integration:pagbank", entityId: integration.id, details: values });
+  refresh();
+  revalidatePath("/vendas");
 }
 
 export async function testPagBankIntegration() {
@@ -87,6 +102,9 @@ export async function createPagBankCharge(data: FormData) {
   const [entry] = await db.select({ id: financialEntries.id, description: financialEntries.description, amountInCents: financialEntries.amountInCents, dueDate: financialEntries.dueDate, clientId: financialEntries.clientId, clientEmail: clients.email, clientPhone: clients.phone }).from(financialEntries).leftJoin(clients, eq(clients.id, financialEntries.clientId)).where(and(eq(financialEntries.id, financialEntryId), eq(financialEntries.organizationId, organization.id), eq(financialEntries.type, "receivable"), eq(financialEntries.status, "pending"))).limit(1);
   if (!entry) return { error: "Selecione uma conta a receber pendente." };
   const credential = await getPagBankCredential(organization.id);
+  if (chargeMode === "installment" && credential.installments && installmentCount > credential.installments.maximum) {
+    return { error: `O PagBank está configurado para até ${credential.installments.maximum} parcela(s).` };
+  }
   const chargeId = crypto.randomUUID();
   const expiration = new Date(`${entry.dueDate}T23:59:59-03:00`).toISOString();
   const phone = customerPhone || digits(entry.clientPhone ?? "");
@@ -111,7 +129,7 @@ export async function createPagBankCharge(data: FormData) {
       customer_modifiable: true,
       items: [{ reference_id: entry.id, name: entry.description.slice(0, 100), quantity: 1, unit_amount: entry.amountInCents }],
       payment_methods: methods.map((type) => ({ type })),
-      ...(methods.includes("CREDIT_CARD") && chargeMode !== "recurring" ? { payment_methods_configs: [{ type: "CREDIT_CARD", config_options: [{ option: "INSTALLMENTS_LIMIT", value: String(chargeMode === "installment" ? installmentCount : 1) }] }] } : {}),
+      ...(methods.includes("CREDIT_CARD") && chargeMode !== "recurring" ? { payment_methods_configs: pagBankCardConfig(chargeMode === "installment" ? installmentCount : 1, chargeMode === "installment" ? credential.installments?.interestFree : 0) } : {}),
       ...(chargeMode === "recurring" ? { recurrence_plan: { name: entry.description.slice(0, 100), interval: { unit: "MONTH", length: 1 } } } : {}),
       redirect_url: `${appUrl()}/financeiro/cobrancas`,
       return_url: `${appUrl()}/financeiro/cobrancas`,

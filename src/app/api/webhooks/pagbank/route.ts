@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { auditLogs, financialEntries, paymentChargeEvents, paymentCharges } from "@/db/schema";
@@ -6,7 +6,11 @@ import { getPagBankCredential, pagBankRequest } from "@/lib/pagbank";
 import { refreshPosPayment } from "@/lib/pos-checkout";
 import { revalidatePath } from "next/cache";
 
-type PagBankCharge = { id?: string; status?: string; paid_at?: string; payment_method?: { type?: string } };
+type PagBankCharge = {
+  id?: string; status?: string; paid_at?: string;
+  payment_method?: { type?: string; installments?: number };
+  amount?: { fees?: { buyer?: { interest?: { total?: number } } } };
+};
 type PagBankResource = { id?: string; reference_id?: string; status?: string; charges?: PagBankCharge[]; payments?: Array<{ id?: string; reference_id?: string; charges?: PagBankCharge[] }> };
 
 const mapStatus = (status: string) => status === "PAID" ? "paid" : ["CANCELED", "CANCELLED", "DECLINED", "INACTIVE", "EXPIRED"].includes(status) ? "cancelled" : status === "REFUNDED" ? "refunded" : "pending";
@@ -43,7 +47,19 @@ export async function POST(request: Request) {
     if (!inserted) return;
     const now = new Date();
     const paymentMethod = mapMethod(providerCharge?.payment_method?.type) ?? charge.paymentMethod;
-    await tx.update(paymentCharges).set({ providerPaymentId: providerCharge?.id ?? charge.providerPaymentId, paymentMethod, status, paidAt: status === "paid" ? new Date(providerCharge?.paid_at ?? now) : charge.paidAt, cancelledAt: status === "cancelled" ? now : charge.cancelledAt, refundedAt: status === "refunded" ? now : charge.refundedAt, updatedAt: now }).where(eq(paymentCharges.id, charge.id));
+    const installments = providerCharge?.payment_method?.installments;
+    const surcharge = providerCharge?.amount?.fees?.buyer?.interest?.total;
+    const cardTerms = status === "paid" && providerCharge?.payment_method?.type === "CREDIT_CARD" ? {
+      ...(typeof installments === "number" && Number.isInteger(installments) && installments >= 1 && installments <= 99 ? { actualCardInstallments: installments } : {}),
+      ...(typeof surcharge === "number" && Number.isSafeInteger(surcharge) && surcharge >= 0 ? { buyerSurchargeInCents: surcharge } : {}),
+    } : {};
+    await tx.update(paymentCharges).set({
+      providerPaymentId: providerCharge?.id ?? charge.providerPaymentId, paymentMethod, status,
+      paidAt: status === "paid" ? new Date(providerCharge?.paid_at ?? now) : charge.paidAt,
+      cancelledAt: status === "cancelled" ? now : charge.cancelledAt, refundedAt: status === "refunded" ? now : charge.refundedAt,
+      metadata: Object.keys(cardTerms).length ? sql`coalesce(${paymentCharges.metadata}, '{}'::jsonb) || ${JSON.stringify(cardTerms)}::jsonb` : undefined,
+      updatedAt: now,
+    }).where(eq(paymentCharges.id, charge.id));
     if (charge.financialEntryId && status === "paid") await tx.update(financialEntries).set({ status: "received", realizedDate: (providerCharge?.paid_at ?? now.toISOString()).slice(0, 10), paymentMethod: paymentMethod ?? "pagbank", updatedAt: now }).where(eq(financialEntries.id, charge.financialEntryId));
     if (charge.financialEntryId && status === "refunded") await tx.update(financialEntries).set({ status: "pending", realizedDate: null, updatedAt: now }).where(eq(financialEntries.id, charge.financialEntryId));
     await tx.insert(auditLogs).values({ organizationId, action: `status:${status}`, entityType: "payment_charge:pagbank", entityId: charge.id, details: { resourceId: resource.id, providerChargeId: providerCharge?.id, providerStatus } });

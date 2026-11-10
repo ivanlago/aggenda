@@ -1,4 +1,4 @@
-import { hostedPaymentTypes } from "./payment-catalog-policy";
+import { hostedPaymentTypes, pagBankCardConfig, pagBankInstallmentPolicy } from "./payment-catalog-policy";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { organizationFinancialIntegrations, paymentCharges, retailSales } from "@/db/schema";
@@ -23,7 +23,8 @@ export async function posOtherContext(organizationId:string, provider:string) {
   if(!integration || !posProviderReady(integration)) throw new Error("Conecte, valide e configure o webhook do provedor antes de usar o PDV.");
   const credential = provider === "asaas" ? await getOrganizationAsaasCredential(organizationId) : provider === "efi" ? await getEfiCredential(organizationId) : await getPagBankCredential(organizationId);
   const secret = "apiKey" in credential ? credential.apiKey : "token" in credential ? credential.token : efiPosSecret(credential);
-  return { collectorId:"0", paymentEnvironment:credential.environment, credentialFingerprint:checkoutInputHash({provider,secret}) };
+  return { collectorId:"0", paymentEnvironment:credential.environment, credentialFingerprint:checkoutInputHash({provider,secret}),
+    pagBankInstallments: provider === "pagbank" ? pagBankInstallmentPolicy(integration.metadata?.maxCardInstallments, integration.metadata?.interestFreeCardInstallments) : null };
 }
 async function request<T>(charge:typeof paymentCharges.$inferSelect,path:string,method:"GET"|"POST"|"DELETE"="GET",body?:unknown) {
   const context=await posOtherContext(charge.organizationId,charge.provider);
@@ -58,7 +59,8 @@ export async function ensurePosCheckout(org:string,saleId:string) {
       url=`https://${charge.metadata?.environment==="production"?"asaas.com":"sandbox.asaas.com"}/checkoutSession/show?id=${encodeURIComponent(checkoutId)}`;
     } else {
       const webhook=`${appUrl()}/api/webhooks/pagbank?organizationId=${org}`;
-      const result=await request<{id:string;links?:{rel:string;href:string}[]}>(charge,"/checkouts","POST",{reference_id:`charge:${charge.id}`,expiration_date:expiresAt,customer_modifiable:true,items:[{reference_id:sale.id,name:`Compra #${sale.id.slice(0,8)}`,quantity:1,unit_amount:sale.totalInCents}],payment_methods:types.map(type=>({type})),payment_methods_configs:types.includes("CREDIT_CARD")?[{type:"CREDIT_CARD",config_options:[{option:"INSTALLMENTS_LIMIT",value:"1"}]}]:undefined,redirect_url:returnUrl,return_url:returnUrl,notification_urls:[webhook],payment_notification_urls:[webhook]});
+      const policy = pagBankInstallmentPolicy(charge.metadata?.maxCardInstallments, charge.metadata?.interestFreeCardInstallments);
+      const result=await request<{id:string;links?:{rel:string;href:string}[]}>(charge,"/checkouts","POST",{reference_id:`charge:${charge.id}`,expiration_date:expiresAt,customer_modifiable:true,items:[{reference_id:sale.id,name:`Compra #${sale.id.slice(0,8)}`,quantity:1,unit_amount:sale.totalInCents}],payment_methods:types.map(type=>({type})),payment_methods_configs:types.includes("CREDIT_CARD") ? pagBankCardConfig(policy?.maximum ?? 1, policy?.interestFree) : undefined,redirect_url:returnUrl,return_url:returnUrl,notification_urls:[webhook],payment_notification_urls:[webhook]});
       checkoutId=result.id; url=result.links?.find(link=>link.rel==="PAY")?.href;
     }
     if(!checkoutId || !url || !checkoutUrlIsSafe(url,charge.provider)) throw new Error("Checkout inválido.");
@@ -74,7 +76,7 @@ export async function ensurePosCheckout(org:string,saleId:string) {
   }
 }
 export type AsaasPosPayment={id:string;checkoutSession?:string;externalReference?:string;status:string;value:number;netValue?:number;billingType?:string;paymentDate?:string;confirmedDate?:string;refunds?:{value:number;status?:string}[]};
-export type PagBankPosCharge={id:string;status:string;paid_at?:string;amount:{value:number;currency:string;summary?:{paid?:number;refunded?:number}};payment_method?:{type?:string}};
+export type PagBankPosCharge={id:string;status:string;paid_at?:string;amount:{value:number;currency:string;summary?:{paid?:number;refunded?:number};fees?:{buyer?:{interest?:{total?:number}}}};payment_method?:{type?:string;installments?:number}};
 export type PagBankPosResource={id:string;reference_id?:string;status?:string;charges?:PagBankPosCharge[];payments?:{id:string;charges?:PagBankPosCharge[]}[]};
 // Normalized transport only: the account/environment are bound by credential
 // fingerprint before API access; native IDs, currency, amount and checkout are checked below.
@@ -94,10 +96,16 @@ export function normalizeAsaasPos(charge:typeof paymentCharges.$inferSelect,p:As
 }
 export function normalizePagBankPos(charge:typeof paymentCharges.$inferSelect,p:PagBankPosCharge) {
   if(!p.id || !p.amount || p.amount.currency!=="BRL" || p.amount.value!==charge.amountInCents) throw new Error("Cobrança PagBank divergente da venda.");
-  const refunded=p.amount.summary?.refunded??0;
+  const buyerInterest = p.amount.fees?.buyer?.interest?.total;
+  if (buyerInterest !== undefined && (!Number.isSafeInteger(buyerInterest) || buyerInterest < 0 || buyerInterest > 2_147_483_647)) throw new Error("Acréscimo PagBank inválido.");
+  const reportedRefund = p.amount.summary?.refunded ?? 0;
+  const refunded = buyerInterest && reportedRefund === charge.amountInCents + buyerInterest ? charge.amountInCents : reportedRefund;
   if(!Number.isSafeInteger(refunded)||refunded<0||refunded>charge.amountInCents) throw new Error("Estorno inválido.");
-  const status=refunded===charge.amountInCents?"refunded":p.status==="PAID"?(p.amount.summary?.paid===charge.amountInCents?"approved":"in_mediation"):["IN_DISPUTE","CHARGEBACK"].includes(p.status)?"in_mediation":"pending";
-  return normalized(charge,p.id,status,charge.amountInCents,refunded,p.payment_method?.type,p.paid_at);
+  const paid = p.amount.summary?.paid;
+  const paidMatches = paid === charge.amountInCents || paid === charge.amountInCents + (buyerInterest ?? 0);
+  const status=refunded===charge.amountInCents?"refunded":p.status==="PAID"?(paidMatches?"approved":"in_mediation"):["IN_DISPUTE","CHARGEBACK"].includes(p.status)?"in_mediation":"pending";
+  return { ...normalized(charge,p.id,status,charge.amountInCents,refunded,p.payment_method?.type,p.paid_at),
+    installments: p.payment_method?.installments, buyerSurchargeInCents: buyerInterest };
 }
 async function nativePayments(charge:typeof paymentCharges.$inferSelect) {
   const checkoutId=charge.metadata?.checkoutId;

@@ -244,7 +244,7 @@ export async function deleteRetailProduct(data: FormData) {
 }
 
 type SaleInputItem = { variantId?: unknown; quantity?: unknown; discountInCents?: unknown };
-type SalePaymentInput = { method?: unknown; amountInCents?: unknown; otherPaymentMethod?: unknown };
+type SalePaymentInput = { method?: unknown; amountInCents?: unknown; otherPaymentMethod?: unknown; cardInstallments?: unknown; buyerTotalInCents?: unknown };
 
 export async function registerRetailSale(data: FormData) {
   const { session, organization } = await requireOrganization();
@@ -261,9 +261,11 @@ export async function registerRetailSale(data: FormData) {
   const checkoutKey = online ? z.uuid().parse(text(data, "checkoutKey")) : null;
   let collectorId: string | null = null, paymentEnvironment: string | null = null;
   let credentialFingerprint: string | null = null;
+  let pagBankInstallments: { maximum: number; interestFree: number } | null = null;
   if (online && selectedProvider !== "mercado_pago") {
     const context = await posOtherContext(organization.id, selectedProvider);
     collectorId = context.collectorId; paymentEnvironment = context.paymentEnvironment; credentialFingerprint = context.credentialFingerprint;
+    pagBankInstallments = context.pagBankInstallments;
   } else if (online) {
     const credential = await getMercadoPagoCredential(organization.id);
     if (!credential.webhookSecret) return { error: "Configure o webhook do Mercado Pago antes de receber pelo PDV." };
@@ -319,7 +321,11 @@ export async function registerRetailSale(data: FormData) {
     const selected = choosePayment(catalog.methods, catalog.accounts, String(payment.method ?? ""));
     const amountInCents = Number(payment.amountInCents);
     if (!Number.isSafeInteger(amountInCents) || amountInCents < 0 || amountInCents > 2147483647) throw new Error("Valor de pagamento inválido.");
-    return { ...selected, amountInCents, otherPaymentMethod: selected.paymentMethodName };
+    const cardInstallments = selected.method === "credit_card" ? Number(payment.cardInstallments ?? 1) : null;
+    if (cardInstallments !== null && (!Number.isInteger(cardInstallments) || cardInstallments < 1 || cardInstallments > 99)) throw new Error("Informe uma quantidade válida de parcelas do cartão.");
+    const buyerTotal = cardInstallments && cardInstallments > 1 && payment.buyerTotalInCents != null ? Number(payment.buyerTotalInCents) : null;
+    if (buyerTotal !== null && (!Number.isSafeInteger(buyerTotal) || buyerTotal < amountInCents || buyerTotal > 2_147_483_647)) throw new Error("O total cobrado no cartão deve ser igual ou superior ao valor da venda pago no cartão.");
+    return { ...selected, amountInCents, otherPaymentMethod: selected.paymentMethodName, cardInstallments, buyerSurchargeInCents: buyerTotal === null ? null : buyerTotal - amountInCents };
   });
   const paymentMethod = online ? selectedProvider : normalizedPayments.length > 1 ? "mixed" : normalizedPayments[0].method;
   const cashClosingId = z.uuid("Selecione um caixa válido.").optional().parse(text(data, "cashClosingId") || undefined);
@@ -424,7 +430,7 @@ export async function registerRetailSale(data: FormData) {
     const totalInCents = subtotalInCents - discountInCents;
     if (online) {
       if (totalInCents <= 0) throw new Error("Use recebimento manual para uma venda com total zero.");
-      normalizedPayments = [{ ...onlineSelection!, amountInCents: totalInCents, otherPaymentMethod: onlineSelection!.paymentMethodName }];
+      normalizedPayments = [{ ...onlineSelection!, amountInCents: totalInCents, otherPaymentMethod: onlineSelection!.paymentMethodName, cardInstallments: null, buyerSurchargeInCents: null }];
     }
     if (normalizedPayments.some((payment) => payment.amountInCents === 0) && (totalInCents !== 0 || normalizedPayments.length !== 1)) throw new Error("Pagamento zero só é permitido quando o total da venda é zero.");
     if (normalizedPayments.reduce((sum, payment) => sum + payment.amountInCents, 0) !== totalInCents) throw new Error("A soma dos pagamentos deve ser igual ao total da venda.");
@@ -506,7 +512,7 @@ export async function registerRetailSale(data: FormData) {
       await tx.insert(paymentCharges).values({ organizationId: organization.id, provider: selectedProvider, originType: "retail_sale", originId: sale.id,
         financialEntryId: financialEntry.id, clientId, paymentMethod: "link", amountInCents: totalInCents,
         description: `Venda no PDV #${sale.id.slice(0,8)}`, customerName: "Cliente do PDV", customerEmail: receiptEmail,
-        dueDate: today, createdByUserId: session.user.id, metadata: { collectorId, credentialFingerprint, environment: paymentEnvironment, checkoutState: "new", catalogPaymentMethodId: onlineSelection?.paymentMethodId, catalogPaymentKind: onlineSelection?.method, destinationAccountId: onlineSelection?.accountId } });
+        dueDate: today, createdByUserId: session.user.id, metadata: { collectorId, credentialFingerprint, environment: paymentEnvironment, checkoutState: "new", catalogPaymentMethodId: onlineSelection?.paymentMethodId, catalogPaymentKind: onlineSelection?.method, destinationAccountId: onlineSelection?.accountId, ...(pagBankInstallments ? { maxCardInstallments: pagBankInstallments.maximum, interestFreeCardInstallments: pagBankInstallments.interestFree } : {}) } });
     }
     return sale;
   });

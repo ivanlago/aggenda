@@ -15,11 +15,14 @@ import type { receivableChargeOptions } from "@/lib/receivable-charge-options";
 import { paymentKindSupported } from "@/lib/payment-catalog-policy";
 import { onlineChargesPath } from "@/lib/finance-navigation";
 import { PhoneInput } from "@/components/phone-input";
-import { financialDueDate } from "@/lib/financial-schedule";
+import { financialDueDate, financialInstallmentAmount } from "@/lib/financial-schedule";
+
+const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
 type Provider = Awaited<ReturnType<typeof receivableChargeOptions>>[number];
 type Props = { categories: ReferenceRecord[]; today: string; initialType?: string; autoOpen?: boolean; providers?: Provider[] };
 type IssuanceResult = { id: string; description: string; chargeId?: string; error?: string };
+type IssuanceBatch = { items: IssuanceResult[]; seriesId: string | null };
 
 function EntrySection({ title, children }: { title?: string; children: ReactNode }) {
   return title ? <FormSection title={title}>{children}</FormSection> : <>{children}</>;
@@ -33,25 +36,29 @@ function EntryFields({ categories, today, initialType, providers = [] }: Props) 
   const [withCharge, setWithCharge] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState("");
   const [count, setCount] = useState(1);
+  const [splitTotal, setSplitTotal] = useState(false);
+  const [amount, setAmount] = useState("");
   const [dueDate, setDueDate] = useState(today);
   const [omitted, setOmitted] = useState<number[]>([]);
   const [progress, setProgress] = useState("");
-  const [result, setResult] = useState<IssuanceResult[] | null>(null);
+  const [result, setResult] = useState<IssuanceBatch | null>(null);
   const requestId = useRef<string | null>(null);
-  const completed = useRef<IssuanceResult[] | null>(null);
+  const completed = useRef<IssuanceBatch | null>(null);
   const provider = providers.find(item => item.id === selectedProvider) ?? providers.find(item => item.isDefault) ?? providers[0];
   const choosingCharge = type === "receivable" && !realized && withCharge && Boolean(provider);
   const providerMethods = provider ? methods.filter(method => paymentKindSupported(method.kind, provider.id) && accounts.some(account => account.id === method.defaultAccountId)) : [];
   const emit = choosingCharge && providerMethods.length > 0;
   const showSectionTitles = initialType === "payable";
   const installments = Array.from({ length: Number.isInteger(count) && count > 0 && count <= 60 ? count : 0 }, (_, i) => i + 1);
+  const amountInCents = Math.round(Number(amount.includes(",") ? amount.replace(/\./g, "").replace(",", ".") : amount) * 100);
 
   if (result) return <div className="grid gap-4">
-    <p role="status" className="font-bold">Contas salvas. {result.filter(item => !item.error).length} de {result.length} cobranças emitidas.</p>
-    <ul className="divide-y">{result.map(item => <li className="flex flex-wrap items-center justify-between gap-3 py-3" key={item.id}>
+    <p role="status" className="font-bold">Contas salvas. {result.items.filter(item => !item.error).length} de {result.items.length} cobranças emitidas.</p>
+    <ul className="divide-y">{result.items.map(item => <li className="flex flex-wrap items-center justify-between gap-3 py-3" key={item.id}>
       <div><p className="font-bold">{item.description}</p><p className="text-sm text-muted">{item.error ?? "Cobrança emitida"}</p></div>
       <Link className="secondary-button" href={onlineChargesPath + (item.chargeId ? "&cobranca=" + item.chargeId : "&lancamento=" + item.id + "#nova-cobranca")} onClick={dialog.close}>{item.chargeId ? "Ver cobrança" : "Tentar emissão individual"}</Link>
     </li>)}</ul>
+    {result.seriesId && result.items.some(item => item.chargeId) && <Link className="secondary-button justify-self-start" href={onlineChargesPath + "&serie=" + result.seriesId} onClick={dialog.close}>Ver cobranças da série</Link>}
     <button type="button" className="primary-button justify-self-end" onClick={dialog.close}>Concluir</button>
   </div>;
 
@@ -88,18 +95,18 @@ function EntryFields({ categories, today, initialType, providers = [] }: Props) 
       }
     }
     setProgress("");
-    completed.current = issued;
+    completed.current = { items: issued, seriesId: count > 1 ? requestId.current : null };
     return { warning: "Contas salvas. Confira o resultado das cobranças." };
   }
 
   const dueDateField = <label className="grid min-w-0 gap-2 text-sm font-bold">Vencimento *<input className="field min-w-0" name="dueDate" type="date" required value={dueDate} onChange={event => setDueDate(event.target.value)} /></label>;
-  const amountField = <label className="grid min-w-0 gap-2 text-sm font-bold">Valor (R$) *<input className="field min-w-0" name="amount" inputMode="decimal" required placeholder="0,00" /></label>;
+  const amountField = <label className="grid min-w-0 gap-2 text-sm font-bold">Valor (R$) *<input className="field min-w-0" name="amount" inputMode="decimal" required placeholder="0,00" value={amount} onChange={event => setAmount(event.target.value)} /></label>;
   const receivedDateInline = !showSectionTitles && type === "receivable";
   const realizedLabel = receivedDateInline && realized ? "Primeiro lançamento recebido (data)" : `Primeiro lançamento já foi ${type === "payable" ? "pago" : "recebido"}`;
   const realizedField = <label className={`flex items-center gap-2 text-sm font-bold${showSectionTitles ? " sm:col-span-2" : ""}`}><input type="checkbox" name="realized" checked={realized} onChange={(event) => setRealized(event.target.checked)} />{realizedLabel}</label>;
   const realizedDateField = <input className="field min-w-0" name="realizedDate" type="date" required defaultValue={today} aria-label={receivedDateInline ? "Data do primeiro recebimento" : undefined} />;
   const scheduleFields = <FinancialScheduleFields
-    onCountChange={value => { setCount(value); setOmitted([]); }}
+    onCountChange={(value, split) => { setCount(value); setSplitTotal(split); setOmitted([]); }}
     installmentLabel={showSectionTitles ? undefined : "Qtd de parcelas mensais"}
     trailingField={showSectionTitles ? undefined : <div className="grid min-w-0 content-start gap-1">
       {realizedField}
@@ -152,7 +159,7 @@ function EntryFields({ categories, today, initialType, providers = [] }: Props) 
         <label className="grid gap-2 text-sm font-bold">E-mail<input className="field" name="customerEmail" type="email" /></label>
         <label className="grid gap-2 text-sm font-bold">WhatsApp<PhoneInput name="customerPhone" /></label>
         {installments.length === 1 ? <input type="hidden" name="chargeInstallment" value="1" /> : <fieldset className="col-span-full grid gap-2"><legend className="mb-2 text-sm font-bold">Parcelas a cobrar</legend>
-          <div className="grid max-h-36 grid-cols-2 gap-2 overflow-auto sm:grid-cols-3">{installments.map(index => <label key={index} className="flex items-center gap-2 text-sm"><input type="checkbox" name="chargeInstallment" value={index} checked={!omitted.includes(index)} onChange={event => setOmitted(current => event.target.checked ? current.filter(item => item !== index) : [...current, index])} />Parcela {index}{/^\d{4}-\d{2}-\d{2}$/.test(dueDate) && " · " + financialDueDate(dueDate, index - 1).split("-").reverse().join("/")}</label>)}</div>
+          <div className="grid max-h-36 grid-cols-2 gap-2 overflow-auto sm:grid-cols-3">{installments.map(index => <label key={index} className="flex items-center gap-2 text-sm"><input type="checkbox" name="chargeInstallment" value={index} checked={!omitted.includes(index)} onChange={event => setOmitted(current => event.target.checked ? current.filter(item => item !== index) : [...current, index])} />Parcela {index}{amountInCents > 0 && Number.isSafeInteger(amountInCents) && " · " + currency.format(financialInstallmentAmount(amountInCents, splitTotal ? count : 1, index - 1) / 100)}{/^\d{4}-\d{2}-\d{2}$/.test(dueDate) && " · " + financialDueDate(dueDate, index - 1).split("-").reverse().join("/")}</label>)}</div>
         </fieldset>}
         {progress && <p role="status" className="col-span-full text-sm text-brand">{progress}</p>}
       </>}

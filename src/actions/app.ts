@@ -9,7 +9,7 @@ import { roomBookingError } from "@/lib/room-errors";
 
 import { and, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { receivableChargeOptions } from "@/lib/receivable-charge-options";
-import { financialDueDate } from "@/lib/financial-schedule";
+import { financialDueDate, financialInstallmentAmount } from "@/lib/financial-schedule";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -1032,7 +1032,7 @@ async function persistFinancialEntries(formData: FormData, requestId?: string) {
   if (!description) throw new Error("Selecione uma categoria ou informe uma descrição.");
   const totalEntries = Math.max(installmentCount, recurrenceMonths); const groupId = totalEntries > 1 ? requestId ?? crypto.randomUUID() : null;
   const values = Array.from({ length: totalEntries }, (_, index) => {
-    const entryAmount = installmentCount > 1 ? Math.floor(amountInCents / installmentCount) + (index < amountInCents % installmentCount ? 1 : 0) : amountInCents;
+    const entryAmount = financialInstallmentAmount(amountInCents, installmentCount, index);
     return { organizationId: organization.id, type, status: realized && index === 0 ? (type === "payable" ? "paid" : "received") : "pending", source: recurrenceMonths > 1 ? "recurring" : installmentCount > 1 ? "installment" : "manual", description: totalEntries > 1 ? `${description} (${index + 1}/${totalEntries})` : description, category: categoryName, categoryId, accountId, amountInCents: entryAmount, dueDate: financialDueDate(dueDate, index), realizedDate: realized && index === 0 ? (optionalText(formData, "realizedDate") ?? dueDate) : null, paymentMethod: selectedPayment?.method ?? null, paymentMethodId: selectedPayment?.paymentMethodId ?? null, paymentMethodName: selectedPayment?.paymentMethodName ?? null, notes: optionalText(formData, "notes"), recurrenceGroupId: groupId, installmentNumber: index + 1, installmentCount: totalEntries, createdByUserId: session.user.id };
   });
   const columns = { id: financialEntries.id, installmentNumber: financialEntries.installmentNumber, description: financialEntries.description, dueDate: financialEntries.dueDate, amountInCents: financialEntries.amountInCents };

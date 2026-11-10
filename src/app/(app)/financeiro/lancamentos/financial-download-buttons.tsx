@@ -2,7 +2,7 @@ import { Download, FileSpreadsheet } from "lucide-react";
 
 export function FinancialDownloadButtons({ filters }: { filters: Record<string, string | undefined> }) {
   const search = new URLSearchParams();
-  for (const key of ["aba", "mes", "conta", "categoria", "status", "dia", "lancamento", "visao", "busca", "meio", "inicio", "fim", "cobranca"]) {
+  for (const key of ["aba", "mes", "conta", "categoria", "status", "dia", "lancamento", "visao", "busca", "meio", "inicio", "fim", "cobranca", "serie"]) {
     if (filters[key]) search.set(key, filters[key]);
   }
   const href = (format: string) => "/api/finance/launches?" + new URLSearchParams([...search, ["formato", format]]);

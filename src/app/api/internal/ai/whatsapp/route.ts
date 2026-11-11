@@ -382,6 +382,21 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
     upcoming(input.organizationId, clientId), db.select({ direction: chatMessages.direction, body: chatMessages.body }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), conversation.handoffResolvedAt ? gt(chatMessages.createdAt, conversation.handoffResolvedAt) : undefined)).orderBy(desc(chatMessages.occurredAt)).limit(12),
   ]);
   const storedBooking = hybridBookingContextSchema.safeParse(latest?.rawPayload?.hybridBooking);
+  const cancelRequest = asksToCancel(input.text) && !/\bnao (quero|preciso|vou|desejo) (mais )?(cancelar|desmarcar)/.test(normalizedText(input.text));
+  const cancelService = hybrid ? mentionedByName(catalog, [input.text]) : undefined;
+  const cancelChoice = flowState?.kind === "select_cancel" && !asksToReschedule(input.text) && !asksToBook(input.text) && !/\b(nao|quanto|preco|valor|custa|como|quero|gostaria|preciso|amanha|hoje)\b/.test(normalizedText(input.text)) && (/^\d+$/.test(input.text.trim()) || Boolean(cancelService) || Boolean(parseBrazilianDate(input.text)) || Boolean(parseBrazilianTime(input.text)));
+  if (hybrid && (cancelRequest || cancelChoice)) {
+    const candidates = flowState?.kind === "select_cancel" ? future.filter(row => flowState.appointmentIds.includes(row.id)) : future;
+    const matches = filterMentionedAppointments(candidates, input.text, organization.timezone).filter(row => !cancelService || row.serviceId === cancelService.id);
+    const selected = matches.length === 1 ? matches[0] : undefined;
+    const choices = matches.length ? matches : candidates;
+    await send(input, conversation, {
+      reply: selected ? `Confirma cancelar ${selected.serviceName}, marcado para ${formatOrganizationDateTime(selected.startsAt, organization.timezone)}? Responda CONFIRMAR.` : choices.length ? `Qual destes agendamentos deseja cancelar? Responda com o número ou informe o serviço, a data e o horário:\n${appointmentChoices(choices, organization.timezone)}` : "Você não possui agendamentos futuros ativos para cancelar.",
+      model: "aggenda-hybrid-selection-v1", intent: selected ? "prepare_cancel" : "select_cancel", confidence: 1,
+      ...(selected ? { pending: { kind: "cancel" as const, appointmentId: selected.id, reason: "Cancelado pelo cliente via WhatsApp" } } : choices.length ? { flowState: { kind: "select_cancel" as const, appointmentIds: choices.map(row => row.id) } } : {}),
+    });
+    return NextResponse.json({ accepted: true, action: selected ? "prepare_cancel" : "reply" });
+  }
   const bookingContext = hybrid && storedBooking.success && Date.parse(storedBooking.data.expiresAt) > Date.now() ? storedBooking.data : undefined;
   const chosenTime = hybrid ? hybridTimeChoice(input.text) : null;
   if (bookingContext && chosenTime) {
@@ -591,7 +606,7 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
     await send(input, conversation, { reply: "A interpretação por IA está indisponível neste período. Digite MENU para usar as opções ou EQUIPE para solicitar atendimento.", model: "aggenda-navigation-v1", intent: "ai_limit", confidence: 1 });
     return NextResponse.json({ accepted: true, action: "reply" });
   }
-  let result: { data: z.infer<typeof coreAnswerSchema> & { period?: "morning" | "afternoon" | "evening" | null }; model: string };
+  let result: { data: z.infer<typeof coreAnswerSchema> & { period?: "morning" | "afternoon" | "evening" | null; goal?: "book" | "reschedule" | "cancel" | "list" | "information" | "handoff" | "other" }; model: string };
   try {
     result = await generateAiJson({ organizationId: input.organizationId, schema: hybrid ? hybridAnswerSchema : coreAnswerSchema, structuredOutput: hybrid, messages: [{ role: "system", content: hybrid ? hybridSecretaryInstructions : "Você é o agente de agendamentos do Aggenda. Nunca invente IDs ou dados. Use availability para horários, prepare_booking para agendar, prepare_reschedule para reagendar, prepare_cancel para cancelar e confirm_appointment para confirmar. A aplicação fará validações e pedirá confirmação antes de alterações. Se faltar dado, use reply e pergunte somente o próximo. Use handoff em ambiguidade relevante ou confiança abaixo de 0,65. Datas YYYY-MM-DD, horas HH:mm. Responda somente JSON." }, { role: "user", content: JSON.stringify({ today: organizationDate(new Date(), organization.timezone), timezone: organization.timezone, organization, catalog, professionals: professionalRows, upcomingAppointments: future.map(x => ({ ...x, startsAtLocal: formatOrganizationDateTime(x.startsAt, organization.timezone) })), recentMessages: history.reverse(), currentMessage: input.text }) }] });
   } catch (error) {
@@ -601,6 +616,8 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
     return NextResponse.json({ accepted: true, action: "reply_fallback" });
   }
   const answer = result.data;
+  // The model interprets the request; only a real availability query can claim slots.
+  if (hybrid && answer.action === "reply" && (answer.goal === "book" || /\b(disponiveis|disponivel|possui horarios|tem horarios|ha horarios|ha vagas|sem horarios)\b/.test(normalizedText(answer.reply)))) answer.action = "availability";
   if (answer.confidence < 0.65) {
     if (hybrid && answer.action !== "handoff") {
       // A routine ambiguity needs clarification, not an automatic human transfer.

@@ -13,7 +13,7 @@ test("pilot sends its complete schema to the provider; repair retains it; commer
   new Function("require", "module", "exports", bundle.outputFiles[0].text)(createRequire(import.meta.url), providerModule, providerModule.exports);
   const previous = {url: process.env.AI_API_URL, key: process.env.AI_API_KEY, model: process.env.AI_MODEL, fetch: globalThis.fetch};
   const requests: {response_format: {type: string; json_schema?: {schema: {required: string[]}}}; messages: {content:string}[]}[] = [];
-  const valid = {action: "availability", reply: "Vou consultar os horários.", intent: "schedule", confidence: 0.95, serviceId: null, professionalId: null, appointmentId: null, date: "2026-11-16", time: null, period: "morning", cancellationReason: null};
+  const valid = {action: "availability", reply: "Vou consultar os horários.", intent: "schedule", confidence: 0.95, goal: "book", serviceId: null, professionalId: null, appointmentId: null, date: "2026-11-16", time: null, period: "morning", cancellationReason: null};
   const answers = [{action: "availability", reply: null}, valid, valid];
   try {
     process.env.AI_API_URL = "https://provider.invalid/chat/completions";

@@ -25,7 +25,7 @@ test("hybrid interpretation cannot silently turn omitted confidence into a human
   const validation = hybridAnswerSchema.safeParse(incomplete);
   assert.equal(validation.success, false);
   if (!validation.success) assert.ok(validation.error.issues.some(issue => issue.path[0] === "confidence"));
-  assert.equal(hybridAnswerSchema.safeParse({ ...incomplete, intent: "clarify_service", confidence: 0.85, serviceId: null, professionalId: null, appointmentId: null, date: null, time: null, cancellationReason: null, period: null }).success, true);
+  assert.equal(hybridAnswerSchema.safeParse({ ...incomplete, intent: "clarify_service", confidence: 0.85, goal: "book", serviceId: null, professionalId: null, appointmentId: null, date: null, time: null, cancellationReason: null, period: null }).success, true);
 });
 
 test("offered-hour choices accept natural numeric phrases without absorbing new requests", () => {

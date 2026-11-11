@@ -17,6 +17,8 @@ A configuração foi preparada para o contato informado pelo responsável tanto 
 - Reservar, reagendar e cancelar continuam exigindo confirmação, validade da proposta e revalidação; a IA não grava uma reserva por conta própria.
 - Não há garantia de linguagem natural apenas por testes com respostas simuladas. A avaliação real deve conferir entendimento, preços, continuidade, latência e consumo do provedor configurado.
 - O piloto envia o contrato de resposta também em `response_format.json_schema`, com campos obrigatórios, além da validação local e de uma tentativa de reparo. O fluxo comercial mantém `json_object`. A mudança corrige respostas em JSON que omitiam campos necessários, identificadas nos logs em 11/11/2026.
+- A intenção `goal=book` solicita a consulta real na primeira resposta quando serviço, profissional e data estiverem identificados, mesmo que o modelo proponha somente responder o preço. Afirmações de disponibilidade no texto do modelo também são substituídas pela consulta validada; dados faltantes geram uma pergunta.
+- Pedidos explícitos de cancelamento apresentam imediatamente os agendamentos futuros do cliente. Número, nome do serviço ou data/horário permitem selecionar a reserva, sempre com confirmação antes de cancelar. Perguntas de preço ou mudanças de intenção não são tratadas como seleção de cancelamento.
 
 ## Roteiro de avaliação no contato piloto
 

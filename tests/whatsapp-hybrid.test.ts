@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { requestsHuman, usesHybridSecretary } from "../src/lib/whatsapp-hybrid";
+import { hybridAnswerSchema, requestsHuman, usesHybridSecretary } from "../src/lib/whatsapp-hybrid";
 
 test("pilot is opt-in for an exact organization/contact and never changes Atendimento", () => {
   const previous = process.env.AGGENDA_SECRETARY_HYBRID_CONTACTS;
@@ -18,6 +18,14 @@ test("pilot is opt-in for an exact organization/contact and never changes Atendi
     if (previous === undefined) delete process.env.AGGENDA_SECRETARY_HYBRID_CONTACTS;
     else process.env.AGGENDA_SECRETARY_HYBRID_CONTACTS = previous;
   }
+});
+
+test("hybrid interpretation cannot silently turn omitted confidence into a human handoff", () => {
+  const incomplete = { action: "reply", reply: "Você deseja avaliação inicial ou estética?" };
+  const validation = hybridAnswerSchema.safeParse(incomplete);
+  assert.equal(validation.success, false);
+  if (!validation.success) assert.ok(validation.error.issues.some(issue => issue.path[0] === "confidence"));
+  assert.equal(hybridAnswerSchema.safeParse({ ...incomplete, intent: "clarify_service", confidence: 0.85, serviceId: null, professionalId: null, appointmentId: null, date: null, time: null, cancellationReason: null, period: null }).success, true);
 });
 
 test("common human requests do not require an AI call; questions and negations do not transfer", () => {

@@ -17,7 +17,7 @@ import { reconcilePackageUsage } from "@/lib/package-balance";
 import { triggerOutboxWorker } from "@/lib/outbox-trigger";
 import { isAffirmativeWhatsAppCommand, isNegativeWhatsAppCommand } from "@/lib/whatsapp-command";
 import { normalizeBrazilianPhone } from "@/lib/phone";
-import { hybridSecretaryInstructions, requestsHuman, usesHybridSecretary } from "@/lib/whatsapp-hybrid";
+import { hybridAnswerSchema, hybridSecretaryInstructions, requestsHuman, usesHybridSecretary } from "@/lib/whatsapp-hybrid";
 
 export const runtime = "nodejs";
 
@@ -35,7 +35,6 @@ const coreAnswerSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().default(null), time: z.string().regex(/^\d{2}:\d{2}$/).nullable().default(null), cancellationReason: z.string().max(500).nullable().default(null),
 });
 const chatAnswerSchema = z.object({ action: z.enum(["reply", "handoff"]), reply: z.string().min(1).max(3500), intent: z.string().max(80), confidence: z.number().min(0).max(1) });
-const hybridAnswerSchema = coreAnswerSchema.extend({ period: z.enum(["morning", "afternoon", "evening"]).nullable().default(null) });
 type Input = z.infer<typeof inputSchema>;
 type Conversation = typeof chatConversations.$inferSelect;
 type Pending = { kind: "book"; serviceId: string; professionalId: string; startsAt: string } | { kind: "reschedule"; appointmentId: string; startsAt: string } | { kind: "cancel"; appointmentId: string; reason: string };
@@ -182,7 +181,7 @@ async function send(input: Input, conversation: Conversation, data: { reply: str
     const [current] = await tx.select().from(chatConversations).where(and(eq(chatConversations.id, input.conversationId), eq(chatConversations.organizationId, input.organizationId))).limit(1).for("update");
     if (!current || current.handoffStatus !== "bot" || current.automationPaused) return;
     if (current.handoffResolvedAt && current.handoffResolvedAt.getTime() !== conversation.handoffResolvedAt?.getTime()) return;
-    const [message] = await tx.insert(chatMessages).values({ organizationId: input.organizationId, conversationId: input.conversationId, externalMessageId: `aggenda-ai:${input.messageId}`, direction: "outbound", status: "queued", messageType: data.document ? "document" : data.navigationState ? "interactive" : "text", body: data.reply, rawPayload: { source: "aggenda_ai", model: data.model, intent: data.intent, confidence: data.confidence, ...(data.navigationState ? { navigationState: data.navigationState } : {}), ...(data.pending ? { pendingAction: data.pending, pendingExpiresAt: new Date(now.getTime() + 15 * 60_000).toISOString() } : {}), ...(data.flowState ? { flowState: data.flowState } : {}) }, occurredAt: now })
+    const [message] = await tx.insert(chatMessages).values({ organizationId: input.organizationId, conversationId: input.conversationId, externalMessageId: `aggenda-ai:${input.messageId}`, direction: "outbound", status: "queued", messageType: data.document ? "document" : data.navigationState ? "interactive" : "text", body: data.reply, rawPayload: { source: "aggenda_ai", ...(usesHybridSecretary(input.organizationId, input.from, input.whatsappServiceCode) ? { agentMode: "secretary_hybrid_v2" } : {}), model: data.model, intent: data.intent, confidence: data.confidence, ...(data.navigationState ? { navigationState: data.navigationState } : {}), ...(data.pending ? { pendingAction: data.pending, pendingExpiresAt: new Date(now.getTime() + 15 * 60_000).toISOString() } : {}), ...(data.flowState ? { flowState: data.flowState } : {}) }, occurredAt: now })
       .onConflictDoNothing({ target: chatMessages.externalMessageId }).returning({ id: chatMessages.id });
     if (!message) return; inserted = true;
     await tx.insert(outboxEvents).values({ organizationId: input.organizationId, eventKey: `whatsapp:ai-reply:${input.messageId}`, eventType: "whatsapp.message.send", aggregateType: "chat_message", aggregateId: message.id, payload: { organizationId: input.organizationId, channelId: conversation.channelId, conversationId: input.conversationId, messageId: message.id, phoneNumberId: input.phoneNumberId, to: input.from, text: data.reply, ...(data.navigationState ? { options: data.navigationState.options } : {}), ...(data.document ? { document: data.document } : {}) } }).onConflictDoNothing({ target: outboxEvents.eventKey });
@@ -584,7 +583,15 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
     return NextResponse.json({ accepted: true, action: "reply_fallback" });
   }
   const answer = result.data;
-  if (answer.confidence < 0.65) { answer.action = "handoff"; answer.reply = "Preciso da ajuda da equipe para responder com segurança. Sua solicitação foi encaminhada; o retorno será no horário de atendimento."; }
+  if (answer.confidence < 0.65) {
+    if (hybrid && answer.action !== "handoff") {
+      // A routine ambiguity needs clarification, not an automatic human transfer.
+      if (answer.action !== "reply") answer.reply = `Para consultar corretamente, pode confirmar qual serviço deseja? ${catalog.map(service => service.name).join(", ")}.`;
+      answer.action = "reply";
+    } else {
+      answer.action = "handoff"; answer.reply = "Preciso da ajuda da equipe para responder com segurança. Sua solicitação foi encaminhada; o retorno será no horário de atendimento.";
+    }
+  }
   let reply = answer.reply; let nextPending: Pending | undefined;
   const service = answer.serviceId ? catalog.find(x => x.id === answer.serviceId) : undefined; const professional = answer.professionalId ? professionalRows.find(x => x.id === answer.professionalId) : undefined; const appointment = answer.appointmentId ? future.find(x => x.id === answer.appointmentId) : future.length === 1 ? future[0] : undefined;
   if (hybrid && service && professional && !professionalRows.some(row => row.id === professional.id && row.serviceId === service.id) && (answer.action === "availability" || answer.action === "prepare_booking")) {

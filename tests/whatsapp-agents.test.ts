@@ -215,8 +215,12 @@ test("both real agent routes share navigation; Chat only links, Core books after
     const afternoon = await call(hybrid, "E para uma avaliação à tarde?", "core_ai");
     assert.match(afternoon.output.body, /15:00/);
     assert.doesNotMatch(afternoon.output.body, /10:00/);
+    state.aiResult = {model: "pilot-mocked", data: {action: "reply", reply: "Você deseja avaliação inicial ou estética?", intent: "clarify_service", confidence: 0.5}};
+    const clarify = await call(hybrid, "Quero uma avaliação", "core_ai");
+    assert.match(clarify.output.body, /inicial ou estética/);
+    assert.equal((await pg.query<{automation_paused:boolean}>("SELECT automation_paused FROM chat_conversations WHERE id=$1", [hybrid])).rows[0].automation_paused, false, "clarification does not pause the pilot");
     await call(hybrid, "Quero falar com uma pessoa", "core_ai");
-    assert.equal(state.aiCalls.length, callsBefore + 2, "handoff is deterministic");
+    assert.equal(state.aiCalls.length, callsBefore + 3, "handoff is deterministic");
     assert.equal((await pg.query<{automation_paused:boolean}>("SELECT automation_paused FROM chat_conversations WHERE id=$1", [hybrid])).rows[0].automation_paused, true);
   } finally {
     if (pilot === undefined) delete process.env.AGGENDA_SECRETARY_HYBRID_CONTACTS; else process.env.AGGENDA_SECRETARY_HYBRID_CONTACTS = pilot;

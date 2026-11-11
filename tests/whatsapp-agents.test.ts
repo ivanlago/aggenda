@@ -237,6 +237,12 @@ test("both real agent routes share navigation; Chat only links, Core books after
     assert.doesNotMatch(noSlots.output.body, /Há vagas disponíveis/);
     const aesthetic = randomUUID(), aestheticAppointment = randomUUID();
     await pg.query("INSERT INTO services(id,organization_id,name,duration_minutes,price_in_cents) VALUES ($1,$2,'Avaliação estética',30,8000)", [aesthetic, organization]);
+    const unrelatedProfessional = randomUUID();
+    await pg.query("INSERT INTO professionals(id,organization_id,name,is_active,is_bookable) VALUES ($1,$2,'Outra atendente',true,true)", [unrelatedProfessional, organization]);
+    await pg.query("INSERT INTO services_to_professionals(service_id,professional_id,organization_id) VALUES ($1,$2,$3),($1,$4,$3)", [aesthetic, professional, organization, unrelatedProfessional]);
+    state.aiResult = {model: "pilot-mocked", data: {action: "availability", goal: "book", reply: "Vou consultar.", intent: "schedule", confidence: 0.99, serviceId: service, professionalId: null, date: null, time: null}};
+    const qualifiedChoice = await call(hybrid, "quero agendar uma Avaliação", "core_ai");
+    assert.equal(qualifiedChoice.output.body, "Com qual profissional? Maria", "only qualified attendants appear once, even when they perform several services");
     await pg.query("INSERT INTO appointments(id,organization_id,client_id,service_id,professional_id,starts_at,ends_at,status) VALUES ($1,$2,$3,$4,$5,$6,$7,'scheduled')", [aestheticAppointment, organization, client, aesthetic, professional, new Date(tomorrow.getTime() + 3 * 86400000), new Date(tomorrow.getTime() + 3 * 86400000 + 1800000)]);
     const beforeCancelCalls = state.aiCalls.length;
     const cancelMenu = await call(hybrid, "Preciso cancelar um agendamento", "core_ai");

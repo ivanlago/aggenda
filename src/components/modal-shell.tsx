@@ -4,10 +4,11 @@ import { FormDialogContext } from "@/components/form-dialog-context";
 import { CircleDollarSign, Pencil, Plus, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
-export function ModalShell({ title, variant, children, defaultOpen = false, completed = false, wide = false, closeOnSuccess = false, triggerLabel, triggerIcon, secondary = false, compact = false, description, onOpen, triggerDisabled = false }: {
+export function ModalShell({ title, variant, children, defaultOpen = false, completed = false, wide = false, closeOnSuccess = false, triggerLabel, triggerIcon, secondary = false, compact = false, description, onOpen, triggerDisabled = false, triggerStyle = "button" }: {
   title: string; variant: "new" | "payment" | "edit"; children: React.ReactNode;
   defaultOpen?: boolean; completed?: boolean; wide?: boolean; closeOnSuccess?: boolean;
   triggerLabel?: string; triggerIcon?: React.ReactNode; secondary?: boolean; compact?: boolean; description?: string; onOpen?: () => void; triggerDisabled?: boolean;
+  triggerStyle?: "button" | "link";
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [auxiliary, setAuxiliary] = useState<{ title: string; content: React.ReactNode } | null>(null);
@@ -56,8 +57,8 @@ export function ModalShell({ title, variant, children, defaultOpen = false, comp
     setAuxiliary({ title, content });
   }, finishAuxiliary };
   return <>
-    <button ref={triggerRef} type="button" disabled={triggerDisabled} onClick={() => { setOpen(true); onOpen?.(); }} className={secondary || (triggerLabel && variant === "edit") ? "secondary-button w-fit" : variant === "new" || (variant === "payment" && triggerLabel) ? "primary-button w-fit" : variant === "payment" ? `icon-button relative border-emerald-200 bg-emerald-50 text-emerald-700 ${completed ? "ring-2 ring-emerald-500" : ""}` : "icon-button"} aria-label={completed ? `${title} — pagamento efetuado` : triggerLabel ?? title}>
-      {triggerIcon ?? <Icon className={variant === "payment" ? "size-5" : "size-4"} aria-hidden="true" />}{completed && variant === "payment" && <span className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-emerald-600 text-[10px] font-black text-white">✓</span>}{(variant === "new" || triggerLabel) && <span>{triggerLabel ?? title}</span>}
+    <button ref={triggerRef} type="button" disabled={triggerDisabled} onClick={() => { setOpen(true); onOpen?.(); }} className={triggerStyle === "link" ? "w-fit text-left text-sm font-bold text-brand underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4" : secondary || (triggerLabel && variant === "edit") ? "secondary-button w-fit" : variant === "new" || (variant === "payment" && triggerLabel) ? "primary-button w-fit" : variant === "payment" ? `icon-button relative border-emerald-200 bg-emerald-50 text-emerald-700 ${completed ? "ring-2 ring-emerald-500" : ""}` : "icon-button"} aria-label={completed ? `${title} — pagamento efetuado` : triggerLabel ?? title}>
+      {triggerStyle !== "link" && (triggerIcon ?? <Icon className={variant === "payment" ? "size-5" : "size-4"} aria-hidden="true" />)}{completed && variant === "payment" && <span className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-emerald-600 text-[10px] font-black text-white">✓</span>}{(variant === "new" || triggerLabel || triggerStyle === "link") && <span>{triggerLabel ?? title}</span>}
     </button>
     {open && <dialog ref={dialogRef} aria-labelledby={titleId} style={{ width: "calc(100% - 2rem)" }} className={`panel m-auto max-h-[calc(100dvh_-_2rem)] overflow-y-auto backdrop:bg-slate-950/60 ${compact || auxiliary ? "max-w-xl" : wide ? "max-w-5xl" : "max-w-3xl"}`} onCancel={event => { event.preventDefault(); close(); }} onClose={() => { setAuxiliary(null); dirtyForms.current.clear(); setOpen(false); triggerRef.current?.focus(); }} onInputCapture={event => { const form = event.target instanceof Element ? event.target.closest("form") : null; if (form) dirtyForms.current.add(form); }} onChangeCapture={event => { const form = event.target instanceof Element ? event.target.closest("form") : null; if (form) dirtyForms.current.add(form); }}>
       <div className="mb-5 flex items-center justify-between gap-3"><h2 ref={headingRef} tabIndex={-1} id={titleId} className="text-xl font-extrabold outline-none">{auxiliary?.title ?? title}</h2><button className="icon-button" type="button" onClick={close} aria-label="Fechar"><X className="size-5" aria-hidden="true" /></button></div>

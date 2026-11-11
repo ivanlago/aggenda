@@ -29,6 +29,7 @@ const tabs = [
   { id: "receber", label: "Contas a receber" },
   { id: "pagar", label: "Contas a pagar" },
   { id: "extrato", label: "Extrato" },
+  { id: "cobrancas", label: "Cobranças online" },
 ] as const;
 
 export default async function LaunchesPage({ searchParams }: { searchParams: Promise<FinanceSearchParams> }) {
@@ -37,17 +38,19 @@ export default async function LaunchesPage({ searchParams }: { searchParams: Pro
 
   const params = financeQuery(await searchParams);
   const query = Object.fromEntries(params);
-  const tab = tabs.find(({ id }) => id === query.aba)?.id ?? "receber";
+  const requestedTab = tabs.find(({ id }) => id === query.aba)?.id ?? "receber";
+  const tab = requestedTab === "receber" && query.visao === "cobrancas" ? "cobrancas" : requestedTab;
   const today = organizationDate(new Date(), organization.timezone);
   const month = financeMonth(query.mes, today);
   const nextMonth = nextFinanceMonth(month);
-  const onlineCharges = tab === "receber" && query.visao === "cobrancas";
+  const onlineCharges = tab === "cobrancas";
 
   return <div className="page-wrap">
     <PageHeader eyebrow="Financeiro" title="Lançamentos" description="Acompanhe contas a receber, contas a pagar e movimentações por conta." />
     <nav className="app-tabs" aria-label="Lançamentos financeiros">
       {tabs.map(({ id, label }) => {
-        const destination = new URLSearchParams({ aba: id, mes: month });
+        const destination = new URLSearchParams({ aba: id === "cobrancas" ? "receber" : id, mes: month });
+        if (id === "cobrancas") destination.set("visao", "cobrancas");
         if (query.conta && query.conta !== "all") destination.set("conta", query.conta);
         return <Link key={id} className="app-tab" aria-current={tab === id ? "page" : undefined} href={launchesUrl(destination)}>{label}</Link>;
       })}
@@ -118,7 +121,7 @@ async function AccountsView({ organization, query, today, month, nextMonth, tab 
     </form>
     <div className="mb-5 flex flex-wrap items-start gap-3">
       {canManage && <FinancialEntryControls key={type} categories={categories} today={today} initialType={type} autoOpen={query.novo === type} providers={chargeProviders} />}
-      {incoming && <Link className="secondary-button" href={chargesPath}>{canManage ? "Emitir ou consultar cobrança online" : "Consultar cobranças online"}</Link>}
+      {incoming && <Link className="secondary-button" scroll={false} href={chargesPath + (canManage ? "&novo=cobranca" : "")}>{canManage ? "Emitir ou consultar cobrança online" : "Consultar cobranças online"}</Link>}
       <FinancialDownloadButtons filters={{ ...query, aba: tab, mes: month }} />
       <a className="self-center text-sm font-bold text-brand" href={"/api/finance/report?mes=" + month}>Relatório mensal consolidado</a>
     </div>

@@ -44,9 +44,12 @@ test("PagBank enforces the minimum installment and restricts overrides to author
   assert.throws(() => pagBankSaleRules(rules, override, false), /perfil/);
   assert.deepEqual(effectiveInstallmentTerms(pagBankSaleRules(rules, override, true), 40000), { maximum: 6, interestFree: 6 });
   assert.equal(rules.interestFree, 3);
+  const legacy = onlineInstallmentRules({maxCardInstallments:6,interestFreeCardInstallments:3,minimumCardInstallmentInCents:500,useProviderMaximum:true,allowCardBuyerInterest:false});
+  assert.equal(legacy.useProviderMaximum,false);
+  assert.deepEqual(onlineInstallmentTerms(legacy,40000,"mercado_pago"),{maximum:6,interestFree:3,mixedUnavailable:false});
   assert.deepEqual(onlineInstallmentTerms(rules, 40000, "mercado_pago"), { maximum: 8, interestFree: 3, mixedUnavailable: false });
   assert.deepEqual(onlineInstallmentTerms(rules, 40000, "pagbank"), { maximum: 3, interestFree: 3, mixedUnavailable: true });
-  assert.equal(onlineInstallmentTerms({ ...rules, useProviderMaximum: true }, 200000, "asaas").maximum, 21);
+  assert.equal(onlineInstallmentTerms({ ...rules, useProviderMaximum: true }, 200000, "asaas").maximum, 10);
 });
 
 test("company installment migration keeps the existing PagBank policy and permits an independent rule", async () => {

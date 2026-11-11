@@ -11,7 +11,7 @@ export function PagBankInstallmentFields({ defaults, amount, canOverride, scope 
   defaults: OnlineInstallmentRules; amount: number; canOverride: boolean; scope: "pos" | "receivable";
 }) {
   const [override, setOverride] = useState(false);
-  const [maximum, setMaximum] = useState(String(defaults.useProviderMaximum ? 12 : Math.min(12, defaults.maximum)));
+  const [maximum, setMaximum] = useState(String(Math.min(12, defaults.maximum)));
   const [interestFree, setInterestFree] = useState(String(Math.min(12, defaults.interestFree)));
   const [allowBuyerInterest, setAllowBuyerInterest] = useState(defaults.allowBuyerInterest);
   const [bin, setBin] = useState("");
@@ -57,7 +57,7 @@ export function PagBankInstallmentFields({ defaults, amount, canOverride, scope 
     {canOverride && <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" name="overridePagBankTerms" checked={override} onChange={event => setOverride(event.target.checked)} />Alterar nesta cobrança</label>}
     {editing && <div className="grid gap-3 sm:grid-cols-2">
       <label className="grid gap-1 text-sm font-bold">Máximo de parcelas<input className="field" name="pagBankMaximum" type="number" min={1} max={12} required value={maximum} onChange={event => setMaximum(event.target.value)} /></label>
-      <label className="grid gap-1 text-sm font-bold">Até quantas parcelas sem juros<input className="field" name="pagBankInterestFree" type="number" min={0} max={maximum || 12} required value={interestFree} onChange={event => setInterestFree(event.target.value)} /></label>
+      <label className="grid gap-1 text-sm font-bold">Quantas parcelas sem juros ao cliente<input className="field" name="pagBankInterestFree" type="number" min={0} max={maximum || 12} required value={interestFree} onChange={event => setInterestFree(event.target.value)} /></label>
       <label className="col-span-full flex items-center gap-2 text-sm"><input type="checkbox" name="pagBankBuyerInterest" checked={allowBuyerInterest} onChange={event => setAllowBuyerInterest(event.target.checked)} />Oferecer parcelas com juros acima do limite sem juros</label>
     </div>}
     <details>

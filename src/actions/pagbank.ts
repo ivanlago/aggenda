@@ -51,8 +51,7 @@ export async function connectPagBankAccount(data: FormData) {
 export async function saveOnlineInstallmentPolicy(data: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "integrations.manage");
-  const useProviderMaximum = data.get("useProviderMaximum") === "on";
-  const policy = pagBankInstallmentPolicy(useProviderMaximum ? 24 : Number(text(data, "maximum")), Number(text(data, "interestFree")), 24);
+  const policy = pagBankInstallmentPolicy(Number(text(data, "maximum")), Number(text(data, "interestFree")), 24);
   if (!policy) return { error: "Informe de 1 a 24 parcelas e um limite sem juros entre zero e o máximo." };
   const minimum = text(data, "minimum").replace(",", ".");
   const minimumInCents = Math.round(Number(minimum) * 100);
@@ -61,8 +60,8 @@ export async function saveOnlineInstallmentPolicy(data: FormData) {
     maxCardInstallments: policy.maximum,
     interestFreeCardInstallments: policy.interestFree,
     minimumCardInstallmentInCents: minimumInCents,
-    allowCardBuyerInterest: data.get("allowBuyerInterest") === "on",
-    useProviderMaximum,
+    allowCardBuyerInterest: true,
+    useProviderMaximum: false,
   };
   await db.update(organizations).set({ onlineInstallmentPolicy: values, updatedAt: new Date() }).where(eq(organizations.id, organization.id));
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "set_card_installments", entityType: "organization", entityId: organization.id, details: values });
@@ -159,7 +158,7 @@ export async function createPagBankCharge(data: FormData) {
   if (chargeMode === "installment") {
     const rules = pagBankSaleRules(onlineInstallmentRules(organization.onlineInstallmentPolicy), data, hasOrganizationPermission(organization.role, "integrations.manage"));
     const requested = text(data, "installmentCount");
-    cardTerms = onlineInstallmentTerms(requested ? { ...rules, useProviderMaximum: false, maximum: Math.min(rules.useProviderMaximum ? 12 : rules.maximum, Math.max(1, Math.trunc(Number(requested) || 1))) } : rules, entry.amountInCents, "pagbank");
+    cardTerms = onlineInstallmentTerms(requested ? { ...rules, useProviderMaximum: false, maximum: Math.min(rules.maximum, Math.max(1, Math.trunc(Number(requested) || 1))) } : rules, entry.amountInCents, "pagbank");
     if (cardTerms.maximum < 2) return { error: "As condições desta cobrança permitem apenas pagamento à vista." };
   }
   const installmentCount = cardTerms.maximum;

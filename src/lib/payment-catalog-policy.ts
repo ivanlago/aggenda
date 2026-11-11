@@ -60,8 +60,8 @@ export function onlineInstallmentRules(metadata?: Record<string, unknown> | null
   return {
     ...terms,
     minimumInCents: typeof minimum === "number" && Number.isSafeInteger(minimum) && minimum >= 1 ? minimum : 500,
-    allowBuyerInterest: metadata?.allowCardBuyerInterest !== false,
-    useProviderMaximum: metadata?.useProviderMaximum === true,
+    allowBuyerInterest: true,
+    useProviderMaximum: false,
   };
 }
 
@@ -77,7 +77,7 @@ export function onlineInstallmentTerms(rules: OnlineInstallmentRules, amount: nu
   const providerMaximum = provider === "pagbank" ? 12 : provider === "asaas" ? 21 : provider === "mercado_pago" ? 24 : 1;
   const terms = effectiveInstallmentTerms({
     ...rules,
-    maximum: rules.useProviderMaximum ? providerMaximum : Math.min(rules.maximum, providerMaximum),
+    maximum: Math.min(rules.maximum, providerMaximum),
     minimumInCents: provider === "pagbank" ? Math.max(500, rules.minimumInCents) : rules.minimumInCents,
   }, amount);
   // PagBank's combined offer may subsidize part of the cost above the free tier.

@@ -1,18 +1,17 @@
-import { PackageCheck } from "lucide-react";
+import { ModalShell } from "@/components/modal-shell";
 import type { PosPackageBalance } from "@/lib/pos-package-balances";
 
 export function PosPackageNotice({ balances, timezone = "America/Bahia" }: { balances: PosPackageBalance[]; timezone?: string }) {
-  if (!balances.length) return null;
-  return <div role="status" aria-live="polite" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
-    <p className="flex items-center gap-2 font-extrabold"><PackageCheck className="size-5 shrink-0" aria-hidden="true" /> Este cliente possui saldo de pacotes</p>
+  const activeBalances = balances.filter(balance => !balance.expired && (balance.remaining > 0 || (balance.reserved ?? 0) > 0));
+  if (!activeBalances.length) return null;
+  return <ModalShell title="Pacotes ativos do cliente" variant="edit" triggerLabel="Cliente possui pacote ativo" triggerStyle="link" compact>
     <p className="mt-1 text-sm">Confira os saldos e a validade com o cliente antes de cobrar os serviços.</p>
     <ul className="mt-3 grid max-h-60 gap-2 overflow-y-auto text-sm">
-      {balances.map((balance) => <li key={balance.id} className="rounded-xl bg-white/70 px-3 py-2">
-        <p><strong>{balance.serviceName}: {balance.remaining} {balance.expired ? (balance.remaining === 1 ? "sessão restante" : "sessões restantes") : (balance.remaining === 1 ? "sessão disponível" : "sessões disponíveis")}</strong></p>
-        <p className="text-xs">{balance.packageName} · {balance.expiresAt ? `${balance.expired ? "Venceu em" : "Válido até"} ${new Intl.DateTimeFormat("pt-BR", { timeZone: timezone }).format(new Date(balance.expiresAt))}` : "Sem vencimento"}</p>
+      {activeBalances.map((balance) => <li key={balance.id} className="rounded-xl border px-3 py-2">
+        <p><strong>{balance.serviceName}: {balance.remaining} {balance.remaining === 1 ? "sessão disponível" : "sessões disponíveis"}</strong></p>
+        <p className="text-xs">{balance.packageName} · {balance.expiresAt ? `Válido até ${new Intl.DateTimeFormat("pt-BR", { timeZone: timezone }).format(new Date(balance.expiresAt))}` : "Sem vencimento"}</p>
         {!!balance.reserved && <p className="text-xs">Saldo restante: {balance.remaining + balance.reserved} · Reservadas: {balance.reserved} (ainda não consumidas).</p>}
-        {balance.expired && <p className="mt-1 text-xs font-bold text-red-700">VENCIDO — regularize a validade do pacote antes de utilizar o saldo.</p>}
       </li>)}
     </ul>
-  </div>;
+  </ModalShell>;
 }

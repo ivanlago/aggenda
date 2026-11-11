@@ -58,6 +58,6 @@ export function ChargeCreateForm({ entries, providers, initialEntryId = "", defa
   </ActionForm>;
 }
 
-export function ChargeCreateDialog(props: Props) {
-  return <ModalShell key={props.initialEntryId ?? "nova"} title="Nova cobrança" variant="new" wide closeOnSuccess defaultOpen={Boolean(props.initialEntryId)}><ChargeCreateForm {...props} /></ModalShell>;
+export function ChargeCreateDialog({ autoOpen = false, ...props }: Props & { autoOpen?: boolean }) {
+  return <ModalShell key={props.initialEntryId ?? "nova"} title="Nova cobrança" variant="new" wide closeOnSuccess defaultOpen={autoOpen || Boolean(props.initialEntryId)}><ChargeCreateForm {...props} /></ModalShell>;
 }

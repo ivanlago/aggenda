@@ -16,7 +16,7 @@ async function loadPage(path: string) {
     plugins: [{ name: "finance-fixtures", setup(builder) {
       builder.onResolve({ filter: /^@\/(db$|actions\/|lib\/session$|lib\/charge-list$|components\/action-form$)/ }, ({ path }) => ({ path, namespace: "fixture" }));
       builder.onLoad({ filter: /./, namespace: "fixture" }, ({ path }) => {
-        if (path === "@/lib/charge-list") return { contents: 'export async function loadChargeList(){return globalThis.chargeListing} export async function loadChargeableEntries(){return globalThis.financeRows[1]}' };
+        if (path === "@/lib/charge-list") return { contents: 'export async function loadChargeList(){return globalThis.chargeListing} export async function loadChargeableEntries(){return globalThis.financeRows[2] ?? []}' };
         if (path === "@/db") return { contents: `let index=0; export const db={transaction(work){return work(db)},selectDistinct(){return db.select()},select(){const rows=globalThis.financeRows[index++];const query=new Proxy({}, {get(_,key){return key==='then' ? (resolve)=>Promise.resolve(rows).then(resolve) : ()=>query}});return query}};` };
         if (path === "@/lib/session") return { contents: 'export async function requireOrganization(){return {organization:{id:"org",role:"owner",timezone:"America/Bahia"},session:{user:{id:"operator"}}}}' };
         if (path === "@/components/action-form") return { resolveDir: process.cwd(), contents: 'import React from "react"; export function ActionForm({children, className}){return React.createElement("form",{className},children)}' };
@@ -52,6 +52,8 @@ test("cash flow links integrated entries to charges and PDV instead of offering 
     assert.match(html, /Contas a receber/);
     assert.match(html, /Contas a pagar/);
     assert.match(html, /Extrato/);
+    assert.match(html, /Cobranças online/);
+    assert.match(html, /mes=2026-10&amp;novo=cobranca/);
     assert.match(html, /\/api\/finance\/launches\?mes=2026-10&amp;aba=receber&amp;formato=xlsx|\/api\/finance\/launches\?aba=receber&amp;mes=2026-10&amp;formato=xlsx/);
     assert.match(html, /visao=cobrancas&amp;mes=2026-10&amp;cobranca=charge/);
     assert.match(html, /Ver cobrança vinculada/);
@@ -69,6 +71,7 @@ test("charge filters affect totals and do not preselect an unrelated receivable"
   try {
     const html = await renderAsync(await page({ searchParams: Promise.resolve({ aba: "receber", visao: "cobrancas", status: "paid" }) }));
     assert.match(html, /Cobranças online/);
+    assert.match(html, /aria-current="page"[^>]*>Cobranças online<\/a>/);
     assert.match(html, /Recebido online/);
     assert.match(html, /900,00/);
     assert.doesNotMatch(html, /1\.000,00/);
@@ -76,6 +79,20 @@ test("charge filters affect totals and do not preselect an unrelated receivable"
     assert.doesNotMatch(html, /<summary[^>]*>Nova cobrança/);
     assert.doesNotMatch(html, /Homologação e prontidão|Enviar por WhatsApp/);
     assert.match(html, /Ver página da cobrança/);
+  } finally { delete globals.financeRows; delete globals.chargeListing; }
+});
+
+test("online charge creation opens one form in the selected launches tab", async () => {
+  const page = await loadPage("./src/app/(app)/financeiro/lancamentos/page.tsx");
+  globals.financeRows = [[], [{ provider: "mercado_pago", status: "active" }], [baseEntry]];
+  globals.chargeListing = { charges: [], events: [], pages: 1, pageSize: 20, currentPage: 1, totals: { count: 0, paidCount: 0, paidAmount: 0, openCount: 0, openAmount: 0, overdueCount: 0, overdueAmount: 0 } };
+  try {
+    const html = await renderAsync(await page({searchParams:Promise.resolve({aba:"receber",visao:"cobrancas",novo:"cobranca",mes:"2026-10"})}));
+    assert.match(html,/aria-current="page"[^>]*>Cobranças online<\/a>/);
+    assert.equal((html.match(/<dialog\b/g) ?? []).length,1);
+    assert.match(html,/Conta a receber \*/);
+    assert.doesNotMatch(html,/← Contas a receber/);
+    assert.doesNotMatch(html,/novo=cobranca&amp;pagina/);
   } finally { delete globals.financeRows; delete globals.chargeListing; }
 });
 

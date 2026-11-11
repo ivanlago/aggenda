@@ -33,9 +33,7 @@ export async function PaymentProvidersSettingsContent({ institution }: { institu
       <h2 className="col-span-full text-lg font-extrabold">Regra de parcelamento online</h2>
       <label className="grid gap-1 text-sm font-bold">Valor mínimo por parcela (R$)<input className="field" name="minimum" type="number" min="0.01" step="0.01" required defaultValue={rules.minimumInCents / 100} /></label>
       <label className="grid gap-1 text-sm font-bold">Máximo de parcelas da empresa<input className="field" name="maximum" type="number" min="1" max="24" required defaultValue={rules.maximum} /></label>
-      <label className="grid gap-1 text-sm font-bold">Até quantas parcelas sem juros<input className="field" name="interestFree" type="number" min="0" max="24" required defaultValue={rules.interestFree} /></label>
-      <label className="col-span-full flex items-center gap-2 text-sm"><input type="checkbox" name="useProviderMaximum" defaultChecked={rules.useProviderMaximum} />Usar o máximo permitido pelo provedor</label>
-      <label className="col-span-full flex items-center gap-2 text-sm"><input type="checkbox" name="allowBuyerInterest" defaultChecked={rules.allowBuyerInterest} />Acima do limite sem juros, repassar todo o acréscimo ao comprador quando o provedor permitir</label>
+      <label className="grid gap-1 text-sm font-bold">Quantas parcelas sem juros ao cliente<input className="field" name="interestFree" type="number" min="0" max="24" required defaultValue={rules.interestFree} /></label>
       <button className="secondary-button sm:w-fit">Salvar regra</button>
     </ActionForm>
     <h2 className="mb-3 text-lg font-extrabold text-brand">Provedores de pagamento</h2>

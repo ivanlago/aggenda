@@ -91,6 +91,11 @@ test("online charge creation opens one form in the selected launches tab", async
     assert.match(html,/aria-current="page"[^>]*>Cobranças online<\/a>/);
     assert.equal((html.match(/<dialog\b/g) ?? []).length,1);
     assert.match(html,/Conta a receber \*/);
+    assert.doesNotMatch(html,/<h[1-6][^>]*>(Conta a receber|Pagador|Provedor e condições)<\/h[1-6]>/);
+    assert.match(html,/name="customerName"/);
+    assert.match(html,/name="customerDocument"/);
+    assert.match(html,/name="customerEmail"/);
+    assert.match(html,/name="customerPhone"/);
     assert.doesNotMatch(html,/← Contas a receber/);
     assert.doesNotMatch(html,/novo=cobranca&amp;pagina/);
   } finally { delete globals.financeRows; delete globals.chargeListing; }

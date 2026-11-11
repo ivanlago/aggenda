@@ -100,11 +100,29 @@ test("quick registration preserves the draft, auto-selects categories, and keeps
     const category = document.querySelector<HTMLSelectElement>('dialog select[name="categoryId"]')!;
     assert.ok(category.querySelector('option[value="income"]'));
     assert.equal(category.querySelector('option[value="expense"]'), null);
-    await act(async () => { const type = document.querySelector<HTMLSelectElement>('dialog select[name="type"]')!; type.value = "payable"; type.dispatchEvent(new dom.window.Event("change", { bubbles: true })); });
-    assert.ok(document.querySelector('dialog select[name="categoryId"] option[value="expense"]'));
-    assert.equal(document.querySelector('dialog select[name="categoryId"] option[value="income"]'), null);
+    assert.equal(document.querySelector('dialog select[name="type"]'),null);
+    assert.equal(document.querySelector<HTMLInputElement>('dialog input[name="type"]')!.value,"receivable");
 
     const { FinancialEntryControls, PaymentCatalogProvider } = compiled.exports;
+    await act(async () => root.render(<FinancialEntryControls key="payable-layout" initialType="payable" categories={[{id:"expense",name:"Despesa",type:"payable"}]} today="2027-01-31" />));
+    await click("Nova conta a pagar");
+    const payableForm=visibleForm();
+    assert.doesNotMatch(payableForm.textContent!,/Identificação|Classificação|Valores e vencimento|Informações adicionais/);
+    assert.equal(payableForm.querySelector('select[name="type"]'),null);
+    assert.equal(payableForm.querySelector<HTMLInputElement>('input[name="type"]')!.value,"payable");
+    assert.ok(payableForm.querySelector('select[name="categoryId"] option[value="expense"]'));
+    const valueRow=payableForm.querySelector('[name="dueDate"]')!.parentElement!.parentElement;
+    for(const name of ["amount","paymentMethod","accountId"]) assert.equal(payableForm.querySelector(`[name="${name}"]`)!.parentElement!.parentElement,valueRow);
+    const payableSchedule=[...payableForm.querySelectorAll("select")].find(select=>select.parentElement?.textContent?.startsWith("Repetição do lançamento"))!;
+    await act(async()=>{payableSchedule.value="installment";payableSchedule.dispatchEvent(new dom.window.Event("change",{bubbles:true}));});
+    assert.match(payableForm.querySelector('[name="installmentCount"]')!.parentElement!.textContent!,/Qtd de parcelas mensais/);
+    const paid=payableForm.querySelector<HTMLInputElement>('[name="realized"]')!;
+    assert.equal(paid.closest("div")!.parentElement,payableSchedule.parentElement!.parentElement);
+    assert.equal(payableForm.querySelector('[name="realizedDate"]'),null);
+    await act(async()=>paid.click());
+    assert.match(paid.parentElement!.textContent!,/Primeiro lançamento pago \(data\)/);
+    assert.ok(payableForm.querySelector('[aria-label="Data do primeiro pagamento"]'));
+    assert.equal(payableForm.querySelector('[aria-label="Cobrança online"]'),null);
     await act(async () => root.render(<FinancialEntryControls key="sem-metodo" categories={[]} today="2027-01-31"
       providers={[{ id: "asaas", name: "Asaas", isDefault: true, environment: "sandbox" }]} />));
     await click("Nova conta a receber");

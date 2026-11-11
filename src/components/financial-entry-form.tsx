@@ -1,13 +1,13 @@
 "use client";
 import { PaymentMethodFields, usePaymentCatalog } from "@/components/payment-catalog-context";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { createFinancialEntry, prepareReceivableCharges } from "@/actions/app";
 import { createProviderCharge } from "@/actions/mercado-pago";
 import { ActionForm } from "@/components/action-form";
 import { FinancialScheduleFields } from "@/components/financial-schedule-fields";
-import { FormActions, FormSection, useFormDialog } from "@/components/form-dialog-context";
+import { FormActions, useFormDialog } from "@/components/form-dialog-context";
 import { ModalShell } from "@/components/modal-shell";
 import { ReferenceSelect } from "@/components/reference-records";
 import type { ReferenceRecord } from "@/lib/reference-records";
@@ -24,14 +24,10 @@ type Props = { categories: ReferenceRecord[]; today: string; initialType?: strin
 type IssuanceResult = { id: string; description: string; chargeId?: string; error?: string };
 type IssuanceBatch = { items: IssuanceResult[]; seriesId: string | null };
 
-function EntrySection({ title, children }: { title?: string; children: ReactNode }) {
-  return title ? <FormSection title={title}>{children}</FormSection> : <>{children}</>;
-}
-
 function EntryFields({ categories, today, initialType, providers = [] }: Props) {
   const dialog = useFormDialog();
   const { methods, accounts } = usePaymentCatalog();
-  const [type, setType] = useState(initialType === "payable" ? "payable" : "receivable");
+  const type = initialType === "payable" ? "payable" : "receivable";
   const [realized, setRealized] = useState(false);
   const [withCharge, setWithCharge] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState("");
@@ -48,7 +44,6 @@ function EntryFields({ categories, today, initialType, providers = [] }: Props) 
   const choosingCharge = type === "receivable" && !realized && withCharge && Boolean(provider);
   const providerMethods = provider ? methods.filter(method => paymentKindSupported(method.kind, provider.id) && accounts.some(account => account.id === method.defaultAccountId)) : [];
   const emit = choosingCharge && providerMethods.length > 0;
-  const showSectionTitles = initialType === "payable";
   const installments = Array.from({ length: Number.isInteger(count) && count > 0 && count <= 60 ? count : 0 }, (_, i) => i + 1);
   const amountInCents = Math.round(Number(amount.includes(",") ? amount.replace(/\./g, "").replace(",", ".") : amount) * 100);
 
@@ -101,16 +96,15 @@ function EntryFields({ categories, today, initialType, providers = [] }: Props) 
 
   const dueDateField = <label className="grid min-w-0 gap-2 text-sm font-bold">Vencimento *<input className="field min-w-0" name="dueDate" type="date" required value={dueDate} onChange={event => setDueDate(event.target.value)} /></label>;
   const amountField = <label className="grid min-w-0 gap-2 text-sm font-bold">Valor (R$) *<input className="field min-w-0" name="amount" inputMode="decimal" required placeholder="0,00" value={amount} onChange={event => setAmount(event.target.value)} /></label>;
-  const receivedDateInline = !showSectionTitles && type === "receivable";
-  const realizedLabel = receivedDateInline && realized ? "Primeiro lançamento recebido (data)" : `Primeiro lançamento já foi ${type === "payable" ? "pago" : "recebido"}`;
-  const realizedField = <label className={`flex items-center gap-2 text-sm font-bold${showSectionTitles ? " sm:col-span-2" : ""}`}><input type="checkbox" name="realized" checked={realized} onChange={(event) => setRealized(event.target.checked)} />{realizedLabel}</label>;
-  const realizedDateField = <input className="field min-w-0" name="realizedDate" type="date" required defaultValue={today} aria-label={receivedDateInline ? "Data do primeiro recebimento" : undefined} />;
+  const realizedLabel = realized ? `Primeiro lançamento ${type === "payable" ? "pago" : "recebido"} (data)` : `Primeiro lançamento já foi ${type === "payable" ? "pago" : "recebido"}`;
+  const realizedField = <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" name="realized" checked={realized} onChange={(event) => setRealized(event.target.checked)} />{realizedLabel}</label>;
+  const realizedDateField = <input className="field min-w-0" name="realizedDate" type="date" required defaultValue={today} aria-label={type === "payable" ? "Data do primeiro pagamento" : "Data do primeiro recebimento"} />;
   const scheduleFields = <FinancialScheduleFields
     onCountChange={(value, split) => { setCount(value); setSplitTotal(split); setOmitted([]); }}
-    installmentLabel={showSectionTitles ? undefined : "Qtd de parcelas mensais"}
-    trailingField={showSectionTitles ? undefined : <div className="grid min-w-0 content-start gap-1">
+    installmentLabel="Qtd de parcelas mensais"
+    trailingField={<div className="grid min-w-0 content-start gap-1">
       {realizedField}
-      {receivedDateInline && realized && realizedDateField}
+      {realized && realizedDateField}
     </div>}
   />;
 
@@ -119,32 +113,17 @@ function EntryFields({ categories, today, initialType, providers = [] }: Props) 
     else dialog.close();
   }} successMessage="Lançamento financeiro criado." className="grid gap-5 sm:grid-cols-2" resetOnSuccess={false}>
     <p className="col-span-full text-sm text-muted">Campos com * são obrigatórios. O vencimento é independente do período do relatório.</p>
-    <EntrySection title={showSectionTitles ? "Identificação" : undefined}>
-      <label className="grid gap-2 text-sm font-bold sm:col-span-2">Descrição (opcional)<input className="field" name="description" placeholder="Se ficar em branco, usaremos o nome da categoria" /></label>
-      <label className="grid gap-2 text-sm font-bold">Tipo *<select className="field" name="type" value={type} onChange={(event) => setType(event.target.value)}><option value="receivable">Conta a receber</option><option value="payable">Conta a pagar</option></select></label>
-    </EntrySection>
-    <EntrySection title={showSectionTitles ? "Classificação" : undefined}>
-      <ReferenceSelect key={type} kind="financial_category" name="categoryId" label="Categoria" records={categories} financialType={type} />
-    </EntrySection>
-    <EntrySection title={showSectionTitles ? "Valores e vencimento" : undefined}>
-      {showSectionTitles ? <>
-        {amountField}
-        {dueDateField}
-        {scheduleFields}
-        {!emit && <PaymentMethodFields required={realized} />}
-        {realizedField}
-      </> : <>
-        <div className={`col-span-full grid min-w-0 items-start gap-5 sm:grid-cols-2${emit ? "" : " lg:grid-cols-4"}`}>
-          {dueDateField}
-          {amountField}
-          {!emit && <PaymentMethodFields accountLabel="Conta" required={realized} />}
-        </div>
-        <div className="col-span-full grid min-w-0 items-start gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {scheduleFields}
-        </div>
-      </>}
-      {realized && !receivedDateInline && <label className="grid gap-2 text-sm font-bold">Data da baixa *{realizedDateField}</label>}
-    </EntrySection>
+    <input type="hidden" name="type" value={type} />
+    <div className="min-w-0"><ReferenceSelect key={type} kind="financial_category" name="categoryId" label="Categoria" records={categories} financialType={type} /></div>
+    <label className="grid min-w-0 gap-2 text-sm font-bold">Descrição (opcional)<input className="field min-w-0" name="description" placeholder="Se ficar em branco, usaremos o nome da categoria" /></label>
+    <div className={`col-span-full grid min-w-0 items-start gap-5 sm:grid-cols-2${emit ? "" : " lg:grid-cols-4"}`}>
+      {dueDateField}
+      {amountField}
+      {!emit && <PaymentMethodFields accountLabel="Conta" required={realized} />}
+    </div>
+    <div className="col-span-full grid min-w-0 items-start gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      {scheduleFields}
+    </div>
     {type === "receivable" && <fieldset aria-label="Cobrança online" className="col-span-full grid min-w-0 gap-4 sm:grid-cols-2">
       <label className="flex items-center gap-2 self-center text-sm font-bold"><input type="checkbox" checked={choosingCharge} disabled={realized || !provider} onChange={event => setWithCharge(event.target.checked)} />Emitir cobrança online</label>
       {choosingCharge && provider && <label className="grid min-w-0 gap-2 text-sm font-bold">Provedor<select className="field" name="chargeProvider" value={provider.id} onChange={event => setSelectedProvider(event.target.value)}>{providers.map(item => <option key={item.id} value={item.id}>{item.name}{item.environment === "sandbox" ? " (testes)" : ""}</option>)}</select></label>}
@@ -164,8 +143,8 @@ function EntryFields({ categories, today, initialType, providers = [] }: Props) 
         {progress && <p role="status" className="col-span-full text-sm text-brand">{progress}</p>}
       </>}
     </fieldset>}
-    <EntrySection title={showSectionTitles ? "Informações adicionais" : undefined}><label className="grid gap-2 text-sm font-bold sm:col-span-2">Observações<textarea className="field min-h-20" name="notes" /></label></EntrySection>
-    <FormActions submitLabel={type === "receivable" ? (emit ? "Salvar e emitir cobranças" : "Salvar conta") : undefined}
+    <label className="grid gap-2 text-sm font-bold sm:col-span-2">Observações<textarea className="field min-h-20" name="notes" /></label>
+    <FormActions submitLabel={emit ? "Salvar e emitir cobranças" : "Salvar conta"}
       extraActions={type === "receivable" && (emit
         ? <button type="submit" name="submitIntent" value="save" formNoValidate className="secondary-button">Salvar conta</button>
         : <button type="button" className="secondary-button" disabled>Salvar e emitir cobranças</button>)}

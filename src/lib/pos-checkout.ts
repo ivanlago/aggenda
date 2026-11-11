@@ -14,7 +14,7 @@ import { efiPosSecret, ensureEfiPosCheckout, refreshEfiPosPayment, cancelEfiPosC
 
 const appUrl = () => (process.env.NEXT_PUBLIC_APP_URL || "https://www.aggenda.app.br").replace(/\/$/, "");
 export async function getPosCharges(organizationId:string, saleId:string) {
-  return db.select().from(paymentCharges).where(and(eq(paymentCharges.organizationId,organizationId),eq(paymentCharges.originId,saleId),eq(paymentCharges.originType,"retail_sale"))).orderBy(paymentCharges.createdAt, paymentCharges.id);
+  return db.select().from(paymentCharges).where(and(eq(paymentCharges.organizationId,organizationId),eq(paymentCharges.originId,saleId),eq(paymentCharges.originType,"retail_sale"))).orderBy(paymentCharges.dueDate, paymentCharges.createdAt, paymentCharges.id);
 }
 export async function getPosCharge(organizationId:string, saleId:string) {
   const [charge] = await getPosCharges(organizationId, saleId);
@@ -134,6 +134,7 @@ export async function refreshPosPayment(org:string,saleId:string) {
 }
 async function refreshChargePayment(charge:typeof paymentCharges.$inferSelect) {
   const org = charge.organizationId, saleId = charge.originId;
+  if(charge.metadata?.saleOnCredit === true && charge.metadata?.checkoutState === "new" && !charge.invoiceUrl) return;
   if(charge.provider==="mercado_pago") return mp.refreshPosPayment(org,saleId,charge.id);
   if(charge.provider==="efi") return refreshEfiPosPayment(charge);
   const repository=new PosPaymentRepository(db);

@@ -16,7 +16,7 @@ test("PDV online permite informar valores, adicionar forma e preencher o restant
     const mocks:Record<string,string> = {
       "@/actions/retail":"export async function registerRetailSale(){}",
       "@/actions/financial-operations":"export async function openCash(){}",
-      "@/components/payment-catalog-context":`export function usePaymentCatalog(){return {accounts:[{id:'bank',name:'Banco'}],methods:[{id:'pix',name:'Pix',kind:'pix',defaultAccountId:'bank'},{id:'card',name:'Cartão de Crédito',kind:'credit_card',defaultAccountId:'bank'},{id:'cash',name:'Dinheiro',kind:'cash',defaultAccountId:'bank'}]}}`,
+      "@/components/payment-catalog-context":`export function usePaymentCatalog(){return {accounts:[{id:'bank',name:'Banco'}],methods:[{id:'pix',name:'Pix',kind:'pix',defaultAccountId:'bank'},{id:'card',name:'Cartão de Crédito',kind:'credit_card',defaultAccountId:'bank'},{id:'boleto',name:'Boleto',kind:'boleto',defaultAccountId:'bank'},{id:'cash',name:'Dinheiro',kind:'cash',defaultAccountId:'bank'}]}}`,
       "@/components/modal-shell":"import {createElement} from 'react'; export function ModalShell({children}){return createElement('section',null,children)}",
       "@/components/action-form":"import {createElement} from 'react'; export function ActionForm({children}){return createElement('form',null,children)}",
       "next/link":"import {createElement} from 'react'; export default function Link(props){return createElement('a',props)}",
@@ -44,13 +44,13 @@ test("PDV online permite informar valores, adicionar forma e preencher o restant
     await act(async()=>{Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,"value")!.set!.call(element,value);element.dispatchEvent(new dom.window.Event("input",{bubbles:true}));});
   };
   try {
-    await act(async()=>root.render(<compiled.exports.RetailSaleForm variants={[{id:"item",label:"Produto",priceInCents:5000,stock:10,barcode:null}]} clients={[]} canDiscount={false}
+    await act(async()=>root.render(<compiled.exports.RetailSaleForm variants={[{id:"item",label:"Produto",priceInCents:5000,stock:10,barcode:null}]} clients={[{id:"client",name:"Cliente",email:null,phone:null}]} initialClientId="client" canDiscount={false}
       initialCart={[{variantId:"item",quantity:1,discountInCents:0}]} cashSession={{id:"cash-session"} as never}
       paymentProviders={[{id:"mercado_pago",name:"Mercado Pago",environment:"production"}]} />));
     const receipt=document.querySelector<HTMLSelectElement>('select:has(option[value="online"])')!;
     await select(receipt,"online");
     const methods=()=>[...document.querySelectorAll<HTMLSelectElement>("fieldset select")];
-    assert.deepEqual([...methods()[0].options].map(option=>option.text),["Selecione","Pix","Cartão de Crédito"]);
+    assert.deepEqual([...methods()[0].options].map(option=>option.text),["Selecione","Pix","Cartão de Crédito","Boleto"]);
     await select(methods()[0],"pix");
     await amount(1,"20,00");
     const summary=()=>document.querySelector('[aria-label="Resumo da divisão dos pagamentos"]')!.textContent!.replace(/\s/g, " ");
@@ -73,6 +73,16 @@ test("PDV online permite informar valores, adicionar forma e preencher o restant
     const remove=document.querySelector<HTMLButtonElement>('[aria-label="Remover pagamento 2"]')!;
     await act(async()=>remove.click());
     assert.match(summary(),/Saldo a pagarR\$ 30,00/);
+    await select(methods()[0],"boleto");
+    await amount(1,"50,00");
+    const count=document.querySelector<HTMLInputElement>('fieldset input[type="number"][max="60"]')!;
+    await act(async()=>{Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,"value")!.set!.call(count,"3");count.dispatchEvent(new dom.window.Event("input",{bubbles:true}));});
+    const payload=JSON.parse(document.querySelector<HTMLInputElement>('input[name="payments"]')!.value);
+    assert.equal(payload[0].boletoCount,3);
+    assert.equal(payload[0].amountInCents,5000);
+    assert.match(payload[0].boletoFirstDue,/^\d{4}-\d{2}-\d{2}$/);
+    assert.ok(document.body.textContent?.includes("Venda a prazo"));
+    assert.equal(document.querySelector<HTMLInputElement>('fieldset input[type="date"]')!.disabled,false);
   } finally {
     await act(async()=>root.unmount());dom.window.close();
     for(const [key,descriptor] of originals) {if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}

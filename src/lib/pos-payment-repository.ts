@@ -47,8 +47,9 @@ export class PosPaymentRepository {
       const chargeNeedsReview = Boolean(incompatibleMethod) || status === "payment_review" || Boolean(anotherPayment) || (status === "paid" && (charge.status === "cancelled" || sale.status === "cancelled" || sale.stockRestoredAt));
       const needsReview = chargeNeedsReview || sale.status === "payment_review" || status === "partially_refunded";
       const states = charges.map(item => item.id === charge.id ? chargeNeedsReview ? "payment_review" : status : item.status);
+      const creditSale = charges.every(item => item.metadata?.saleOnCredit === true);
       const saleStatus = needsReview || states.some(state => ["payment_review", "partially_refunded", "refunded"].includes(state)) && !states.every(state => state === "refunded")
-        ? "payment_review" : states.every(state => state === "paid") ? "completed" : states.every(state => state === "refunded") ? "refunded" : "pending_payment";
+        ? "payment_review" : states.every(state => state === "paid") ? "completed" : states.every(state => state === "refunded") ? "refunded" : creditSale ? "completed" : "pending_payment";
       const installments = payment.installments;
       const surcharge = payment.buyerSurchargeInCents;
       const cardTerms = !chargeNeedsReview && status === "paid" && method === "credit_card" ? {
@@ -63,7 +64,7 @@ export class PosPaymentRepository {
         paymentMethod: method, metadata: { ...(charge.metadata ?? {}), summary, providerUpdatedAt: payment.date_last_updated ?? null,
           ...(status === "paid" && !anotherPayment ? { paidPaymentId: String(payment.id) } : {}), ...(needsReview ? { attention: anotherPayment ? "Pagamento adicional para a mesma venda; conferir e estornar o excedente no provedor." : "Pagamento exige conferência financeira. Não libere itens automaticamente." } : {}) }, updatedAt: now }).where(eq(paymentCharges.id, charge.id));
       const saleMethod = charges.length > 1 ? "mixed" : method;
-      await tx.update(retailSales).set({ status: saleStatus, paymentMethod: saleMethod, ...(saleStatus === "completed" ? { soldAt: approvedAt } : {}) }).where(eq(retailSales.id, sale.id));
+      await tx.update(retailSales).set({ status: saleStatus, paymentMethod: saleMethod, ...(saleStatus === "completed" && sale.status !== "completed" ? { soldAt: approvedAt } : {}) }).where(eq(retailSales.id, sale.id));
       if (charges.length > 1 && typeof charge.metadata?.salePaymentId !== "string") throw new Error("Vínculo do pagamento dividido não encontrado.");
       await tx.update(retailSalePayments).set({ status: chargeNeedsReview ? "payment_review" : status === "paid" ? "received" : status, refundedInCents: refund, method, ...cardTerms }).where(and(eq(retailSalePayments.organizationId, organizationId), eq(retailSalePayments.saleId, sale.id), ...(typeof charge.metadata?.salePaymentId === "string" ? [eq(retailSalePayments.id, charge.metadata.salePaymentId)] : [])));
       const ids = [...new Set((charges.length > 1 ? [charge.financialEntryId] : [sale.financialEntryId, sale.appointmentFinancialEntryId]).filter((id): id is string => Boolean(id)))];
@@ -77,7 +78,7 @@ export class PosPaymentRepository {
         amountInCents: entryRefunded ? entryAmount : entryAmount - entryRefund, paymentMethod: charges.length > 1 ? method : saleMethod, updatedAt: now }).where(and(eq(financialEntries.organizationId, organizationId), inArray(financialEntries.id, ids)));
       const packages = await tx.select().from(clientPackages).where(and(eq(clientPackages.organizationId, organizationId), eq(clientPackages.retailSaleId, sale.id))).for("update");
       for (const assigned of packages) {
-        if (saleStatus === "completed" && assigned.status === "pending_payment") {
+        if (saleStatus === "completed" && states.every(state => state === "paid") && assigned.status === "pending_payment") {
           const duration = assigned.expiresAt ? assigned.expiresAt.getTime() - assigned.purchasedAt.getTime() : null;
           await tx.update(clientPackages).set({ status: "active", purchasedAt: approvedAt, expiresAt: duration === null ? null : new Date(approvedAt.getTime() + duration), updatedAt: now }).where(eq(clientPackages.id, assigned.id));
         } else if (["payment_review", "refunded"].includes(saleStatus) && assigned.status !== "cancelled") await tx.update(clientPackages).set({ status: "suspended", updatedAt: now }).where(eq(clientPackages.id, assigned.id));
@@ -97,7 +98,7 @@ export class PosPaymentRepository {
       const charge = chargeId ? charges.find(item => item.id === chargeId) : charges.length === 1 ? charges[0] : undefined;
       if (!sale || !charge) throw new Error("Venda não encontrada.");
       if (sale.status === "cancelled") return;
-      if (sale.status !== "pending_payment" || charges.some(item => !["pending", "cancelled"].includes(item.status))) throw new Error("Este pagamento já foi processado; confira a venda antes de cancelar.");
+      if ((sale.status !== "pending_payment" && !(sale.status === "completed" && charges.every(item => item.metadata?.saleOnCredit === true))) || charges.some(item => !["pending", "cancelled"].includes(item.status))) throw new Error("Este pagamento já foi processado; confira a venda antes de cancelar.");
       await tx.update(paymentCharges).set({ status: "cancelled", cancelledAt: new Date(), updatedAt: new Date() }).where(eq(paymentCharges.id, charge.id));
       if (charge.financialEntryId) await tx.update(financialEntries).set({ status: "cancelled", updatedAt: new Date() }).where(and(eq(financialEntries.organizationId, organizationId), eq(financialEntries.id, charge.financialEntryId)));
       if (typeof charge.metadata?.salePaymentId === "string") await tx.update(retailSalePayments).set({ status: "cancelled" }).where(and(eq(retailSalePayments.saleId, saleId), eq(retailSalePayments.id, charge.metadata.salePaymentId)));

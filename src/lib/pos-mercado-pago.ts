@@ -1,7 +1,9 @@
+import { organizationDate, zonedDate } from "./organization-time";
+import { boletoAvailableFrom, isCreditCharge } from "./pos-boleto";
 import { mercadoPagoMethodSettings } from "./payment-catalog-policy";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { organizationFinancialIntegrations, paymentCharges, retailSales } from "@/db/schema";
+import { organizationFinancialIntegrations, organizations, paymentCharges, retailSales } from "@/db/schema";
 import { getMercadoPagoCredential, mercadoPagoRequest } from "./mercado-pago";
 import { checkoutUrlIsSafe, verifyPosPayment, type MercadoPagoPayment } from "./pos-payments-policy";
 import { PosPaymentRepository } from "./pos-payment-repository";
@@ -31,8 +33,13 @@ export async function ensurePosCheckout(organizationId: string, saleId: string, 
   if (charge.invoiceUrl || charge.status !== "pending") return;
   const credential = await credentialForCharge(charge);
   const [sale] = await db.select().from(retailSales).where(and(eq(retailSales.id, saleId), eq(retailSales.organizationId, organizationId))).limit(1);
-  if (!sale || sale.status !== "pending_payment") return;
-  const expiresAt = new Date(Date.now() + 24 * 3600_000).toISOString();
+  if (!sale || (sale.status !== "pending_payment" && !(sale.status === "completed" && isCreditCharge(charge)))) return;
+  const [organization] = await db.select({timezone:organizations.timezone}).from(organizations).where(eq(organizations.id,organizationId));
+  const today = organizationDate(new Date(), organization.timezone);
+  const scheduledBoleto = isCreditCharge(charge) && charge.metadata?.catalogPaymentKind === "boleto";
+  if (scheduledBoleto && boletoAvailableFrom(charge.dueDate) > today) return;
+  if (scheduledBoleto && charge.dueDate <= today) return;
+  const expiresAt = scheduledBoleto ? zonedDate(charge.dueDate,"23:59",organization.timezone).toISOString() : new Date(Date.now() + 24 * 3600_000).toISOString();
   const claimed = await db.transaction(async tx => {
     const [current] = await tx.select().from(paymentCharges).where(eq(paymentCharges.id, charge.id)).for("update");
     const rejectedOldFormat = current.metadata?.checkoutState === "rejected"
@@ -50,7 +57,7 @@ export async function ensurePosCheckout(organizationId: string, saleId: string, 
         ...(charge.customerEmail ? { payer: { email: charge.customerEmail } } : {}), external_reference: `charge:${charge.id}`,
         notification_url: `${appUrl()}/api/webhooks/mercado-pago?organizationId=${organizationId}`,
         back_urls: { success: returnUrl, pending: returnUrl, failure: returnUrl }, expires: true,
-        expiration_date_from: new Date(Date.now() - 60_000).toISOString(), expiration_date_to: expiresAt } });
+        expiration_date_from: new Date(Date.now() - 60_000).toISOString(), expiration_date_to: expiresAt, ...(scheduledBoleto ? {date_of_expiration:expiresAt} : {}) } });
     const url = credential.environment === "production" ? preference.init_point : preference.sandbox_init_point;
     if (!preference.id) throw new Error("Checkout indisponível.");
     const validUrl = url && checkoutUrlIsSafe(url) ? url : null;

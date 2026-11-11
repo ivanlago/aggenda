@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { retailSales } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
 import { hasOrganizationPermission, assertOrganizationPermission } from "@/lib/permissions";
-import { cancelPosCheckout, refreshPosPayment } from "@/lib/pos-checkout";
+import { cancelPosCheckout, refreshPosPayment, ensurePosCheckout } from "@/lib/pos-checkout";
 
 async function contextForSale(data: FormData) {
   const context = await requireOrganization();
@@ -21,7 +21,7 @@ function refresh(saleId: string) {
 }
 export async function consultPosPayment(data: FormData) {
   const { organization, saleId } = await contextForSale(data);
-  try { await refreshPosPayment(organization.id, saleId); }
+  try { await ensurePosCheckout(organization.id,saleId); await refreshPosPayment(organization.id, saleId); }
   catch { return { error: "Não foi possível consultar o provedor de pagamento. A venda não foi marcada como paga. Confira a conexão e tente novamente." }; }
   refresh(saleId);
 }

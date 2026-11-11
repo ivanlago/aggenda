@@ -1,4 +1,5 @@
 "use server";
+import { boletoSchedule, boletoAvailableFrom } from "@/lib/pos-boleto";
 import { organizationPaymentCatalog } from "@/lib/payment-methods";
 import { choosePayment, onlineInstallmentTerms, hostedPaymentTypes, onlineInstallmentRules, pagBankSaleRules, type OnlineInstallmentRules } from "@/lib/payment-catalog-policy";
 import { allocateLots, restoreLots } from "@/lib/inventory-lots";
@@ -244,7 +245,7 @@ export async function deleteRetailProduct(data: FormData) {
 }
 
 type SaleInputItem = { variantId?: unknown; quantity?: unknown; discountInCents?: unknown };
-type SalePaymentInput = { method?: unknown; amountInCents?: unknown; otherPaymentMethod?: unknown };
+type SalePaymentInput = { method?: unknown; amountInCents?: unknown; otherPaymentMethod?: unknown; boletoCount?: unknown; boletoFirstDue?: unknown };
 
 export async function registerRetailSale(data: FormData) {
   const { session, organization } = await requireOrganization();
@@ -302,7 +303,7 @@ export async function registerRetailSale(data: FormData) {
   if (appointmentKeys.length && (!attendance || appointmentKeys.length !== 1 || appointmentKeys[0] !== `appointment:${attendanceId}` || grouped.get(appointmentKeys[0])!.quantity !== 1)) throw new Error("Serviço do atendimento inválido.");
   if (attendance && attendance.appointment.metadata?.primaryProcedureRemoved !== true && serviceIds.includes(attendance.appointment.serviceId)) throw new Error("Use o item do serviço realizado, já incluído no carrinho, para receber este atendimento.");
   const clientId = attendance?.appointment.clientId ?? (text(data, "clientId") || null);
-  const [client] = clientId ? await db.select({ id: clients.id, email: clients.email, phone: clients.phone }).from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1) : [];
+  const [client] = clientId ? await db.select({ id: clients.id, name:clients.name, email: clients.email, phone: clients.phone }).from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1) : [];
   if (clientId && !client) throw new Error("Cliente não encontrado.");
   if ((serviceIds.length || packageIds.length) && !clientId) throw new Error("Selecione o cliente para vender serviços ou pacotes.");
   const receiptEmail = text(data, "receiptEmail") || client?.email || null;
@@ -327,20 +328,27 @@ export async function registerRetailSale(data: FormData) {
     pagBankInstallments = pagBankSaleRules(pagBankInstallments, data, hasOrganizationPermission(organization.role, "integrations.manage"));
   }
   if (onlineSelection) hostedPaymentTypes(selectedProvider, onlineSelection.method);
+  const today = organizationDate(new Date(), organization.timezone);
   let normalizedPayments = payments.map(payment => {
     if (!payment || typeof payment !== "object") throw new Error("Forma de pagamento inválida.");
     const selected = choosePayment(catalog.methods, catalog.accounts, String(payment.method ?? ""), undefined, online ? selectedProvider : "manual");
     const amountInCents = Number(payment.amountInCents);
     if (!Number.isSafeInteger(amountInCents) || amountInCents < 0 || amountInCents > 2147483647) throw new Error("Valor de pagamento inválido.");
     if (online) hostedPaymentTypes(selectedProvider, selected.method);
-    return { ...selected, amountInCents, otherPaymentMethod: selected.paymentMethodName };
+    const boletoCount = payment.boletoCount === undefined ? 1 : Number(payment.boletoCount);
+    const boletoFirstDue = String(payment.boletoFirstDue || today);
+    if ((boletoCount !== 1 || boletoFirstDue !== today) && (!online || selectedProvider !== "mercado_pago" || selected.method !== "boleto")) throw new Error("Parcelamento mensal por boleto disponível no Mercado Pago. Selecione uma forma Boleto compatível.");
+    if (online && selected.method === "boleto" && boletoCount > 1 && boletoFirstDue <= today) throw new Error("O primeiro boleto parcelado deve vencer a partir de amanhã.");
+    if (online && selected.method === "boleto") boletoSchedule(amountInCents, boletoCount, boletoFirstDue, today);
+    return { ...selected, amountInCents, otherPaymentMethod: selected.paymentMethodName, boletoCount, boletoFirstDue };
   });
+  const saleOnCredit = online && normalizedPayments.some(payment => payment.method === "boleto" && (payment.boletoCount > 1 || payment.boletoFirstDue > today));
+  if (saleOnCredit && !clientId) throw new Error("Identifique o cliente para concluir uma venda a prazo por boleto.");
   const paymentMethod = online ? selectedProvider : normalizedPayments.length > 1 ? "mixed" : normalizedPayments[0].method;
   const cashClosingId = z.uuid("Selecione um caixa válido.").optional().parse(text(data, "cashClosingId") || undefined);
   // Concluir a venda representa a confirmação de recebimento do valor total.
   const received = !online;
   const commissionBeneficiary = text(data, "commissionBeneficiary") ? parseBeneficiary(text(data, "commissionBeneficiary")) : null;
-  const today = organizationDate(new Date(), organization.timezone);
   const inputHash = online ? checkoutInputHash({ provider:selectedProvider, onlineSelection, payments: normalizedPayments, items: [...grouped].sort(([a],[b]) => a.localeCompare(b)), clientId, quoteId, commissionBeneficiary, ...(cashClosingId ? { cashClosingId } : {}),
     ...(requestedCardMaximum === undefined ? {} : { requestedCardMaximum }),
     ...(overridesPagBank ? { pagBankOverride: [data.get("pagBankMaximum"), data.get("pagBankInterestFree"), data.get("pagBankBuyerInterest")] } : {}),
@@ -447,7 +455,7 @@ export async function registerRetailSale(data: FormData) {
     const pagBankTerms = hasPagBankCard && pagBankInstallments ? onlineInstallmentTerms(pagBankInstallments, cardPaymentAmount, "pagbank") : null;
     if (online) {
       if (totalInCents <= 0) throw new Error("Use recebimento manual para uma venda com total zero.");
-      if (!normalizedPayments.length) normalizedPayments = [{ ...onlineSelection!, amountInCents: totalInCents, otherPaymentMethod: onlineSelection!.paymentMethodName }];
+      if (!normalizedPayments.length) normalizedPayments = [{ ...onlineSelection!, amountInCents: totalInCents, otherPaymentMethod: onlineSelection!.paymentMethodName, boletoCount: 1, boletoFirstDue: today }];
     }
     if (normalizedPayments.some((payment) => payment.amountInCents === 0) && (totalInCents !== 0 || normalizedPayments.length !== 1)) throw new Error("Pagamento zero só é permitido quando o total da venda é zero.");
     if (normalizedPayments.reduce((sum, payment) => sum + payment.amountInCents, 0) !== totalInCents) throw new Error("A soma dos pagamentos deve ser igual ao total da venda.");
@@ -458,6 +466,14 @@ export async function registerRetailSale(data: FormData) {
     for (const accountId of [...accountIds].sort()) {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`cash-account:${organization.id}:${accountId}`},0))`);
     }
+    const scheduledPayments = normalizedPayments.flatMap(payment => {
+      const { boletoCount, boletoFirstDue, ...base } = payment;
+      const schedule = online && payment.method === "boleto" ? boletoSchedule(payment.amountInCents, boletoCount, boletoFirstDue, today) : [{amountInCents:payment.amountInCents,dueDate:today,installmentNumber:1,installmentCount:1}];
+      const groupId = schedule.length > 1 ? crypto.randomUUID() : null;
+      return schedule.map(part => ({...base,...part,id:crypto.randomUUID(),groupId}));
+    });
+    if (scheduledPayments.length > 60) throw new Error("Limite de 60 parcelas por venda.");
+    const scheduleByPayment = new Map(scheduledPayments.map(payment => [payment.id,payment]));
     const singlePayment = normalizedPayments.length === 1 ? normalizedPayments[0] : null;
     const paymentSnapshot = { accountId: singlePayment?.accountId ?? null, paymentMethodId: singlePayment?.paymentMethodId ?? null, paymentMethodName: singlePayment?.paymentMethodName ?? "Pagamento dividido", cashManagedBySale: true };
     let appointmentFinancialEntryId: string | null = null;
@@ -484,7 +500,7 @@ export async function registerRetailSale(data: FormData) {
       notes: [text(data, "notes"), ...normalizedPayments.filter(payment => payment.method === "other").map(payment =>
         `Pagamento: ${payment.otherPaymentMethod} · ${(payment.amountInCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`)].filter(Boolean).join("\n") || null,
       createdByUserId: session.user.id,
-      status: online ? "pending_payment" : "completed", paymentProvider: online ? selectedProvider : null,
+      status: online && !saleOnCredit ? "pending_payment" : "completed", paymentProvider: online ? selectedProvider : null,
       checkoutKey, checkoutInputHash: inputHash,
     }).returning({ id: retailSales.id, receiptToken: retailSales.receiptToken });
     await tx.insert(retailSaleItems).values(lines.map((item) => ({
@@ -494,18 +510,19 @@ export async function registerRetailSale(data: FormData) {
       unitPriceInCents: item.price, totalInCents: item.total,
       discountInCents: item.discount, unitCostInCents: item.cost, commissionInCents: item.commission,
     })));
-    const savedPayments = await tx.insert(retailSalePayments).values(normalizedPayments.map((payment) => ({ organizationId: organization.id, saleId: sale.id, ...payment, status: received ? "received" : "pending" }))).returning();
+    const savedPayments = await tx.insert(retailSalePayments).values(scheduledPayments.map(payment => ({ id:payment.id,organizationId: organization.id, saleId: sale.id, method:payment.method,paymentMethodId:payment.paymentMethodId,paymentMethodName:payment.paymentMethodName,otherPaymentMethod:payment.otherPaymentMethod,amountInCents:payment.amountInCents, accountId:saleOnCredit && payment.method === "boleto" ? null : payment.accountId, status: received ? "received" : "pending" }))).returning();
     const paymentEntries = new Map<string, string>();
-    if (online && savedPayments.length > 1) {
+    if (online && (savedPayments.length > 1 || saleOnCredit)) {
       for (const [index, payment] of savedPayments.entries()) {
-        const fields = { accountId: payment.accountId, paymentMethodId: payment.paymentMethodId, paymentMethodName: payment.paymentMethodName,
-          amountInCents: payment.amountInCents, paymentMethod: payment.method, description: `Venda #${sale.id.slice(0,8)} · ${payment.paymentMethodName}` };
+        const part = scheduleByPayment.get(payment.id)!;
+        const fields = { cashManagedBySale:!(saleOnCredit && payment.method === "boleto"), dueDate:part.dueDate, installmentNumber:part.installmentNumber, installmentCount:part.installmentCount, recurrenceGroupId:part.groupId, accountId: part.accountId, paymentMethodId: payment.paymentMethodId, paymentMethodName: payment.paymentMethodName,
+          amountInCents: payment.amountInCents, paymentMethod: payment.method, description: `Venda #${sale.id.slice(0,8)} · ${payment.paymentMethodName}${part.installmentCount > 1 ? ` (${part.installmentNumber}/${part.installmentCount})` : ""}` };
         if (index === 0) {
           await tx.update(financialEntries).set(fields).where(eq(financialEntries.id, financialEntry.id));
           paymentEntries.set(payment.id, financialEntry.id);
         } else {
           const [entry] = await tx.insert(financialEntries).values({ ...fields, organizationId: organization.id, clientId, type: "receivable", status: "pending",
-            source: "retail_sale", category: "Vendas no PDV", cashManagedBySale: true, dueDate: today, createdByUserId: session.user.id }).returning({ id: financialEntries.id });
+            source: "retail_sale", category: "Vendas no PDV", createdByUserId: session.user.id }).returning({ id: financialEntries.id });
           paymentEntries.set(payment.id, entry.id);
         }
       }
@@ -516,8 +533,8 @@ export async function registerRetailSale(data: FormData) {
       await tx.update(inventoryProducts).set({ currentQuantityMillis: newBalance, updatedAt: new Date() }).where(eq(inventoryProducts.id, item.inventoryProductId));
       await tx.insert(inventoryMovements).values({
         organizationId: organization.id, productId: item.inventoryProductId, retailSaleId: sale.id,
-        type: online ? "sale_reservation" : "sale", quantityMillis: -item.quantity * 1000, balanceAfterMillis: newBalance,
-        notes: `${online ? "Reserva para pagamento" : "Venda"} ${sale.id.slice(0, 8)}`, createdByUserId: session.user.id,
+        type: online && !saleOnCredit ? "sale_reservation" : "sale", quantityMillis: -item.quantity * 1000, balanceAfterMillis: newBalance,
+        notes: `${online && !saleOnCredit ? "Reserva para pagamento" : "Venda"} ${sale.id.slice(0, 8)}`, createdByUserId: session.user.id,
       });
     }
     for (const item of additionalLines) {
@@ -543,8 +560,8 @@ export async function registerRetailSale(data: FormData) {
     if (online) {
       await tx.insert(paymentCharges).values(savedPayments.map(payment => ({ organizationId: organization.id, provider: selectedProvider, originType: "retail_sale", originId: sale.id,
         financialEntryId: paymentEntries.get(payment.id) ?? financialEntry.id, clientId, paymentMethod: "link", amountInCents: payment.amountInCents,
-        description: `Venda no PDV #${sale.id.slice(0,8)}`, customerName: "Cliente do PDV", customerEmail: receiptEmail,
-        dueDate: today, createdByUserId: session.user.id, metadata: { collectorId, credentialFingerprint, environment: paymentEnvironment, checkoutState: "new", salePaymentId: payment.id, catalogPaymentMethodName: payment.paymentMethodName, ...(onlineCardMaximum === undefined || !["credit_card", "link"].includes(payment.method) ? {} : { onlineCardMaximum }), catalogPaymentMethodId: payment.paymentMethodId, catalogPaymentKind: payment.method, destinationAccountId: payment.accountId, ...(pagBankTerms ? { maxCardInstallments: pagBankTerms.maximum, interestFreeCardInstallments: pagBankTerms.interestFree } : {}) } })));
+        description: `Venda no PDV #${sale.id.slice(0,8)}`, customerName: client?.name || "Cliente do PDV", customerEmail: receiptEmail,
+        dueDate: scheduleByPayment.get(payment.id)!.dueDate, createdByUserId: session.user.id, metadata: { saleOnCredit, ...(saleOnCredit && payment.method === "boleto" ? { boletoAvailableFrom: boletoAvailableFrom(scheduleByPayment.get(payment.id)!.dueDate), installmentNumber:scheduleByPayment.get(payment.id)!.installmentNumber, installmentCount:scheduleByPayment.get(payment.id)!.installmentCount } : {}), collectorId, credentialFingerprint, environment: paymentEnvironment, checkoutState: "new", salePaymentId: payment.id, catalogPaymentMethodName: payment.paymentMethodName, ...(onlineCardMaximum === undefined || !["credit_card", "link"].includes(payment.method) ? {} : { onlineCardMaximum }), catalogPaymentMethodId: payment.paymentMethodId, catalogPaymentKind: payment.method, destinationAccountId: scheduleByPayment.get(payment.id)!.accountId, ...(pagBankTerms ? { maxCardInstallments: pagBankTerms.maximum, interestFreeCardInstallments: pagBankTerms.interestFree } : {}) } })));
     }
     return sale;
   });
@@ -552,7 +569,7 @@ export async function registerRetailSale(data: FormData) {
     await ensurePosCheckout(organization.id, createdSale.id);
     revalidatePath("/vendas"); revalidatePath("/estoque");
   revalidatePath("/produtos-servicos"); revalidatePath("/financeiro/lancamentos");
-    return { openUrl: `/vendas/pagamento/${createdSale.id}`, warning: "Venda aguardando pagamento. Os itens estão reservados; a liberação depende da confirmação do provedor." };
+    return { openUrl: `/vendas/pagamento/${createdSale.id}`, warning: saleOnCredit ? "Venda a prazo concluída. As parcelas estão em Contas a receber; os recebimentos serão confirmados individualmente." : "Venda aguardando pagamento. Os itens estão reservados; a liberação depende da confirmação do provedor." };
   }
   const receiptPath = `/recibo/${createdSale.receiptToken}`;
   const receiptUrl = `${(process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "")}${receiptPath}`;

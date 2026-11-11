@@ -32,6 +32,12 @@ test("offered-hour choices accept natural numeric phrases without absorbing new 
   for (const text of ["quero as 11 horas", "Quero às 11 horas!", "11h", "11:00", "pode ser às 11", "prefiro 11h por favor"])
     assert.equal(hybridTimeChoice(text), "11:00", text);
   assert.equal(hybridTimeChoice("quero às 11:30"), "11:30");
+  for (const text of ["quero para as catorze horas", "prefiro às quatorze horas", "às duas da tarde"])
+    assert.equal(hybridTimeChoice(text), "14:00", text);
+  assert.equal(hybridTimeChoice("quero às duas e meia da tarde"), "14:30");
+  assert.equal(hybridTimeChoice("às vinte e três horas"), "23:00");
+  assert.equal(hybridTimeChoice("quero catorze horas amanhã"), null);
+  assert.equal(hybridTimeChoice("às catorze da manhã"), null);
   for (const text of ["quero às 11 amanhã", "quero cancelar às 11", "24:00", "quero às 11:99", "quanto custa?", "às 11 com outra pessoa"])
     assert.equal(hybridTimeChoice(text), null, text);
 });

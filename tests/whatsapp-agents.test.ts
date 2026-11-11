@@ -281,7 +281,7 @@ test("both real agent routes share navigation; Chat only links, Core books after
     const moveSlots = await call(hybrid, "queria para amanhã pela manhã", "core_ai");
     assert.match(moveSlots.output.body, /10:00/); assert.doesNotMatch(moveSlots.output.body, /15:00/);
     assert.equal(state.availabilityRequests.at(-1)?.excludeAppointmentId, aestheticAppointment);
-    const movePrepared = await call(hybrid, "as 10 horas", "core_ai");
+    const movePrepared = await call(hybrid, "quero para as dez horas", "core_ai");
     assert.equal(movePrepared.output.raw_payload.pendingAction?.kind, "reschedule");
     assert.equal(movePrepared.output.raw_payload.pendingAction?.appointmentId, aestheticAppointment);
     assert.equal(movePrepared.output.raw_payload.pendingAction?.startsAt, `${tomorrowDate}T13:00:00.000Z`);

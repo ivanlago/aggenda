@@ -46,9 +46,15 @@ export function hybridRelativeDate(text: string, today: string): string | null {
 
 // Interpret a simple choice locally; changes of date/service still go to the agent.
 export function hybridTimeChoice(text: string): string | null {
-  const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[!.?,]+$/g, "");
-  const match = normalized.match(/^(?:(?:eu )?(?:quero|prefiro|pode ser|gostaria|vou querer)(?: o horario)?\s+)?(?:as?\s+)?([01]?\d|2[0-3])(?:(?::|h)([0-5]\d)?)?(?:\s*(?:horas?|h))?(?:\s+por favor)?$/);
-  return match ? `${match[1].padStart(2, "0")}:${match[2] ?? "00"}` : null;
+  const hours: Record<string, number> = {"vinte e tres":23,"vinte e duas":22,"vinte e dois":22,"vinte e uma":21,"vinte e um":21,zero:0,uma:1,um:1,duas:2,dois:2,tres:3,quatro:4,cinco:5,seis:6,sete:7,oito:8,nove:9,dez:10,onze:11,doze:12,treze:13,catorze:14,quatorze:14,quinze:15,dezesseis:16,dezessete:17,dezoito:18,dezenove:19,vinte:20};
+  const words = new RegExp(`\\b(${Object.keys(hours).sort((a,b) => b.length-a.length).join("|")})\\b`, "g");
+  const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[!.?,]+$/g, "").replace(words, word => String(hours[word])).replace(/\b(\d{1,2}) e meia\b/g, "$1:30");
+  const match = normalized.match(/^(?:(?:eu )?(?:quero|prefiro|pode ser|gostaria|vou querer)(?: para)?(?: o horario)?\s+)?(?:as?\s+)?([01]?\d|2[0-3])(?:(?::|h)([0-5]\d)?)?(?:\s*(?:horas?|h))?(?: da (manha|tarde|noite|madrugada))?(?:\s+por favor)?$/);
+  if (!match) return null;
+  let hour = Number(match[1]);
+  if ((match[3] === "tarde" || match[3] === "noite") && hour < 12) hour += 12;
+  if ((match[3] === "manha" || match[3] === "madrugada") && hour >= 12) return null;
+  return `${String(hour).padStart(2, "0")}:${match[2] ?? "00"}`;
 }
 
 // Pilot only: the commercial agent remains the default for every other contact.

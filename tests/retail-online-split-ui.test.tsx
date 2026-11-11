@@ -53,6 +53,9 @@ test("PDV online permite informar valores, adicionar forma e preencher o restant
     assert.deepEqual([...methods()[0].options].map(option=>option.text),["Selecione","Pix","Cartão de Crédito"]);
     await select(methods()[0],"pix");
     await amount(1,"20,00");
+    const summary=()=>document.querySelector('[aria-label="Resumo da divisão dos pagamentos"]')!.textContent!.replace(/\s/g, " ");
+    assert.match(summary(),/Valor distribuídoR\$ 20,00/);
+    assert.match(summary(),/Saldo a pagarR\$ 30,00/);
     await click("Adicionar pagamento");
     await select(methods()[1],"card");
     await click("Preencher restante");
@@ -60,8 +63,16 @@ test("PDV online permite informar valores, adicionar forma e preencher o restant
     assert.deepEqual(JSON.parse(document.querySelector<HTMLInputElement>('input[name="payments"]')!.value),[{method:"pix",amountInCents:2000},{method:"card",amountInCents:3000}]);
     const generate=[...document.querySelectorAll<HTMLButtonElement>("button")].find(button=>button.textContent==="Gerar cobranças Mercado Pago")!;
     assert.equal(generate.disabled,false);
+    assert.match(summary(),/Saldo a pagarR\$ 0,00/);
     await amount(2,"29,00");
     assert.equal(generate.disabled,true);
+    assert.match(summary(),/Saldo a pagarR\$ 1,00/);
+    await amount(2,"31,00");
+    assert.match(summary(),/Valor excedenteR\$ 1,00/);
+    assert.equal(generate.disabled,true);
+    const remove=document.querySelector<HTMLButtonElement>('[aria-label="Remover pagamento 2"]')!;
+    await act(async()=>remove.click());
+    assert.match(summary(),/Saldo a pagarR\$ 30,00/);
   } finally {
     await act(async()=>root.unmount());dom.window.close();
     for(const [key,descriptor] of originals) {if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}

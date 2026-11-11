@@ -24,7 +24,8 @@ async function credentialForCharge(charge: Awaited<ReturnType<typeof getPosCharg
   return credential;
 }
 
-/** One durable creation attempt; never blindly recreate a preference after timeout. */
+/** One durable creation attempt. A confirmed invalid_auto_return rejection from
+ * the old request format may be retried once with the corrected format. */
 export async function ensurePosCheckout(organizationId: string, saleId: string, chargeId?: string) {
   const charge = await getPosCharge(organizationId, saleId, chargeId);
   if (charge.invoiceUrl || charge.status !== "pending") return;
@@ -34,8 +35,11 @@ export async function ensurePosCheckout(organizationId: string, saleId: string, 
   const expiresAt = new Date(Date.now() + 24 * 3600_000).toISOString();
   const claimed = await db.transaction(async tx => {
     const [current] = await tx.select().from(paymentCharges).where(eq(paymentCharges.id, charge.id)).for("update");
-    if (current.status !== "pending" || current.invoiceUrl || current.metadata?.checkoutState !== "new" || current.metadata?.cancellationRequestedAt) return false;
-    await tx.update(paymentCharges).set({ metadata: { ...(current.metadata ?? {}), checkoutState: "creating", expiresAt }, updatedAt: new Date() }).where(eq(paymentCharges.id, charge.id));
+    const rejectedOldFormat = current.metadata?.checkoutState === "rejected"
+      && current.metadata?.providerHttpStatus === 400 && current.metadata?.providerErrorCode === "invalid_auto_return"
+      && current.metadata?.checkoutRequestVersion !== 2 && !current.metadata?.preferenceId;
+    if (current.status !== "pending" || current.invoiceUrl || (current.metadata?.checkoutState !== "new" && !rejectedOldFormat) || current.metadata?.cancellationRequestedAt) return false;
+    await tx.update(paymentCharges).set({ metadata: { ...(current.metadata ?? {}), checkoutRequestVersion: 2, checkoutState: "creating", expiresAt }, updatedAt: new Date() }).where(eq(paymentCharges.id, charge.id));
     return true;
   });
   if (!claimed) return;
@@ -45,7 +49,7 @@ export async function ensurePosCheckout(organizationId: string, saleId: string, 
       method: "POST", idempotencyKey: charge.id, body: { payment_methods: { ...mercadoPagoMethodSettings(String(charge.metadata?.catalogPaymentKind ?? "link")), ...(["credit_card", "link"].includes(String(charge.metadata?.catalogPaymentKind)) && typeof charge.metadata?.onlineCardMaximum === "number" ? { installments: charge.metadata.onlineCardMaximum } : {}) }, items: [{ id: sale.id, title: `Compra #${sale.id.slice(0,8)}`, quantity: 1, currency_id: "BRL", unit_price: charge.amountInCents / 100 }],
         ...(charge.customerEmail ? { payer: { email: charge.customerEmail } } : {}), external_reference: `charge:${charge.id}`,
         notification_url: `${appUrl()}/api/webhooks/mercado-pago?organizationId=${organizationId}`,
-        back_urls: { success: returnUrl, pending: returnUrl, failure: returnUrl }, auto_return: "approved", expires: true,
+        back_urls: { success: returnUrl, pending: returnUrl, failure: returnUrl }, expires: true,
         expiration_date_from: new Date(Date.now() - 60_000).toISOString(), expiration_date_to: expiresAt } });
     const url = credential.environment === "production" ? preference.init_point : preference.sandbox_init_point;
     if (!preference.id) throw new Error("Checkout indisponível.");
@@ -53,7 +57,8 @@ export async function ensurePosCheckout(organizationId: string, saleId: string, 
     const cancelled = await db.transaction(async tx => {
       const [current] = await tx.select().from(paymentCharges).where(eq(paymentCharges.id, charge.id)).for("update");
       const cancelled = current.status === "cancelled" || Boolean(current.metadata?.cancellationRequestedAt);
-      await tx.update(paymentCharges).set({ invoiceUrl: cancelled ? null : validUrl, metadata: { ...(current.metadata ?? {}), checkoutState: cancelled ? "cancelled" : validUrl ? "ready" : "uncertain", preferenceId: preference.id, preferenceExpirationPending: cancelled }, updatedAt: new Date() }).where(eq(paymentCharges.id, charge.id));
+      await tx.update(paymentCharges).set({ invoiceUrl: cancelled ? null : validUrl, metadata: { ...(current.metadata ?? {}), checkoutState: cancelled ? "cancelled" : validUrl ? "ready" : "uncertain", preferenceId: preference.id, preferenceExpirationPending: cancelled,
+        ...(validUrl ? { checkoutError: null, providerHttpStatus: null, providerErrorCode: null } : {}) }, updatedAt: new Date() }).where(eq(paymentCharges.id, charge.id));
       return cancelled;
     });
     if (cancelled) await expireCancelledPreference(charge.id, preference.id, credential.accessToken);

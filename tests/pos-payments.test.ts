@@ -262,6 +262,8 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
         if (path.startsWith("/v1/payments/search?")) return { results: [], paging: { total: 0 } };
         assert.equal(path,"/checkout/preferences"); calls++;
         assert.ok(String(input.body.external_reference).startsWith("charge:"));
+        assert.equal(input.body.auto_return, undefined);
+        assert.ok(String((input.body.back_urls as { success:string }).success).includes("/pagamento/venda/"));
         assert.equal(input.body.expires,true);
         if (calls === 1) assert.equal((input.body.payment_methods as { installments?: number }).installments, 2);
         if(fail) throw new Error("Simulated ambiguous timeout");
@@ -324,6 +326,19 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
       assert.equal(interruptedCharge.status, "cancelled");
       assert.equal(interruptedCharge.invoice_url, null);
       assert.equal(interruptedCharge.metadata.checkoutState, "cancelled");
+      networkGlobals.__posRequest = ordinaryRequest;
+      fail = false;
+      const repair = await create();
+      await pg.query("UPDATE payment_charges SET metadata=metadata || $2::jsonb WHERE id=$1",[repair.charge.id,JSON.stringify({checkoutState:"rejected",providerHttpStatus:400,providerErrorCode:"invalid_auto_return",checkoutError:"Falha antiga"})]);
+      const beforeRepair = calls;
+      await Promise.all([loaded.exports.ensurePosCheckout(org,repair.saleId),loaded.exports.ensurePosCheckout(org,repair.saleId)]);
+      assert.equal(calls,beforeRepair+1,"A recusa definitiva do formato antigo permite uma única recuperação concorrente");
+      const repaired=(await pg.query<{metadata:{checkoutState:string;checkoutRequestVersion:number;providerErrorCode:null};invoice_url:string}>("SELECT metadata,invoice_url FROM payment_charges WHERE id=$1",[repair.charge.id])).rows[0];
+      assert.equal(repaired.metadata.checkoutState,"ready");
+      assert.equal(repaired.metadata.checkoutRequestVersion,2);
+      assert.equal(repaired.metadata.providerErrorCode,null);
+      assert.ok(repaired.invoice_url);
+      await loaded.exports.cancelPosCheckout(org,repair.saleId,"cashier");
     });
     const paymentFor = (charge:{id:string;amount_in_cents:number}, overrides:Partial<MercadoPagoPayment>={}):MercadoPagoPayment=>({id:Math.floor(Math.random()*1e9),status:"approved",collector_id:99,live_mode:true,currency_id:"BRL",external_reference:`charge:${charge.id}`,transaction_amount:charge.amount_in_cents/100,date_approved:new Date().toISOString(),date_last_updated:new Date().toISOString(),payment_method_id:"pix",fee_details:[{amount:0.1}],transaction_details:{net_received_amount:charge.amount_in_cents/100-0.1},...overrides});
     await t.test("um checkout reserva estoque, mantém financeiro pendente e bloqueia pacote; retry não duplica",async()=>{

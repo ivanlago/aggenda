@@ -116,8 +116,9 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
     const actionModule = { exports:{} as {registerRetailSale:(data:FormData)=>Promise<{openUrl?:string;error?:string}>} };
     new Function("require","module","exports",compiled.outputFiles[0].text)(createRequire(import.meta.url),actionModule,actionModule.exports);
     const register = actionModule.exports.registerRetailSale;
-    async function create(items = [{variantId:variant,quantity:1,discountInCents:0}], key = randomUUID(), provider = "mercado_pago") {
+    async function create(items = [{variantId:variant,quantity:1,discountInCents:0}], key = randomUUID(), provider = "mercado_pago", onlineCardMaximum?: number) {
       const form = new FormData(); form.set("checkoutProvider",provider); form.set("onlinePaymentMethodId",catalogIds[provider]); form.set("accountId",accountId); form.set("checkoutKey",key); form.set("items",JSON.stringify(items)); form.set("payments","[]"); form.set("clientId",client);
+      if (onlineCardMaximum !== undefined) form.set("onlineCardMaximum", String(onlineCardMaximum));
       const result = await register(form);
       assert.ok(result.openUrl?.startsWith("/vendas/pagamento/"));
       const saleId=result.openUrl!.split("/").at(-1)!;
@@ -248,6 +249,7 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
         assert.equal(path,"/checkout/preferences"); calls++;
         assert.ok(String(input.body.external_reference).startsWith("charge:"));
         assert.equal(input.body.expires,true);
+        if (calls === 1) assert.equal((input.body.payment_methods as { installments?: number }).installments, 2);
         if(fail) throw new Error("Simulated ambiguous timeout");
         return {id:"test-preference",init_point:"https://www.mercadopago.com.br/checkout/test"};
       };
@@ -257,7 +259,15 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
       }}]});
       const loaded={exports:{} as {ensurePosCheckout:(org:string,sale:string)=>Promise<void>}};
       new Function("require","module","exports",helper.outputFiles[0].text)(createRequire(import.meta.url),loaded,loaded.exports);
-      const ready=await create();
+      const originalContext = globals.__posContext;
+      const context = originalContext as { organization: Record<string, unknown>; session: unknown };
+      globals.__posContext = { ...context, organization: { ...context.organization, onlineInstallmentPolicy: {
+        maxCardInstallments: 12, minimumCardInstallmentInCents: 100, interestFreeCardInstallments: 3,
+      } } };
+      await assert.rejects(create(undefined, undefined, "mercado_pago", 6), /até 5 parcela/);
+      const ready=await create(undefined, undefined, "mercado_pago", 2);
+      globals.__posContext = originalContext;
+      assert.equal((await pg.query<{metadata:{onlineCardMaximum:number}}>("SELECT metadata FROM payment_charges WHERE id=$1",[ready.charge.id])).rows[0].metadata.onlineCardMaximum, 2);
       await Promise.all([loaded.exports.ensurePosCheckout(org,ready.saleId),loaded.exports.ensurePosCheckout(org,ready.saleId)]);
       assert.equal(calls,1);
       assert.equal((await pg.query<{invoice_url:string}>("SELECT invoice_url FROM payment_charges WHERE id=$1",[ready.charge.id])).rows[0].invoice_url,"https://www.mercadopago.com.br/checkout/test");

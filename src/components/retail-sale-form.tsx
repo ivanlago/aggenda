@@ -63,6 +63,9 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
   const subtotal = cart.reduce((sum, item) => sum + (variantsById.get(item.variantId)?.priceInCents ?? 0) * item.quantity, 0);
   const discountInCents = discountedCart.reduce((sum, item) => sum + item.discountInCents, 0);
   const total = Math.max(0, subtotal - discountInCents);
+  const mercadoPagoRules = checkoutProvider === "mercado_pago" && onlineMethods.some(method => method.id === onlineMethodId && ["credit_card", "link"].includes(method.kind))
+    ? onlineInstallmentPolicy : undefined;
+  const mercadoPagoMaximum = mercadoPagoRules ? onlineInstallmentTerms(mercadoPagoRules, total, "mercado_pago").maximum : 1;
   const paymentsPayload = payments.map(payment => ({
     method: payment.method,
     amountInCents: Math.max(0, Math.round((Number(payment.amount.replace(",", ".")) || 0) * 100)),
@@ -161,7 +164,20 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
             {onlinePayment && <div className="grid gap-3">
               <label className="grid gap-2 text-sm font-bold">Forma de pagamento *<select className="field" name="onlinePaymentMethodId" required value={onlineMethodId} onChange={event => setOnlineMethodId(event.target.value)}><option value="">Selecione</option>{onlineMethods.map(method => <option key={method.id} value={method.id}>{method.name}</option>)}</select></label>
             </div>}
-            {onlineInstallmentPolicy && checkoutProvider === "mercado_pago" && onlineMethods.some(method => method.id === onlineMethodId && ["credit_card", "link"].includes(method.kind)) && <p className="text-sm text-muted">Até {onlineInstallmentTerms(onlineInstallmentPolicy, total, checkoutProvider).maximum}× pela regra da empresa. Os juros e as tarifas são definidos pelo Mercado Pago no checkout.</p>}
+            {mercadoPagoRules && <fieldset className="grid min-w-0 gap-2 rounded-xl border p-3">
+                <legend className="px-1 text-sm font-bold">Parcelamento no cartão</legend>
+                <label className="grid gap-1 text-sm font-bold">Limite oferecido nesta venda
+                  <select key={mercadoPagoMaximum} name="onlineCardMaximum" className="field" defaultValue={mercadoPagoMaximum}>
+                    <option value={1}>À vista no cartão (1×)</option>
+                    {Array.from({ length: mercadoPagoMaximum - 1 }, (_, index) => <option key={index + 2} value={index + 2}>Até {index + 2}×</option>)}
+                  </select>
+                </label>
+                <p className="text-sm text-muted">Parcela mínima de {currency(mercadoPagoRules.minimumInCents)} pela regra da empresa.
+                  {mercadoPagoMaximum === 1 && total > 0 && total < 2 * mercadoPagoRules.minimumInCents && ` Em 2×, cada parcela seria de aproximadamente ${currency(Math.floor(total / 2))}.`}
+                  {mercadoPagoRules.interestFree > 1 && ` A regra da empresa prevê até ${mercadoPagoRules.interestFree}× sem juros.`}
+                </p>
+                <p className="text-sm text-muted">O comprador escolhe a quantidade de parcelas no checkout. O Mercado Pago apresenta os valores e as condições sem juros disponíveis na conta.</p>
+              </fieldset>}
             {checkoutProvider === "asaas" && onlineMethods.some(method => method.id === onlineMethodId && ["credit_card", "link"].includes(method.kind)) && <><p className="text-sm text-muted">Neste PDV, o Asaas recebe cartão à vista. Para parcelar, use a emissão de cobrança avulsa.</p><AsaasCardFees scope="pos" /></>}
             {checkoutProvider === "pagbank" && onlineMethods.some(method => method.id === onlineMethodId && ["credit_card", "link"].includes(method.kind)) && <PagBankInstallmentFields defaults={onlineInstallmentPolicy ?? onlineInstallmentRules()} amount={total} canOverride={canOverridePagBank} scope="pos" />}
             {!onlinePayment && <fieldset className="grid min-w-0 gap-3"><legend className="mb-1 text-sm font-bold">Pagamentos</legend>

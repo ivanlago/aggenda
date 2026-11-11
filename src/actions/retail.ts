@@ -315,6 +315,11 @@ export async function registerRetailSale(data: FormData) {
   if (!Array.isArray(payments) || (!online && !payments.length) || payments.length > 5) throw new Error("Informe ao menos uma forma de pagamento.");
   const catalog = await organizationPaymentCatalog(organization.id);
   const onlineSelection = online ? choosePayment(catalog.methods, catalog.accounts, text(data, "onlinePaymentMethodId"), undefined, selectedProvider) : null;
+  const mercadoPagoRules = organization.onlineInstallmentPolicy && selectedProvider === "mercado_pago"
+    && ["credit_card", "link"].includes(onlineSelection?.method ?? "")
+    ? onlineInstallmentRules(organization.onlineInstallmentPolicy) : null;
+  const requestedCardMaximum = mercadoPagoRules && text(data, "onlineCardMaximum")
+    ? z.coerce.number().int().min(1).max(24).parse(text(data, "onlineCardMaximum")) : undefined;
   const hasPagBankCard = selectedProvider === "pagbank" && ["credit_card", "link"].includes(onlineSelection?.method ?? "");
   const overridesPagBank = hasPagBankCard && data.get("overridePagBankTerms") === "on";
   if (hasPagBankCard && pagBankInstallments) {
@@ -335,6 +340,7 @@ export async function registerRetailSale(data: FormData) {
   const commissionBeneficiary = text(data, "commissionBeneficiary") ? parseBeneficiary(text(data, "commissionBeneficiary")) : null;
   const today = organizationDate(new Date(), organization.timezone);
   const inputHash = online ? checkoutInputHash({ provider:selectedProvider, onlineSelection, items: [...grouped].sort(([a],[b]) => a.localeCompare(b)), clientId, quoteId, commissionBeneficiary, ...(cashClosingId ? { cashClosingId } : {}),
+    ...(requestedCardMaximum === undefined ? {} : { requestedCardMaximum }),
     ...(overridesPagBank ? { pagBankOverride: [data.get("pagBankMaximum"), data.get("pagBankInterestFree"), data.get("pagBankBuyerInterest")] } : {}),
     receiptEmail, receiptPhoneDigits, notes: text(data, "notes") }) : null;
 
@@ -430,8 +436,11 @@ export async function registerRetailSale(data: FormData) {
     const subtotalInCents = lines.reduce((sum, item) => sum + item.quantity * item.price, 0);
     const discountInCents = lines.reduce((sum, item) => sum + item.discount, 0);
     const totalInCents = subtotalInCents - discountInCents;
-    const onlineCardMaximum = organization.onlineInstallmentPolicy && selectedProvider === "mercado_pago" && onlineSelection && ["credit_card", "link"].includes(onlineSelection.method)
-      ? onlineInstallmentTerms(onlineInstallmentRules(organization.onlineInstallmentPolicy), totalInCents, selectedProvider).maximum : undefined;
+    const allowedCardMaximum = mercadoPagoRules ? onlineInstallmentTerms(mercadoPagoRules, totalInCents, "mercado_pago").maximum : undefined;
+    if (requestedCardMaximum !== undefined && allowedCardMaximum !== undefined && requestedCardMaximum > allowedCardMaximum) {
+      throw new Error(`As condições desta venda permitem até ${allowedCardMaximum} parcela(s). Confira o valor e selecione novamente.`);
+    }
+    const onlineCardMaximum = requestedCardMaximum ?? allowedCardMaximum;
     const pagBankTerms = hasPagBankCard && pagBankInstallments ? onlineInstallmentTerms(pagBankInstallments, totalInCents, "pagbank") : null;
     if (online) {
       if (totalInCents <= 0) throw new Error("Use recebimento manual para uma venda com total zero.");

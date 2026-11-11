@@ -5,6 +5,7 @@ export type NavigationService = {
   description: string | null; preparation: string | null; durationMinutes: number; priceInCents: number | null;
 };
 export type NavigationContext = {
+  skipServiceNameMatch?: boolean;
   name: string; core: boolean; bookingUrl: string | null; address: string | null;
   phone: string | null; email: string | null;
   services: NavigationService[]; categories: { id: string; name: string }[];
@@ -74,7 +75,7 @@ export function navigateWhatsApp(context: NavigationContext, text: string, state
       ? context.bookingUrl ? `Consulte e gerencie seus agendamentos na sua área do cliente: ${context.bookingUrl}\nValide seu acesso para proteger seus dados. Se precisar de ajuda, digite EQUIPE.` : bookingLink(context)
       : bookingLink(context, selected?.id) };
   }
-  if (!action) {
+  if (!action && !context.skipServiceNameMatch) {
     const matches = context.services.filter(service => [service.name, service.shortName].some(name => name && normalizeNavigationText(name) === normalized));
     if (matches.length === 1) action = `nav:service:${matches[0].id}`;
   }

@@ -339,9 +339,10 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.BETTER_AUTH_URL ?? new URL(request.url).origin;
   const bookingUrl = organization.bookingEnabled ? new URL(`/cliente/${encodeURIComponent(organization.slug)}`, baseUrl).toString() : null;
   const hybrid = usesHybridSecretary(input.organizationId, input.from, input.whatsappServiceCode);
+  const activeHybridFlow = hybrid ? parseFlowState(latest?.rawPayload) : null;
   const navigation = hybrid && requestsHuman(input.text)
     ? { reply: "Vou encaminhar sua conversa para nossa equipe. Pode escrever sua dúvida por aqui.", handoff: true } as import("@/lib/whatsapp-navigation").NavigationReply
-    : navigateWhatsApp({ name: organization.name, core: input.whatsappServiceCode === "core_ai", bookingUrl, address: organization.publicAddress, phone: organization.publicWhatsapp, email: organization.publicEmail, services: navigationCatalog, categories, products }, input.text, parseNavigationState(latest?.rawPayload?.navigationState));
+    : navigateWhatsApp({ name: organization.name, core: input.whatsappServiceCode === "core_ai", bookingUrl, address: organization.publicAddress, phone: organization.publicWhatsapp, email: organization.publicEmail, services: navigationCatalog, categories, products, skipServiceNameMatch: Boolean(activeHybridFlow) }, input.text, parseNavigationState(latest?.rawPayload?.navigationState));
   if (navigation) {
     if (navigation.continueText) input.text = navigation.continueText;
     else {

@@ -102,7 +102,7 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
     const database = drizzle(pg,{schema}) as unknown as typeof db;
     const globals = globalThis as unknown as { __posDb: typeof db; __posContext: unknown };
     globals.__posDb = database;
-    Object.assign(globalThis,{__posOtherContext:async (_org:string,provider:string)=>({collectorId:"0",paymentEnvironment:"production",pagBankInstallments:provider==="pagbank"?{maximum:6,interestFree:3}:null,credentialFingerprint:checkoutInputHash({provider,secret:provider==="efi"?JSON.stringify({clientId:"efi-test",clientSecret:"secret-test",pixKey:"key-test",certificateBase64:"certificate-test"}):`${provider}-test`})})});
+    Object.assign(globalThis,{__posOtherContext:async (_org:string,provider:string)=>({collectorId:"0",paymentEnvironment:"production",pagBankInstallments:provider==="pagbank"?{maximum:6,interestFree:3,minimumInCents:500,allowBuyerInterest:true}:null,credentialFingerprint:checkoutInputHash({provider,secret:provider==="efi"?JSON.stringify({clientId:"efi-test",clientSecret:"secret-test",pixKey:"key-test",certificateBase64:"certificate-test"}):`${provider}-test`})})});
     globals.__posContext = { organization: { id:org,name:"Clínica teste",role:"owner",timezone:"America/Bahia" }, session:{user:{id:"cashier"}} };
     const compiled = await build({entryPoints:["src/actions/retail.ts"],bundle:true,write:false,format:"cjs",platform:"node",packages:"external",plugins:[{name:"pos-mocks",setup(builder){
       const mocks:Record<string,string> = { "@/db":"export const db=globalThis.__posDb;", "@/lib/session":"export async function requireOrganization(){return globalThis.__posContext;}",
@@ -141,7 +141,7 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
         __posPagBank:async(path:string,_credential:unknown,init:{method?:string;body?:Record<string,unknown>}={})=>{
           if(path==="/checkouts"&&init.method==="POST"){
             pagBankCreates++;pagBankReference=String(init.body?.reference_id);
-            assert.deepEqual(init.body?.payment_methods_configs, [{type:"CREDIT_CARD",config_options:[{option:"INSTALLMENTS_LIMIT",value:"6"},{option:"INTEREST_FREE_INSTALLMENTS",value:"3"}]}]);
+            assert.deepEqual(init.body?.payment_methods_configs, [{type:"CREDIT_CARD",config_options:[{option:"INSTALLMENTS_LIMIT",value:"1"},{option:"INTEREST_FREE_INSTALLMENTS",value:"1"}]}]);
             return {id:pagBankId,links:[{rel:"PAY",href:"https://pagamento.pagbank.com.br/pagamento?test"}]};
           }
           if(path.endsWith("/inactivate"))return {};
@@ -162,7 +162,7 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
         await Promise.all([loaded.exports.ensurePosCheckout(org,created.saleId),loaded.exports.ensurePosCheckout(org,created.saleId)]);
         const before=(await pg.query<{status:string}>("SELECT status FROM retail_sales WHERE id=$1",[created.saleId])).rows[0];assert.equal(before.status,"pending_payment");
         if(provider==="asaas")asaasPayments=[{id:"pay_test",checkoutSession:asaasId,status:"CONFIRMED",value:5,netValue:4.5,billingType:"PIX"}];
-        else pagBankCharges=[{id:"CHAR_test",status:"PAID",amount:{value:500,currency:"BRL",summary:{paid:525,refunded:0},fees:{buyer:{interest:{total:25}}}},payment_method:{type:"CREDIT_CARD",installments:4}}];
+        else pagBankCharges=[{id:"CHAR_test",status:"PAID",amount:{value:525,currency:"BRL",summary:{paid:525,refunded:0},fees:{buyer:{interest:{total:25}}}},payment_method:{type:"CREDIT_CARD",installments:4}}];
         await loaded.exports.refreshPosPayment(org,created.saleId);await loaded.exports.refreshPosPayment(org,created.saleId);
         assert.equal((await pg.query<{status:string}>("SELECT status FROM retail_sales WHERE id=$1",[created.saleId])).rows[0].status,"completed");
         if(provider==="pagbank") assert.deepEqual((await pg.query("SELECT card_installments,buyer_surcharge_in_cents FROM retail_sale_payments WHERE sale_id=$1",[created.saleId])).rows,[{card_installments:4,buyer_surcharge_in_cents:25}]);
@@ -313,7 +313,7 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
       await pg.query("INSERT INTO organization_financial_integrations(id,organization_id,provider,is_default_pos) VALUES ($1,$2,'other',true)",[randomUUID(),outside]);
     });
     await t.test("recebimento manual misto continua concluído e sem cobrança externa; sem permissão não vende",async()=>{
-      const form=new FormData(); form.set("checkoutProvider","manual"); form.set("items",JSON.stringify([{variantId:variant,quantity:1,discountInCents:0}])); form.set("payments",JSON.stringify([{method:catalogIds.cash,accountId,amountInCents:200},{method:catalogIds.credit_card,accountId,amountInCents:300,cardInstallments:3,buyerTotalInCents:330}]));
+      const form=new FormData(); form.set("checkoutProvider","manual"); form.set("items",JSON.stringify([{variantId:variant,quantity:1,discountInCents:0}])); form.set("payments",JSON.stringify([{method:catalogIds.cash,accountId,amountInCents:200},{method:catalogIds.credit_card,accountId,amountInCents:300}]));
       await pg.query("UPDATE cash_closings SET closed_at=now() WHERE id=$1",[originalCash]);
       await assert.rejects(register(form), /Abra seu caixa/);
       const cashClosingId = randomUUID();
@@ -329,7 +329,7 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
       assert.equal((await pg.query<{cash_closing_id:string}>("SELECT cash_closing_id FROM retail_sales WHERE id=$1",[sale.id])).rows[0].cash_closing_id,cashClosingId);
       assert.deepEqual((await pg.query("SELECT p.method, m.account_id, p.card_installments, p.buyer_surcharge_in_cents FROM cash_movements m JOIN retail_sale_payments p ON p.id=m.source_id WHERE p.sale_id=$1 AND m.cash_closing_id=$2 ORDER BY p.method",[sale.id,cashClosingId])).rows,[
         {method:"cash",account_id:accountId,card_installments:null,buyer_surcharge_in_cents:null},
-        {method:"credit_card",account_id:bankAccount,card_installments:3,buyer_surcharge_in_cents:30},
+        {method:"credit_card",account_id:bankAccount,card_installments:null,buyer_surcharge_in_cents:null},
       ]);
       assert.equal((await pg.query("SELECT id FROM payment_charges WHERE origin_id=$1",[sale.id])).rows.length,0);
       globals.__posContext={organization:{id:org,name:"Clínica teste",role:"viewer",timezone:"America/Bahia"},session:{user:{id:"cashier"}}};

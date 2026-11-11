@@ -694,6 +694,13 @@
       "when": 1794310238725,
       "tag": "0098_retail_card_installments",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1794310238726,
+      "tag": "0099_online_installment_policy",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,7 @@
 "use server";
 
 import { failFinancialCharge, finishFinancialCharge, reserveFinancialCharge } from "@/lib/financial-charge-issuance";
-import { hostedPaymentTypes, pagBankCardConfig, pagBankInstallmentPolicy } from "@/lib/payment-catalog-policy";
+import { onlineInstallmentTerms, hostedPaymentTypes, pagBankCardConfig, pagBankInstallmentPolicy, onlineInstallmentRules, pagBankSaleRules } from "@/lib/payment-catalog-policy";
 import { resolveOrganizationPayment } from "@/lib/payment-methods";
 
 
@@ -9,11 +9,11 @@ import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/db";
-import { clients, financialEntries, organizationFinancialIntegrations, paymentChargeEvents, paymentCharges } from "@/db/schema";
+import { clients, financialEntries, organizationFinancialIntegrations, organizations, paymentChargeEvents, paymentCharges } from "@/db/schema";
 import { writeAuditLog } from "@/lib/audit";
 import { encryptFinancialCredential } from "@/lib/financial-secret";
 import { getPagBankCredential, pagBankRequest } from "@/lib/pagbank";
-import { assertOrganizationPermission } from "@/lib/permissions";
+import { assertOrganizationPermission, hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 import { posConnectionGuard } from "@/lib/pos-connection-guard";
 
@@ -48,19 +48,73 @@ export async function connectPagBankAccount(data: FormData) {
   refresh();
 }
 
-export async function savePagBankInstallments(data: FormData) {
+export async function saveOnlineInstallmentPolicy(data: FormData) {
   const { session, organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "integrations.manage");
-  const policy = pagBankInstallmentPolicy(Number(text(data, "maximum")), Number(text(data, "interestFree")));
-  if (!policy) return { error: "Informe de 1 a 12 parcelas e um limite sem juros entre zero e o máximo." };
-  const values = { maxCardInstallments: policy.maximum, interestFreeCardInstallments: policy.interestFree };
-  const [integration] = await db.update(organizationFinancialIntegrations).set({
-    metadata: sql`coalesce(${organizationFinancialIntegrations.metadata}, '{}'::jsonb) || ${JSON.stringify(values)}::jsonb`, updatedAt: new Date(),
-  }).where(and(eq(organizationFinancialIntegrations.organizationId, organization.id), eq(organizationFinancialIntegrations.provider, "pagbank"), eq(organizationFinancialIntegrations.status, "active"))).returning({ id: organizationFinancialIntegrations.id });
-  if (!integration) return { error: "Conecte a conta PagBank para salvar o parcelamento." };
-  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "set_card_installments", entityType: "financial_integration:pagbank", entityId: integration.id, details: values });
+  const useProviderMaximum = data.get("useProviderMaximum") === "on";
+  const policy = pagBankInstallmentPolicy(useProviderMaximum ? 24 : Number(text(data, "maximum")), Number(text(data, "interestFree")), 24);
+  if (!policy) return { error: "Informe de 1 a 24 parcelas e um limite sem juros entre zero e o máximo." };
+  const minimum = text(data, "minimum").replace(",", ".");
+  const minimumInCents = Math.round(Number(minimum) * 100);
+  if (!/^\d{1,7}(\.\d{1,2})?$/.test(minimum) || minimumInCents < 1) return { error: "Informe um valor mínimo por parcela maior que zero." };
+  const values = {
+    maxCardInstallments: policy.maximum,
+    interestFreeCardInstallments: policy.interestFree,
+    minimumCardInstallmentInCents: minimumInCents,
+    allowCardBuyerInterest: data.get("allowBuyerInterest") === "on",
+    useProviderMaximum,
+  };
+  await db.update(organizations).set({ onlineInstallmentPolicy: values, updatedAt: new Date() }).where(eq(organizations.id, organization.id));
+  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "set_card_installments", entityType: "organization", entityId: organization.id, details: values });
   refresh();
   revalidatePath("/vendas");
+}
+
+type FeePlan = {
+  installments: number;
+  installment_value: number;
+  amount: { value: number; currency: string; fees?: { seller?: { total?: number } } };
+};
+
+export async function simulatePagBankInstallments(data: FormData) {
+  const { organization } = await requireOrganization();
+  const scope = text(data, "scope");
+  if (scope === "receivable") assertOrganizationPermission(organization.role, "finance.manage");
+  else if (scope === "pos") {
+    if (!hasOrganizationPermission(organization.role, "inventory.manage")) assertOrganizationPermission(organization.role, "sales.sell");
+  } else return { error: "Origem da simulação inválida." };
+  const amount = Number(text(data, "amountInCents"));
+  const bin = text(data, "bin");
+  if (!/^\d{6}$/.test(bin) || !Number.isSafeInteger(amount) || amount < 500 || amount > 999_999_999) {
+    return { error: "Informe os seis primeiros dígitos do cartão e confira o valor da cobrança." };
+  }
+  try {
+    const credential = await getPagBankCredential(organization.id);
+    const rules = pagBankSaleRules(onlineInstallmentRules(organization.onlineInstallmentPolicy), data, hasOrganizationPermission(organization.role, "integrations.manage"));
+    const terms = onlineInstallmentTerms(rules, amount, "pagbank");
+    const query = new URLSearchParams({
+      payment_methods: "CREDIT_CARD", value: String(amount), credit_card_bin: bin,
+      max_installments: String(terms.maximum), max_installments_no_interest: String(terms.interestFree), show_seller_fees: "true",
+    });
+    const response = await pagBankRequest<{ payment_methods?: { credit_card?: Record<string, { installment_plans?: FeePlan[] }> } }>(
+      "/charges/fees/calculate?" + query, credential,
+    );
+    const plans = Object.entries(response.payment_methods?.credit_card ?? {}).flatMap(([brand, result]) =>
+      (result.installment_plans ?? []).filter(plan => Number.isInteger(plan.installments) && plan.installments >= 1 && plan.installments <= terms.maximum
+        && Number.isSafeInteger(plan.installment_value) && plan.installment_value > 0
+        && plan.amount?.currency === "BRL" && Number.isSafeInteger(plan.amount.value) && plan.amount.value >= amount
+        && ((rules.allowBuyerInterest && plan.installments > terms.interestFree) || plan.amount.value === amount)
+      ).map(plan => {
+        const fee = plan.amount.fees?.seller?.total;
+        return { brand, count: plan.installments, installment: plan.installment_value, total: plan.amount.value,
+          sellerFee: typeof fee === "number" && Number.isSafeInteger(fee) && fee >= 0 && fee <= amount ? fee : null };
+      }),
+    );
+    if (!plans.length) return { error: "O PagBank não retornou condições para este cartão." };
+    return { plans, amount, quotedAt: new Date().toISOString(), sandbox: credential.environment !== "production" };
+  } catch {
+    return { error: "Não foi possível simular agora. O comprador poderá conferir as condições no checkout." };
+  }
 }
 
 export async function testPagBankIntegration() {
@@ -97,14 +151,18 @@ export async function createPagBankCharge(data: FormData) {
   const customerPhone = digits(text(data, "customerPhone"));
   const requestedPaymentMethod = selectedPayment.method;
   const chargeMode = ["single", "installment", "recurring"].includes(text(data, "chargeMode")) ? text(data, "chargeMode") : "single";
-  const installmentCount = Math.min(12, Math.max(2, Number(text(data, "installmentCount")) || 2));
   if (customerName.length < 2 || ![11, 14].includes(customerDocument.length)) return { error: "Informe nome e CPF/CNPJ do pagador." };
   const [entry] = await db.select({ id: financialEntries.id, description: financialEntries.description, amountInCents: financialEntries.amountInCents, dueDate: financialEntries.dueDate, clientId: financialEntries.clientId, clientEmail: clients.email, clientPhone: clients.phone }).from(financialEntries).leftJoin(clients, eq(clients.id, financialEntries.clientId)).where(and(eq(financialEntries.id, financialEntryId), eq(financialEntries.organizationId, organization.id), eq(financialEntries.type, "receivable"), eq(financialEntries.status, "pending"))).limit(1);
   if (!entry) return { error: "Selecione uma conta a receber pendente." };
   const credential = await getPagBankCredential(organization.id);
-  if (chargeMode === "installment" && credential.installments && installmentCount > credential.installments.maximum) {
-    return { error: `O PagBank está configurado para até ${credential.installments.maximum} parcela(s).` };
+  let cardTerms = { maximum: 1, interestFree: 0 };
+  if (chargeMode === "installment") {
+    const rules = pagBankSaleRules(onlineInstallmentRules(organization.onlineInstallmentPolicy), data, hasOrganizationPermission(organization.role, "integrations.manage"));
+    const requested = text(data, "installmentCount");
+    cardTerms = onlineInstallmentTerms(requested ? { ...rules, useProviderMaximum: false, maximum: Math.min(rules.useProviderMaximum ? 12 : rules.maximum, Math.max(1, Math.trunc(Number(requested) || 1))) } : rules, entry.amountInCents, "pagbank");
+    if (cardTerms.maximum < 2) return { error: "As condições desta cobrança permitem apenas pagamento à vista." };
   }
+  const installmentCount = cardTerms.maximum;
   const chargeId = crypto.randomUUID();
   const expiration = new Date(`${entry.dueDate}T23:59:59-03:00`).toISOString();
   const phone = customerPhone || digits(entry.clientPhone ?? "");
@@ -129,7 +187,7 @@ export async function createPagBankCharge(data: FormData) {
       customer_modifiable: true,
       items: [{ reference_id: entry.id, name: entry.description.slice(0, 100), quantity: 1, unit_amount: entry.amountInCents }],
       payment_methods: methods.map((type) => ({ type })),
-      ...(methods.includes("CREDIT_CARD") && chargeMode !== "recurring" ? { payment_methods_configs: pagBankCardConfig(chargeMode === "installment" ? installmentCount : 1, chargeMode === "installment" ? credential.installments?.interestFree : 0) } : {}),
+      ...(methods.includes("CREDIT_CARD") && chargeMode !== "recurring" ? { payment_methods_configs: pagBankCardConfig(cardTerms.maximum, cardTerms.interestFree) } : {}),
       ...(chargeMode === "recurring" ? { recurrence_plan: { name: entry.description.slice(0, 100), interval: { unit: "MONTH", length: 1 } } } : {}),
       redirect_url: `${appUrl()}/financeiro/cobrancas`,
       return_url: `${appUrl()}/financeiro/cobrancas`,

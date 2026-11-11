@@ -41,7 +41,7 @@ export async function ensurePosCheckout(organizationId: string, saleId: string) 
   try {
     const returnUrl = `${appUrl()}/pagamento/venda/${sale.receiptToken}`;
     const preference = await mercadoPagoRequest<{ id: string; init_point?: string; sandbox_init_point?: string }>("/checkout/preferences", credential.accessToken, {
-      method: "POST", idempotencyKey: charge.id, body: { payment_methods: mercadoPagoMethodSettings(String(charge.metadata?.catalogPaymentKind ?? "link")), items: [{ id: sale.id, title: `Compra #${sale.id.slice(0,8)}`, quantity: 1, currency_id: "BRL", unit_price: sale.totalInCents / 100 }],
+      method: "POST", idempotencyKey: charge.id, body: { payment_methods: { ...mercadoPagoMethodSettings(String(charge.metadata?.catalogPaymentKind ?? "link")), ...(typeof charge.metadata?.onlineCardMaximum === "number" ? { installments: charge.metadata.onlineCardMaximum } : {}) }, items: [{ id: sale.id, title: `Compra #${sale.id.slice(0,8)}`, quantity: 1, currency_id: "BRL", unit_price: sale.totalInCents / 100 }],
         ...(charge.customerEmail ? { payer: { email: charge.customerEmail } } : {}), external_reference: `charge:${charge.id}`,
         notification_url: `${appUrl()}/api/webhooks/mercado-pago?organizationId=${organizationId}`,
         back_urls: { success: returnUrl, pending: returnUrl, failure: returnUrl }, auto_return: "approved", expires: true,

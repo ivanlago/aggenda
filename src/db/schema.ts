@@ -214,6 +214,7 @@ export const verifications = pgTable("verifications", {
 });
 
 export const organizations = pgTable("organizations", {
+  onlineInstallmentPolicy: jsonb("online_installment_policy").$type<Record<string, unknown>>(),
   teamPermissionOverrides: jsonb("team_permission_overrides").$type<import("@/lib/permissions").TeamPermissionOverrides>(),
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),

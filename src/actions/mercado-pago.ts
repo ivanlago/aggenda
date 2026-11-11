@@ -1,7 +1,7 @@
 "use server";
 
 import { failFinancialCharge, finishFinancialCharge, reserveFinancialCharge } from "@/lib/financial-charge-issuance";
-import { mercadoPagoMethodSettings } from "@/lib/payment-catalog-policy";
+import { mercadoPagoMethodSettings, onlineInstallmentTerms, onlineInstallmentRules } from "@/lib/payment-catalog-policy";
 import { resolveOrganizationPayment } from "@/lib/payment-methods";
 
 
@@ -68,7 +68,9 @@ async function createMercadoPagoCharge(data: FormData) {
     paymentMethod: "link", customerName, customerEmail: customerEmail || entry.clientEmail, customerPhone: text(data, "customerPhone") || entry.clientPhone, customerDocument: text(data, "customerDocument") || null,
   }, selectedPayment);
   if (reservation) return reservation;
-  let preference: MpPreference; try { preference = await mercadoPagoRequest<MpPreference>("/checkout/preferences", credential.accessToken, { method: "POST", idempotencyKey: chargeId, body: { payment_methods: mercadoPagoMethodSettings(selectedPayment.method), items: [{ id: entry.id, title: entry.description.slice(0, 120), quantity: 1, currency_id: "BRL", unit_price: entry.amountInCents / 100 }], payer: { name: customerName, email: customerEmail || entry.clientEmail || undefined }, external_reference: `charge:${chargeId}`, notification_url: `${appUrl()}/api/webhooks/mercado-pago?organizationId=${organization.id}`, back_urls: { success: `${appUrl()}/financeiro/cobrancas`, pending: `${appUrl()}/financeiro/cobrancas`, failure: `${appUrl()}/financeiro/cobrancas` }, auto_return: "approved", expires: true, expiration_date_to: `${entry.dueDate}T23:59:59.000-03:00` } }); } catch (error) { return failFinancialCharge(chargeId, error); }
+  const maximum = organization.onlineInstallmentPolicy && ["credit_card", "link"].includes(selectedPayment.method)
+    ? onlineInstallmentTerms(onlineInstallmentRules(organization.onlineInstallmentPolicy), entry.amountInCents, "mercado_pago").maximum : undefined;
+  let preference: MpPreference; try { preference = await mercadoPagoRequest<MpPreference>("/checkout/preferences", credential.accessToken, { method: "POST", idempotencyKey: chargeId, body: { payment_methods: { ...mercadoPagoMethodSettings(selectedPayment.method), ...(maximum === undefined ? {} : { installments: maximum }) }, items: [{ id: entry.id, title: entry.description.slice(0, 120), quantity: 1, currency_id: "BRL", unit_price: entry.amountInCents / 100 }], payer: { name: customerName, email: customerEmail || entry.clientEmail || undefined }, external_reference: `charge:${chargeId}`, notification_url: `${appUrl()}/api/webhooks/mercado-pago?organizationId=${organization.id}`, back_urls: { success: `${appUrl()}/financeiro/cobrancas`, pending: `${appUrl()}/financeiro/cobrancas`, failure: `${appUrl()}/financeiro/cobrancas` }, auto_return: "approved", expires: true, expiration_date_to: `${entry.dueDate}T23:59:59.000-03:00` } }); } catch (error) { return failFinancialCharge(chargeId, error); }
   if (!preference?.id) return failFinancialCharge(chargeId, null);
   const invoiceUrl = credential.environment === "production" ? preference.init_point : preference.sandbox_init_point ?? preference.init_point;
   if (!invoiceUrl) return failFinancialCharge(chargeId, null);

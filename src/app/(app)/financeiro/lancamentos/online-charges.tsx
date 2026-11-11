@@ -19,7 +19,7 @@ import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 import { loadChargeableEntries, loadChargeList } from "@/lib/charge-list";
 import { formatPhone } from "@/lib/phone";
-import { pagBankInstallmentPolicy } from "@/lib/payment-catalog-policy";
+import { onlineInstallmentRules } from "@/lib/payment-catalog-policy";
 
 const money = (value: number) => (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const date = (value: string) => new Date(`${value}T12:00:00Z`).toLocaleDateString("pt-BR");
@@ -37,8 +37,7 @@ export default async function OnlineCharges({ searchParams }: { searchParams: Pr
   const { charges, events, totals, pageSize, currentPage } = listing;
   const providers = (["asaas", "mercado_pago", "pagbank", "efi"] as const).filter(id => integrationRows.some(row => row.provider === id && row.status === "active"));
   const preferred = providers.find(id => integrationRows.some(row => row.provider === id && row.isDefaultPos));
-  const pagBankMetadata = integrationRows.find(row => row.provider === "pagbank")?.metadata;
-  const pagBankPolicy = pagBankInstallmentPolicy(pagBankMetadata?.maxCardInstallments, pagBankMetadata?.interestFreeCardInstallments);
+  const onlineInstallmentPolicy = organization.onlineInstallmentPolicy ? onlineInstallmentRules(organization.onlineInstallmentPolicy) : undefined;
 
   const backFilters = new URLSearchParams();
   if (query.mes) backFilters.set("mes", query.mes);
@@ -50,7 +49,7 @@ export default async function OnlineCharges({ searchParams }: { searchParams: Pr
   return <section aria-labelledby="online-charges-title">
     <div className="mb-4"><Link className="text-sm font-bold text-brand" href={launchesUrl(backFilters)}>← Contas a receber</Link></div>
     <h2 id="online-charges-title" className="mb-4 text-xl font-extrabold">Cobranças online</h2>
-    <div className="mb-5 flex flex-wrap items-start gap-3" id="nova-cobranca">{canManage && <ChargeCreateDialog key={query.lancamento ?? "nova"} initialEntryId={query.lancamento} providers={providers} defaultProvider={preferred} pagBankMaxInstallments={pagBankPolicy?.maximum} entries={pendingEntries.map((entry) => ({ id: entry.id, description: entry.description, amount: money(entry.amountInCents), dueDate: date(entry.dueDate), clientName: entry.clientName ?? "", clientEmail: entry.clientEmail ?? "", clientPhone: entry.clientPhone ?? "" }))} />}<Link className="secondary-button" href="/configuracoes?aba=payments">Configurar provedores de pagamento</Link></div>
+    <div className="mb-5 flex flex-wrap items-start gap-3" id="nova-cobranca">{canManage && <ChargeCreateDialog key={query.lancamento ?? "nova"} initialEntryId={query.lancamento} providers={providers} defaultProvider={preferred} onlineInstallmentPolicy={onlineInstallmentPolicy} canOverridePagBank={hasOrganizationPermission(organization.role, "integrations.manage")} entries={pendingEntries.map((entry) => ({ id: entry.id, description: entry.description, amount: money(entry.amountInCents), amountInCents: entry.amountInCents, dueDate: date(entry.dueDate), clientName: entry.clientName ?? "", clientEmail: entry.clientEmail ?? "", clientPhone: entry.clientPhone ?? "" }))} />}<Link className="secondary-button" href="/configuracoes?aba=payments">Configurar provedores de pagamento</Link></div>
     <p className="mb-4 text-sm text-muted">Resumo das cobranças online conforme os filtros abaixo, antes da paginação. Período por vencimento: {query.inicio ? date(query.inicio) : "desde o início"} até {query.fim ? date(query.fim) : "sem limite final"}. Valores recebidos não representam o saldo disponível no provedor.</p>
     <section className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><article className="panel"><WalletCards className="size-5 text-brand" /><p className="mt-3 text-sm text-muted">Cobranças em aberto</p><p className="text-2xl font-extrabold">{money(totals.openAmount)}</p><p className="text-xs text-muted">{totals.openCount} cobrança(s)</p></article><article className="panel"><CheckCircle2 className="size-5 text-emerald-600" /><p className="mt-3 text-sm text-muted">Recebido online</p><p className="text-2xl font-extrabold text-emerald-700">{money(totals.paidAmount)}</p><p className="text-xs text-muted">{totals.paidCount} pagamento(s)</p></article><article className="panel"><AlertTriangle className="size-5 text-red-600" /><p className="mt-3 text-sm text-muted">Cobranças vencidas</p><p className="text-2xl font-extrabold text-red-700">{money(totals.overdueAmount)}</p><p className="text-xs text-muted">{totals.overdueCount} vencida(s)</p></article><article className="panel"><CreditCard className="size-5 text-brand" /><p className="mt-3 text-sm text-muted">Cobranças pagas</p><p className="text-2xl font-extrabold">{totals.count ? `${Math.round((totals.paidCount / totals.count) * 100)}%` : "—"}</p><p className="text-xs text-muted">pagas sobre emitidas</p></article></section>
 

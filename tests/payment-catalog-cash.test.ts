@@ -7,7 +7,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { PGlite } from "@electric-sql/pglite";
 import type { db } from "../src/db";
 import * as schema from "../src/db/schema";
-import { choosePayment, hostedPaymentTypes, mercadoPagoMethodSettings } from "../src/lib/payment-catalog-policy";
+import { choosePayment, effectiveInstallmentTerms, hostedPaymentTypes, mercadoPagoMethodSettings, onlineInstallmentRules, onlineInstallmentTerms, pagBankSaleRules } from "../src/lib/payment-catalog-policy";
 import { CashClosingRepository } from "../src/lib/cash-closing-repository";
 import { closePosCash, getOpenPosCash, loadPosCashActivity, openPosCash, recordPosCashAdjustment, requireOpenPosCash } from "../src/lib/pos-cash";
 
@@ -29,6 +29,45 @@ test("catalog selection requires an active organization method and an active des
   assert.throws(() => hostedPaymentTypes("efi", "credit_card"));
   assert.deepEqual(mercadoPagoMethodSettings("link"), {});
   assert.ok(mercadoPagoMethodSettings("pix").excluded_payment_types?.every(item => item.id !== "bank_transfer"));
+});
+
+test("PagBank enforces the minimum installment and restricts overrides to authorized operators", () => {
+  const rules = onlineInstallmentRules({ maxCardInstallments: 10, interestFreeCardInstallments: 3, minimumCardInstallmentInCents: 5000 });
+  assert.deepEqual(effectiveInstallmentTerms(rules, 40000), { maximum: 8, interestFree: 3 });
+  assert.deepEqual(effectiveInstallmentTerms(rules, 4999), { maximum: 1, interestFree: 1 });
+  assert.deepEqual(effectiveInstallmentTerms({ ...rules, allowBuyerInterest: false }, 40000), { maximum: 3, interestFree: 3 });
+  const override = new FormData();
+  override.set("overridePagBankTerms", "on");
+  override.set("pagBankMaximum", "10");
+  override.set("pagBankInterestFree", "6");
+  assert.throws(() => pagBankSaleRules(rules, override, false), /perfil/);
+  assert.deepEqual(effectiveInstallmentTerms(pagBankSaleRules(rules, override, true), 40000), { maximum: 6, interestFree: 6 });
+  assert.equal(rules.interestFree, 3);
+  assert.deepEqual(onlineInstallmentTerms(rules, 40000, "mercado_pago"), { maximum: 8, interestFree: 3, mixedUnavailable: false });
+  assert.deepEqual(onlineInstallmentTerms(rules, 40000, "pagbank"), { maximum: 3, interestFree: 3, mixedUnavailable: true });
+  assert.equal(onlineInstallmentTerms({ ...rules, useProviderMaximum: true }, 200000, "asaas").maximum, 21);
+});
+
+test("company installment migration keeps the existing PagBank policy and permits an independent rule", async () => {
+  const pg = new PGlite();
+  try {
+    await pg.exec(`
+      CREATE TABLE organizations (id uuid PRIMARY KEY);
+      CREATE TABLE organization_financial_integrations (organization_id uuid, provider text, metadata jsonb);
+    `);
+    const existing = randomUUID();
+    const unconnected = randomUUID();
+    await pg.query("INSERT INTO organizations VALUES ($1), ($2)", [existing, unconnected]);
+    await pg.query("INSERT INTO organization_financial_integrations VALUES ($1, 'pagbank', $2)",
+      [existing, JSON.stringify({ maxCardInstallments: 8, interestFreeCardInstallments: 3, minimumCardInstallmentInCents: 4000 })]);
+    await pg.exec(await readFile(new URL("../drizzle/0099_online_installment_policy.sql", import.meta.url), "utf8"));
+    const { rows } = await pg.query<{ id: string; online_installment_policy: Record<string, unknown> | null }>(
+      "SELECT id, online_installment_policy FROM organizations",
+    );
+    assert.equal(onlineInstallmentRules(rows.find(row => row.id === existing)?.online_installment_policy).minimumInCents, 4000);
+    assert.equal(rows.find(row => row.id === unconnected)?.online_installment_policy, null);
+    await pg.query("UPDATE organizations SET online_installment_policy=$1 WHERE id=$2", [JSON.stringify({ maxCardInstallments: 6 }), unconnected]);
+  } finally { await pg.close(); }
 });
 
 test("cash migration and closing: split destinations, no double counting, expenses, reversals, multi-day periods, tenant guards and replay", async () => {

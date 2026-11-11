@@ -1,4 +1,4 @@
-import { hostedPaymentTypes, pagBankCardConfig, pagBankInstallmentPolicy } from "./payment-catalog-policy";
+import { hostedPaymentTypes, pagBankCardConfig, pagBankInstallmentPolicy, onlineInstallmentRules } from "./payment-catalog-policy";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { organizationFinancialIntegrations, paymentCharges, retailSales } from "@/db/schema";
@@ -24,7 +24,7 @@ export async function posOtherContext(organizationId:string, provider:string) {
   const credential = provider === "asaas" ? await getOrganizationAsaasCredential(organizationId) : provider === "efi" ? await getEfiCredential(organizationId) : await getPagBankCredential(organizationId);
   const secret = "apiKey" in credential ? credential.apiKey : "token" in credential ? credential.token : efiPosSecret(credential);
   return { collectorId:"0", paymentEnvironment:credential.environment, credentialFingerprint:checkoutInputHash({provider,secret}),
-    pagBankInstallments: provider === "pagbank" ? pagBankInstallmentPolicy(integration.metadata?.maxCardInstallments, integration.metadata?.interestFreeCardInstallments) : null };
+    pagBankInstallments: provider === "pagbank" ? onlineInstallmentRules(integration.metadata) : null };
 }
 async function request<T>(charge:typeof paymentCharges.$inferSelect,path:string,method:"GET"|"POST"|"DELETE"="GET",body?:unknown) {
   const context=await posOtherContext(charge.organizationId,charge.provider);
@@ -95,14 +95,16 @@ export function normalizeAsaasPos(charge:typeof paymentCharges.$inferSelect,p:As
   return payment;
 }
 export function normalizePagBankPos(charge:typeof paymentCharges.$inferSelect,p:PagBankPosCharge) {
-  if(!p.id || !p.amount || p.amount.currency!=="BRL" || p.amount.value!==charge.amountInCents) throw new Error("Cobrança PagBank divergente da venda.");
-  const buyerInterest = p.amount.fees?.buyer?.interest?.total;
+  if (!p.id || !p.amount || p.amount.currency !== "BRL") throw new Error("Cobrança PagBank divergente da venda.");
+  const buyerInterest = p.payment_method?.type === "CREDIT_CARD" ? p.amount.fees?.buyer?.interest?.total : undefined;
   if (buyerInterest !== undefined && (!Number.isSafeInteger(buyerInterest) || buyerInterest < 0 || buyerInterest > 2_147_483_647)) throw new Error("Acréscimo PagBank inválido.");
+  const buyerTotal = charge.amountInCents + (buyerInterest ?? 0);
+  if (p.amount.value !== charge.amountInCents && p.amount.value !== buyerTotal) throw new Error("Cobrança PagBank divergente da venda.");
   const reportedRefund = p.amount.summary?.refunded ?? 0;
   const refunded = buyerInterest && reportedRefund === charge.amountInCents + buyerInterest ? charge.amountInCents : reportedRefund;
   if(!Number.isSafeInteger(refunded)||refunded<0||refunded>charge.amountInCents) throw new Error("Estorno inválido.");
   const paid = p.amount.summary?.paid;
-  const paidMatches = paid === charge.amountInCents || paid === charge.amountInCents + (buyerInterest ?? 0);
+  const paidMatches = paid === p.amount.value || (p.amount.value === charge.amountInCents && paid === buyerTotal);
   const status=refunded===charge.amountInCents?"refunded":p.status==="PAID"?(paidMatches?"approved":"in_mediation"):["IN_DISPUTE","CHARGEBACK"].includes(p.status)?"in_mediation":"pending";
   return { ...normalized(charge,p.id,status,charge.amountInCents,refunded,p.payment_method?.type,p.paid_at),
     installments: p.payment_method?.installments, buyerSurchargeInCents: buyerInterest };

@@ -47,10 +47,51 @@ export function mercadoPagoMethodSettings(kind: string) {
   return { excluded_payment_types: ["credit_card", "debit_card", "prepaid_card", "ticket", "atm", "bank_transfer", "account_money"].filter(type => type !== allowed[kind]).map(id => ({ id })) };
 }
 
-export function pagBankInstallmentPolicy(maximum: unknown, interestFree: unknown) {
-  if (typeof maximum !== "number" || !Number.isInteger(maximum) || maximum < 1 || maximum > 12
+export function pagBankInstallmentPolicy(maximum: unknown, interestFree: unknown, providerMaximum = 12) {
+  if (typeof maximum !== "number" || !Number.isInteger(maximum) || maximum < 1 || maximum > providerMaximum
       || typeof interestFree !== "number" || !Number.isInteger(interestFree) || interestFree < 0 || interestFree > maximum) return null;
   return { maximum, interestFree };
+}
+
+export function onlineInstallmentRules(metadata?: Record<string, unknown> | null) {
+  const terms = pagBankInstallmentPolicy(metadata?.maxCardInstallments, metadata?.interestFreeCardInstallments, 24)
+    ?? { maximum: 1, interestFree: 0 };
+  const minimum = metadata?.minimumCardInstallmentInCents;
+  return {
+    ...terms,
+    minimumInCents: typeof minimum === "number" && Number.isSafeInteger(minimum) && minimum >= 1 ? minimum : 500,
+    allowBuyerInterest: metadata?.allowCardBuyerInterest !== false,
+    useProviderMaximum: metadata?.useProviderMaximum === true,
+  };
+}
+
+export type OnlineInstallmentRules = ReturnType<typeof onlineInstallmentRules>;
+
+export function effectiveInstallmentTerms(rules: OnlineInstallmentRules, amountInCents: number) {
+  const maximum = Math.max(1, Math.min(rules.maximum, Math.floor(amountInCents / rules.minimumInCents),
+    rules.allowBuyerInterest ? rules.maximum : rules.interestFree));
+  return { maximum, interestFree: Math.min(maximum, rules.interestFree) };
+}
+
+export function onlineInstallmentTerms(rules: OnlineInstallmentRules, amount: number, provider: string) {
+  const providerMaximum = provider === "pagbank" ? 12 : provider === "asaas" ? 21 : provider === "mercado_pago" ? 24 : 1;
+  const terms = effectiveInstallmentTerms({
+    ...rules,
+    maximum: rules.useProviderMaximum ? providerMaximum : Math.min(rules.maximum, providerMaximum),
+    minimumInCents: provider === "pagbank" ? Math.max(500, rules.minimumInCents) : rules.minimumInCents,
+  }, amount);
+  // PagBank's combined offer may subsidize part of the cost above the free tier.
+  const mixedUnavailable = provider === "pagbank" && terms.interestFree > 1 && terms.maximum > terms.interestFree;
+  const interestFree = provider === "pagbank" && terms.maximum > 1 && terms.interestFree === 1 ? 0 : terms.interestFree;
+  return { interestFree, maximum: mixedUnavailable ? terms.interestFree : terms.maximum, mixedUnavailable };
+}
+
+export function pagBankSaleRules(defaults: OnlineInstallmentRules, data: FormData, canOverride: boolean): OnlineInstallmentRules {
+  if (data.get("overridePagBankTerms") !== "on") return defaults;
+  if (!canOverride) throw new Error("Seu perfil não pode alterar as condições de parcelamento.");
+  const terms = pagBankInstallmentPolicy(Number(data.get("pagBankMaximum")), Number(data.get("pagBankInterestFree")));
+  if (!terms) throw new Error("Confira o máximo de parcelas e o limite sem juros.");
+  return { ...defaults, ...terms, useProviderMaximum: false, allowBuyerInterest: data.get("pagBankBuyerInterest") === "on" };
 }
 
 export function pagBankCardConfig(maximum: number, interestFree = 0) {

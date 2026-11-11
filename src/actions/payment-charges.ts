@@ -1,6 +1,7 @@
 "use server";
 
 import { failFinancialCharge, finishFinancialCharge, reserveFinancialCharge } from "@/lib/financial-charge-issuance";
+import { onlineInstallmentTerms, onlineInstallmentRules } from "@/lib/payment-catalog-policy";
 import { resolveOrganizationPayment } from "@/lib/payment-methods";
 
 
@@ -101,7 +102,7 @@ export async function createFinancialCharge(data: FormData) {
   if (chargeMode === "installment" && selectedPayment.method === "boleto") {
     return { error: "Para emitir um boleto por vencimento, use Dividir o valor em parcelas em Contas a receber." };
   }
-  const installmentCount = Math.min(24, Math.max(1, Number(text(data, "installmentCount")) || 1));
+  let installmentCount = Math.min(24, Math.max(1, Math.trunc(Number(text(data, "installmentCount")) || 1)));
   const customerName = text(data, "customerName"); const customerDocument = digits(text(data, "customerDocument")); const customerEmail = text(data, "customerEmail") || undefined; const customerPhone = digits(text(data, "customerPhone")) || undefined;
   if (!["pix", "boleto", "link", "credit_card"].includes(paymentMethod)) return { error: "Forma de cobrança inválida." };
   if (customerName.length < 2 || ![11, 14].includes(customerDocument.length)) return { error: "Informe nome e CPF/CNPJ do pagador." };
@@ -110,6 +111,11 @@ export async function createFinancialCharge(data: FormData) {
   let credential: Credential; try { credential = await getOrganizationAsaasCredential(organization.id); } catch (error) { return { error: errorMessage(error, "Conecte a conta Asaas.") }; }
   const chargeId = crypto.randomUUID(); let customerId: string;
   try { customerId = await ensureCustomer(credential, { name: customerName, cpfCnpj: customerDocument, email: customerEmail ?? entry.clientEmail ?? undefined, phone: customerPhone ?? entry.clientPhone ?? undefined }); } catch (error) { return { error: errorMessage(error, "Não foi possível cadastrar o pagador.") }; }
+  if (chargeMode === "installment" && paymentMethod === "credit_card" && organization.onlineInstallmentPolicy) {
+    const terms = onlineInstallmentTerms(onlineInstallmentRules(organization.onlineInstallmentPolicy), entry.amountInCents, "asaas");
+    installmentCount = Math.min(installmentCount, terms.maximum);
+    if (installmentCount < 2) return { error: "A regra da empresa permite apenas pagamento à vista neste valor." };
+  }
   const billingType = paymentMethod === "pix" ? "PIX" : paymentMethod === "boleto" ? "BOLETO" : paymentMethod === "credit_card" ? "CREDIT_CARD" : "UNDEFINED";
   const reservation = await reserveFinancialCharge({
     id: chargeId, organizationId: organization.id, provider: "asaas",
@@ -180,4 +186,32 @@ export async function sendPaymentChargeWhatsApp(data: FormData) {
   await db.insert(outboxEvents).values({ organizationId: organization.id, eventKey: `whatsapp:payment-charge:${charge.id}:${Date.now()}`, eventType: "whatsapp.template.send", aggregateType: "payment_charge", aggregateId: charge.id, payload: { organizationId: organization.id, channelId: channel.id, phoneNumberId: channel.phoneNumberId, to, notificationKind: "payment_charge", chargeId: charge.id, languageCode: "pt_BR", parameters: [charge.customerName, amount, dueDate, link], preview: `Cobrança de ${amount}, vencimento ${dueDate}: ${link}` } });
   await triggerOutboxWorker();
   await recordLocalEvent({ organizationId: organization.id, chargeId: charge.id, eventType: "whatsapp_queued", previousStatus: charge.status, status: charge.status, payload: { to: `${to.slice(0, 4)}***${to.slice(-4)}` } }); await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "share_whatsapp", entityType: "payment_charge", entityId: charge.id }); revalidateCharges();
+}
+export async function consultAsaasCardFees(scope: "pos" | "receivable") {
+  const { organization } = await requireOrganization();
+  if (scope === "receivable") assertOrganizationPermission(organization.role, "finance.manage");
+  else if (scope === "pos") assertOrganizationPermission(organization.role, "sales.sell");
+  else return { error: "Origem da consulta inválida." };
+  try {
+    const credential = await getOrganizationAsaasCredential(organization.id);
+    const data = await organizationAsaasRequest<{ payment?: { creditCard?: Record<string, unknown> } }>("/myAccount/fees/", credential);
+    const card = data.payment?.creditCard;
+    if (!card) return { error: "O Asaas não retornou as tarifas de cartão desta conta." };
+    const now = new Date();
+    const promotionActive = typeof card.discountExpiration === "string" && Date.parse(card.discountExpiration) > now.getTime();
+    const tiers = [
+      ["À vista", "oneInstallmentPercentage", "discountOneInstallmentPercentage"],
+      ["2 a 6×", "upToSixInstallmentsPercentage", "discountUpToSixInstallmentsPercentage"],
+      ["7 a 12×", "upToTwelveInstallmentsPercentage", "discountUpToTwelveInstallmentsPercentage"],
+      ["13 a 21×", "upToTwentyOneInstallmentsPercentage", "discountUpToTwentyOneInstallmentsPercentage"],
+    ].flatMap(([label, regular, promotional]) => {
+      const value = promotionActive && typeof card[promotional] === "number" ? card[promotional] : card[regular];
+      return typeof value === "number" && Number.isFinite(value) && value >= 0 ? [{ label, value }] : [];
+    });
+    const operation = typeof card.operationValue === "number" && Number.isFinite(card.operationValue) && card.operationValue >= 0 ? card.operationValue : null;
+    if (!tiers.length && operation === null) return { error: "O Asaas não retornou as tarifas de cartão desta conta." };
+    return { tiers, operation, quotedAt: now.toISOString() };
+  } catch {
+    return { error: "Não foi possível consultar as tarifas do Asaas." };
+  }
 }

@@ -13,12 +13,15 @@ export class PosPaymentRepository {
 
   async apply(organizationId: string, chargeId: string, payment: MercadoPagoPayment, provider = "mercado_pago") {
     return this.database.transaction(async tx => {
-      const [charge] = await tx.select().from(paymentCharges).where(and(eq(paymentCharges.id, chargeId), eq(paymentCharges.organizationId, organizationId),
-        eq(paymentCharges.provider, provider), eq(paymentCharges.originType, "retail_sale"))).for("update");
-      if (!charge) throw new Error("Cobrança do PDV não encontrada.");
+      const [reference] = await tx.select().from(paymentCharges).where(and(eq(paymentCharges.id, chargeId), eq(paymentCharges.organizationId, organizationId),
+        eq(paymentCharges.provider, provider), eq(paymentCharges.originType, "retail_sale")));
+      if (!reference) throw new Error("Cobrança do PDV não encontrada.");
+      // Serialize every part of a sale in the same order, including cancellation.
+      const [sale] = await tx.select().from(retailSales).where(and(eq(retailSales.id, reference.originId), eq(retailSales.organizationId, organizationId))).for("update");
+      const charges = await tx.select().from(paymentCharges).where(and(eq(paymentCharges.organizationId, organizationId), eq(paymentCharges.originType, "retail_sale"), eq(paymentCharges.originId, reference.originId))).for("update");
+      const charge = charges.find(item => item.id === chargeId)!;
+      if (!sale || sale.paymentProvider !== provider || charges.reduce((sum, item) => sum + item.amountInCents, 0) !== sale.totalInCents) throw new Error("Venda divergente da cobrança.");
       verifyPosPayment(payment, { chargeId, collectorId: String(charge.metadata?.collectorId ?? ""), environment: String(charge.metadata?.environment ?? ""), amount: charge.amountInCents });
-      const [sale] = await tx.select().from(retailSales).where(and(eq(retailSales.id, charge.originId), eq(retailSales.organizationId, organizationId))).for("update");
-      if (!sale || sale.paymentProvider !== provider || sale.totalInCents !== charge.amountInCents) throw new Error("Venda divergente da cobrança.");
       const refund = paymentCents(payment.transaction_amount_refunded ?? 0);
       if (refund === null || refund > charge.amountInCents) throw new Error("Valor de estorno inválido.");
       const eventId = `pos-${provider}:${payment.id}:${checkoutInputHash({ status: payment.status, refund, at: payment.date_last_updated ?? null })}`;
@@ -41,33 +44,43 @@ export class PosPaymentRepository {
       const anotherPayment = settledPaymentId && String(settledPaymentId) !== String(payment.id);
       const configuredKind = typeof charge.metadata?.catalogPaymentKind === "string" ? charge.metadata.catalogPaymentKind : null;
       const incompatibleMethod = configuredKind && configuredKind !== "link" && configuredKind !== method;
-      const needsReview = Boolean(incompatibleMethod) || sale.status === "payment_review" || status === "payment_review" || status === "partially_refunded" || Boolean(anotherPayment) || (status === "paid" && (sale.status === "cancelled" || sale.stockRestoredAt));
-      const saleStatus = needsReview ? "payment_review" : status === "paid" ? "completed" : "refunded";
+      const chargeNeedsReview = Boolean(incompatibleMethod) || status === "payment_review" || Boolean(anotherPayment) || (status === "paid" && (charge.status === "cancelled" || sale.status === "cancelled" || sale.stockRestoredAt));
+      const needsReview = chargeNeedsReview || sale.status === "payment_review" || status === "partially_refunded";
+      const states = charges.map(item => item.id === charge.id ? chargeNeedsReview ? "payment_review" : status : item.status);
+      const saleStatus = needsReview || states.some(state => ["payment_review", "partially_refunded", "refunded"].includes(state)) && !states.every(state => state === "refunded")
+        ? "payment_review" : states.every(state => state === "paid") ? "completed" : states.every(state => state === "refunded") ? "refunded" : "pending_payment";
       const installments = payment.installments;
       const surcharge = payment.buyerSurchargeInCents;
-      const cardTerms = saleStatus === "completed" && method === "credit_card" ? {
+      const cardTerms = !chargeNeedsReview && status === "paid" && method === "credit_card" ? {
         ...(typeof installments === "number" && Number.isInteger(installments) && installments >= 1 && installments <= 99 ? { cardInstallments: installments } : {}),
         ...(typeof surcharge === "number" && Number.isInteger(surcharge) && surcharge >= 0 && surcharge <= 2_147_483_647 ? { buyerSurchargeInCents: surcharge } : {}),
       } : {};
       const summary = { grossInCents: charge.amountInCents, refundedInCents: refund,
         feeInCents: payment.fee_details?.reduce((sum, item) => sum + (paymentCents(item.amount) ?? 0), 0) ?? null,
         netInCents: paymentCents(payment.transaction_details?.net_received_amount), method, approvedAt: approvedAt.toISOString() };
-      await tx.update(paymentCharges).set({ status: needsReview ? "payment_review" : status, providerPaymentId: anotherPayment ? charge.providerPaymentId : String(payment.id),
+      await tx.update(paymentCharges).set({ status: chargeNeedsReview ? "payment_review" : status, providerPaymentId: anotherPayment ? charge.providerPaymentId : String(payment.id),
         paidAt: charge.paidAt ?? (status === "paid" ? approvedAt : null), refundedAt: status === "refunded" ? now : charge.refundedAt,
         paymentMethod: method, metadata: { ...(charge.metadata ?? {}), summary, providerUpdatedAt: payment.date_last_updated ?? null,
           ...(status === "paid" && !anotherPayment ? { paidPaymentId: String(payment.id) } : {}), ...(needsReview ? { attention: anotherPayment ? "Pagamento adicional para a mesma venda; conferir e estornar o excedente no provedor." : "Pagamento exige conferência financeira. Não libere itens automaticamente." } : {}) }, updatedAt: now }).where(eq(paymentCharges.id, charge.id));
-      await tx.update(retailSales).set({ status: saleStatus, paymentMethod: method, ...(saleStatus === "completed" ? { soldAt: approvedAt } : {}) }).where(eq(retailSales.id, sale.id));
-      await tx.update(retailSalePayments).set({ status: saleStatus === "completed" ? "received" : status === "partially_refunded" ? "partially_refunded" : saleStatus, refundedInCents: refund, method, ...cardTerms }).where(and(eq(retailSalePayments.organizationId, organizationId), eq(retailSalePayments.saleId, sale.id)));
-      const ids = [...new Set([sale.financialEntryId, sale.appointmentFinancialEntryId].filter((id): id is string => Boolean(id)))];
-      if (ids.length) await tx.update(financialEntries).set({ status: status === "refunded" ? "refunded" : needsReview && status !== "partially_refunded" ? "pending" : "received",
-        realizedDate: status === "refunded" || (needsReview && status !== "partially_refunded") ? null : organizationDate(approvedAt, org.timezone),
-        amountInCents: status === "refunded" ? charge.amountInCents : charge.amountInCents - refund, paymentMethod: method, updatedAt: now }).where(and(eq(financialEntries.organizationId, organizationId), inArray(financialEntries.id, ids)));
+      const saleMethod = charges.length > 1 ? "mixed" : method;
+      await tx.update(retailSales).set({ status: saleStatus, paymentMethod: saleMethod, ...(saleStatus === "completed" ? { soldAt: approvedAt } : {}) }).where(eq(retailSales.id, sale.id));
+      if (charges.length > 1 && typeof charge.metadata?.salePaymentId !== "string") throw new Error("Vínculo do pagamento dividido não encontrado.");
+      await tx.update(retailSalePayments).set({ status: chargeNeedsReview ? "payment_review" : status === "paid" ? "received" : status, refundedInCents: refund, method, ...cardTerms }).where(and(eq(retailSalePayments.organizationId, organizationId), eq(retailSalePayments.saleId, sale.id), ...(typeof charge.metadata?.salePaymentId === "string" ? [eq(retailSalePayments.id, charge.metadata.salePaymentId)] : [])));
+      const ids = [...new Set((charges.length > 1 ? [charge.financialEntryId] : [sale.financialEntryId, sale.appointmentFinancialEntryId]).filter((id): id is string => Boolean(id)))];
+      const refundedTotal = charges.reduce((sum, item) => sum + (item.id === charge.id ? refund : Number((item.metadata?.summary as { refundedInCents?: number } | undefined)?.refundedInCents ?? 0)), 0);
+      const entryRefunded = charges.length > 1 ? status === "refunded" : saleStatus === "refunded";
+      const realized = charges.length > 1 ? !chargeNeedsReview && ["paid", "partially_refunded"].includes(status) : saleStatus === "completed" || status === "partially_refunded";
+      const entryAmount = charges.length > 1 ? charge.amountInCents : sale.totalInCents;
+      const entryRefund = charges.length > 1 ? refund : refundedTotal;
+      if (ids.length) await tx.update(financialEntries).set({ status: entryRefunded ? "refunded" : realized ? "received" : "pending",
+        realizedDate: realized ? organizationDate(approvedAt, org.timezone) : null,
+        amountInCents: entryRefunded ? entryAmount : entryAmount - entryRefund, paymentMethod: charges.length > 1 ? method : saleMethod, updatedAt: now }).where(and(eq(financialEntries.organizationId, organizationId), inArray(financialEntries.id, ids)));
       const packages = await tx.select().from(clientPackages).where(and(eq(clientPackages.organizationId, organizationId), eq(clientPackages.retailSaleId, sale.id))).for("update");
       for (const assigned of packages) {
         if (saleStatus === "completed" && assigned.status === "pending_payment") {
           const duration = assigned.expiresAt ? assigned.expiresAt.getTime() - assigned.purchasedAt.getTime() : null;
           await tx.update(clientPackages).set({ status: "active", purchasedAt: approvedAt, expiresAt: duration === null ? null : new Date(approvedAt.getTime() + duration), updatedAt: now }).where(eq(clientPackages.id, assigned.id));
-        } else if (saleStatus !== "completed" && assigned.status !== "cancelled") await tx.update(clientPackages).set({ status: "suspended", updatedAt: now }).where(eq(clientPackages.id, assigned.id));
+        } else if (["payment_review", "refunded"].includes(saleStatus) && assigned.status !== "cancelled") await tx.update(clientPackages).set({ status: "suspended", updatedAt: now }).where(eq(clientPackages.id, assigned.id));
       }
       if (saleStatus === "completed") await tx.update(inventoryMovements).set({ type: "sale", notes: `Venda ${sale.id.slice(0,8)} · pagamento confirmado (${provider})` }).where(and(eq(inventoryMovements.organizationId, organizationId), eq(inventoryMovements.retailSaleId, sale.id), eq(inventoryMovements.type, "sale_reservation")));
       await tx.insert(auditLogs).values({ organizationId, action: `pos_payment:${saleStatus}`, entityType: "retail_sale", entityId: sale.id, details: { chargeId, paymentId: String(payment.id), refundedInCents: refund } });
@@ -77,13 +90,18 @@ export class PosPaymentRepository {
 
   /** Call only after disabling the preference and checking/cancelling all pending
    * provider payments. Paid refunds never imply a physical inventory return. */
-  async cancelUnpaid(organizationId: string, saleId: string, userId: string, provider = "mercado_pago") {
+  async cancelUnpaid(organizationId: string, saleId: string, userId: string, provider = "mercado_pago", chargeId?: string) {
     return this.database.transaction(async tx => {
-      const [charge] = await tx.select().from(paymentCharges).where(and(eq(paymentCharges.organizationId, organizationId), eq(paymentCharges.originId, saleId), eq(paymentCharges.originType, "retail_sale"), eq(paymentCharges.provider, provider))).for("update");
       const [sale] = await tx.select().from(retailSales).where(and(eq(retailSales.organizationId, organizationId), eq(retailSales.id, saleId))).for("update");
+      const charges = await tx.select().from(paymentCharges).where(and(eq(paymentCharges.organizationId, organizationId), eq(paymentCharges.originId, saleId), eq(paymentCharges.originType, "retail_sale"), eq(paymentCharges.provider, provider))).for("update");
+      const charge = chargeId ? charges.find(item => item.id === chargeId) : charges.length === 1 ? charges[0] : undefined;
       if (!sale || !charge) throw new Error("Venda não encontrada.");
       if (sale.status === "cancelled") return;
-      if (sale.status !== "pending_payment" || charge.status !== "pending") throw new Error("Este pagamento já foi processado; confira a venda antes de cancelar.");
+      if (sale.status !== "pending_payment" || charges.some(item => !["pending", "cancelled"].includes(item.status))) throw new Error("Este pagamento já foi processado; confira a venda antes de cancelar.");
+      await tx.update(paymentCharges).set({ status: "cancelled", cancelledAt: new Date(), updatedAt: new Date() }).where(eq(paymentCharges.id, charge.id));
+      if (charge.financialEntryId) await tx.update(financialEntries).set({ status: "cancelled", updatedAt: new Date() }).where(and(eq(financialEntries.organizationId, organizationId), eq(financialEntries.id, charge.financialEntryId)));
+      if (typeof charge.metadata?.salePaymentId === "string") await tx.update(retailSalePayments).set({ status: "cancelled" }).where(and(eq(retailSalePayments.saleId, saleId), eq(retailSalePayments.id, charge.metadata.salePaymentId)));
+      if (charges.some(item => item.id !== charge.id && item.status !== "cancelled")) return;
       const items = await tx.select().from(retailSaleItems).where(and(eq(retailSaleItems.organizationId, organizationId), eq(retailSaleItems.saleId, saleId)));
       const quantities = new Map<string, number>();
       for (const item of items) if (item.inventoryProductId) quantities.set(item.inventoryProductId, (quantities.get(item.inventoryProductId) ?? 0) + item.quantity * 1000);

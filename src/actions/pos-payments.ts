@@ -32,7 +32,7 @@ export async function cancelPendingPosPayment(data: FormData) {
   catch (error) {
     refresh(saleId);
     const message = error instanceof Error ? error.message : "";
-    const safe = ["A criação do checkout está inconclusiva.", "O provedor de pagamento já processou", "O provedor de pagamento ainda não confirmou", "O Mercado Pago já processou", "O Mercado Pago ainda não confirmou", "Confira o pagamento;"];
+    const safe = ["Há pagamento processado nesta venda.", "A criação do checkout está inconclusiva.", "O provedor de pagamento já processou", "O provedor de pagamento ainda não confirmou", "O Mercado Pago já processou", "O Mercado Pago ainda não confirmou", "Confira o pagamento;"];
     return { error: safe.some(prefix => message.startsWith(prefix)) ? message : "Não foi possível confirmar o cancelamento no provedor de pagamento. A reserva foi mantida; consulte a situação antes de tentar novamente." };
   }
   refresh(saleId);

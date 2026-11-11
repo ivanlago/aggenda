@@ -9,9 +9,9 @@ import { ProviderRequestError } from "./provider-request-error";
 
 const appUrl = () => (process.env.NEXT_PUBLIC_APP_URL || "https://www.aggenda.app.br").replace(/\/$/, "");
 
-export async function getPosCharge(organizationId: string, saleId: string) {
+export async function getPosCharge(organizationId: string, saleId: string, chargeId?: string) {
   const [charge] = await db.select().from(paymentCharges).where(and(eq(paymentCharges.organizationId, organizationId),
-    eq(paymentCharges.originType, "retail_sale"), eq(paymentCharges.originId, saleId), eq(paymentCharges.provider, "mercado_pago"))).limit(1);
+    eq(paymentCharges.originType, "retail_sale"), eq(paymentCharges.originId, saleId), eq(paymentCharges.provider, "mercado_pago"), ...(chargeId ? [eq(paymentCharges.id, chargeId)] : []))).limit(1);
   if (!charge) throw new Error("Cobrança integrada não encontrada.");
   return charge;
 }
@@ -25,8 +25,8 @@ async function credentialForCharge(charge: Awaited<ReturnType<typeof getPosCharg
 }
 
 /** One durable creation attempt; never blindly recreate a preference after timeout. */
-export async function ensurePosCheckout(organizationId: string, saleId: string) {
-  const charge = await getPosCharge(organizationId, saleId);
+export async function ensurePosCheckout(organizationId: string, saleId: string, chargeId?: string) {
+  const charge = await getPosCharge(organizationId, saleId, chargeId);
   if (charge.invoiceUrl || charge.status !== "pending") return;
   const credential = await credentialForCharge(charge);
   const [sale] = await db.select().from(retailSales).where(and(eq(retailSales.id, saleId), eq(retailSales.organizationId, organizationId))).limit(1);
@@ -42,7 +42,7 @@ export async function ensurePosCheckout(organizationId: string, saleId: string) 
   try {
     const returnUrl = `${appUrl()}/pagamento/venda/${sale.receiptToken}`;
     const preference = await mercadoPagoRequest<{ id: string; init_point?: string; sandbox_init_point?: string }>("/checkout/preferences", credential.accessToken, {
-      method: "POST", idempotencyKey: charge.id, body: { payment_methods: { ...mercadoPagoMethodSettings(String(charge.metadata?.catalogPaymentKind ?? "link")), ...(typeof charge.metadata?.onlineCardMaximum === "number" ? { installments: charge.metadata.onlineCardMaximum } : {}) }, items: [{ id: sale.id, title: `Compra #${sale.id.slice(0,8)}`, quantity: 1, currency_id: "BRL", unit_price: sale.totalInCents / 100 }],
+      method: "POST", idempotencyKey: charge.id, body: { payment_methods: { ...mercadoPagoMethodSettings(String(charge.metadata?.catalogPaymentKind ?? "link")), ...(typeof charge.metadata?.onlineCardMaximum === "number" ? { installments: charge.metadata.onlineCardMaximum } : {}) }, items: [{ id: sale.id, title: `Compra #${sale.id.slice(0,8)}`, quantity: 1, currency_id: "BRL", unit_price: charge.amountInCents / 100 }],
         ...(charge.customerEmail ? { payer: { email: charge.customerEmail } } : {}), external_reference: `charge:${charge.id}`,
         notification_url: `${appUrl()}/api/webhooks/mercado-pago?organizationId=${organizationId}`,
         back_urls: { success: returnUrl, pending: returnUrl, failure: returnUrl }, auto_return: "approved", expires: true,
@@ -82,21 +82,33 @@ async function expireCancelledPreference(chargeId: string, preferenceId: string,
 }
 
 async function findPreferences(charge: Awaited<ReturnType<typeof getPosCharge>>, accessToken: string) {
-  const data = await mercadoPagoRequest<{ elements?: { id: string }[]; total?: number }>(
-    `/checkout/preferences/search?external_reference=${encodeURIComponent(`charge:${charge.id}`)}&limit=100`, accessToken,
-  );
-  if (!Array.isArray(data.elements) || !Number.isInteger(data.total) || data.total !== data.elements.length
-      || data.elements.some(preference => typeof preference.id !== "string" || !preference.id)) {
-    throw new Error("Não foi possível conferir todos os checkouts desta venda.");
-  }
-  for (const item of data.elements) {
+  const preferences: { id: string }[] = [];
+  let offset = 0;
+  let total = 0;
+  do {
+    const data = await mercadoPagoRequest<{ elements?: { id: string }[]; total?: number; next_offset?: number }>(
+      `/checkout/preferences/search?external_reference=${encodeURIComponent(`charge:${charge.id}`)}&limit=10&offset=${offset}`, accessToken,
+    );
+    if (!Array.isArray(data.elements) || typeof data.total !== "number" || !Number.isInteger(data.total) || data.total < 0
+        || data.elements.some(preference => typeof preference.id !== "string" || !preference.id)) {
+      throw new Error("Não foi possível conferir todos os checkouts desta venda.");
+    }
+    total = data.total;
+    preferences.push(...data.elements);
+    if (preferences.length < total && (!data.elements.length || typeof data.next_offset !== "number"
+        || !Number.isInteger(data.next_offset) || data.next_offset <= offset)) {
+      throw new Error("Não foi possível conferir todos os checkouts desta venda.");
+    }
+    offset = data.next_offset ?? preferences.length;
+  } while (preferences.length < total);
+  for (const item of preferences) {
     const detail = await mercadoPagoRequest<{ id: string; external_reference: string; collector_id: number }>(
       `/checkout/preferences/${encodeURIComponent(item.id)}`, accessToken,
     );
     if (detail.id !== item.id || detail.external_reference !== `charge:${charge.id}`
         || String(detail.collector_id) !== String(charge.metadata?.collectorId)) throw new Error("Checkout divergente da venda.");
   }
-  return data.elements;
+  return preferences;
 }
 
 async function searchPayments(charge: Awaited<ReturnType<typeof getPosCharge>>, accessToken: string) {
@@ -106,8 +118,8 @@ async function searchPayments(charge: Awaited<ReturnType<typeof getPosCharge>>, 
   return data.results;
 }
 
-export async function refreshPosPayment(organizationId: string, saleId: string) {
-  const charge = await getPosCharge(organizationId, saleId);
+export async function refreshPosPayment(organizationId: string, saleId: string, chargeId?: string) {
+  const charge = await getPosCharge(organizationId, saleId, chargeId);
   const credential = await credentialForCharge(charge);
   if (charge.metadata?.preferenceExpirationPending && typeof charge.metadata.preferenceId === "string") {
     await expireCancelledPreference(charge.id, charge.metadata.preferenceId, credential.accessToken);
@@ -117,8 +129,8 @@ export async function refreshPosPayment(organizationId: string, saleId: string) 
   for (const payment of payments) await repository.apply(organizationId, charge.id, payment);
 }
 
-export async function cancelPosCheckout(organizationId: string, saleId: string, userId: string) {
-  let charge = await getPosCharge(organizationId, saleId);
+export async function cancelPosCheckout(organizationId: string, saleId: string, userId: string, chargeId?: string) {
+  let charge = await getPosCharge(organizationId, saleId, chargeId);
   const credential = await credentialForCharge(charge);
   if (charge.status === "cancelled") {
     if (charge.metadata?.preferenceExpirationPending && typeof charge.metadata.preferenceId === "string") {
@@ -132,7 +144,7 @@ export async function cancelPosCheckout(organizationId: string, saleId: string, 
     if (current.status !== "pending") return;
     await tx.update(paymentCharges).set({ metadata: { ...current.metadata, cancellationRequestedAt: new Date().toISOString() }, updatedAt: new Date() }).where(eq(paymentCharges.id, charge.id));
   });
-  charge = await getPosCharge(organizationId, saleId);
+  charge = await getPosCharge(organizationId, saleId, chargeId);
   if (charge.status === "cancelled") return;
   if (charge.status !== "pending") throw new Error("Confira o pagamento; este checkout não está pendente.");
   const preferenceId = typeof charge.metadata?.preferenceId === "string" ? charge.metadata.preferenceId : null;
@@ -157,5 +169,5 @@ export async function cancelPosCheckout(organizationId: string, saleId: string, 
   };
   await cancelAttempts();
   await cancelAttempts();
-  await repository.cancelUnpaid(organizationId, saleId, userId);
+  await repository.cancelUnpaid(organizationId, saleId, userId, "mercado_pago", charge.id);
 }

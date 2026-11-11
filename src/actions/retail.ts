@@ -311,16 +311,17 @@ export async function registerRetailSale(data: FormData) {
   const receiptPhoneDigits = receiptPhone?.replace(/\D/g, "") || null;
   if (receiptPhoneDigits && receiptPhoneDigits.length < 10) throw new Error("Informe um WhatsApp válido para o recibo.");
   let payments: SalePaymentInput[];
-  try { payments = online ? [] : JSON.parse(text(data, "payments")); } catch { throw new Error("Formas de pagamento inválidas."); }
+  try { payments = online && !text(data, "payments") ? [] : JSON.parse(text(data, "payments")); } catch { throw new Error("Formas de pagamento inválidas."); }
   if (!Array.isArray(payments) || (!online && !payments.length) || payments.length > 5) throw new Error("Informe ao menos uma forma de pagamento.");
   const catalog = await organizationPaymentCatalog(organization.id);
-  const onlineSelection = online ? choosePayment(catalog.methods, catalog.accounts, text(data, "onlinePaymentMethodId"), undefined, selectedProvider) : null;
+  const onlineSelection = online && !payments.length ? choosePayment(catalog.methods, catalog.accounts, text(data, "onlinePaymentMethodId"), undefined, selectedProvider) : null;
+  const hasOnlineCard = ["credit_card", "link"].includes(onlineSelection?.method ?? "") || payments.some(payment => catalog.methods.some(method => method.id === payment.method && ["credit_card", "link"].includes(method.kind)));
   const mercadoPagoRules = organization.onlineInstallmentPolicy && selectedProvider === "mercado_pago"
-    && ["credit_card", "link"].includes(onlineSelection?.method ?? "")
+    && hasOnlineCard
     ? onlineInstallmentRules(organization.onlineInstallmentPolicy) : null;
   const requestedCardMaximum = mercadoPagoRules && text(data, "onlineCardMaximum")
     ? z.coerce.number().int().min(1).max(24).parse(text(data, "onlineCardMaximum")) : undefined;
-  const hasPagBankCard = selectedProvider === "pagbank" && ["credit_card", "link"].includes(onlineSelection?.method ?? "");
+  const hasPagBankCard = selectedProvider === "pagbank" && hasOnlineCard;
   const overridesPagBank = hasPagBankCard && data.get("overridePagBankTerms") === "on";
   if (hasPagBankCard && pagBankInstallments) {
     pagBankInstallments = pagBankSaleRules(pagBankInstallments, data, hasOrganizationPermission(organization.role, "integrations.manage"));
@@ -328,9 +329,10 @@ export async function registerRetailSale(data: FormData) {
   if (onlineSelection) hostedPaymentTypes(selectedProvider, onlineSelection.method);
   let normalizedPayments = payments.map(payment => {
     if (!payment || typeof payment !== "object") throw new Error("Forma de pagamento inválida.");
-    const selected = choosePayment(catalog.methods, catalog.accounts, String(payment.method ?? ""));
+    const selected = choosePayment(catalog.methods, catalog.accounts, String(payment.method ?? ""), undefined, online ? selectedProvider : "manual");
     const amountInCents = Number(payment.amountInCents);
     if (!Number.isSafeInteger(amountInCents) || amountInCents < 0 || amountInCents > 2147483647) throw new Error("Valor de pagamento inválido.");
+    if (online) hostedPaymentTypes(selectedProvider, selected.method);
     return { ...selected, amountInCents, otherPaymentMethod: selected.paymentMethodName };
   });
   const paymentMethod = online ? selectedProvider : normalizedPayments.length > 1 ? "mixed" : normalizedPayments[0].method;
@@ -339,7 +341,7 @@ export async function registerRetailSale(data: FormData) {
   const received = !online;
   const commissionBeneficiary = text(data, "commissionBeneficiary") ? parseBeneficiary(text(data, "commissionBeneficiary")) : null;
   const today = organizationDate(new Date(), organization.timezone);
-  const inputHash = online ? checkoutInputHash({ provider:selectedProvider, onlineSelection, items: [...grouped].sort(([a],[b]) => a.localeCompare(b)), clientId, quoteId, commissionBeneficiary, ...(cashClosingId ? { cashClosingId } : {}),
+  const inputHash = online ? checkoutInputHash({ provider:selectedProvider, onlineSelection, payments: normalizedPayments, items: [...grouped].sort(([a],[b]) => a.localeCompare(b)), clientId, quoteId, commissionBeneficiary, ...(cashClosingId ? { cashClosingId } : {}),
     ...(requestedCardMaximum === undefined ? {} : { requestedCardMaximum }),
     ...(overridesPagBank ? { pagBankOverride: [data.get("pagBankMaximum"), data.get("pagBankInterestFree"), data.get("pagBankBuyerInterest")] } : {}),
     receiptEmail, receiptPhoneDigits, notes: text(data, "notes") }) : null;
@@ -436,15 +438,16 @@ export async function registerRetailSale(data: FormData) {
     const subtotalInCents = lines.reduce((sum, item) => sum + item.quantity * item.price, 0);
     const discountInCents = lines.reduce((sum, item) => sum + item.discount, 0);
     const totalInCents = subtotalInCents - discountInCents;
-    const allowedCardMaximum = mercadoPagoRules ? onlineInstallmentTerms(mercadoPagoRules, totalInCents, "mercado_pago").maximum : undefined;
+    const cardPaymentAmount = Math.min(totalInCents, ...normalizedPayments.filter(payment => ["credit_card", "link"].includes(payment.method)).map(payment => payment.amountInCents));
+    const allowedCardMaximum = mercadoPagoRules ? onlineInstallmentTerms(mercadoPagoRules, cardPaymentAmount, "mercado_pago").maximum : undefined;
     if (requestedCardMaximum !== undefined && allowedCardMaximum !== undefined && requestedCardMaximum > allowedCardMaximum) {
       throw new Error(`As condições desta venda permitem até ${allowedCardMaximum} parcela(s). Confira o valor e selecione novamente.`);
     }
     const onlineCardMaximum = requestedCardMaximum ?? allowedCardMaximum;
-    const pagBankTerms = hasPagBankCard && pagBankInstallments ? onlineInstallmentTerms(pagBankInstallments, totalInCents, "pagbank") : null;
+    const pagBankTerms = hasPagBankCard && pagBankInstallments ? onlineInstallmentTerms(pagBankInstallments, cardPaymentAmount, "pagbank") : null;
     if (online) {
       if (totalInCents <= 0) throw new Error("Use recebimento manual para uma venda com total zero.");
-      normalizedPayments = [{ ...onlineSelection!, amountInCents: totalInCents, otherPaymentMethod: onlineSelection!.paymentMethodName }];
+      if (!normalizedPayments.length) normalizedPayments = [{ ...onlineSelection!, amountInCents: totalInCents, otherPaymentMethod: onlineSelection!.paymentMethodName }];
     }
     if (normalizedPayments.some((payment) => payment.amountInCents === 0) && (totalInCents !== 0 || normalizedPayments.length !== 1)) throw new Error("Pagamento zero só é permitido quando o total da venda é zero.");
     if (normalizedPayments.reduce((sum, payment) => sum + payment.amountInCents, 0) !== totalInCents) throw new Error("A soma dos pagamentos deve ser igual ao total da venda.");
@@ -491,7 +494,22 @@ export async function registerRetailSale(data: FormData) {
       unitPriceInCents: item.price, totalInCents: item.total,
       discountInCents: item.discount, unitCostInCents: item.cost, commissionInCents: item.commission,
     })));
-    await tx.insert(retailSalePayments).values(normalizedPayments.map((payment) => ({ organizationId: organization.id, saleId: sale.id, ...payment, status: received ? "received" : "pending" })));
+    const savedPayments = await tx.insert(retailSalePayments).values(normalizedPayments.map((payment) => ({ organizationId: organization.id, saleId: sale.id, ...payment, status: received ? "received" : "pending" }))).returning();
+    const paymentEntries = new Map<string, string>();
+    if (online && savedPayments.length > 1) {
+      for (const [index, payment] of savedPayments.entries()) {
+        const fields = { accountId: payment.accountId, paymentMethodId: payment.paymentMethodId, paymentMethodName: payment.paymentMethodName,
+          amountInCents: payment.amountInCents, paymentMethod: payment.method, description: `Venda #${sale.id.slice(0,8)} · ${payment.paymentMethodName}` };
+        if (index === 0) {
+          await tx.update(financialEntries).set(fields).where(eq(financialEntries.id, financialEntry.id));
+          paymentEntries.set(payment.id, financialEntry.id);
+        } else {
+          const [entry] = await tx.insert(financialEntries).values({ ...fields, organizationId: organization.id, clientId, type: "receivable", status: "pending",
+            source: "retail_sale", category: "Vendas no PDV", cashManagedBySale: true, dueDate: today, createdByUserId: session.user.id }).returning({ id: financialEntries.id });
+          paymentEntries.set(payment.id, entry.id);
+        }
+      }
+    }
     for (const item of productLines.sort((a, b) => a.inventoryProductId.localeCompare(b.inventoryProductId))) {
       await allocateLots(tx, { organizationId: organization.id, productId: item.inventoryProductId, referenceType: "sale", referenceId: sale.id, clientId, userId: session.user.id, quantityMillis: item.quantity * 1000, pool: "sale" });
       const newBalance = item.balance - item.quantity * 1000;
@@ -523,10 +541,10 @@ export async function registerRetailSale(data: FormData) {
       if (clientId) await tx.insert(clientHistoryEntries).values({ organizationId: organization.id, clientId, authorUserId: session.user.id, appointmentId: sourceQuote.attendanceId, retailQuoteId: sourceQuote.id, entryType: "quote_conversion", title: "Orçamento convertido em venda", content: `Orçamento #${sourceQuote.id.slice(0, 8)} convertido na venda #${sale.id.slice(0, 8)}.` });
     }
     if (online) {
-      await tx.insert(paymentCharges).values({ organizationId: organization.id, provider: selectedProvider, originType: "retail_sale", originId: sale.id,
-        financialEntryId: financialEntry.id, clientId, paymentMethod: "link", amountInCents: totalInCents,
+      await tx.insert(paymentCharges).values(savedPayments.map(payment => ({ organizationId: organization.id, provider: selectedProvider, originType: "retail_sale", originId: sale.id,
+        financialEntryId: paymentEntries.get(payment.id) ?? financialEntry.id, clientId, paymentMethod: "link", amountInCents: payment.amountInCents,
         description: `Venda no PDV #${sale.id.slice(0,8)}`, customerName: "Cliente do PDV", customerEmail: receiptEmail,
-        dueDate: today, createdByUserId: session.user.id, metadata: { collectorId, credentialFingerprint, environment: paymentEnvironment, checkoutState: "new", ...(onlineCardMaximum === undefined ? {} : { onlineCardMaximum }), catalogPaymentMethodId: onlineSelection?.paymentMethodId, catalogPaymentKind: onlineSelection?.method, destinationAccountId: onlineSelection?.accountId, ...(pagBankTerms ? { maxCardInstallments: pagBankTerms.maximum, interestFreeCardInstallments: pagBankTerms.interestFree } : {}) } });
+        dueDate: today, createdByUserId: session.user.id, metadata: { collectorId, credentialFingerprint, environment: paymentEnvironment, checkoutState: "new", salePaymentId: payment.id, catalogPaymentMethodName: payment.paymentMethodName, ...(onlineCardMaximum === undefined ? {} : { onlineCardMaximum }), catalogPaymentMethodId: payment.paymentMethodId, catalogPaymentKind: payment.method, destinationAccountId: payment.accountId, ...(pagBankTerms ? { maxCardInstallments: pagBankTerms.maximum, interestFreeCardInstallments: pagBankTerms.interestFree } : {}) } })));
     }
     return sale;
   });

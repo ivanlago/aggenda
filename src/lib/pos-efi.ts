@@ -42,7 +42,7 @@ export async function ensureEfiPosCheckout(charge:Charge) {
   if(!sale || sale.status!=="pending_payment") return;
   const claimed=await db.transaction(async tx=>{
     const [current]=await tx.select().from(paymentCharges).where(eq(paymentCharges.id,charge.id)).for("update");
-    if(current.metadata?.checkoutState!=="new") return false;
+    if(current.status!=="pending" || current.metadata?.checkoutState!=="new" || current.metadata?.cancellationRequestedAt) return false;
     await tx.update(paymentCharges).set({providerPaymentId:txid,paymentMethod:"pix",metadata:{...current.metadata,checkoutState:"creating",checkoutId:txid,expiresAt:new Date(Date.now()+86400000).toISOString()},updatedAt:new Date()}).where(eq(paymentCharges.id,charge.id));
     return true;
   });
@@ -74,5 +74,5 @@ export async function cancelEfiPosCheckout(charge:Charge,user:string) {
   if(cob.status==="ATIVA") await efiRequest(path,c,{method:"PATCH",body:{status:"REMOVIDA_PELO_USUARIO_RECEBEDOR"}});
   cob=await efiRequest<EfiPosCob>(path,c);await check();
   if(!["REMOVIDA_PELO_USUARIO_RECEBEDOR","REMOVIDA_PELO_PSP"].includes(cob.status)) throw new Error("O provedor ainda não confirmou o cancelamento. A reserva foi mantida.");
-  await repository.cancelUnpaid(charge.organizationId,charge.originId,user,"efi");
+  await repository.cancelUnpaid(charge.organizationId,charge.originId,user,"efi",charge.id);
 }

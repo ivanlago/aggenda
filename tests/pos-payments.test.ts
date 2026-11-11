@@ -250,11 +250,14 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
       const networkGlobals = globalThis as unknown as { __posRequest: (path:string,token:string,input:{body:Record<string,unknown>})=>Promise<unknown> };
       networkGlobals.__posRequest = async (path, _token, input) => {
         if (path.startsWith("/checkout/preferences/search?")) {
-          const reference = new URL("https://example.com" + path).searchParams.get("external_reference");
+          const params = new URL("https://example.com" + path).searchParams;
+          assert.equal(params.get("limit"), "10");
+          const reference = params.get("external_reference");
           recoveryReference = reference ?? "";
-          return { elements: recovered ? [{ id: "recovered-preference" }] : [], total: recovered ? 1 : 0 };
+          const offset = Number(params.get("offset"));
+          return { elements: recovered ? [{ id: offset === 0 ? "recovered-preference" : "second-preference" }] : [], total: recovered ? 2 : 0, next_offset: offset + 1 };
         }
-        if (path.startsWith("/checkout/preferences/") && !input?.body) return { id: "recovered-preference", external_reference: recoveryReference, collector_id: 99 };
+        if (path.startsWith("/checkout/preferences/") && !input?.body) return { id: path.split("/").at(-1), external_reference: recoveryReference, collector_id: 99 };
         if (path.startsWith("/checkout/preferences/")) { expirations++; return {}; }
         if (path.startsWith("/v1/payments/search?")) return { results: [], paging: { total: 0 } };
         assert.equal(path,"/checkout/preferences"); calls++;
@@ -291,7 +294,7 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
       assert.equal((await pg.query<{metadata:{checkoutState:string}}>("SELECT metadata FROM payment_charges WHERE id=$1",[uncertain.charge.id])).rows[0].metadata.checkoutState,"uncertain");
       await loaded.exports.cancelPosCheckout(org,uncertain.saleId,"cashier");
       await loaded.exports.cancelPosCheckout(org,uncertain.saleId,"cashier");
-      assert.equal(expirations, 1);
+      assert.equal(expirations, 2);
       assert.equal((await pg.query<{status:string}>("SELECT status FROM retail_sales WHERE id=$1",[uncertain.saleId])).rows[0].status, "cancelled");
       assert.equal((await pg.query("SELECT id FROM inventory_movements WHERE retail_sale_id=$1 AND type='sale_reservation_release'",[uncertain.saleId])).rows.length, 1);
       recovered = false;
@@ -316,7 +319,7 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
       await loaded.exports.cancelPosCheckout(org, interrupted.saleId, "cashier");
       completeCreation({ id: "late-preference", init_point: "https://www.mercadopago.com.br/checkout/late" });
       await creation;
-      assert.equal(expirations, 2, "A preference returned after cancellation is immediately expired");
+      assert.equal(expirations, 3, "A preference returned after cancellation is immediately expired");
       const interruptedCharge = (await pg.query<{status:string;invoice_url:string|null;metadata:{checkoutState:string}}>("SELECT status,invoice_url,metadata FROM payment_charges WHERE id=$1",[interrupted.charge.id])).rows[0];
       assert.equal(interruptedCharge.status, "cancelled");
       assert.equal(interruptedCharge.invoice_url, null);
@@ -386,6 +389,77 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
       assert.equal((await pg.query("SELECT id FROM payment_charges WHERE origin_id=$1",[sale.id])).rows.length,0);
       globals.__posContext={organization:{id:org,name:"Clínica teste",role:"viewer",timezone:"America/Bahia"},session:{user:{id:"cashier"}}};
       await assert.rejects(register(form),/permissão/);
+    });
+    await t.test("cobrança online dividida: valor por forma, links independentes, confirmação total e cancelamento seguro", async () => {
+      globals.__posContext = { organization: { id:org,name:"Clínica teste",role:"owner",timezone:"America/Bahia" }, session:{user:{id:"cashier"}} };
+      const bodies: Record<string, { items: { unit_price:number }[]; payment_methods: { excluded_payment_types?: { id:string }[] } }> = {};
+      Object.assign(globalThis, { __posRequest: async (path:string, _token:string, input?: { body?: { external_reference?:string } }) => {
+        if (path === "/checkout/preferences") {
+          const reference = input!.body!.external_reference!;
+          bodies[reference] = input!.body as unknown as typeof bodies[string];
+          return { id:reference, init_point:"https://www.mercadopago.com.br/checkout/test" };
+        }
+        if (path.startsWith("/v1/payments/search?")) return { results:[], paging:{total:0} };
+        if (path.startsWith("/checkout/preferences/")) return {};
+        throw new Error(`Unexpected request ${path}`);
+      }});
+      const built = await build({entryPoints:["src/lib/pos-checkout.ts"],bundle:true,write:false,format:"cjs",platform:"node",packages:"external",plugins:[{name:"split-mocks",setup(builder){
+        const mocks:Record<string,string>={"@/db":"export const db=globalThis.__posDb;","./mercado-pago":"export const mercadoPagoRequest=(...args)=>globalThis.__posRequest(...args); export async function getMercadoPagoCredential(){return {accessToken:'test-only',environment:'production'}}"};
+        builder.onResolve({filter:/.*/},args=>mocks[args.path]?{path:args.path,namespace:"split-mocks"}:undefined);
+        builder.onLoad({filter:/.*/,namespace:"split-mocks"},args=>({contents:mocks[args.path],loader:"js"}));
+      }}]});
+      const adapter={exports:{} as {ensurePosCheckout:(org:string,id:string)=>Promise<void>;cancelPosCheckout:(org:string,id:string,user:string)=>Promise<void>}};
+      new Function("require","module","exports",built.outputFiles[0].text)(createRequire(import.meta.url),adapter,adapter.exports);
+      async function split(withPackage=false) {
+        const form=new FormData();
+        form.set("checkoutProvider","mercado_pago"); form.set("checkoutKey",randomUUID()); form.set("clientId",client);
+        form.set("items",JSON.stringify([{variantId:variant,quantity:1,discountInCents:0},...(withPackage?[{variantId:`package:${pack}`,quantity:1,discountInCents:0}]:[])]));
+        form.set("payments",JSON.stringify([{method:catalogIds.pix,amountInCents:200},{method:catalogIds.credit_card,amountInCents:withPackage?2300:300}]));
+        const result=await register(form);
+        const id=result.openUrl!.split("/").at(-1)!;
+        const charges=(await pg.query<{id:string;amount_in_cents:number;metadata:{catalogPaymentKind:string;salePaymentId:string}}>("SELECT id,amount_in_cents,metadata FROM payment_charges WHERE origin_id=$1 ORDER BY amount_in_cents",[id])).rows;
+        return {id,form,charges};
+      }
+      const sale=await split(true);
+      assert.deepEqual(sale.charges.map(charge=>charge.amount_in_cents),[200,2300]);
+      await Promise.all([register(sale.form),register(sale.form)]);
+      await Promise.all([adapter.exports.ensurePosCheckout(org,sale.id),adapter.exports.ensurePosCheckout(org,sale.id)]);
+      for(const charge of sale.charges) assert.equal(bodies[`charge:${charge.id}`].items[0].unit_price,charge.amount_in_cents/100);
+      assert.equal(Object.keys(bodies).length,2);
+      assert.ok(bodies[`charge:${sale.charges[0].id}`].payment_methods.excluded_payment_types?.some(item=>item.id==="credit_card"));
+      const first=paymentFor(sale.charges[0]);
+      await repository.apply(org,sale.charges[0].id,first);
+      await repository.apply(org,sale.charges[0].id,first);
+      assert.equal((await pg.query<{status:string}>("SELECT status FROM retail_sales WHERE id=$1",[sale.id])).rows[0].status,"pending_payment");
+      assert.equal((await pg.query<{status:string}>("SELECT status FROM client_packages WHERE retail_sale_id=$1",[sale.id])).rows[0].status,"pending_payment");
+      assert.deepEqual((await pg.query("SELECT amount_in_cents,status FROM retail_sale_payments WHERE sale_id=$1 ORDER BY amount_in_cents",[sale.id])).rows,[{amount_in_cents:200,status:"received"},{amount_in_cents:2300,status:"pending"}]);
+      assert.deepEqual((await pg.query("SELECT status,amount_in_cents FROM financial_entries WHERE id IN (SELECT financial_entry_id FROM payment_charges WHERE origin_id=$1) ORDER BY amount_in_cents",[sale.id])).rows,[{status:"received",amount_in_cents:200},{status:"pending",amount_in_cents:2300}]);
+      await assert.rejects(adapter.exports.cancelPosCheckout(org,sale.id,"cashier"),/pagamento processado/);
+      const second=paymentFor(sale.charges[1],{payment_type_id:"credit_card",payment_method_id:"visa",installments:2});
+      await repository.apply(org,sale.charges[1].id,second);
+      assert.equal((await pg.query<{status:string}>("SELECT status FROM retail_sales WHERE id=$1",[sale.id])).rows[0].status,"completed");
+      assert.equal((await pg.query<{status:string}>("SELECT status FROM client_packages WHERE retail_sale_id=$1",[sale.id])).rows[0].status,"active");
+      assert.deepEqual((await pg.query("SELECT status,sum(amount_in_cents)::int AS amount_in_cents FROM financial_entries WHERE id IN (SELECT financial_entry_id FROM payment_charges WHERE origin_id=$1) GROUP BY status",[sale.id])).rows,[{status:"received",amount_in_cents:2500}]);
+      assert.equal((await pg.query<{total:number}>("SELECT sum(amount_in_cents)::int AS total FROM cash_movements WHERE source_id IN (SELECT id FROM retail_sale_payments WHERE sale_id=$1)",[sale.id])).rows[0].total,2500);
+      await repository.apply(org,sale.charges[0].id,{...first,status:"refunded",transaction_amount_refunded:2,date_last_updated:new Date(Date.now()+1000).toISOString()});
+      assert.equal((await pg.query<{status:string}>("SELECT status FROM retail_sales WHERE id=$1",[sale.id])).rows[0].status,"payment_review");
+      assert.equal((await pg.query<{total:number}>("SELECT sum(amount_in_cents)::int AS total FROM cash_movements WHERE source_id IN (SELECT id FROM retail_sale_payments WHERE sale_id=$1)",[sale.id])).rows[0].total,2300);
+      const unpaid=await split();
+      await adapter.exports.ensurePosCheckout(org,unpaid.id);
+      const before=(await pg.query<{balance:number}>("SELECT current_quantity_millis AS balance FROM inventory_products WHERE id=$1",[stock])).rows[0].balance;
+      await adapter.exports.cancelPosCheckout(org,unpaid.id,"cashier");
+      await adapter.exports.cancelPosCheckout(org,unpaid.id,"cashier");
+      assert.deepEqual((await pg.query("SELECT status FROM payment_charges WHERE origin_id=$1",[unpaid.id])).rows,[{status:"cancelled"},{status:"cancelled"}]);
+      assert.equal((await pg.query<{balance:number}>("SELECT current_quantity_millis AS balance FROM inventory_products WHERE id=$1",[stock])).rows[0].balance,before+1000);
+      await repository.apply(org,unpaid.charges[0].id,paymentFor(unpaid.charges[0]));
+      assert.equal((await pg.query<{status:string}>("SELECT status FROM retail_sales WHERE id=$1",[unpaid.id])).rows[0].status,"payment_review");
+      const invalid=new FormData();
+      for (const [key,value] of unpaid.form.entries()) invalid.set(key,value);
+      invalid.set("checkoutKey",randomUUID());
+      invalid.set("payments",JSON.stringify([{method:catalogIds.pix,amountInCents:200},{method:catalogIds.credit_card,amountInCents:299}]));
+      await assert.rejects(register(invalid),/soma dos pagamentos/);
+      invalid.set("payments",JSON.stringify([{method:catalogIds.cash,amountInCents:500}]));
+      await assert.rejects(register(invalid),/compatível/);
     });
   } finally { await pg.close(); }
 });

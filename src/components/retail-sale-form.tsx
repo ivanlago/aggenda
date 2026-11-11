@@ -38,7 +38,6 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
   const [selectedProvider, setSelectedProvider] = useState("");
   const onlineProvider = paymentProviders.find(provider => provider.id === selectedProvider) ?? paymentProviders.find(provider => provider.id === defaultPaymentProvider) ?? paymentProviders[0];
   const checkoutProvider = withOnlinePayment ? onlineProvider?.id ?? "manual" : "manual";
-  const [onlineMethodId, setOnlineMethodId] = useState("");
   const onlineMethods = manualMethods.filter(method => hostedPaymentKindSupported(method.kind, checkoutProvider));
   const onlinePayment = checkoutProvider !== "manual";
   const checkoutKeyRef = useRef<string | null>(null);
@@ -63,13 +62,14 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
   const subtotal = cart.reduce((sum, item) => sum + (variantsById.get(item.variantId)?.priceInCents ?? 0) * item.quantity, 0);
   const discountInCents = discountedCart.reduce((sum, item) => sum + item.discountInCents, 0);
   const total = Math.max(0, subtotal - discountInCents);
-  const mercadoPagoRules = checkoutProvider === "mercado_pago" && onlineMethods.some(method => method.id === onlineMethodId && ["credit_card", "link"].includes(method.kind))
-    ? onlineInstallmentPolicy : undefined;
-  const mercadoPagoMaximum = mercadoPagoRules ? onlineInstallmentTerms(mercadoPagoRules, total, "mercado_pago").maximum : 1;
   const paymentsPayload = payments.map(payment => ({
     method: payment.method,
     amountInCents: Math.max(0, Math.round((Number(payment.amount.replace(",", ".")) || 0) * 100)),
   }));
+  const cardPaymentAmount = Math.min(total, ...paymentsPayload.filter(payment => onlineMethods.some(method => method.id === payment.method && ["credit_card", "link"].includes(method.kind))).map(payment => payment.amountInCents));
+  const mercadoPagoRules = checkoutProvider === "mercado_pago" && onlineMethods.some(method => payments.some(payment => payment.method === method.id) && ["credit_card", "link"].includes(method.kind))
+    ? onlineInstallmentPolicy : undefined;
+  const mercadoPagoMaximum = mercadoPagoRules ? onlineInstallmentTerms(mercadoPagoRules, cardPaymentAmount, "mercado_pago").maximum : 1;
   const [withCommission, setWithCommission] = useState(false);
   const [commissionBeneficiary, setCommissionBeneficiary] = useState(defaultCommissionBeneficiary);
   const selectedCommission = withCommission && commissionChoices.some(option => option.value === commissionBeneficiary) ? commissionBeneficiary : "";
@@ -156,14 +156,20 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
             <input type="hidden" name="commissionBeneficiary" value={selectedCommission} />
             <input type="hidden" name="cashClosingId" value={cashSession?.id ?? ""} />
             <p className="text-lg font-extrabold">Total a pagar: {currency(total)}</p>
-            <label className="grid gap-2 text-sm font-bold">Recebimento<select className="field" value={onlinePayment ? "online" : "manual"} onChange={event => setWithOnlinePayment(event.target.value === "online")}><option value="manual">Registrar recebimento manual</option><option value="online" disabled={!onlineProvider}>Emitir cobrança online</option></select></label>
-            {onlinePayment && <label className="grid gap-2 text-sm font-bold">Provedor<select className="field" value={checkoutProvider} onChange={event => { setSelectedProvider(event.target.value); setOnlineMethodId(""); }}>{paymentProviders.map(provider => <option key={provider.id} value={provider.id}>{provider.name}{provider.environment === "sandbox" ? " (testes)" : ""}</option>)}</select></label>}
+            <label className="grid gap-2 text-sm font-bold">Recebimento<select className="field" value={onlinePayment ? "online" : "manual"} onChange={event => setWithOnlinePayment(event.target.value === "online")}><option value="manual">Registrar recebimento por maquineta</option><option value="online" disabled={!onlineProvider}>Emitir cobrança online</option></select></label>
+            {onlinePayment && <label className="grid gap-2 text-sm font-bold">Provedor<select className="field" value={checkoutProvider} onChange={event => { setSelectedProvider(event.target.value); setPayments(current => current.map(payment => ({ ...payment, method: "" }))); }}>{paymentProviders.map(provider => <option key={provider.id} value={provider.id}>{provider.name}{provider.environment === "sandbox" ? " (testes)" : ""}</option>)}</select></label>}
             {!attendanceId && !onlineProvider && <p className="text-sm text-muted">Para emitir cobranças online, conecte um provedor em <Link className="font-bold text-brand underline" href="/configuracoes?aba=payments">Provedores de pagamento</Link>.</p>}
             {onlinePayment && !onlineMethods.length && <p className="text-sm text-muted">Cadastre uma forma compatível com uma conta de destino ativa em <Link className="font-bold text-brand underline" href="/financeiro/formas-de-pagamento">Formas de pagamento</Link>.</p>}
-            {onlinePayment && <p className="rounded-xl bg-blue-50 p-3 text-sm text-blue-900">O cliente escolhe os meios disponíveis no provedor selecionado. A venda ficará aguardando confirmação; não registre o recebimento manualmente. O recibo será liberado após o pagamento.</p>}
-            {onlinePayment && <div className="grid gap-3">
-              <label className="grid gap-2 text-sm font-bold">Forma de pagamento *<select className="field" name="onlinePaymentMethodId" required value={onlineMethodId} onChange={event => setOnlineMethodId(event.target.value)}><option value="">Selecione</option>{onlineMethods.map(method => <option key={method.id} value={method.id}>{method.name}</option>)}</select></label>
-            </div>}
+            {onlinePayment && <p className="rounded-xl bg-blue-50 p-3 text-sm text-blue-900">Informe o valor de cada forma de pagamento. Cada parte terá sua própria cobrança online no provedor selecionado. A venda e o recibo serão liberados após a confirmação de todas as partes.</p>}
+            <fieldset className="grid min-w-0 gap-3"><legend className="mb-1 text-sm font-bold">Pagamentos</legend>
+              {payments.map((payment, index) => <div className="grid min-w-0 gap-2 rounded-xl border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]" key={payment.id}>
+                <label className="grid gap-1 text-sm font-bold">Forma de pagamento *<select className="field" required value={payment.method} onChange={event => setPayments(current => current.map(item => item.id === payment.id ? { ...item, method: event.target.value } : item))}><option value="">Selecione</option>{(onlinePayment ? onlineMethods : manualMethods).map(method => <option key={method.id} value={method.id}>{method.name}</option>)}</select></label>
+                <label className="grid gap-1 text-sm font-bold">Valor (R$) *<input className="field" required inputMode="decimal" value={payment.amount} onChange={event => setPayments(current => current.map(item => item.id === payment.id ? { ...item, amount: event.target.value } : item))} aria-label={`Valor do pagamento ${index + 1}`} /></label>
+                <button className="icon-button self-end text-red-700" type="button" disabled={payments.length === 1} onClick={() => setPayments(current => current.filter(item => item.id !== payment.id))} aria-label={`Remover pagamento ${index + 1}`}><Trash2 className="size-4" /></button>
+              </div>)}
+              {!manualMethods.length && <p className="text-sm text-amber-800">Cadastre uma forma manual com uma conta de pagamento ativa em Formas de Pagamento.</p>}
+              <div className="flex flex-wrap gap-2"><button className="secondary-button" type="button" disabled={payments.length >= 5} onClick={() => setPayments(current => [...current, { id: Date.now(), method: "", amount: "" }])}>Adicionar pagamento</button><button className="secondary-button" type="button" onClick={() => { const remaining = Math.max(0, total - paidTotal + (paymentsPayload.at(-1)?.amountInCents ?? 0)); setPayments(current => current.map((item, index) => index === current.length - 1 ? { ...item, amount: (remaining / 100).toFixed(2).replace(".", ",") } : item)); }}>Preencher restante</button></div><p className={`text-xs font-bold ${paidTotal === total ? "text-emerald-700" : "text-amber-700"}`}>Informado {currency(paidTotal)} de {currency(total)}</p>
+            </fieldset>
             {mercadoPagoRules && <fieldset className="grid min-w-0 gap-2 rounded-xl border p-3">
                 <legend className="px-1 text-sm font-bold">Parcelamento no cartão</legend>
                 <label className="grid gap-1 text-sm font-bold">Limite oferecido nesta venda
@@ -173,25 +179,16 @@ export function RetailSaleForm({ variants: productVariants, commissionChoices = 
                   </select>
                 </label>
                 <p className="text-sm text-muted">Parcela mínima de {currency(mercadoPagoRules.minimumInCents)} pela regra da empresa.
-                  {mercadoPagoMaximum === 1 && total > 0 && total < 2 * mercadoPagoRules.minimumInCents && ` Em 2×, cada parcela seria de aproximadamente ${currency(Math.floor(total / 2))}.`}
+                  {mercadoPagoMaximum === 1 && cardPaymentAmount > 0 && cardPaymentAmount < 2 * mercadoPagoRules.minimumInCents && ` Em 2×, cada parcela seria de aproximadamente ${currency(Math.floor(cardPaymentAmount / 2))}.`}
                   {mercadoPagoRules.interestFree > 1 && ` A regra da empresa prevê até ${mercadoPagoRules.interestFree}× sem juros.`}
                 </p>
                 <p className="text-sm text-muted">O comprador escolhe a quantidade de parcelas no checkout. O Mercado Pago apresenta os valores e as condições sem juros disponíveis na conta.</p>
               </fieldset>}
-            {checkoutProvider === "asaas" && onlineMethods.some(method => method.id === onlineMethodId && ["credit_card", "link"].includes(method.kind)) && <><p className="text-sm text-muted">Neste PDV, o Asaas recebe cartão à vista. Para parcelar, use a emissão de cobrança avulsa.</p><AsaasCardFees scope="pos" /></>}
-            {checkoutProvider === "pagbank" && onlineMethods.some(method => method.id === onlineMethodId && ["credit_card", "link"].includes(method.kind)) && <PagBankInstallmentFields defaults={onlineInstallmentPolicy ?? onlineInstallmentRules()} amount={total} canOverride={canOverridePagBank} scope="pos" />}
-            {!onlinePayment && <fieldset className="grid min-w-0 gap-3"><legend className="mb-1 text-sm font-bold">Pagamentos</legend>
-              {payments.map((payment, index) => <div className="grid min-w-0 gap-2 rounded-xl border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]" key={payment.id}>
-                <label className="grid gap-1 text-sm font-bold">Forma de pagamento *<select className="field" required value={payment.method} onChange={event => setPayments(current => current.map(item => item.id === payment.id ? { ...item, method: event.target.value } : item))}><option value="">Selecione</option>{manualMethods.map(method => <option key={method.id} value={method.id}>{method.name}</option>)}</select></label>
-                <label className="grid gap-1 text-sm font-bold">Valor (R$) *<input className="field" required inputMode="decimal" value={payment.amount} onChange={event => setPayments(current => current.map(item => item.id === payment.id ? { ...item, amount: event.target.value } : item))} aria-label={`Valor do pagamento ${index + 1}`} /></label>
-                <button className="icon-button self-end text-red-700" type="button" disabled={payments.length === 1} onClick={() => setPayments(current => current.filter(item => item.id !== payment.id))} aria-label={`Remover pagamento ${index + 1}`}><Trash2 className="size-4" /></button>
-              </div>)}
-              {!manualMethods.length && <p className="text-sm text-amber-800">Cadastre uma forma manual com uma conta de pagamento ativa em Formas de Pagamento.</p>}
-              <div className="flex flex-wrap gap-2"><button className="secondary-button" type="button" onClick={() => setPayments(current => [...current, { id: Date.now(), method: "", amount: "" }])}>Adicionar pagamento</button><button className="secondary-button" type="button" onClick={() => { const remaining = Math.max(0, total - paidTotal + (paymentsPayload.at(-1)?.amountInCents ?? 0)); setPayments(current => current.map((item, index) => index === current.length - 1 ? { ...item, amount: (remaining / 100).toFixed(2).replace(".", ",") } : item)); }}>Preencher restante</button></div><p className={`text-xs font-bold ${paidTotal === total ? "text-emerald-700" : "text-amber-700"}`}>Informado {currency(paidTotal)} de {currency(total)}</p>
-            </fieldset>}
+            {checkoutProvider === "asaas" && onlineMethods.some(method => payments.some(payment => payment.method === method.id) && ["credit_card", "link"].includes(method.kind)) && <><p className="text-sm text-muted">Neste PDV, o Asaas recebe cartão à vista. Para parcelar, use a emissão de cobrança avulsa.</p><AsaasCardFees scope="pos" /></>}
+            {checkoutProvider === "pagbank" && onlineMethods.some(method => payments.some(payment => payment.method === method.id) && ["credit_card", "link"].includes(method.kind)) && <PagBankInstallmentFields defaults={onlineInstallmentPolicy ?? onlineInstallmentRules()} amount={cardPaymentAmount} canOverride={canOverridePagBank} scope="pos" />}
             {!onlinePayment && <div className="grid gap-2 rounded-2xl border p-3"><div className="flex flex-wrap items-center gap-4"><p className="text-sm font-extrabold">Enviar recibo</p><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" name="sendReceiptWhatsapp" checked={sendReceiptWhatsapp} onChange={(event) => setSendReceiptWhatsapp(event.target.checked)} /> WhatsApp</label><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" name="sendReceiptEmail" checked={sendReceiptEmail} onChange={(event) => setSendReceiptEmail(event.target.checked)} /> E-mail</label></div>{sendReceiptWhatsapp ? <PhoneInput name="receiptPhone" value={receiptPhone} onValueChange={setReceiptPhone} placeholder="WhatsApp: (71) 99999-9999" /> : null}{sendReceiptEmail ? <input className="field" name="receiptEmail" type="email" value={receiptEmail} onChange={(event) => setReceiptEmail(event.target.value)} placeholder="E-mail do comprador" /> : null}<p className="text-xs text-muted">O recibo para impressora térmica será aberto ao concluir.</p></div>}
             {cashError && <p className="text-sm text-amber-800" role="status">{cashError}</p>}
-            <button className="primary-button justify-center" disabled={Boolean(cashError) || !cart.length || (onlinePayment ? !onlineMethods.some(method => method.id === onlineMethodId) : paidTotal !== total) || Boolean(discountError) || (requiresClient && !clientId) || (withCommission && !selectedCommission)}>{onlinePayment ? `Gerar cobrança ${onlineProvider?.name ?? "integrada"}` : "Confirmar pagamento"}</button>
+            <button className="primary-button justify-center" disabled={Boolean(cashError) || !cart.length || (paidTotal !== total || (onlinePayment && paymentsPayload.some(payment => payment.amountInCents <= 0)) || payments.some(payment => !(onlinePayment ? onlineMethods : manualMethods).some(method => method.id === payment.method))) || Boolean(discountError) || (requiresClient && !clientId) || (withCommission && !selectedCommission)}>{onlinePayment ? `Gerar cobrança${payments.length > 1 ? "s" : ""} ${onlineProvider?.name ?? "integrada"}` : "Confirmar pagamento"}</button>
           </ActionForm>
         </ModalShell>
       </section>

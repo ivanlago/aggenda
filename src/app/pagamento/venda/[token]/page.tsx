@@ -13,15 +13,19 @@ export const metadata = { title: "Pagamento", robots: { index: false, follow: fa
 export default async function PublicSalePayment({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   if (!/^[a-f0-9-]{36}$/i.test(token)) notFound();
-  const [row] = await db.select({ company: organizations.name, status: retailSales.status, total: retailSales.totalInCents,
+  const rows = await db.select({ id: paymentCharges.id, amount: paymentCharges.amountInCents, chargeStatus: paymentCharges.status, company: organizations.name, status: retailSales.status, total: retailSales.totalInCents,
     pix: paymentCharges.pixQrCodePayload, provider: paymentCharges.provider, url: paymentCharges.invoiceUrl, environment: paymentCharges.metadata }).from(retailSales)
     .innerJoin(organizations, eq(organizations.id, retailSales.organizationId)).innerJoin(paymentCharges, and(eq(paymentCharges.organizationId, retailSales.organizationId), eq(paymentCharges.originId, sql`${retailSales.id}::text`), eq(paymentCharges.originType, "retail_sale"), inArray(paymentCharges.provider, ["mercado_pago", "asaas", "pagbank", "efi"])))
-    .where(eq(retailSales.receiptToken, token)).limit(1);
+    .where(eq(retailSales.receiptToken, token)).orderBy(paymentCharges.createdAt, paymentCharges.id);
+  const row = rows[0];
   if (!row) notFound();
   return <main className="mx-auto grid min-h-screen max-w-xl content-center gap-5 px-5 py-10"><section className="panel form-stack"><h1 className="text-2xl font-extrabold">{row.company}</h1><h2 className="text-lg font-bold">Pagamento da compra</h2><p className="text-3xl font-extrabold text-brand">{(row.total/100).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</p><p role="status">{retailSaleStatusLabels[row.status] ?? "Em conferência"}</p>
     {row.status === "completed" && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950" role="status"><p className="text-lg font-extrabold">Pagamento confirmado</p><p className="mt-1 text-sm">Sua compra foi concluída. O recibo está disponível abaixo.</p></div>}<PaymentStatusRefresh pending={row.status === "pending_payment"} />{row.environment?.environment === "sandbox" && <p className="font-bold text-amber-800">Ambiente de testes. Sem recebimento real.</p>}
-    {row.status === "pending_payment" && row.url && checkoutUrlIsSafe(row.url, row.provider) && <a className="primary-button" href={row.url} rel="noreferrer">Pagar com {posProviderNames[row.provider]}</a>}
-    {row.status === "pending_payment" && row.provider === "efi" && row.pix && <div className="grid gap-3"><p className="text-sm">Copie o código Pix e pague pelo aplicativo do seu banco.</p><CopyButton value={row.pix} label="Copiar código Pix" /></div>}
+    {row.status === "pending_payment" && rows.map(part => <div key={part.id} className="grid gap-3 rounded-xl border p-4">
+      <p className="font-bold">{String(part.environment?.catalogPaymentMethodName ?? "Pagamento")} · {(part.amount/100).toLocaleString("pt-BR", {style:"currency",currency:"BRL"})} · {part.chargeStatus === "paid" ? "Confirmado" : part.chargeStatus === "cancelled" ? "Cancelado" : "Aguardando pagamento"}</p>
+      {part.chargeStatus === "pending" && part.url && checkoutUrlIsSafe(part.url, part.provider) && <a className="primary-button" href={part.url} rel="noreferrer">Pagar com {posProviderNames[part.provider]}</a>}
+      {part.chargeStatus === "pending" && part.provider === "efi" && part.pix && <CopyButton value={part.pix} label="Copiar código Pix" />}
+    </div>)}
     {row.status === "completed" ? <Link className="primary-button" href={`/recibo/${token}`}>Baixar recibo não fiscal</Link> : <p className="text-sm text-muted">O recebimento é confirmado diretamente pelo provedor de pagamento. Em caso de dúvida, entre em contato com o estabelecimento.</p>}
   </section></main>;
 }

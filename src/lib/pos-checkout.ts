@@ -13,8 +13,11 @@ import { getEfiCredential } from "./efi";
 import { efiPosSecret, ensureEfiPosCheckout, refreshEfiPosPayment, cancelEfiPosCheckout } from "./pos-efi";
 
 const appUrl = () => (process.env.NEXT_PUBLIC_APP_URL || "https://www.aggenda.app.br").replace(/\/$/, "");
+export async function getPosCharges(organizationId:string, saleId:string) {
+  return db.select().from(paymentCharges).where(and(eq(paymentCharges.organizationId,organizationId),eq(paymentCharges.originId,saleId),eq(paymentCharges.originType,"retail_sale"))).orderBy(paymentCharges.createdAt, paymentCharges.id);
+}
 export async function getPosCharge(organizationId:string, saleId:string) {
-  const [charge]=await db.select().from(paymentCharges).where(and(eq(paymentCharges.organizationId,organizationId),eq(paymentCharges.originId,saleId),eq(paymentCharges.originType,"retail_sale"))).limit(1);
+  const [charge] = await getPosCharges(organizationId, saleId);
   if(!charge) throw new Error("Cobrança integrada não encontrada.");
   return charge;
 }
@@ -34,8 +37,11 @@ async function request<T>(charge:typeof paymentCharges.$inferSelect,path:string,
   throw new Error("Provedor indisponível.");
 }
 export async function ensurePosCheckout(org:string,saleId:string) {
-  const charge=await getPosCharge(org,saleId);
-  if(charge.provider==="mercado_pago") return mp.ensurePosCheckout(org,saleId);
+  for (const charge of await getPosCharges(org,saleId)) await ensureChargeCheckout(charge);
+}
+async function ensureChargeCheckout(charge:typeof paymentCharges.$inferSelect) {
+  const org = charge.organizationId, saleId = charge.originId;
+  if(charge.provider==="mercado_pago") return mp.ensurePosCheckout(org,saleId,charge.id);
   if(charge.provider==="efi") return ensureEfiPosCheckout(charge);
   if(charge.invoiceUrl || charge.status!=="pending") return;
   await posOtherContext(org,charge.provider);
@@ -45,7 +51,7 @@ export async function ensurePosCheckout(org:string,saleId:string) {
   const expiresAt=new Date(Date.now()+86400000).toISOString();
   const claimed=await db.transaction(async tx=>{
     const [current]=await tx.select().from(paymentCharges).where(eq(paymentCharges.id,charge.id)).for("update");
-    if(current.metadata?.checkoutState!=="new") return false;
+    if(current.status!=="pending" || current.metadata?.checkoutState!=="new" || current.metadata?.cancellationRequestedAt) return false;
     await tx.update(paymentCharges).set({metadata:{...current.metadata,checkoutState:"creating",expiresAt},updatedAt:new Date()}).where(eq(paymentCharges.id,charge.id));
     return true;
   });
@@ -54,13 +60,13 @@ export async function ensurePosCheckout(org:string,saleId:string) {
     const returnUrl=`${appUrl()}/pagamento/venda/${sale.receiptToken}`;
     let checkoutId:string, url:string|undefined;
     if(charge.provider==="asaas") {
-      const result=await request<{id:string}>(charge,"/checkouts","POST",{billingTypes:types,chargeTypes:["DETACHED"],minutesToExpire:1440,externalReference:`charge:${charge.id}`,callback:{successUrl:returnUrl,cancelUrl:returnUrl,expiredUrl:returnUrl},items:[{name:`Compra #${sale.id.slice(0,8)}`,quantity:1,value:sale.totalInCents/100}]});
+      const result=await request<{id:string}>(charge,"/checkouts","POST",{billingTypes:types,chargeTypes:["DETACHED"],minutesToExpire:1440,externalReference:`charge:${charge.id}`,callback:{successUrl:returnUrl,cancelUrl:returnUrl,expiredUrl:returnUrl},items:[{name:`Compra #${sale.id.slice(0,8)}`,quantity:1,value:charge.amountInCents/100}]});
       checkoutId=result.id;
       url=`https://${charge.metadata?.environment==="production"?"asaas.com":"sandbox.asaas.com"}/checkoutSession/show?id=${encodeURIComponent(checkoutId)}`;
     } else {
       const webhook=`${appUrl()}/api/webhooks/pagbank?organizationId=${org}`;
       const policy = pagBankInstallmentPolicy(charge.metadata?.maxCardInstallments, charge.metadata?.interestFreeCardInstallments);
-      const result=await request<{id:string;links?:{rel:string;href:string}[]}>(charge,"/checkouts","POST",{reference_id:`charge:${charge.id}`,expiration_date:expiresAt,customer_modifiable:true,items:[{reference_id:sale.id,name:`Compra #${sale.id.slice(0,8)}`,quantity:1,unit_amount:sale.totalInCents}],payment_methods:types.map(type=>({type})),payment_methods_configs:types.includes("CREDIT_CARD") ? pagBankCardConfig(policy?.maximum ?? 1, policy?.interestFree) : undefined,redirect_url:returnUrl,return_url:returnUrl,notification_urls:[webhook],payment_notification_urls:[webhook]});
+      const result=await request<{id:string;links?:{rel:string;href:string}[]}>(charge,"/checkouts","POST",{reference_id:`charge:${charge.id}`,expiration_date:expiresAt,customer_modifiable:true,items:[{reference_id:sale.id,name:`Compra #${sale.id.slice(0,8)}`,quantity:1,unit_amount:charge.amountInCents}],payment_methods:types.map(type=>({type})),payment_methods_configs:types.includes("CREDIT_CARD") ? pagBankCardConfig(policy?.maximum ?? 1, policy?.interestFree) : undefined,redirect_url:returnUrl,return_url:returnUrl,notification_urls:[webhook],payment_notification_urls:[webhook]});
       checkoutId=result.id; url=result.links?.find(link=>link.rel==="PAY")?.href;
     }
     if(!checkoutId || !url || !checkoutUrlIsSafe(url,charge.provider)) throw new Error("Checkout inválido.");
@@ -122,15 +128,27 @@ async function nativePayments(charge:typeof paymentCharges.$inferSelect) {
   return [...(resource.charges??[]),...(resource.payments??[]).flatMap(p=>p.charges??[])].filter((p,index,all)=>all.findIndex(other=>other.id===p.id)===index).map(payment=>({raw:payment,payment:normalizePagBankPos(charge,payment)}));
 }
 export async function refreshPosPayment(org:string,saleId:string) {
-  const charge=await getPosCharge(org,saleId);
-  if(charge.provider==="mercado_pago") return mp.refreshPosPayment(org,saleId);
+  const results = await Promise.allSettled((await getPosCharges(org,saleId)).map(charge => refreshChargePayment(charge)));
+  const failure = results.find(result => result.status === "rejected");
+  if (failure?.status === "rejected") throw failure.reason;
+}
+async function refreshChargePayment(charge:typeof paymentCharges.$inferSelect) {
+  const org = charge.organizationId, saleId = charge.originId;
+  if(charge.provider==="mercado_pago") return mp.refreshPosPayment(org,saleId,charge.id);
   if(charge.provider==="efi") return refreshEfiPosPayment(charge);
   const repository=new PosPaymentRepository(db);
   for(const {payment} of await nativePayments(charge)) await repository.apply(org,charge.id,payment,charge.provider);
 }
 export async function cancelPosCheckout(org:string,saleId:string,user:string) {
-  const charge=await getPosCharge(org,saleId);
-  if(charge.provider==="mercado_pago") return mp.cancelPosCheckout(org,saleId,user);
+  const charges = await getPosCharges(org,saleId);
+  if (!charges.length) throw new Error("Cobrança integrada não encontrada.");
+  if (charges.some(charge => !["pending", "cancelled"].includes(charge.status))) throw new Error("Há pagamento processado nesta venda. Confira os valores no provedor antes de cancelar.");
+  for (const charge of charges) await cancelChargeCheckout(charge,user);
+}
+async function cancelChargeCheckout(charge:typeof paymentCharges.$inferSelect,user:string) {
+  const org = charge.organizationId, saleId = charge.originId;
+  if(charge.provider==="mercado_pago") return mp.cancelPosCheckout(org,saleId,user,charge.id);
+  if(charge.status==="cancelled") return;
   if(charge.provider==="efi") return cancelEfiPosCheckout(charge,user);
   if(charge.status!=="pending") throw new Error("Confira o pagamento; este checkout não está pendente.");
   const id=charge.metadata?.checkoutId;
@@ -145,5 +163,5 @@ export async function cancelPosCheckout(org:string,saleId:string,user:string) {
       if(p.status!=="DELETED") {const result=await request<{deleted:boolean}>(charge,`/payments/${encodeURIComponent(p.id)}`,"DELETE");if(!result.deleted) throw new Error("Cancelamento não confirmado.");}
     } else if(!["DECLINED","CANCELED","CANCELLED"].includes(raw.status)) throw new Error("O provedor ainda não confirmou o cancelamento. A reserva foi mantida.");
   }
-  await repository.cancelUnpaid(org,saleId,user,charge.provider);
+  await repository.cancelUnpaid(org,saleId,user,charge.provider,charge.id);
 }

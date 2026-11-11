@@ -244,8 +244,19 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
     await t.test("criação externa concorrente ocorre uma vez e timeout não gera segunda cobrança", async () => {
       let calls = 0;
       let fail = false;
+      let recovered = true;
+      let expirations = 0;
+      let recoveryReference = "";
       const networkGlobals = globalThis as unknown as { __posRequest: (path:string,token:string,input:{body:Record<string,unknown>})=>Promise<unknown> };
       networkGlobals.__posRequest = async (path, _token, input) => {
+        if (path.startsWith("/checkout/preferences/search?")) {
+          const reference = new URL("https://example.com" + path).searchParams.get("external_reference");
+          recoveryReference = reference ?? "";
+          return { elements: recovered ? [{ id: "recovered-preference" }] : [], total: recovered ? 1 : 0 };
+        }
+        if (path.startsWith("/checkout/preferences/") && !input?.body) return { id: "recovered-preference", external_reference: recoveryReference, collector_id: 99 };
+        if (path.startsWith("/checkout/preferences/")) { expirations++; return {}; }
+        if (path.startsWith("/v1/payments/search?")) return { results: [], paging: { total: 0 } };
         assert.equal(path,"/checkout/preferences"); calls++;
         assert.ok(String(input.body.external_reference).startsWith("charge:"));
         assert.equal(input.body.expires,true);
@@ -257,7 +268,7 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
         builder.onResolve({filter:/^(?:@\/db|\.\/mercado-pago)$/},args=>({path:args.path,namespace:"network-mock"}));
         builder.onLoad({filter:/.*/,namespace:"network-mock"},args=>({contents:args.path==="@/db"?"export const db=globalThis.__posDb;":"export const mercadoPagoRequest=(...args)=>globalThis.__posRequest(...args); export async function getMercadoPagoCredential(){return {accessToken:'test-only',environment:'production'}}",loader:"js"}));
       }}]});
-      const loaded={exports:{} as {ensurePosCheckout:(org:string,sale:string)=>Promise<void>}};
+      const loaded={exports:{} as {ensurePosCheckout:(org:string,sale:string)=>Promise<void>;cancelPosCheckout:(org:string,sale:string,user:string)=>Promise<void>}};
       new Function("require","module","exports",helper.outputFiles[0].text)(createRequire(import.meta.url),loaded,loaded.exports);
       const originalContext = globals.__posContext;
       const context = originalContext as { organization: Record<string, unknown>; session: unknown };
@@ -278,7 +289,38 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
       await loaded.exports.ensurePosCheckout(org,uncertain.saleId);
       assert.equal(calls,2);
       assert.equal((await pg.query<{metadata:{checkoutState:string}}>("SELECT metadata FROM payment_charges WHERE id=$1",[uncertain.charge.id])).rows[0].metadata.checkoutState,"uncertain");
-      await repository.cancelUnpaid(org,uncertain.saleId,"cashier");
+      await loaded.exports.cancelPosCheckout(org,uncertain.saleId,"cashier");
+      await loaded.exports.cancelPosCheckout(org,uncertain.saleId,"cashier");
+      assert.equal(expirations, 1);
+      assert.equal((await pg.query<{status:string}>("SELECT status FROM retail_sales WHERE id=$1",[uncertain.saleId])).rows[0].status, "cancelled");
+      assert.equal((await pg.query("SELECT id FROM inventory_movements WHERE retail_sale_id=$1 AND type='sale_reservation_release'",[uncertain.saleId])).rows.length, 1);
+      recovered = false;
+      const absent = await create();
+      await loaded.exports.ensurePosCheckout(org, absent.saleId);
+      await loaded.exports.cancelPosCheckout(org, absent.saleId, "cashier");
+      assert.equal((await pg.query<{status:string}>("SELECT status FROM retail_sales WHERE id=$1",[absent.saleId])).rows[0].status, "cancelled");
+      const ordinaryRequest = networkGlobals.__posRequest;
+      let completeCreation!: (value: unknown) => void;
+      let markStarted!: () => void;
+      const started = new Promise<void>(resolve => { markStarted = resolve; });
+      networkGlobals.__posRequest = async (path, token, input) => {
+        if (path === "/checkout/preferences") {
+          markStarted();
+          return new Promise(resolve => { completeCreation = resolve; });
+        }
+        return ordinaryRequest(path, token, input);
+      };
+      const interrupted = await create();
+      const creation = loaded.exports.ensurePosCheckout(org, interrupted.saleId);
+      await started;
+      await loaded.exports.cancelPosCheckout(org, interrupted.saleId, "cashier");
+      completeCreation({ id: "late-preference", init_point: "https://www.mercadopago.com.br/checkout/late" });
+      await creation;
+      assert.equal(expirations, 2, "A preference returned after cancellation is immediately expired");
+      const interruptedCharge = (await pg.query<{status:string;invoice_url:string|null;metadata:{checkoutState:string}}>("SELECT status,invoice_url,metadata FROM payment_charges WHERE id=$1",[interrupted.charge.id])).rows[0];
+      assert.equal(interruptedCharge.status, "cancelled");
+      assert.equal(interruptedCharge.invoice_url, null);
+      assert.equal(interruptedCharge.metadata.checkoutState, "cancelled");
     });
     const paymentFor = (charge:{id:string;amount_in_cents:number}, overrides:Partial<MercadoPagoPayment>={}):MercadoPagoPayment=>({id:Math.floor(Math.random()*1e9),status:"approved",collector_id:99,live_mode:true,currency_id:"BRL",external_reference:`charge:${charge.id}`,transaction_amount:charge.amount_in_cents/100,date_approved:new Date().toISOString(),date_last_updated:new Date().toISOString(),payment_method_id:"pix",fee_details:[{amount:0.1}],transaction_details:{net_received_amount:charge.amount_in_cents/100-0.1},...overrides});
     await t.test("um checkout reserva estoque, mantém financeiro pendente e bloqueia pacote; retry não duplica",async()=>{

@@ -5,6 +5,7 @@ import { organizationFinancialIntegrations, paymentCharges, retailSales } from "
 import { getMercadoPagoCredential, mercadoPagoRequest } from "./mercado-pago";
 import { checkoutUrlIsSafe, verifyPosPayment, type MercadoPagoPayment } from "./pos-payments-policy";
 import { PosPaymentRepository } from "./pos-payment-repository";
+import { ProviderRequestError } from "./provider-request-error";
 
 const appUrl = () => (process.env.NEXT_PUBLIC_APP_URL || "https://www.aggenda.app.br").replace(/\/$/, "");
 
@@ -33,7 +34,7 @@ export async function ensurePosCheckout(organizationId: string, saleId: string) 
   const expiresAt = new Date(Date.now() + 24 * 3600_000).toISOString();
   const claimed = await db.transaction(async tx => {
     const [current] = await tx.select().from(paymentCharges).where(eq(paymentCharges.id, charge.id)).for("update");
-    if (current.invoiceUrl || current.metadata?.checkoutState !== "new") return false;
+    if (current.status !== "pending" || current.invoiceUrl || current.metadata?.checkoutState !== "new" || current.metadata?.cancellationRequestedAt) return false;
     await tx.update(paymentCharges).set({ metadata: { ...(current.metadata ?? {}), checkoutState: "creating", expiresAt }, updatedAt: new Date() }).where(eq(paymentCharges.id, charge.id));
     return true;
   });
@@ -47,17 +48,55 @@ export async function ensurePosCheckout(organizationId: string, saleId: string) 
         back_urls: { success: returnUrl, pending: returnUrl, failure: returnUrl }, auto_return: "approved", expires: true,
         expiration_date_from: new Date(Date.now() - 60_000).toISOString(), expiration_date_to: expiresAt } });
     const url = credential.environment === "production" ? preference.init_point : preference.sandbox_init_point;
-    if (!preference.id || !url || !checkoutUrlIsSafe(url)) throw new Error("Checkout indisponível.");
-    await db.transaction(async tx => {
+    if (!preference.id) throw new Error("Checkout indisponível.");
+    const validUrl = url && checkoutUrlIsSafe(url) ? url : null;
+    const cancelled = await db.transaction(async tx => {
       const [current] = await tx.select().from(paymentCharges).where(eq(paymentCharges.id, charge.id)).for("update");
-      await tx.update(paymentCharges).set({ invoiceUrl: url, metadata: { ...(current.metadata ?? {}), checkoutState: "ready", preferenceId: preference.id }, updatedAt: new Date() }).where(eq(paymentCharges.id, charge.id));
+      const cancelled = current.status === "cancelled" || Boolean(current.metadata?.cancellationRequestedAt);
+      await tx.update(paymentCharges).set({ invoiceUrl: cancelled ? null : validUrl, metadata: { ...(current.metadata ?? {}), checkoutState: cancelled ? "cancelled" : validUrl ? "ready" : "uncertain", preferenceId: preference.id, preferenceExpirationPending: cancelled }, updatedAt: new Date() }).where(eq(paymentCharges.id, charge.id));
+      return cancelled;
     });
-  } catch {
+    if (cancelled) await expireCancelledPreference(charge.id, preference.id, credential.accessToken);
+    else if (!validUrl) throw new Error("Checkout indisponível.");
+  } catch (error) {
     await db.transaction(async tx => {
       const [current] = await tx.select().from(paymentCharges).where(eq(paymentCharges.id, charge.id)).for("update");
-      if (!current.invoiceUrl) await tx.update(paymentCharges).set({ metadata: { ...(current.metadata ?? {}), checkoutState: "uncertain", checkoutError: "Não foi possível confirmar a criação do checkout. Não gere outra cobrança para esta venda. Consulte a situação ou contate o suporte." }, updatedAt: new Date() }).where(eq(paymentCharges.id, charge.id));
+      if (current.status === "cancelled" || current.metadata?.cancellationRequestedAt) return;
+      const rejected = error instanceof ProviderRequestError && [400, 401, 403, 404, 422].includes(error.status);
+      if (!current.invoiceUrl) await tx.update(paymentCharges).set({ metadata: { ...(current.metadata ?? {}), checkoutState: rejected ? "rejected" : "uncertain", checkoutError: rejected ? "O Mercado Pago recusou a criação. Cancele esta venda para liberar os produtos e confira a configuração do provedor." : "Não foi possível confirmar a criação do checkout. Consulte a situação ou cancele a venda." }, updatedAt: new Date() }).where(eq(paymentCharges.id, charge.id));
     });
   }
+}
+
+async function expirePreference(id: string, accessToken: string) {
+  await mercadoPagoRequest(`/checkout/preferences/${encodeURIComponent(id)}`, accessToken, { method: "PUT",
+    body: { expires: true, expiration_date_from: new Date(Date.now() - 2 * 86400_000).toISOString(), expiration_date_to: new Date(Date.now() - 60_000).toISOString() } });
+}
+
+async function expireCancelledPreference(chargeId: string, preferenceId: string, accessToken: string) {
+  await expirePreference(preferenceId, accessToken);
+  await db.transaction(async tx => {
+    const [current] = await tx.select().from(paymentCharges).where(eq(paymentCharges.id, chargeId)).for("update");
+    await tx.update(paymentCharges).set({ metadata: { ...current.metadata, preferenceExpirationPending: false }, updatedAt: new Date() }).where(eq(paymentCharges.id, chargeId));
+  });
+}
+
+async function findPreferences(charge: Awaited<ReturnType<typeof getPosCharge>>, accessToken: string) {
+  const data = await mercadoPagoRequest<{ elements?: { id: string }[]; total?: number }>(
+    `/checkout/preferences/search?external_reference=${encodeURIComponent(`charge:${charge.id}`)}&limit=100`, accessToken,
+  );
+  if (!Array.isArray(data.elements) || !Number.isInteger(data.total) || data.total !== data.elements.length
+      || data.elements.some(preference => typeof preference.id !== "string" || !preference.id)) {
+    throw new Error("Não foi possível conferir todos os checkouts desta venda.");
+  }
+  for (const item of data.elements) {
+    const detail = await mercadoPagoRequest<{ id: string; external_reference: string; collector_id: number }>(
+      `/checkout/preferences/${encodeURIComponent(item.id)}`, accessToken,
+    );
+    if (detail.id !== item.id || detail.external_reference !== `charge:${charge.id}`
+        || String(detail.collector_id) !== String(charge.metadata?.collectorId)) throw new Error("Checkout divergente da venda.");
+  }
+  return data.elements;
 }
 
 async function searchPayments(charge: Awaited<ReturnType<typeof getPosCharge>>, accessToken: string) {
@@ -68,22 +107,39 @@ async function searchPayments(charge: Awaited<ReturnType<typeof getPosCharge>>, 
 }
 
 export async function refreshPosPayment(organizationId: string, saleId: string) {
-  const charge = await getPosCharge(organizationId, saleId), credential = await credentialForCharge(charge);
+  const charge = await getPosCharge(organizationId, saleId);
+  const credential = await credentialForCharge(charge);
+  if (charge.metadata?.preferenceExpirationPending && typeof charge.metadata.preferenceId === "string") {
+    await expireCancelledPreference(charge.id, charge.metadata.preferenceId, credential.accessToken);
+  }
   const payments = await searchPayments(charge, credential.accessToken);
   const repository = new PosPaymentRepository(db);
   for (const payment of payments) await repository.apply(organizationId, charge.id, payment);
 }
 
 export async function cancelPosCheckout(organizationId: string, saleId: string, userId: string) {
-  const charge = await getPosCharge(organizationId, saleId), credential = await credentialForCharge(charge);
+  let charge = await getPosCharge(organizationId, saleId);
+  const credential = await credentialForCharge(charge);
+  if (charge.status === "cancelled") {
+    if (charge.metadata?.preferenceExpirationPending && typeof charge.metadata.preferenceId === "string") {
+      await expireCancelledPreference(charge.id, charge.metadata.preferenceId, credential.accessToken);
+    }
+    return;
+  }
+  if (charge.status !== "pending") throw new Error("Confira o pagamento; este checkout não está pendente.");
+  await db.transaction(async tx => {
+    const [current] = await tx.select().from(paymentCharges).where(eq(paymentCharges.id, charge.id)).for("update");
+    if (current.status !== "pending") return;
+    await tx.update(paymentCharges).set({ metadata: { ...current.metadata, cancellationRequestedAt: new Date().toISOString() }, updatedAt: new Date() }).where(eq(paymentCharges.id, charge.id));
+  });
+  charge = await getPosCharge(organizationId, saleId);
+  if (charge.status === "cancelled") return;
   if (charge.status !== "pending") throw new Error("Confira o pagamento; este checkout não está pendente.");
   const preferenceId = typeof charge.metadata?.preferenceId === "string" ? charge.metadata.preferenceId : null;
   if (preferenceId) {
-    await mercadoPagoRequest(`/checkout/preferences/${encodeURIComponent(preferenceId)}`, credential.accessToken, { method: "PUT",
-      body: { expires: true, expiration_date_from: new Date(Date.now() - 2 * 86400_000).toISOString(), expiration_date_to: new Date(Date.now() - 60_000).toISOString() } });
-  } else if (charge.metadata?.checkoutState !== "new") {
-    const expires = Date.parse(String(charge.metadata?.expiresAt ?? ""));
-    if (!Number.isFinite(expires) || Date.now() < expires + 5 * 60_000) throw new Error("A criação do checkout está inconclusiva. A reserva será mantida até conferir o provedor ou terminar a vigência da cobrança.");
+    await expirePreference(preferenceId, credential.accessToken);
+  } else if (!["new", "rejected"].includes(String(charge.metadata?.checkoutState))) {
+    for (const preference of await findPreferences(charge, credential.accessToken)) await expirePreference(preference.id, credential.accessToken);
   }
   const repository = new PosPaymentRepository(db);
   const cancelAttempts = async () => {

@@ -9,6 +9,7 @@ import {
   availabilityExceptions,
   services,
   servicesToProfessionals,
+  professionals,
   weeklyAvailability,
 } from "@/db/schema";
 
@@ -29,7 +30,7 @@ function timeToMinutes(value: string) {
   return hour * 60 + minute;
 }
 
-export async function getAvailableTimes(input: AvailabilityInput) {
+export async function getAvailableTimes(input: AvailabilityInput): Promise<string[] | null> {
   const [service] = await db
     .select({ duration: services.durationMinutes })
     .from(services)
@@ -43,19 +44,13 @@ export async function getAvailableTimes(input: AvailabilityInput) {
     .limit(1);
   if (!service) return null;
 
-  if (input.professionalId) {
-    const links = await db
-      .select({ id: servicesToProfessionals.professionalId })
-      .from(servicesToProfessionals)
-      .where(
-        and(
-          eq(servicesToProfessionals.organizationId, input.organizationId),
-          eq(servicesToProfessionals.serviceId, input.serviceId)
-        )
-      );
-    if (links.length && !links.some((item) => item.id === input.professionalId)) {
-      return [];
-    }
+  const eligible = await db.select({id: professionals.id}).from(servicesToProfessionals)
+    .innerJoin(professionals, and(eq(professionals.id, servicesToProfessionals.professionalId), eq(professionals.organizationId, input.organizationId), eq(professionals.isActive, true), eq(professionals.isBookable, true)))
+    .where(and(eq(servicesToProfessionals.organizationId, input.organizationId), eq(servicesToProfessionals.serviceId, input.serviceId), input.professionalId ? eq(servicesToProfessionals.professionalId, input.professionalId) : undefined));
+  if (!eligible.length) return [];
+  if (!input.professionalId) {
+    const times = await Promise.all(eligible.map(person => getAvailableTimes({...input, professionalId: person.id})));
+    return [...new Set(times.flatMap(slots => slots ?? []))].sort();
   }
 
   const dayStart = zonedDate(input.date, "00:00", input.timezone);

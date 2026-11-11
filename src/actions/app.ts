@@ -5,6 +5,7 @@ import { parseClinicalVisitDate, validateClinicalPhotoPair } from "@/lib/clinica
 import { serviceCatalogReference } from "@/lib/reference-snapshots";
 import { checkTeamCapacityAfterChange } from "@/lib/commercial-access";
 import { serviceDeletionError } from "@/lib/service-deletion";
+import { replaceServiceProfessionals, serviceProfessionalIds } from "@/lib/service-professionals";
 import { roomBookingError } from "@/lib/room-errors";
 
 import { and, eq, ilike, inArray, or, sql } from "drizzle-orm";
@@ -813,7 +814,9 @@ export async function createService(formData: FormData) {
 
   const categoryId = await selectedServiceCategory(formData, organization.id);
   const tussReference = await serviceCatalogReference(db, formData);
-  await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "services", persist: (image) => db.insert(services).values({
+  const professionalIds = serviceProfessionalIds(formData);
+  await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "services", persist: (image) => db.transaction(async tx => {
+    const [created] = await tx.insert(services).values({
     organizationId: organization.id,
     categoryId,
     name,
@@ -832,6 +835,8 @@ export async function createService(formData: FormData) {
     hidePublicPrice: formData.get("hidePublicPrice") === "on",
     ...serviceDepositSettings(formData),
     ...image,
+    }).returning({id: services.id});
+    await replaceServiceProfessionals(tx, organization.id, created.id, professionalIds ?? []);
   }) });
   revalidatePath("/servicos");
   revalidatePath("/produtos-servicos");
@@ -877,7 +882,11 @@ export async function updateService(formData: FormData) {
   if (!current) throw new Error("Atendimento não encontrado.");
   const categoryId = await selectedServiceCategory(formData, organization.id);
   const tussReference = await serviceCatalogReference(db, formData) ?? (current.tussCode === (optionalText(formData, "tussCode") || optionalText(formData, "manualTussCode")) ? current.tussReference : null);
-  await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "services", currentPublicId: current.imagePublicId, persist: (image) => db.update(services).set({
+  const professionalIds = serviceProfessionalIds(formData);
+  await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "services", currentPublicId: current.imagePublicId, persist: (image) => db.transaction(async tx => {
+    const [locked] = await tx.select({id: services.id}).from(services).where(and(eq(services.id, id), eq(services.organizationId, organization.id))).for("update");
+    if (!locked) throw new Error("Serviço não encontrado nesta empresa.");
+    await tx.update(services).set({
     categoryId, name, description: optionalText(formData, "description"), durationMinutes,
     tussCode: optionalText(formData, "tussCode") || optionalText(formData, "manualTussCode"),
     tussName: optionalText(formData, "tussName"),
@@ -892,7 +901,9 @@ export async function updateService(formData: FormData) {
     hidePublicPrice: formData.get("hidePublicPrice") === "on",
     ...serviceDepositSettings(formData),
     isActive: formData.get("isActive") === "on", ...image, updatedAt: new Date(),
-  }).where(and(eq(services.id, id), eq(services.organizationId, organization.id))) });
+    }).where(and(eq(services.id, id), eq(services.organizationId, organization.id)));
+    if (professionalIds !== null) await replaceServiceProfessionals(tx, organization.id, id, professionalIds);
+  }) });
   revalidatePath("/servicos");
   revalidatePath("/produtos-servicos");
   revalidatePath("/dashboard");

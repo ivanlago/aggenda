@@ -46,9 +46,7 @@ export function AppointmentCreateForm({
         .filter((link) => link.serviceId === serviceId)
         .map((link) => link.professionalId),
     );
-    return linkedIds.size
-      ? professionals.filter((professional) => linkedIds.has(professional.id))
-      : professionals;
+    return professionals.filter((professional) => linkedIds.has(professional.id));
   }, [professionals, serviceId, serviceProfessionalLinks]);
   const eligiblePackages = useMemo(
     () => packageBalances.filter((item) => item.clientId === clientId && item.serviceId === serviceId),

@@ -33,7 +33,7 @@ export function BookingForm({
   const selectedService = services.find((item) => item.id === serviceId);
   const linkedIds = new Set(serviceProfessionalLinks.filter((link) => link.serviceId === serviceId).map((link) => link.professionalId));
   const eligibleProfessionals = serviceId
-    ? professionals.filter((item) => !linkedIds.size || linkedIds.has(item.id))
+    ? professionals.filter((item) => linkedIds.has(item.id))
     : [];
   const requiresDeposit = selectedService?.depositType && selectedService.depositType !== "none";
 

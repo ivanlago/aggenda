@@ -37,7 +37,7 @@ export function PortalBooking({ slug, services, professionals, timezone, horizon
     setDate(""); setStartsAt(""); setTimes([]); setMessage("");
   }
   const selectedService = services.find((item) => item.id === serviceId);
-  const eligible = useMemo(() => selectedService?.professionalIds.length ? professionals.filter((item) => selectedService.professionalIds.includes(item.id)) : professionals, [professionals, selectedService]);
+  const eligible = useMemo(() => professionals.filter((item) => selectedService?.professionalIds.includes(item.id)), [professionals, selectedService]);
   const repeats = [...upcoming.filter(item => item.serviceId === serviceId), ...serverRepeats].filter((item, index, all) => all.findIndex(other => other.id === item.id) === index);
   const repeatBlocked = repeats.length > 0 && selectedService?.repeatPolicy === "block";
   const minimumDate = organizationDate(new Date(), timezone);

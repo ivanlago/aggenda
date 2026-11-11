@@ -23,7 +23,7 @@ function readAmount(value: string) {
   return Number.isFinite(amount) && amount >= 0 ? Math.round(amount * 100) : null;
 }
 
-export function ServiceForm({ item, label, categories }: { item?: typeof services.$inferSelect; label: string; categories: ReferenceRecord[] }) {
+export function ServiceForm({ item, label, categories, professionals, selectedProfessionalIds = [] }: { item?: typeof services.$inferSelect; label: string; categories: ReferenceRecord[]; professionals: {id: string; name: string; isActive: boolean; isBookable: boolean}[]; selectedProfessionalIds?: string[] }) {
   const [additionalOpen, setAdditionalOpen] = useState(false);
   const additionalId = useId();
   const money = (cents: number | null | undefined) => cents == null ? "" : (cents / 100).toFixed(2).replace(".", ",");
@@ -50,6 +50,18 @@ export function ServiceForm({ item, label, categories }: { item?: typeof service
       <ReferenceSelect kind="service_category" name="categoryId" label="Categoria" records={categories} defaultValue={item?.categoryId ?? ""} emptyLabel="Sem categoria" />
       <label className="grid gap-2 text-sm font-bold">Duração em minutos *<input className="field" name="durationMinutes" type="number" min="5" step="5" required defaultValue={item?.durationMinutes} /></label>
     </div>
+    <fieldset className="col-span-full min-w-0">
+      <legend className="mb-2 text-sm font-bold">Atendentes habilitados</legend>
+      <input type="hidden" name="professionalLinksSubmitted" value="1" />
+      <div className="grid max-h-48 gap-3 overflow-y-auto rounded-xl border p-3 sm:grid-cols-2">
+        {professionals.filter(person => (person.isActive && person.isBookable) || selectedProfessionalIds.includes(person.id)).map(person => <label key={person.id} className="flex items-start gap-2 text-sm">
+          <input type="checkbox" name="professionalIds" value={person.id} defaultChecked={selectedProfessionalIds.includes(person.id)} />
+          <span>{person.name}{(!person.isActive || !person.isBookable) && <span className="block text-xs text-muted">Indisponível para novos agendamentos</span>}</span>
+        </label>)}
+        {!professionals.some(person => (person.isActive && person.isBookable) || selectedProfessionalIds.includes(person.id)) && <p className="text-sm text-muted sm:col-span-2">Nenhum atendente habilitado. Cadastre ou habilite um atendente em Equipe.</p>}
+      </div>
+      <p className="mt-2 text-xs text-muted">Selecione quem pode realizar este serviço. Sem atendentes selecionados, o serviço não terá horários para agendamento.</p>
+    </fieldset>
     <div className="col-span-full grid min-w-0 gap-4 sm:grid-cols-2">
       <label className="grid gap-2 text-sm font-bold">Custo estimado (R$)<input className="field" name="estimatedCost" inputMode="decimal" value={cost} onChange={(event) => setCost(event.target.value)} placeholder="Produtos, taxas etc." /></label>
       <label className="grid gap-2 text-sm font-bold">Preço (R$)<input className="field" name="price" inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="0,00" /></label>

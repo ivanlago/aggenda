@@ -9,7 +9,7 @@ import { ReferenceManager } from "@/components/reference-records";
 import { ModalShell } from "@/components/modal-shell";
 
 import { db } from "@/db";
-import { services, serviceCategories } from "@/db/schema";
+import { services, serviceCategories, professionals, servicesToProfessionals } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { ServiceForm } from "@/components/service-form";
@@ -20,6 +20,10 @@ export async function ServicesCatalog({ searchParams }: { searchParams: Promise<
   const { organization } = await requireOrganization();
   const canManage = hasOrganizationPermission(organization.role, "services.manage", organization.teamPermissionOverrides);
   const categories = await db.select().from(serviceCategories).where(eq(serviceCategories.organizationId, organization.id)).orderBy(serviceCategories.name);
+  const [attendants, professionalLinks] = await Promise.all([
+    db.select({id: professionals.id, name: professionals.name, isActive: professionals.isActive, isBookable: professionals.isBookable}).from(professionals).where(eq(professionals.organizationId, organization.id)).orderBy(professionals.name),
+    db.select({serviceId: servicesToProfessionals.serviceId, professionalId: servicesToProfessionals.professionalId}).from(servicesToProfessionals).where(eq(servicesToProfessionals.organizationId, organization.id)),
+  ]);
   const params = await searchParams;
   const query = typeof params.q === "string" ? params.q.trim() : "";
   const category = typeof params.category === "string" ? params.category : "";
@@ -39,7 +43,7 @@ export async function ServicesCatalog({ searchParams }: { searchParams: Promise<
     <div className="grid gap-5">
       <div className="mb-5 flex flex-wrap items-start gap-3">
         {canManage && <ModalShell title={`Novo ${organization.serviceLabel.toLowerCase()}`} variant="new" wide closeOnSuccess>
-          <ServiceForm label={organization.serviceLabel} categories={categories} />
+          <ServiceForm label={organization.serviceLabel} categories={categories} professionals={attendants} />
         </ModalShell>}
         {canManage && <ReferenceManager groups={[{ kind: "service_category", records: categories }]} />}
         <Link className="secondary-button" href="/calculadora-retorno" target="_blank" rel="noopener noreferrer"><Calculator className="mr-2 size-4" />Calculadora de retorno</Link>
@@ -78,9 +82,10 @@ export async function ServicesCatalog({ searchParams }: { searchParams: Promise<
                     {item.durationMinutes} min
                     {item.priceInCents != null ? ` · ${(item.priceInCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}
                   </p>
+                  {!professionalLinks.some(link => link.serviceId === item.id && attendants.some(person => person.id === link.professionalId && person.isActive && person.isBookable)) && <p className="mt-1 text-xs text-amber-800">Sem atendentes habilitados para agendamento</p>}
                 </div>
                 {canManage && <ModalShell title={`Editar ${organization.serviceLabel.toLowerCase()}: ${item.name}`} variant="edit" wide closeOnSuccess>
-                  <ServiceForm item={item} label={organization.serviceLabel} categories={categories} />
+                  <ServiceForm item={item} label={organization.serviceLabel} categories={categories} professionals={attendants} selectedProfessionalIds={professionalLinks.filter(link => link.serviceId === item.id).map(link => link.professionalId)} />
                 </ModalShell>}
                 {canManage && <ActionForm action={deleteService} successMessage="Serviço excluído com sucesso." className="min-w-0 max-w-sm">
                   <input type="hidden" name="id" value={item.id} />

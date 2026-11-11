@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hybridAnswerSchema, hybridTimeChoice, requestsHuman, usesHybridSecretary } from "../src/lib/whatsapp-hybrid";
+import { hybridAnswerSchema, hybridRelativeDate, hybridTimeChoice, requestsHuman, usesHybridSecretary } from "../src/lib/whatsapp-hybrid";
 
 test("pilot is opt-in for an exact organization/contact and never changes Atendimento", () => {
   const previous = process.env.AGGENDA_SECRETARY_HYBRID_CONTACTS;
@@ -34,6 +34,15 @@ test("offered-hour choices accept natural numeric phrases without absorbing new 
   assert.equal(hybridTimeChoice("quero às 11:30"), "11:30");
   for (const text of ["quero às 11 amanhã", "quero cancelar às 11", "24:00", "quero às 11:99", "quanto custa?", "às 11 com outra pessoa"])
     assert.equal(hybridTimeChoice(text), null, text);
+});
+
+test("relative dates use the company's local day, including weekdays across a month boundary", () => {
+  assert.equal(hybridRelativeDate("queria para sexta-feira pela manhã", "2026-11-11"), "2026-11-13");
+  assert.equal(hybridRelativeDate("amanhã à tarde", "2026-11-11"), "2026-11-12");
+  assert.equal(hybridRelativeDate("depois de amanhã", "2026-11-30"), "2026-12-02");
+  assert.equal(hybridRelativeDate("hoje", "2026-11-11"), "2026-11-11");
+  assert.equal(hybridRelativeDate("próxima sexta", "2026-11-13"), "2026-11-20");
+  assert.equal(hybridRelativeDate("qualquer horário", "2026-11-11"), null);
 });
 
 test("common human requests do not require an AI call; questions and negations do not transfer", () => {

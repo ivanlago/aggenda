@@ -27,6 +27,23 @@ export const hybridRequestSchema = z.object({
 });
 export type HybridRequest = z.infer<typeof hybridRequestSchema>;
 
+export function hybridRelativeDate(text: string, today: string): string | null {
+  const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const date = new Date(`${today}T12:00:00Z`);
+  let offset: number;
+  if (/\bamanha\b/.test(normalized)) offset = /\bdepois de amanha\b/.test(normalized) ? 2 : 1;
+  else if (/\bhoje\b/.test(normalized)) offset = 0;
+  else {
+    const days = ["domingo", "segunda", "terca", "quarta", "quinta", "sexta", "sabado"];
+    const target = days.findIndex(day => new RegExp(`\\b${day}\\b`).test(normalized));
+    if (target < 0) return null;
+    offset = (target - date.getUTCDay() + 7) % 7;
+    if (!offset && /\bproxim[ao]\b/.test(normalized)) offset = 7;
+  }
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
 // Interpret a simple choice locally; changes of date/service still go to the agent.
 export function hybridTimeChoice(text: string): string | null {
   const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[!.?,]+$/g, "");

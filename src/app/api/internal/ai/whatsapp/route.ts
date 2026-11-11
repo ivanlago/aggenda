@@ -17,7 +17,7 @@ import { reconcilePackageUsage } from "@/lib/package-balance";
 import { triggerOutboxWorker } from "@/lib/outbox-trigger";
 import { isAffirmativeWhatsAppCommand, isNegativeWhatsAppCommand } from "@/lib/whatsapp-command";
 import { normalizeBrazilianPhone } from "@/lib/phone";
-import { hybridAnswerSchema, hybridBookingContextSchema, hybridRequestSchema, hybridSecretaryInstructions, hybridTimeChoice, requestsHuman, usesHybridSecretary, type HybridBookingContext, type HybridRequest } from "@/lib/whatsapp-hybrid";
+import { hybridAnswerSchema, hybridBookingContextSchema, hybridRequestSchema, hybridRelativeDate, hybridSecretaryInstructions, hybridTimeChoice, requestsHuman, usesHybridSecretary, type HybridBookingContext, type HybridRequest } from "@/lib/whatsapp-hybrid";
 
 export const runtime = "nodejs";
 
@@ -42,7 +42,7 @@ type FlowState =
   | { kind: "select_confirm"; appointmentIds: string[] }
   | { kind: "select_cancel"; appointmentIds: string[] }
   | { kind: "select_reschedule"; appointmentIds: string[]; desiredDate?: string; desiredTime?: string }
-  | { kind: "reschedule_destination"; appointmentId: string; desiredDate?: string; desiredTime?: string; offeredSlots?: string[] };
+  | { kind: "reschedule_destination"; appointmentId: string; desiredDate?: string; desiredTime?: string; offeredSlots?: string[]; period?: "morning" | "afternoon" | "evening" };
 
 function authorized(request: NextRequest) { const key = process.env.AGGENDA_INTERNAL_API_KEY; return Boolean(key && request.headers.get("authorization") === `Bearer ${key}`); }
 function localTime(date: Date, timezone: string) { return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: timezone }).format(date); }
@@ -139,7 +139,7 @@ function parseFlowState(payload?: Record<string, unknown> | null): FlowState | n
     z.object({ kind: z.literal("select_confirm"), appointmentIds: z.array(z.string().uuid()).min(1) }),
     z.object({ kind: z.literal("select_cancel"), appointmentIds: z.array(z.string().uuid()).min(1) }),
     z.object({ kind: z.literal("select_reschedule"), appointmentIds: z.array(z.string().uuid()).min(1), desiredDate: z.string().optional(), desiredTime: z.string().optional() }),
-    z.object({ kind: z.literal("reschedule_destination"), appointmentId: z.string().uuid(), desiredDate: z.string().optional(), desiredTime: z.string().optional(), offeredSlots: z.array(z.string().datetime()).max(10).optional() }),
+    z.object({ kind: z.literal("reschedule_destination"), appointmentId: z.string().uuid(), desiredDate: z.string().optional(), desiredTime: z.string().optional(), offeredSlots: z.array(z.string().datetime()).max(10).optional(), period: z.enum(["morning", "afternoon", "evening"]).optional() }),
   ]).safeParse(payload?.flowState);
   return result.success ? result.data : null;
 }
@@ -217,7 +217,7 @@ function appointmentChoices(rows: UpcomingAppointment[], timezone: string) {
   return rows.map((row, index) => `${index + 1} - ${row.serviceName}, ${formatOrganizationDateTime(row.startsAt, timezone)}, com ${row.professionalName ?? "profissional a definir"}`).join("\n");
 }
 
-async function respondRescheduleDestination(input: Input, conversation: Conversation, appointment: UpcomingAppointment, organization: { timezone: string; slotIntervalMinutes: number }, desiredDate?: string, desiredTime?: string, selectedStartsAt?: string) {
+async function respondRescheduleDestination(input: Input, conversation: Conversation, appointment: UpcomingAppointment, organization: { timezone: string; slotIntervalMinutes: number }, desiredDate?: string, desiredTime?: string, selectedStartsAt?: string, period?: "morning" | "afternoon" | "evening") {
   if (!appointment.professionalId) {
     await send(input, conversation, { reply: "Esse agendamento não possui profissional definido. Digite EQUIPE para solicitar ajuda no reagendamento.", model: "aggenda-transactional-v1", intent: "reschedule_not_found", confidence: 1 });
     return NextResponse.json({ accepted: true, action: "reply" });
@@ -226,7 +226,8 @@ async function respondRescheduleDestination(input: Input, conversation: Conversa
     await send(input, conversation, { reply: `Para qual data deseja reagendar ${appointment.serviceName}, atualmente marcado para ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)}? Informe a data para consultar os horários disponíveis.`, model: "aggenda-transactional-v1", intent: "reschedule_destination", confidence: 1, flowState: { kind: "reschedule_destination", appointmentId: appointment.id, desiredTime } });
     return NextResponse.json({ accepted: true, action: "reply" });
   }
-  const slots = await getAvailableTimes({ organizationId: input.organizationId, timezone: organization.timezone, date: desiredDate, serviceId: appointment.serviceId, professionalId: appointment.professionalId, slotIntervalMinutes: organization.slotIntervalMinutes, excludeAppointmentId: appointment.id });
+  const available = await getAvailableTimes({ organizationId: input.organizationId, timezone: organization.timezone, date: desiredDate, serviceId: appointment.serviceId, professionalId: appointment.professionalId, slotIntervalMinutes: organization.slotIntervalMinutes, excludeAppointmentId: appointment.id });
+  const slots = available?.filter(slot => { if (!period) return true; const hour = Number(localTime(new Date(slot), organization.timezone).slice(0, 2)); return period === "morning" ? hour < 12 : period === "afternoon" ? hour >= 12 && hour < 18 : hour >= 18; });
   // A numbered choice is matched against fresh availability, not trusted as a reservation.
   const selected = selectedStartsAt ? slots?.find(slot => slot === selectedStartsAt) : desiredTime ? slots?.find(slot => localTime(new Date(slot), organization.timezone) === desiredTime) : undefined;
   if (selected) {
@@ -240,7 +241,7 @@ async function respondRescheduleDestination(input: Input, conversation: Conversa
   const reply = offeredSlots.length
     ? `${unavailable}Horários disponíveis para ${appointment.serviceName} com ${appointment.professionalName ?? "o profissional do seu agendamento"}, em ${dateLabel}:\n${offeredSlots.map((slot, index) => `${index + 1} - ${localTime(new Date(slot), organization.timezone)}`).join("\n")}\n${(slots?.length ?? 0) > offeredSlots.length ? "Estas são as primeiras opções. " : ""}Responda com o número ou o horário desejado, ou informe outra data. Seu agendamento atual permanece mantido até confirmar a alteração.`
     : `${unavailable}Não há horários disponíveis para ${appointment.serviceName} com ${appointment.professionalName ?? "o profissional do seu agendamento"} em ${dateLabel}. Informe outra data. Seu agendamento atual permanece mantido.`;
-  await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "reschedule_destination", confidence: 1, flowState: { kind: "reschedule_destination", appointmentId: appointment.id, desiredDate, offeredSlots } });
+  await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "reschedule_destination", confidence: 1, flowState: { kind: "reschedule_destination", appointmentId: appointment.id, desiredDate, offeredSlots, ...(period ? { period } : {}) } });
   return NextResponse.json({ accepted: true, action: "availability" });
 }
 
@@ -384,6 +385,31 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
   const storedBooking = hybridBookingContextSchema.safeParse(latest?.rawPayload?.hybridBooking);
   const storedRequest = hybridRequestSchema.safeParse(latest?.rawPayload?.hybridRequest);
   const rememberedRequest = hybrid && storedRequest.success && Date.parse(storedRequest.data.expiresAt) > Date.now() ? storedRequest.data : undefined;
+  if (hybrid && asksForUpcomingAppointments(input.text) && !asksToCancel(input.text) && !asksToReschedule(input.text)) {
+    const reply = future.length ? `Seus próximos agendamentos${future.length === 10 ? " (primeiros 10)" : ""}:\n${future.map(item => `• ${item.serviceName} com ${item.professionalName ?? "profissional a definir"}, em ${formatOrganizationDateTime(item.startsAt, organization.timezone)} (${item.status === "confirmed" ? "confirmado" : "agendado"}).`).join("\n")}` : "Você não possui agendamentos futuros ativos.";
+    await send(input, conversation, { reply, model: "aggenda-hybrid-selection-v1", intent: "list_appointments", confidence: 1, ...(flowState ? {flowState} : {}) });
+    return NextResponse.json({accepted: true, action: "reply"});
+  }
+  const rescheduling = flowState?.kind === "select_reschedule" || flowState?.kind === "reschedule_destination";
+  const rescheduleRequest = asksToReschedule(input.text) && !/\bnao (quero|preciso|vou|desejo) (mais )?(reagendar|remarcar|alterar)/.test(normalizedText(input.text));
+  const explicitlyNewBooking = asksToBook(input.text) && /\b(nov[oa]|outro (atendimento|agendamento)|outr[oa] (servico|consulta))\b/.test(normalizedText(input.text));
+  if (hybrid && (rescheduleRequest || rescheduling) && !asksToCancel(input.text) && !explicitlyNewBooking) {
+    const candidates = flowState?.kind === "select_reschedule" ? future.filter(item => flowState.appointmentIds.includes(item.id)) : flowState?.kind === "reschedule_destination" ? future.filter(item => item.id === flowState.appointmentId) : future;
+    const namedService = mentionedByName(catalog, [input.text]);
+    const matches = flowState?.kind === "reschedule_destination" ? candidates : filterMentionedAppointments(candidates, input.text, organization.timezone).filter(item => !namedService || item.serviceId === namedService.id);
+    const selected = matches.length === 1 ? matches[0] : undefined;
+    if (!selected) {
+      const choices = matches.length ? matches : candidates;
+      await send(input, conversation, {reply: choices.length ? `Qual destes agendamentos deseja reagendar? Responda com o número ou informe o serviço, a data e o horário:\n${appointmentChoices(choices, organization.timezone)}` : "Não encontrei esse agendamento entre seus horários futuros ativos.", model: "aggenda-hybrid-selection-v1", intent: "select_reschedule", confidence: 1, ...(choices.length ? {flowState: {kind: "select_reschedule" as const, appointmentIds: choices.map(item => item.id)}} : {})});
+      return NextResponse.json({accepted: true, action: "reply"});
+    }
+    const date = parseBrazilianDate(input.text) ?? hybridRelativeDate(input.text, organizationDate(new Date(), organization.timezone)) ?? (rescheduling ? flowState.desiredDate : undefined);
+    const numbered = flowState?.kind === "reschedule_destination" && /^\d+$/.test(input.text.trim()) ? flowState.offeredSlots?.[Number(input.text.trim()) - 1] : undefined;
+    const time = numbered ? undefined : hybridTimeChoice(input.text) ?? parseBrazilianTime(input.text) ?? undefined;
+    const normalized = normalizedText(input.text);
+    const period = /\bmanha\b/.test(normalized) ? "morning" : /\btarde\b/.test(normalized) ? "afternoon" : /\bnoite\b/.test(normalized) ? "evening" : flowState?.kind === "reschedule_destination" ? flowState.period : undefined;
+    return respondRescheduleDestination(input, conversation, selected, organization, date ?? undefined, time, numbered, period);
+  }
   const cancelRequest = asksToCancel(input.text) && !/\bnao (quero|preciso|vou|desejo) (mais )?(cancelar|desmarcar)/.test(normalizedText(input.text));
   const cancelService = hybrid ? mentionedByName(catalog, [input.text]) : undefined;
   const cancelChoice = flowState?.kind === "select_cancel" && !asksToReschedule(input.text) && !asksToBook(input.text) && !/\b(nao|quanto|preco|valor|custa|como|quero|gostaria|preciso|amanha|hoje)\b/.test(normalizedText(input.text)) && (/^\d+$/.test(input.text.trim()) || Boolean(cancelService) || Boolean(parseBrazilianDate(input.text)) || Boolean(parseBrazilianTime(input.text)));
@@ -618,6 +644,15 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
     return NextResponse.json({ accepted: true, action: "reply_fallback" });
   }
   const answer = result.data;
+  if (hybrid && answer.confidence >= 0.65 && answer.action !== "handoff" && (answer.goal === "reschedule" || answer.action === "prepare_reschedule")) {
+    const matches = filterMentionedAppointments(future, input.text, organization.timezone);
+    const selected = answer.appointmentId ? future.find(item => item.id === answer.appointmentId) : matches.length === 1 ? matches[0] : undefined;
+    if (!selected) {
+      await send(input, conversation, {reply: future.length ? `Qual destes agendamentos deseja reagendar?\n${appointmentChoices(future, organization.timezone)}` : "Você não possui agendamentos futuros ativos.", model: result.model, intent: "select_reschedule", confidence: answer.confidence, ai: true, ...(future.length ? {flowState: {kind: "select_reschedule" as const, appointmentIds: future.map(item => item.id)}} : {})});
+      return NextResponse.json({accepted: true, action: "reply"});
+    }
+    return respondRescheduleDestination(input, conversation, selected, organization, hybridRelativeDate(input.text, organizationDate(new Date(), organization.timezone)) ?? answer.date ?? undefined, answer.time ?? undefined, undefined, answer.period ?? undefined);
+  }
   const continuingBooking = hybrid && !asksToCancel(input.text) && !asksToReschedule(input.text) && (answer.goal === "book" || answer.action === "availability" || answer.action === "prepare_booking" || (rememberedRequest && answer.goal === "other" && answer.action === "reply"));
   if (continuingBooking) {
     const namedService = mentionedByName(catalog, [input.text]);
@@ -630,7 +665,7 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
       answer.serviceId = serviceId;
       answer.professionalId = eligible.find(person => person.id === professionalId)?.id ?? (eligible.length === 1 ? eligible[0].id : null);
       const normalized = normalizedText(input.text);
-      const relativeDate = /\bamanha\b/.test(normalized) ? addDays(organizationDate(new Date(), organization.timezone), 1) : /\bhoje\b/.test(normalized) ? organizationDate(new Date(), organization.timezone) : null;
+      const relativeDate = hybridRelativeDate(input.text, organizationDate(new Date(), organization.timezone));
       const newDateMention = /\b(amanha|hoje|segunda|terca|quarta|quinta|sexta|sabado|domingo)\b/.test(normalized);
       answer.date = relativeDate ?? parseBrazilianDate(input.text) ?? answer.date ?? (sameService && !newDateMention ? rememberedRequest?.date : null) ?? null;
       answer.period = /\bmanha\b/.test(normalized) ? "morning" : /\btarde\b/.test(normalized) ? "afternoon" : /\bnoite\b/.test(normalized) ? "evening" : answer.period ?? (sameService ? rememberedRequest?.period : null) ?? null;

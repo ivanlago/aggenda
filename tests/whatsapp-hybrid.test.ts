@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hybridAnswerSchema, requestsHuman, usesHybridSecretary } from "../src/lib/whatsapp-hybrid";
+import { hybridAnswerSchema, hybridTimeChoice, requestsHuman, usesHybridSecretary } from "../src/lib/whatsapp-hybrid";
 
 test("pilot is opt-in for an exact organization/contact and never changes Atendimento", () => {
   const previous = process.env.AGGENDA_SECRETARY_HYBRID_CONTACTS;
@@ -26,6 +26,14 @@ test("hybrid interpretation cannot silently turn omitted confidence into a human
   assert.equal(validation.success, false);
   if (!validation.success) assert.ok(validation.error.issues.some(issue => issue.path[0] === "confidence"));
   assert.equal(hybridAnswerSchema.safeParse({ ...incomplete, intent: "clarify_service", confidence: 0.85, serviceId: null, professionalId: null, appointmentId: null, date: null, time: null, cancellationReason: null, period: null }).success, true);
+});
+
+test("offered-hour choices accept natural numeric phrases without absorbing new requests", () => {
+  for (const text of ["quero as 11 horas", "Quero às 11 horas!", "11h", "11:00", "pode ser às 11", "prefiro 11h por favor"])
+    assert.equal(hybridTimeChoice(text), "11:00", text);
+  assert.equal(hybridTimeChoice("quero às 11:30"), "11:30");
+  for (const text of ["quero às 11 amanhã", "quero cancelar às 11", "24:00", "quero às 11:99", "quanto custa?", "às 11 com outra pessoa"])
+    assert.equal(hybridTimeChoice(text), null, text);
 });
 
 test("common human requests do not require an AI call; questions and negations do not transfer", () => {

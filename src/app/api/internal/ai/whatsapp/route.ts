@@ -17,7 +17,7 @@ import { reconcilePackageUsage } from "@/lib/package-balance";
 import { triggerOutboxWorker } from "@/lib/outbox-trigger";
 import { isAffirmativeWhatsAppCommand, isNegativeWhatsAppCommand } from "@/lib/whatsapp-command";
 import { normalizeBrazilianPhone } from "@/lib/phone";
-import { hybridAnswerSchema, hybridSecretaryInstructions, requestsHuman, usesHybridSecretary } from "@/lib/whatsapp-hybrid";
+import { hybridAnswerSchema, hybridBookingContextSchema, hybridSecretaryInstructions, hybridTimeChoice, requestsHuman, usesHybridSecretary, type HybridBookingContext } from "@/lib/whatsapp-hybrid";
 
 export const runtime = "nodejs";
 
@@ -163,7 +163,7 @@ async function getClient(input: Input, conversation: Conversation) {
   return id;
 }
 
-async function send(input: Input, conversation: Conversation, data: { reply: string; model: string; intent: string; confidence: number; pending?: Pending; flowState?: FlowState; handoff?: boolean; ai?: boolean; navigationState?: NavigationState; document?: { link: string; filename: string } }) {
+async function send(input: Input, conversation: Conversation, data: { reply: string; model: string; intent: string; confidence: number; pending?: Pending; flowState?: FlowState; handoff?: boolean; ai?: boolean; navigationState?: NavigationState; hybridBooking?: HybridBookingContext; document?: { link: string; filename: string } }) {
   if (data.pending?.kind === "book") {
     const [service] = await db.select({ price: services.priceInCents, deposit: services.depositType }).from(services).where(and(eq(services.id, data.pending.serviceId), eq(services.organizationId, input.organizationId))).limit(1);
     const [company] = await db.select({ address: organizations.publicAddress, slug: organizations.slug, bookingEnabled: organizations.bookingEnabled }).from(organizations).where(eq(organizations.id, input.organizationId)).limit(1);
@@ -181,7 +181,7 @@ async function send(input: Input, conversation: Conversation, data: { reply: str
     const [current] = await tx.select().from(chatConversations).where(and(eq(chatConversations.id, input.conversationId), eq(chatConversations.organizationId, input.organizationId))).limit(1).for("update");
     if (!current || current.handoffStatus !== "bot" || current.automationPaused) return;
     if (current.handoffResolvedAt && current.handoffResolvedAt.getTime() !== conversation.handoffResolvedAt?.getTime()) return;
-    const [message] = await tx.insert(chatMessages).values({ organizationId: input.organizationId, conversationId: input.conversationId, externalMessageId: `aggenda-ai:${input.messageId}`, direction: "outbound", status: "queued", messageType: data.document ? "document" : data.navigationState ? "interactive" : "text", body: data.reply, rawPayload: { source: "aggenda_ai", ...(usesHybridSecretary(input.organizationId, input.from, input.whatsappServiceCode) ? { agentMode: "secretary_hybrid_v2" } : {}), model: data.model, intent: data.intent, confidence: data.confidence, ...(data.navigationState ? { navigationState: data.navigationState } : {}), ...(data.pending ? { pendingAction: data.pending, pendingExpiresAt: new Date(now.getTime() + 15 * 60_000).toISOString() } : {}), ...(data.flowState ? { flowState: data.flowState } : {}) }, occurredAt: now })
+    const [message] = await tx.insert(chatMessages).values({ organizationId: input.organizationId, conversationId: input.conversationId, externalMessageId: `aggenda-ai:${input.messageId}`, direction: "outbound", status: "queued", messageType: data.document ? "document" : data.navigationState ? "interactive" : "text", body: data.reply, rawPayload: { source: "aggenda_ai", ...(usesHybridSecretary(input.organizationId, input.from, input.whatsappServiceCode) ? { agentMode: "secretary_hybrid_v2" } : {}), model: data.model, intent: data.intent, confidence: data.confidence, ...(data.navigationState ? { navigationState: data.navigationState } : {}), ...(data.pending ? { pendingAction: data.pending, pendingExpiresAt: new Date(now.getTime() + 15 * 60_000).toISOString() } : {}), ...(data.flowState ? { flowState: data.flowState } : {}), ...(data.hybridBooking ? { hybridBooking: data.hybridBooking } : {}) }, occurredAt: now })
       .onConflictDoNothing({ target: chatMessages.externalMessageId }).returning({ id: chatMessages.id });
     if (!message) return; inserted = true;
     await tx.insert(outboxEvents).values({ organizationId: input.organizationId, eventKey: `whatsapp:ai-reply:${input.messageId}`, eventType: "whatsapp.message.send", aggregateType: "chat_message", aggregateId: message.id, payload: { organizationId: input.organizationId, channelId: conversation.channelId, conversationId: input.conversationId, messageId: message.id, phoneNumberId: input.phoneNumberId, to: input.from, text: data.reply, ...(data.navigationState ? { options: data.navigationState.options } : {}), ...(data.document ? { document: data.document } : {}) } }).onConflictDoNothing({ target: outboxEvents.eventKey });
@@ -381,6 +381,24 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
     db.select({ id: professionals.id, name: professionals.name, serviceId: servicesToProfessionals.serviceId }).from(professionals).leftJoin(servicesToProfessionals, and(eq(servicesToProfessionals.professionalId, professionals.id), eq(servicesToProfessionals.organizationId, input.organizationId))).where(and(eq(professionals.organizationId, input.organizationId), eq(professionals.isActive, true), eq(professionals.isBookable, true))),
     upcoming(input.organizationId, clientId), db.select({ direction: chatMessages.direction, body: chatMessages.body }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), conversation.handoffResolvedAt ? gt(chatMessages.createdAt, conversation.handoffResolvedAt) : undefined)).orderBy(desc(chatMessages.occurredAt)).limit(12),
   ]);
+  const storedBooking = hybridBookingContextSchema.safeParse(latest?.rawPayload?.hybridBooking);
+  const bookingContext = hybrid && storedBooking.success && Date.parse(storedBooking.data.expiresAt) > Date.now() ? storedBooking.data : undefined;
+  const chosenTime = hybrid ? hybridTimeChoice(input.text) : null;
+  if (bookingContext && chosenTime) {
+    const service = catalog.find(row => row.id === bookingContext.serviceId);
+    const professional = professionalRows.find(row => row.id === bookingContext.professionalId && row.serviceId === service?.id);
+    if (service && professional) {
+      const slots = await getAvailableTimes({ organizationId: input.organizationId, timezone: organization.timezone, date: bookingContext.date, serviceId: service.id, professionalId: professional.id, slotIntervalMinutes: organization.slotIntervalMinutes });
+      const selected = slots?.find(slot => bookingContext.offeredSlots.includes(slot) && localTime(new Date(slot), organization.timezone) === chosenTime);
+      const remaining = bookingContext.offeredSlots.filter(slot => slots?.includes(slot));
+      await send(input, conversation, {
+        reply: selected ? `Confirma ${service.name} com ${professional.name} em ${formatOrganizationDateTime(new Date(selected), organization.timezone)}? Responda CONFIRMAR.` : remaining.length ? `Esse horário não está mais disponível. Você pode escolher: ${remaining.map(slot => localTime(new Date(slot), organization.timezone)).join(", ")}.` : "Esses horários não estão mais disponíveis. Deseja consultar outra data?",
+        model: "aggenda-hybrid-selection-v1", intent: selected ? "prepare_booking" : "availability", confidence: 1,
+        ...(selected ? { pending: { kind: "book" as const, serviceId: service.id, professionalId: professional.id, startsAt: selected } } : { hybridBooking: { ...bookingContext, offeredSlots: remaining } }),
+      });
+      return NextResponse.json({ accepted: true, action: selected ? "prepare_booking" : "availability" });
+    }
+  }
   // Menu selections and explicit confirmations keep the existing transaction path.
   // Free text in the pilot reaches the conversational interpreter before heuristics.
   const hybridNatural = hybrid && aiAllowed && !navigation && !/^\d+$/.test(input.text.trim());
@@ -592,7 +610,7 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
       answer.action = "handoff"; answer.reply = "Preciso da ajuda da equipe para responder com segurança. Sua solicitação foi encaminhada; o retorno será no horário de atendimento.";
     }
   }
-  let reply = answer.reply; let nextPending: Pending | undefined;
+  let reply = answer.reply; let nextPending: Pending | undefined; let nextHybridBooking: HybridBookingContext | undefined;
   const service = answer.serviceId ? catalog.find(x => x.id === answer.serviceId) : undefined; const professional = answer.professionalId ? professionalRows.find(x => x.id === answer.professionalId) : undefined; const appointment = answer.appointmentId ? future.find(x => x.id === answer.appointmentId) : future.length === 1 ? future[0] : undefined;
   if (hybrid && service && professional && !professionalRows.some(row => row.id === professional.id && row.serviceId === service.id) && (answer.action === "availability" || answer.action === "prepare_booking")) {
     await send(input, conversation, { reply: `${professional.name} não realiza ${service.name}. Deseja consultar outro profissional?`, model: result.model, intent: "invalid_professional", confidence: 1, ai: true });
@@ -602,7 +620,13 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
     if (!service || !professional || !answer.date) reply = !service ? `Qual serviço você deseja? ${catalog.map(x => x.name).join(", ")}` : !professional ? `Com qual profissional? ${professionalRows.map(x => x.name).join(", ")}` : "Para qual data deseja consultar?";
     else { const available = await getAvailableTimes({ organizationId: input.organizationId, timezone: organization.timezone, date: answer.date, serviceId: service.id, professionalId: professional.id, slotIntervalMinutes: organization.slotIntervalMinutes }); const slots = available?.filter(slot => { if (!hybrid || !answer.period) return true; const hour = Number(localTime(new Date(slot), organization.timezone).slice(0, 2)); return answer.period === "morning" ? hour < 12 : answer.period === "afternoon" ? hour >= 12 && hour < 18 : hour >= 18; }); const selected = answer.time ? slots?.find(x => localTime(new Date(x), organization.timezone) === answer.time) : undefined;
       if (answer.action === "prepare_booking" && selected) { nextPending = { kind: "book", serviceId: service.id, professionalId: professional.id, startsAt: selected }; reply = `Confirma ${service.name} com ${professional.name} em ${formatOrganizationDateTime(new Date(selected), organization.timezone)}? Responda CONFIRMAR.`; }
-      else reply = slots?.length ? `Horários disponíveis: ${slots.slice(0, 10).map(x => localTime(new Date(x), organization.timezone)).join(", ")}. Qual prefere?` : "Não há horários disponíveis nessa data. Deseja outro dia?";
+      else {
+        const offeredSlots = slots?.slice(0, 10) ?? [];
+        if (hybrid && offeredSlots.length) nextHybridBooking = { serviceId: service.id, professionalId: professional.id, date: answer.date, offeredSlots, expiresAt: new Date(Date.now() + 15 * 60_000).toISOString() };
+        const label = hybrid ? ` para ${service.name} com ${professional.name}, em ${new Intl.DateTimeFormat("pt-BR", { timeZone: organization.timezone }).format(new Date(offeredSlots[0] ?? `${answer.date}T12:00:00Z`))}` : "";
+        const price = hybrid && /\b(quanto|preco|valor|custa)\b/.test(normalizedText(input.text)) ? `${service.name}: ${service.priceInCents == null ? "preço sob consulta" : (service.priceInCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.\n` : "";
+        reply = price + (offeredSlots.length ? `Horários disponíveis${label}: ${offeredSlots.map(x => localTime(new Date(x), organization.timezone)).join(", ")}. Qual prefere?` : "Não há horários disponíveis nessa data. Deseja outro dia?");
+      }
     }
   } else if (answer.action === "prepare_reschedule") {
     if (!appointment) reply = future.length ? "Qual agendamento deseja alterar?" : "Não encontrei agendamentos futuros.";
@@ -613,5 +637,5 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
   } else if (answer.action === "confirm_appointment") {
     if (!appointment) reply = future.length ? "Qual agendamento deseja confirmar?" : "Não encontrei agendamentos futuros."; else { await db.transaction(async tx => { await tx.update(appointments).set({ status: "confirmed", confirmedAt: new Date(), metadata: { whatsappCommandMessageId: input.messageId, conversationId: input.conversationId }, updatedAt: new Date() }).where(eq(appointments.id, appointment.id)); await tx.insert(auditLogs).values({ organizationId: input.organizationId, action: "status:confirmed", entityType: "appointment", entityId: appointment.id, details: { previousStatus: appointment.status, status: "confirmed", source: "whatsapp", messageId: input.messageId } }); }); reply = `Agendamento de ${appointment.serviceName}, em ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)}, confirmado.`; }
   }
-  await send(input, conversation, { reply, model: result.model, intent: answer.intent, confidence: answer.confidence, pending: nextPending, handoff: answer.action === "handoff", ai: true }); return NextResponse.json({ accepted: true, action: answer.action });
+  await send(input, conversation, { reply, model: result.model, intent: answer.intent, confidence: answer.confidence, pending: nextPending, hybridBooking: nextHybridBooking, handoff: answer.action === "handoff", ai: true }); return NextResponse.json({ accepted: true, action: answer.action });
 }

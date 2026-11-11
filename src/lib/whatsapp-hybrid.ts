@@ -14,6 +14,20 @@ export const hybridAnswerSchema = z.object({
   period: z.enum(["morning", "afternoon", "evening"]).nullable(),
 });
 
+export const hybridBookingContextSchema = z.object({
+  serviceId: z.uuid(), professionalId: z.uuid(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  offeredSlots: z.array(z.string().datetime()).max(10), expiresAt: z.string().datetime(),
+});
+export type HybridBookingContext = z.infer<typeof hybridBookingContextSchema>;
+
+// Interpret a simple choice locally; changes of date/service still go to the agent.
+export function hybridTimeChoice(text: string): string | null {
+  const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[!.?,]+$/g, "");
+  const match = normalized.match(/^(?:(?:eu )?(?:quero|prefiro|pode ser|gostaria|vou querer)(?: o horario)?\s+)?(?:as?\s+)?([01]?\d|2[0-3])(?:(?::|h)([0-5]\d)?)?(?:\s*(?:horas?|h))?(?:\s+por favor)?$/);
+  return match ? `${match[1].padStart(2, "0")}:${match[2] ?? "00"}` : null;
+}
+
 // Pilot only: the commercial agent remains the default for every other contact.
 export function usesHybridSecretary(organizationId: string, phone: string, service: string) {
   if (service !== "core_ai") return false;

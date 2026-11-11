@@ -16,6 +16,7 @@ A configuração foi preparada para o contato informado pelo responsável tanto 
 - Pedidos comuns para falar com uma pessoa encaminham diretamente à equipe, sem consulta ao modelo.
 - Reservar, reagendar e cancelar continuam exigindo confirmação, validade da proposta e revalidação; a IA não grava uma reserva por conta própria.
 - Não há garantia de linguagem natural apenas por testes com respostas simuladas. A avaliação real deve conferir entendimento, preços, continuidade, latência e consumo do provedor configurado.
+- O piloto envia o contrato de resposta também em `response_format.json_schema`, com campos obrigatórios, além da validação local e de uma tentativa de reparo. O fluxo comercial mantém `json_object`. A mudança corrige respostas em JSON que omitiam campos necessários, identificadas nos logs em 11/11/2026.
 
 ## Roteiro de avaliação no contato piloto
 

@@ -37,9 +37,11 @@ export async function generateAiJson<T>(options: {
   schema: z.ZodType<T>;
   timeoutMs?: number;
   organizationId?: string;
+  structuredOutput?: boolean;
 }): Promise<AiJsonResult<T>> {
   const { apiUrl, apiKey, model } = configuration();
-  const jsonSchema = JSON.stringify(z.toJSONSchema(options.schema));
+  const schema = z.toJSONSchema(options.schema);
+  const jsonSchema = JSON.stringify(schema);
   if (jsonSchema.length + options.messages.reduce((size, message) => size + message.content.length, 0) > 120000) {
     throw new Error("Contexto acima do limite de processamento da IA. Reduza o histórico ou o catálogo enviado.");
   }
@@ -52,7 +54,7 @@ export async function generateAiJson<T>(options: {
     const response = await fetch(apiUrl, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, response_format: { type: "json_object" }, messages, max_tokens: 2048 }),
+      body: JSON.stringify({ model, response_format: options.structuredOutput ? { type: "json_schema", json_schema: { name: "aggenda_agent_answer", strict: true, schema } } : { type: "json_object" }, messages, max_tokens: 2048 }),
       signal: AbortSignal.timeout(options.timeoutMs ?? 30_000),
     });
     if (!response.ok) {
@@ -69,7 +71,10 @@ export async function generateAiJson<T>(options: {
     return { content, usage: payload.usage };
   };
 
-  const first = await request([schemaInstruction, ...options.messages]);
+  const initialMessages: AiMessage[] = options.structuredOutput
+    ? [{ role: "system", content: [schemaInstruction.content, ...options.messages.filter(message => message.role === "system").map(message => message.content)].join("\n\n") }, ...options.messages.filter(message => message.role !== "system")]
+    : [schemaInstruction, ...options.messages];
+  const first = await request(initialMessages);
   let firstJson: unknown;
   try { firstJson = JSON.parse(first.content); } catch { firstJson = null; }
   const firstValidation = options.schema.safeParse(firstJson);
@@ -78,8 +83,7 @@ export async function generateAiJson<T>(options: {
   }
 
   const repaired = await request([
-    schemaInstruction,
-    ...options.messages,
+    ...initialMessages,
     { role: "assistant", content: first.content },
     { role: "user", content: `A resposta anterior não respeitou o contrato (${firstValidation.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}). Corrija-a e devolva somente o objeto JSON válido.` },
   ]);

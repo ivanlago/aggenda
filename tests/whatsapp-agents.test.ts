@@ -14,13 +14,14 @@ test("both real agent routes share navigation; Chat only links, Core books after
   const key = `agentTest${randomUUID().replaceAll("-", "")}`;
   const previous = process.env.AGGENDA_INTERNAL_API_KEY;
   const origin = process.env.NEXT_PUBLIC_APP_URL;
+  const pilot = process.env.AGGENDA_SECRETARY_HYBRID_CONTACTS;
   const tomorrow = new Date(); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1); tomorrow.setUTCHours(13, 0, 0, 0);
-  const state = { db: drizzle(pg), slot: tomorrow.toISOString(), availableSlots: undefined as string[] | undefined, availabilityRequests: [] as { date: string; serviceId: string; professionalId: string; excludeAppointmentId?: string; timezone: string }[] };
+  const state = { db: drizzle(pg), aiCalls: [] as {messages: {content: string}[]}[], aiResult: undefined as unknown, slot: tomorrow.toISOString(), availableSlots: undefined as string[] | undefined, availabilityRequests: [] as { date: string; serviceId: string; professionalId: string; excludeAppointmentId?: string; timezone: string }[] };
   Object.assign(globalThis, { [key]: state });
   process.env.AGGENDA_INTERNAL_API_KEY = "isolated-agent-test";
   process.env.NEXT_PUBLIC_APP_URL = "https://aggenda.example";
   try {
-    const tables = { organizations: schema.organizations, services: schema.services, service_categories: schema.serviceCategories, chat_conversations: schema.chatConversations, chat_messages: schema.chatMessages, outbox_events: schema.outboxEvents, organization_usage_counters: schema.organizationUsageCounters, retail_products: schema.retailProducts, retail_product_variants: schema.retailProductVariants, inventory_products: schema.inventoryProducts, inventory_lots: schema.inventoryLots, clients: schema.clients, professionals: schema.professionals, services_to_professionals: schema.servicesToProfessionals, appointments: schema.appointments, audit_logs: schema.auditLogs };
+    const tables = { commercial_contracts: schema.commercialContracts, organizations: schema.organizations, services: schema.services, service_categories: schema.serviceCategories, chat_conversations: schema.chatConversations, chat_messages: schema.chatMessages, outbox_events: schema.outboxEvents, organization_usage_counters: schema.organizationUsageCounters, retail_products: schema.retailProducts, retail_product_variants: schema.retailProductVariants, inventory_products: schema.inventoryProducts, inventory_lots: schema.inventoryLots, clients: schema.clients, professionals: schema.professionals, services_to_professionals: schema.servicesToProfessionals, appointments: schema.appointments, audit_logs: schema.auditLogs };
     for (const [name, table] of Object.entries(tables)) {
       const columns = Object.values(getTableColumns(table)).map(column => {
         const type = column.enumValues ? "text" : column.getSQLType();
@@ -48,7 +49,7 @@ test("both real agent routes share navigation; Chat only links, Core books after
         "@/lib/google-calendar": "export async function syncAppointmentToGoogleCalendar(){}; export async function deleteAppointmentFromGoogleCalendar(){}",
         "@/lib/package-balance": "export async function reconcilePackageUsage(){}",
         "@/lib/availability": `export async function getAvailableTimes(input){const state=globalThis.${key};state.availabilityRequests.push(input);return state.availableSlots ?? [state.slot]} export async function isTimeAvailable(){return true}`,
-        "@/lib/ai/provider": "export async function generateAiJson(){throw new Error('No AI needed for menus')}" ,
+        "@/lib/ai/provider": `export async function generateAiJson(input){const state=globalThis.${key};state.aiCalls.push(input);if(!state.aiResult)throw new Error('No AI needed for menus');return state.aiResult;}`,
       };
       const bundle = await build({ entryPoints: [path], bundle: true, write: false, format: "cjs", platform: "node", packages: "external", plugins: [{ name: key, setup(builder) {
         builder.onResolve({ filter: /./ }, args => mocks[args.path] ? { path: args.path, namespace: key } : undefined);
@@ -191,7 +192,34 @@ test("both real agent routes share navigation; Chat only links, Core books after
     const identity = await call(ambiguous, "Meus próximos agendamentos", "core_ai");
     assert.match(identity.output.body, /identificar seu cadastro com segurança/);
     assert.doesNotMatch(identity.output.body, /Maria|Avaliação/);
+    const hybrid = randomUUID();
+    await pg.query("INSERT INTO chat_conversations(id,organization_id,channel_id,external_contact_id,client_id) VALUES ($1,$2,$3,'5571999999999',$4)", [hybrid, organization, randomUUID(), client]);
+    process.env.AGGENDA_SECRETARY_HYBRID_CONTACTS = `${organization}:5571999999999`;
+    const callsBefore = state.aiCalls.length;
+    await call(hybrid, "menu", "core_ai");
+    await call(hybrid, "1", "core_ai");
+    assert.equal(state.aiCalls.length, callsBefore, "menu uses no model calls");
+    const date = state.slot.slice(0, 10);
+    state.aiResult = {model: "pilot-mocked", data: {action: "prepare_booking", reply: "Vou consultar.", intent: "schedule", confidence: 0.99, serviceId: service, professionalId: professional, date, time: "10:00"}};
+    const beforeBooking = (await pg.query("SELECT id FROM appointments")).rows.length;
+    const natural = await call(hybrid, "Quero uma Avaliação com Maria amanhã às dez, quanto custa?", "core_ai");
+    assert.equal(state.aiCalls.length, callsBefore + 1);
+    assert.match(state.aiCalls.at(-1)!.messages[0].content, /menu é opcional/);
+    assert.ok(natural.output.raw_payload.pendingAction, "free text proposes a validated slot");
+    assert.equal((await pg.query("SELECT id FROM appointments")).rows.length, beforeBooking, "interpretation cannot book before confirmation");
+    await call(hybrid, "CONFIRMAR", "core_ai");
+    assert.equal((await pg.query("SELECT id FROM appointments")).rows.length, beforeBooking + 1);
+    assert.equal(state.aiCalls.length, callsBefore + 1, "confirmation remains transactional");
+    state.availableSlots = [date + "T13:00:00.000Z", date + "T18:00:00.000Z"];
+    state.aiResult = {model: "pilot-mocked", data: {action: "availability", reply: "Vou consultar.", intent: "schedule", confidence: 0.99, serviceId: service, professionalId: professional, date, time: null, period: "afternoon"}};
+    const afternoon = await call(hybrid, "E para uma avaliação à tarde?", "core_ai");
+    assert.match(afternoon.output.body, /15:00/);
+    assert.doesNotMatch(afternoon.output.body, /10:00/);
+    await call(hybrid, "Quero falar com uma pessoa", "core_ai");
+    assert.equal(state.aiCalls.length, callsBefore + 2, "handoff is deterministic");
+    assert.equal((await pg.query<{automation_paused:boolean}>("SELECT automation_paused FROM chat_conversations WHERE id=$1", [hybrid])).rows[0].automation_paused, true);
   } finally {
+    if (pilot === undefined) delete process.env.AGGENDA_SECRETARY_HYBRID_CONTACTS; else process.env.AGGENDA_SECRETARY_HYBRID_CONTACTS = pilot;
     if (previous === undefined) delete process.env.AGGENDA_INTERNAL_API_KEY; else process.env.AGGENDA_INTERNAL_API_KEY = previous;
     if (origin === undefined) delete process.env.NEXT_PUBLIC_APP_URL; else process.env.NEXT_PUBLIC_APP_URL = origin;
     Reflect.deleteProperty(globalThis, key); await pg.close();

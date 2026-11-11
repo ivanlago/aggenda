@@ -19,6 +19,7 @@ A configuração foi preparada para o contato informado pelo responsável tanto 
 - O piloto envia o contrato de resposta também em `response_format.json_schema`, com campos obrigatórios, além da validação local e de uma tentativa de reparo. O fluxo comercial mantém `json_object`. A mudança corrige respostas em JSON que omitiam campos necessários, identificadas nos logs em 11/11/2026.
 - A intenção `goal=book` solicita a consulta real na primeira resposta quando serviço, profissional e data estiverem identificados, mesmo que o modelo proponha somente responder o preço. Afirmações de disponibilidade no texto do modelo também são substituídas pela consulta validada; dados faltantes geram uma pergunta.
 - Pedidos explícitos de cancelamento apresentam imediatamente os agendamentos futuros do cliente. Número, nome do serviço ou data/horário permitem selecionar a reserva, sempre com confirmação antes de cancelar. Perguntas de preço ou mudanças de intenção não são tratadas como seleção de cancelamento.
+- O pedido parcial de agendamento fica salvo na conversa por 15 minutos, antes mesmo da oferta de horários. Serviço e atendente não precisam ser repetidos quando o cliente informa apenas a data/período. Um único atendente habilitado é apresentado automaticamente; vários exigem escolha. MENU, conclusão e encaminhamento humano interrompem esse contexto. Os vínculos ativos são conferidos novamente em cada resposta.
 
 ## Roteiro de avaliação no contato piloto
 

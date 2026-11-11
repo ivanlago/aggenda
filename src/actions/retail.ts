@@ -544,7 +544,7 @@ export async function registerRetailSale(data: FormData) {
       await tx.insert(paymentCharges).values(savedPayments.map(payment => ({ organizationId: organization.id, provider: selectedProvider, originType: "retail_sale", originId: sale.id,
         financialEntryId: paymentEntries.get(payment.id) ?? financialEntry.id, clientId, paymentMethod: "link", amountInCents: payment.amountInCents,
         description: `Venda no PDV #${sale.id.slice(0,8)}`, customerName: "Cliente do PDV", customerEmail: receiptEmail,
-        dueDate: today, createdByUserId: session.user.id, metadata: { collectorId, credentialFingerprint, environment: paymentEnvironment, checkoutState: "new", salePaymentId: payment.id, catalogPaymentMethodName: payment.paymentMethodName, ...(onlineCardMaximum === undefined ? {} : { onlineCardMaximum }), catalogPaymentMethodId: payment.paymentMethodId, catalogPaymentKind: payment.method, destinationAccountId: payment.accountId, ...(pagBankTerms ? { maxCardInstallments: pagBankTerms.maximum, interestFreeCardInstallments: pagBankTerms.interestFree } : {}) } })));
+        dueDate: today, createdByUserId: session.user.id, metadata: { collectorId, credentialFingerprint, environment: paymentEnvironment, checkoutState: "new", salePaymentId: payment.id, catalogPaymentMethodName: payment.paymentMethodName, ...(onlineCardMaximum === undefined || !["credit_card", "link"].includes(payment.method) ? {} : { onlineCardMaximum }), catalogPaymentMethodId: payment.paymentMethodId, catalogPaymentKind: payment.method, destinationAccountId: payment.accountId, ...(pagBankTerms ? { maxCardInstallments: pagBankTerms.maximum, interestFreeCardInstallments: pagBankTerms.interestFree } : {}) } })));
     }
     return sale;
   });

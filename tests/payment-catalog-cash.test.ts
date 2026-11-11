@@ -28,6 +28,7 @@ test("catalog selection requires an active organization method and an active des
   assert.deepEqual(hostedPaymentTypes("efi", "pix"), ["PIX"]);
   assert.throws(() => hostedPaymentTypes("efi", "credit_card"));
   assert.deepEqual(mercadoPagoMethodSettings("link"), {});
+  for (const kind of ["pix", "credit_card", "boleto", "debit_card"]) assert.ok(mercadoPagoMethodSettings(kind).excluded_payment_types?.every(item => !["account_money", "atm"].includes(item.id)));
   assert.ok(mercadoPagoMethodSettings("pix").excluded_payment_types?.every(item => item.id !== "bank_transfer"));
 });
 

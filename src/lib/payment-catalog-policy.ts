@@ -44,7 +44,7 @@ export function mercadoPagoMethodSettings(kind: string) {
   if (kind === "link" || !kind) return {};
   const allowed: Record<string, string> = { pix: "bank_transfer", boleto: "ticket", credit_card: "credit_card", debit_card: "debit_card" };
   if (!allowed[kind]) throw new Error("Forma incompatível com Mercado Pago.");
-  return { excluded_payment_types: ["credit_card", "debit_card", "prepaid_card", "ticket", "atm", "bank_transfer", "account_money"].filter(type => type !== allowed[kind]).map(id => ({ id })) };
+  return { excluded_payment_types: ["credit_card", "debit_card", "prepaid_card", "ticket", "bank_transfer"].filter(type => type !== allowed[kind]).map(id => ({ id })) };
 }
 
 export function pagBankInstallmentPolicy(maximum: unknown, interestFree: unknown, providerMaximum = 12) {

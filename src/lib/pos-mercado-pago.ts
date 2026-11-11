@@ -42,7 +42,7 @@ export async function ensurePosCheckout(organizationId: string, saleId: string, 
   try {
     const returnUrl = `${appUrl()}/pagamento/venda/${sale.receiptToken}`;
     const preference = await mercadoPagoRequest<{ id: string; init_point?: string; sandbox_init_point?: string }>("/checkout/preferences", credential.accessToken, {
-      method: "POST", idempotencyKey: charge.id, body: { payment_methods: { ...mercadoPagoMethodSettings(String(charge.metadata?.catalogPaymentKind ?? "link")), ...(typeof charge.metadata?.onlineCardMaximum === "number" ? { installments: charge.metadata.onlineCardMaximum } : {}) }, items: [{ id: sale.id, title: `Compra #${sale.id.slice(0,8)}`, quantity: 1, currency_id: "BRL", unit_price: charge.amountInCents / 100 }],
+      method: "POST", idempotencyKey: charge.id, body: { payment_methods: { ...mercadoPagoMethodSettings(String(charge.metadata?.catalogPaymentKind ?? "link")), ...(["credit_card", "link"].includes(String(charge.metadata?.catalogPaymentKind)) && typeof charge.metadata?.onlineCardMaximum === "number" ? { installments: charge.metadata.onlineCardMaximum } : {}) }, items: [{ id: sale.id, title: `Compra #${sale.id.slice(0,8)}`, quantity: 1, currency_id: "BRL", unit_price: charge.amountInCents / 100 }],
         ...(charge.customerEmail ? { payer: { email: charge.customerEmail } } : {}), external_reference: `charge:${charge.id}`,
         notification_url: `${appUrl()}/api/webhooks/mercado-pago?organizationId=${organizationId}`,
         back_urls: { success: returnUrl, pending: returnUrl, failure: returnUrl }, auto_return: "approved", expires: true,
@@ -63,7 +63,7 @@ export async function ensurePosCheckout(organizationId: string, saleId: string, 
       const [current] = await tx.select().from(paymentCharges).where(eq(paymentCharges.id, charge.id)).for("update");
       if (current.status === "cancelled" || current.metadata?.cancellationRequestedAt) return;
       const rejected = error instanceof ProviderRequestError && [400, 401, 403, 404, 422].includes(error.status);
-      if (!current.invoiceUrl) await tx.update(paymentCharges).set({ metadata: { ...(current.metadata ?? {}), checkoutState: rejected ? "rejected" : "uncertain", checkoutError: rejected ? "O Mercado Pago recusou a criação. Cancele esta venda para liberar os produtos e confira a configuração do provedor." : "Não foi possível confirmar a criação do checkout. Consulte a situação ou cancele a venda." }, updatedAt: new Date() }).where(eq(paymentCharges.id, charge.id));
+      if (!current.invoiceUrl) await tx.update(paymentCharges).set({ metadata: { ...(current.metadata ?? {}), checkoutState: rejected ? "rejected" : "uncertain", ...(error instanceof ProviderRequestError ? { providerHttpStatus: error.status, providerErrorCode: error.code ?? null } : {}), checkoutError: rejected ? "O Mercado Pago recusou a criação. Cancele esta venda para liberar os produtos e confira a configuração do provedor." : "Não foi possível confirmar a criação do checkout. Consulte a situação ou cancele a venda." }, updatedAt: new Date() }).where(eq(paymentCharges.id, charge.id));
     });
   }
 }

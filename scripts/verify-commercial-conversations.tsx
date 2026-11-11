@@ -11,7 +11,7 @@ async function main() {
  const rows=await db.select().from(chatConversations).where(eq(chatConversations.organizationId,org.id));
  const messages=await db.select({conversationId:chatMessages.conversationId,occurredAt:chatMessages.occurredAt}).from(chatMessages).where(eq(chatMessages.organizationId,org.id));
  const day=(date:Date)=>new Intl.DateTimeFormat('sv-SE',{timeZone:org.timezone,year:'numeric',month:'2-digit',day:'2-digit'}).format(date);
- const props={organizationId:org.id,timezone:org.timezone,canManage:false,canCreateLead:false};
+ const props={organizationId:org.id,timezone:org.timezone,currentUserId:'',canManage:false,canCreateLead:false};
  async function cards(filters:Record<string,string>,organizationId=org.id) {
    const node=await CommercialConversationsPanel({...props,organizationId,filters});
    return {node,items:node.props.children[1] as Array<{key:string}>};

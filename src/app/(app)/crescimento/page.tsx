@@ -28,7 +28,7 @@ export const maxDuration = 60;
 export const metadata = { title: "CRM" };
 
 export default async function GrowthPage({ searchParams }: { searchParams: Promise<ConversationFilters & { returnState?: string; returnSearch?: string; tab?: string }> }) {
-  const { organization } = await requireOrganization();
+  const { session, organization } = await requireOrganization();
   const query = await searchParams;
   const initialTab = query.tab === "voucher" || query.tab === "recuperacao" || query.tab === "conversas" || query.tab === "funil" || query.tab === "relatorios" ? query.tab : "retornos";
   const now = new Date(); const monthStart = new Date(now.getFullYear(), now.getMonth(), 1); const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -60,7 +60,7 @@ export default async function GrowthPage({ searchParams }: { searchParams: Promi
     </section>
       ),
       voucher: hasOrganizationPermission(organization.role, "crm.read") ? <VouchersPanel organization={organization} referenceTime={now.getTime()} /> : null,
-      conversas: hasOrganizationPermission(organization.role, "crm.read") ? <CommercialConversationsPanel organizationId={organization.id} timezone={organization.timezone} canManage={hasOrganizationPermission(organization.role, "chat.inbox")} canCreateLead={hasOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides)} filters={query} /> : null,
+      conversas: hasOrganizationPermission(organization.role, "crm.read") ? <CommercialConversationsPanel currentUserId={session.user.id} organizationId={organization.id} timezone={organization.timezone} canManage={hasOrganizationPermission(organization.role, "chat.inbox")} canCreateLead={hasOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides)} filters={query} /> : null,
       funil: hasOrganizationPermission(organization.role, "crm.read") ? <CrmPipelinePanel organizationId={organization.id} timezone={organization.timezone} /> : null,
       relatorios: hasOrganizationPermission(organization.role, "crm.read") ? <CrmReportsPanel organizationId={organization.id} /> : null,
     }} />

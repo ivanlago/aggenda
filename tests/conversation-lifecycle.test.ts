@@ -104,6 +104,24 @@ test("migration and actual CRM actions preserve history and count only unresolve
     assert.equal((await pg.query<{ body: string }>("SELECT body FROM chat_messages WHERE external_message_id='interactive-selection'")).rows[0].body, "Produtos");
     assert.equal((await pg.query<{ payload: { text: string } }>("SELECT payload FROM outbox_events WHERE event_key='whatsapp:inbound:interactive-selection'")).rows[0].payload.text, "nav:products");
 
+    const replyActions=await load("src/actions/conversation-reply.ts");
+    const reply=replyActions.replyToConversation as (data:FormData)=>Promise<unknown>;
+    const response=new FormData();response.set("conversationId",ai);response.set("requestId",randomUUID());response.set("body","Olá! Sou da equipe, como posso ajudar?");
+    await assert.rejects(reply(response),/Assuma/);
+    await change(ai,"human");
+    await Promise.all([reply(response),reply(response)]);
+    const queued=(await pg.query<{id:string;status:string;body:string;raw_payload:{actor:string}}>("SELECT id,status,body,raw_payload FROM chat_messages WHERE external_message_id=$1",[`human:${context.organizationId}:${response.get("requestId")}`])).rows;
+    assert.equal(queued.length,1);assert.equal(queued[0].status,"queued");assert.equal(queued[0].raw_payload.actor,"human");
+    const event=(await pg.query<{payload:{to:string;text:string;phoneNumberId:string};status:string}>("SELECT payload,status FROM outbox_events WHERE aggregate_id=$1",[queued[0].id])).rows;
+    assert.equal(event.length,1);assert.equal(event[0].payload.to,"5511999999999");assert.equal(event[0].payload.phoneNumberId,"test-phone");assert.equal(event[0].payload.text,response.get("body"));
+    context.userId="another-operator";await assert.rejects(reply(response),/Assuma/);context.userId="operator";
+    const foreign=new FormData();foreign.set("conversationId",outside);foreign.set("requestId",randomUUID());foreign.set("body","Teste");
+    await assert.rejects(reply(foreign),/não encontrada/);
+    context.role="viewer";await assert.rejects(reply(response),/permissão/);context.role="owner";
+    await pg.query("UPDATE chat_messages SET occurred_at=$2 WHERE conversation_id=$1 AND direction='inbound'",[ai,new Date(Date.now()-25*3600000)]);
+    response.set("requestId",randomUUID());await assert.rejects(reply(response),/24 horas/);
+    assert.equal((await pg.query("SELECT id FROM outbox_events WHERE aggregate_id=$1",[queued[0].id])).rows.length,1);
+
   } finally {
     if (previousSecret === undefined) delete process.env.META_WHATSAPP_APP_SECRET; else process.env.META_WHATSAPP_APP_SECRET = previousSecret;
     if (previousKey === undefined) delete process.env.AGGENDA_INTERNAL_API_KEY; else process.env.AGGENDA_INTERNAL_API_KEY = previousKey;

@@ -1,3 +1,4 @@
+import { BookingPaymentSettingsContent } from "./booking-payment-content";
 import { ReferenceCatalogStatus } from "@/components/reference-catalog-status";
 import { RoomSettings } from "@/components/room-settings";
 import { updateDocumentTemplateLibrary } from "@/actions/electronic-documents";
@@ -22,7 +23,7 @@ import { WhatsAppSettingsContent } from "./automation-settings-content";
 
 export const metadata = { title: "Configurações" };
 
-export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ aba?: string; instituicao?: string; guia?: string }> }) {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ aba?: string; instituicao?: string; guia?: string; agendamento?: string }> }) {
   const query = await searchParams;
   const selectedTab = query.aba === "automation" ? "whatsapp" : query.aba;
   const { organization } = await requireOrganization();
@@ -127,7 +128,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     <PageHeader eyebrow={organization.name} title="Configurações" description="Configure cada área do negócio em uma seção própria." />
     <SettingsTabs key={selectedTab} defaultTab={selectedTab} tabs={[
       { id: "terminology", label: "Terminologia", content: terminology },
-      { id: "booking", label: "Agendamento", content: booking },
+      { id: "booking", label: "Agendamento", content: <SettingsTabs key={query.agendamento} defaultTab={query.agendamento} queryParam="agendamento" idPrefix="booking-settings" label="Configurações de agendamento" tabs={[{ id: "general", label: "Agendamento público", content: booking }, { id: "payment", label: "Pagamento antecipado", content: <BookingPaymentSettingsContent /> }]} /> },
       { id: "rooms", label: "Salas", content: <RoomSettings organizationId={organization.id} canManage={canManage} /> },
       { id: "identity", label: "Identidade", content: identity },
       { id: "reminders", label: "Lembretes", content: reminders },

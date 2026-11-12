@@ -1,5 +1,3 @@
-import { posProviderNames, posProviderReady } from "@/lib/pos-providers";
-import { BookingPaymentSettingsForm } from "@/components/booking-payment-settings";
 import Link from "next/link";
 import { and, eq } from "drizzle-orm";
 import { RefreshCcw } from "lucide-react";
@@ -12,7 +10,7 @@ import { ActionForm } from "@/components/action-form";
 import { PaymentProviderTabs } from "@/components/payment-provider-tabs";
 import { PosPaymentDefaultControl } from "@/components/pos-payment-default-control";
 import { db } from "@/db";
-import { financialAccounts, organizationFinancialIntegrations, paymentChargeEvents, paymentCharges } from "@/db/schema";
+import { organizationFinancialIntegrations, paymentChargeEvents, paymentCharges } from "@/db/schema";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { onlineInstallmentRules } from "@/lib/payment-catalog-policy";
 import { requireOrganization } from "@/lib/session";
@@ -29,10 +27,8 @@ export async function PaymentProvidersSettingsContent({ institution }: { institu
   const mercadoPago = integrationRows.find((item) => item.provider === "mercado_pago"); const mercadoPagoMetadata = (mercadoPago?.metadata ?? {}) as Record<string, unknown>;
   const pagBank = integrationRows.find((item) => item.provider === "pagbank"); const pagBankMetadata = (pagBank?.metadata ?? {}) as Record<string, unknown>;
   const efi = integrationRows.find((item) => item.provider === "efi"); const efiMetadata = (efi?.metadata ?? {}) as Record<string, unknown>;
-  const accounts = await db.select({ id: financialAccounts.id, name: financialAccounts.name }).from(financialAccounts).where(and(eq(financialAccounts.organizationId, organization.id), eq(financialAccounts.isActive, true))).orderBy(financialAccounts.name);
   const rules = onlineInstallmentRules(organization.onlineInstallmentPolicy);
   return <section><p className="mb-4 text-sm text-muted">Conecte as contas da empresa e escolha o provedor padrão para cobranças online em Venda e orçamento, Contas a receber e agendamentos. Acompanhe as cobranças em Financeiro → Lançamentos.</p>
-    <BookingPaymentSettingsForm settings={organization.bookingPaymentSettings} accounts={accounts} defaultProviderName={posProviderNames[integrationRows.find(row => row.isDefaultPos && posProviderReady(row))?.provider ?? ""]} />
     <ActionForm action={saveOnlineInstallmentPolicy} successMessage="Regra de parcelamento atualizada." className="panel mb-5 grid gap-3 sm:grid-cols-3">
       <h2 className="col-span-full text-lg font-extrabold">Regra de parcelamento online</h2>
       <label className="grid gap-1 text-sm font-bold">Valor mínimo por parcela (R$)<input className="field" name="minimum" type="number" min="0.01" step="0.01" required defaultValue={rules.minimumInCents / 100} /></label>

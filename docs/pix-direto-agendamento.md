@@ -2,7 +2,7 @@
 
 ## Ativação
 
-1. Em **Configurações → Provedores de pagamento**, abra **Pagamento antecipado de agendamentos**.
+1. Em **Configurações → Agendamento → Pagamento antecipado**, configure o recebimento de agendamentos.
 2. Escolha **Pix direto — conferência pela equipe**.
 3. Informe uma chave Pix já registrada no banco, seu tipo, titular, cidade e a conta financeira do Aggenda correspondente ao recebimento.
 4. Salve. Em **Produtos e Serviços → Serviços**, defina sinal fixo, percentual ou pagamento integral para os serviços desejados.

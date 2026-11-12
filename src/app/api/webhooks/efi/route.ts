@@ -1,3 +1,4 @@
+import { confirmBookingPayment } from "@/lib/booking-payment-confirmation";
 import { timingSafeEqual } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 
@@ -8,7 +9,7 @@ import { refreshPosPayment } from "@/lib/pos-checkout";
 import { revalidatePath } from "next/cache";
 
 type Notification = { pix?: Array<{ txid?: string; endToEndId?: string; horario?: string }> };
-type Cob = { txid?: string; status?: string; pix?: Array<{ endToEndId?: string; horario?: string }> };
+type Cob = { chave?: string; valor?: { original: string }; txid?: string; status?: string; pix?: Array<{ endToEndId?: string; horario?: string; valor?: string }> };
 const secureEqual = (left: string, right: string) => { const a = Buffer.from(left); const b = Buffer.from(right); return a.length === b.length && timingSafeEqual(a, b); };
 
 export async function POST(request: Request) {
@@ -24,6 +25,14 @@ export async function POST(request: Request) {
     if(charge.originType === "retail_sale") {
       await refreshPosPayment(organizationId,charge.originId);
       revalidatePath("/vendas");revalidatePath("/financeiro/lancamentos");revalidatePath("/pacotes");revalidatePath(`/vendas/pagamento/${charge.originId}`);
+      continue;
+    }
+    if (charge.originType === "appointment") {
+      if (charge.metadata?.environment !== credential.environment || cob.chave !== credential.pixKey || cob.txid !== item.txid) return Response.json({ error: "Payment mismatch" }, { status: 409 });
+      if (cob.status === "CONCLUIDA") {
+        if (Math.round(Number(cob.valor?.original) * 100) !== charge.amountInCents) throw new Error("Payment amount mismatch");
+        await confirmBookingPayment(charge, { eventId: "booking:efi:" + item.txid + ":" + cob.pix?.[0]?.endToEndId, status: "paid", amountInCents: (cob.pix ?? []).reduce((sum, pix) => sum + Math.round(Number(pix.valor) * 100), 0), paymentId: item.txid, method: "pix", paidAt: cob.pix?.[0]?.horario });
+      }
       continue;
     }
     const status = cob.status === "CONCLUIDA" ? "paid" : cob.status === "REMOVIDA_PELO_USUARIO_RECEBEDOR" || cob.status === "REMOVIDA_PELO_PSP" ? "cancelled" : "pending";

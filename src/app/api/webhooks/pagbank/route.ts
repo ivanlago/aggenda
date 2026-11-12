@@ -1,3 +1,4 @@
+import { confirmBookingPayment } from "@/lib/booking-payment-confirmation";
 import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db";
@@ -9,12 +10,12 @@ import { revalidatePath } from "next/cache";
 type PagBankCharge = {
   id?: string; status?: string; paid_at?: string;
   payment_method?: { type?: string; installments?: number };
-  amount?: { fees?: { buyer?: { interest?: { total?: number } } } };
+  amount?: { value?: number; currency?: string; fees?: { buyer?: { interest?: { total?: number } } } };
 };
 type PagBankResource = { id?: string; reference_id?: string; status?: string; charges?: PagBankCharge[]; payments?: Array<{ id?: string; reference_id?: string; charges?: PagBankCharge[] }> };
 
 const mapStatus = (status: string) => status === "PAID" ? "paid" : ["CANCELED", "CANCELLED", "DECLINED", "INACTIVE", "EXPIRED"].includes(status) ? "cancelled" : status === "REFUNDED" ? "refunded" : "pending";
-const mapMethod = (type?: string) => type === "BOLETO" ? "boleto" : type === "CREDIT_CARD" || type === "DEBIT_CARD" ? "credit_card" : type === "PIX" ? "pix" : undefined;
+const mapMethod = (type?: string) => type === "BOLETO" ? "boleto" : type === "DEBIT_CARD" ? "debit_card" : type === "CREDIT_CARD" ? "credit_card" : type === "PIX" ? "pix" : undefined;
 
 export async function POST(request: Request) {
   const organizationId = new URL(request.url).searchParams.get("organizationId");
@@ -38,6 +39,12 @@ export async function POST(request: Request) {
     return Response.json({ received: true });
   }
   const providerCharge = resource.charges?.[0] ?? resource.payments?.flatMap((item) => item.charges ?? [])[0];
+  if (charge.originType === "appointment") {
+    const credential = await getPagBankCredential(organizationId);
+    if (charge.metadata?.environment !== credential.environment) return Response.json({ error: "Payment environment mismatch" }, { status: 409 });
+    if (providerCharge) await confirmBookingPayment(charge, { eventId: "booking:pagbank:" + providerCharge.id + ":" + providerCharge.status, status: mapStatus(providerCharge.status ?? "WAITING"), amountInCents: providerCharge.amount?.value ?? -1, paymentId: providerCharge.id!, method: mapMethod(providerCharge.payment_method?.type), paidAt: providerCharge.paid_at });
+    return Response.json({ received: true });
+  }
   const providerStatus = providerCharge?.status ?? resource.status ?? "WAITING";
   const mappedStatus = mapStatus(providerStatus);
   const status = !providerCharge && ["paid", "refunded"].includes(charge.status) ? charge.status : mappedStatus;

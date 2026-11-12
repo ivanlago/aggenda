@@ -37,7 +37,13 @@ Testes adicionais: `tests/whatsapp-agents.test.ts`, `tests/whatsapp-navigation.t
 
 ## Pagamento integrado
 
-**Pagamento integrado — Asaas** continua disponível no mesmo seletor. O fluxo de sinal integrado ainda utiliza a conta Asaas conectada pela própria empresa. Mercado Pago, PagBank e Efí não foram acrescentados ao sinal de agendamento nesta alteração.
+**Provedor padrão de cobranças online** utiliza a integração ativa marcada como padrão em Configurações → Provedores de pagamento: Asaas, Mercado Pago, PagBank ou Efí. O cliente escolhe os meios habilitados no checkout; crédito e débito dependem da integração e da conta do provedor. Na integração Efí atual, o recebimento é Pix.
+
+O destino financeiro é o cadastrado na forma ativa Link de pagamento (Pix para Efí). Sem provedor padrão pronto ou conta financeira ativa vinculada, novas reservas com sinal integrado são bloqueadas antes de ocupar o horário. A cobrança fica vinculada à reserva original, mesmo que o padrão mude depois.
+
+A emissão é registrada antes da chamada externa, com trava contra duplicação. Em caso de falha ou resposta inconclusiva, a reserva mantém a cobrança para conferência, sem nova emissão automática. Webhooks conferem valor e referência antes de registrar o sinal. Pagamento tardio é registrado, mas não reabre uma reserva cancelada/expirada; a equipe deve revisar. O valor do sinal permanece separado do saldo do atendimento.
+
+Validação isolada: `node node_modules/tsx/dist/cli.mjs --test tests/booking-online-payment.test.ts tests/booking-direct-pix.test.ts tests/public-booking.test.ts tests/booking-pix-panel.test.ts`. Não usa credenciais ou cobranças reais.
 
 ## Publicação e validação
 

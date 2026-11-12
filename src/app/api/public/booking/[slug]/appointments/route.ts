@@ -10,7 +10,6 @@ import {
   financialEntries,
   financialAccounts,
   organizations,
-  paymentChargeEvents,
   paymentCharges,
   professionals,
   services,
@@ -21,8 +20,7 @@ import { isTimeAvailable } from "@/lib/availability";
 import { formatOrganizationDateTime, organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
 import { syncAppointmentToGoogleCalendar } from "@/lib/google-calendar";
 import { syncAppointmentFinancialEntry } from "@/lib/finance";
-import { organizationAsaasRequest } from "@/lib/asaas";
-import { getOrganizationAsaasCredential } from "@/lib/organization-asaas";
+import { bookingOnlineProvider, issueBookingOnlinePayment } from "@/lib/booking-online-payment";
 import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
 import { sendAppointmentManagementEmail } from "@/lib/email";
 import { portalRequestClient } from "@/lib/portal-request";
@@ -100,6 +98,14 @@ export async function POST(
   try {
     const paymentSettings = bookingPaymentSettings(organization.bookingPaymentSettings);
     const direct = paymentSettings.mode === "pix_direct";
+    // Do not borrow another database connection while holding the booking transaction.
+    // Defer errors until after replay detection so existing reservations still work if settings change.
+    let selectedProvider: Awaited<ReturnType<typeof bookingOnlineProvider>> | undefined;
+    let providerError: unknown;
+    if (!direct && service.depositType !== "none") {
+      try { selectedProvider = await bookingOnlineProvider(organization.id); }
+      catch (error) { providerError = error; }
+    }
     const manageToken = randomUUID();
     const appointment = await withAppointmentLock(organization.id, professionalId, async (tx) => {
       await lockBookingPatient(tx, organization.id, portalClient.id);
@@ -113,11 +119,16 @@ export async function POST(
       const { voucher } = pricing;
       const finalPrice = pricing.finalPriceInCents;
       const depositAmount = service.depositType === "full" ? finalPrice : service.depositType === "percentage" ? Math.round(finalPrice * service.depositValue / 100) : service.depositType === "fixed" ? Math.min(finalPrice, service.depositValue) : 0;
+      let onlineProvider: Awaited<ReturnType<typeof bookingOnlineProvider>> | undefined;
       if (depositAmount > 0) {
         if (direct) {
           const [account] = paymentSettings.accountId ? await tx.select({ id: financialAccounts.id }).from(financialAccounts).where(and(eq(financialAccounts.id, paymentSettings.accountId), eq(financialAccounts.organizationId, organization.id), eq(financialAccounts.isActive, true))).limit(1) : [];
           if (!account || !paymentSettings.key || !paymentSettings.receiverName || !paymentSettings.city) throw new Error("DIRECT_PIX_NOT_CONFIGURED");
-        } else await getOrganizationAsaasCredential(organization.id);
+        } else {
+          if (providerError) throw providerError;
+          if (!selectedProvider) throw new Error("BOOKING_PROVIDER_NOT_CONFIGURED");
+          onlineProvider = selectedProvider;
+        }
       }
       if (depositAmount > 0 && !direct && ![11, 14].includes(document.length)) throw new Error("DEPOSIT_DOCUMENT_INVALID");
       const available = await isTimeAvailable({
@@ -150,6 +161,13 @@ export async function POST(
         const payload = createDirectPixPayload({ key: paymentSettings.key!, receiverName: paymentSettings.receiverName!, city: paymentSettings.city!, amountInCents: depositAmount, reference: created.id });
         const [entry] = await tx.insert(financialEntries).values({ organizationId: organization.id, clientId, attendanceId: created.id, type: "receivable", source: "appointment_deposit_direct", status: "pending", description: `Sinal Pix - ${service.name}`, category: "Sinais de agendamento", amountInCents: depositAmount, accountId: paymentSettings.accountId!, dueDate: organizationDate(new Date(), organization.timezone), paymentMethod: "pix", paymentMethodName: "Pix direto" }).returning({ id: financialEntries.id });
         await tx.update(appointments).set({ metadata: { directPix: { key: paymentSettings.key!, receiverName: paymentSettings.receiverName!, city: paymentSettings.city!, accountId: paymentSettings.accountId!, payload, entryId: entry.id } } }).where(eq(appointments.id, created.id));
+      }
+      if (depositAmount > 0 && onlineProvider) {
+        const chargeId = randomUUID();
+        const dueDate = organizationDate(new Date(), organization.timezone);
+        const [entry] = await tx.insert(financialEntries).values({ organizationId: organization.id, clientId, attendanceId: created.id, type: "receivable", source: "appointment_deposit", accountId: onlineProvider.accountId, paymentMethodId: onlineProvider.paymentMethodId, paymentMethodName: onlineProvider.paymentMethodName, status: "pending", description: "Sinal - " + service.name, category: "Sinais de agendamento", amountInCents: depositAmount, dueDate }).returning({ id: financialEntries.id });
+        await tx.insert(paymentCharges).values({ id: chargeId, organizationId: organization.id, provider: onlineProvider.provider, originType: "appointment", originId: created.id, financialEntryId: entry.id, clientId, paymentMethod: "link", status: "payment_review", amountInCents: depositAmount, description: "Sinal - " + service.name, customerName: name, customerDocument: document, customerEmail: email, customerPhone: phone, dueDate, metadata: { issuanceState: "new", appointmentId: created.id, environment: onlineProvider.environment, collectorId: onlineProvider.metadata?.accountId, expiresAt: new Date(Date.now() + service.expiration * 60000).toISOString() } });
+        await tx.update(appointments).set({ metadata: { onlinePayment: { chargeId, provider: onlineProvider.provider } } }).where(eq(appointments.id, created.id));
       }
       await tx.insert(auditLogs).values({
         organizationId: organization.id,
@@ -185,17 +203,8 @@ export async function POST(
     await syncAppointmentToGoogleCalendar(appointment.id);
     let paymentUrl: string | undefined;
     if (depositAmount > 0 && !direct) {
-      const credential = await getOrganizationAsaasCredential(organization.id);
-      type CustomerList = { data?: Array<{ id: string }> }; type Customer = { id: string }; type Payment = { id: string; invoiceUrl?: string };
-      const found = await organizationAsaasRequest<CustomerList>(`/customers?cpfCnpj=${document}&limit=1`, credential);
-      const customerId = found.data?.[0]?.id ?? (await organizationAsaasRequest<Customer>("/customers", credential, { method: "POST", body: { name, cpfCnpj: document, email: email ?? undefined, phone } })).id;
-      const chargeId = randomUUID();
-      const dueDate = organizationDate(new Date(), organization.timezone);
-      const payment = await organizationAsaasRequest<Payment>("/payments", credential, { method: "POST", body: { customer: customerId, billingType: "UNDEFINED", value: depositAmount / 100, dueDate, description: `Sinal - ${service.name}`, externalReference: `charge:${chargeId}` } });
-      const [entry] = await db.insert(financialEntries).values({ organizationId: organization.id, clientId: appointment.clientId, type: "receivable", source: "appointment_deposit", status: "pending", description: `Sinal - ${service.name}`, category: "Sinais de agendamento", amountInCents: depositAmount, dueDate }).returning({ id: financialEntries.id });
-      await db.insert(paymentCharges).values({ id: chargeId, organizationId: organization.id, providerPaymentId: payment.id, providerCustomerId: customerId, originType: "appointment", originId: appointment.id, financialEntryId: entry.id, clientId: appointment.clientId, paymentMethod: "link", status: "pending", amountInCents: depositAmount, description: `Sinal - ${service.name}`, customerName: name, customerDocument: document, customerEmail: email, customerPhone: phone, dueDate, invoiceUrl: payment.invoiceUrl, metadata: { appointmentId: appointment.id } });
-      await db.insert(paymentChargeEvents).values({ organizationId: organization.id, chargeId, eventType: "charge_created", status: "pending", payload: { appointmentId: appointment.id, publicBooking: true } });
-      paymentUrl = payment.invoiceUrl;
+      const [charge] = await db.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.organizationId, organization.id), eq(paymentCharges.originType, "appointment"), eq(paymentCharges.originId, appointment.id))).limit(1);
+      if (charge) paymentUrl = await issueBookingOnlinePayment(charge.id, manageToken);
     }
     if (!depositAmount) await enqueueAppointmentNotification(appointment.id, "confirmation");
     if (email) {
@@ -217,6 +226,8 @@ export async function POST(
     }
     return Response.json({ id: appointment.id, manageToken, paymentUrl, directPix: depositAmount > 0 && direct, depositPending: depositAmount > 0, manageUrl: `/agendamento/${manageToken}` }, { status: 201 });
   } catch (error) {
+    if (error instanceof Error && error.message === "BOOKING_PAYMENT_ACCOUNT_NOT_CONFIGURED") return Response.json({ error: "A clínica precisa vincular uma conta financeira ativa à forma Link de pagamento (Pix para Efí). Fale com a equipe." }, { status: 409 });
+    if (error instanceof Error && error.message === "BOOKING_PROVIDER_NOT_CONFIGURED") return Response.json({ error: "A clínica precisa habilitar e escolher o provedor padrão de cobranças online. Fale com a equipe." }, { status: 409 });
     if (error instanceof Error && error.message === "DIRECT_PIX_NOT_CONFIGURED") return Response.json({ error: "O recebimento Pix deste serviço ainda não está configurado. Fale com a equipe." }, { status: 409 });
     if (error instanceof PublicBookingConflict) {
       const messages = { CLIENT_APPOINTMENT_CONFLICT: "Este paciente já possui outro agendamento neste horário. Reagende o existente ou escolha um horário sem sobreposição.", SERVICE_REPEAT_BLOCKED: "Já existe uma reserva futura deste procedimento. Gerencie a reserva existente ou fale com a clínica.", SERVICE_REPEAT_CONFIRMATION: "Este paciente já possui reserva futura deste procedimento. Confira e confirme se deseja outra sessão." };

@@ -1,3 +1,4 @@
+import { confirmBookingPayment } from "@/lib/booking-payment-confirmation";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 
@@ -32,6 +33,11 @@ export async function POST(request: Request) {
     await new PosPaymentRepository(db).apply(organizationId, charge.id, payment);
     revalidatePath("/vendas"); revalidatePath("/vendas/historico"); revalidatePath("/vendas/relatorios"); revalidatePath("/financeiro/lancamentos"); revalidatePath("/pacotes");
     revalidatePath(`/vendas/pagamento/${charge.originId}`);
+    return Response.json({ received: true });
+  }
+  if (charge.originType === "appointment") {
+    if (charge.metadata?.environment !== integration.environment || payment.live_mode !== (integration.environment === "production") || payment.currency_id !== "BRL" || String(payment.collector_id) !== String(charge.metadata?.collectorId)) return Response.json({ error: "Payment mismatch" }, { status: 409 });
+    await confirmBookingPayment(charge, { eventId: "booking:mp:" + payment.id + ":" + payment.status, status: payment.status === "approved" ? "paid" : ["refunded", "charged_back"].includes(payment.status) ? "refunded" : "pending", amountInCents: Math.round(Number(payment.transaction_amount) * 100), paymentId: String(payment.id), method: payment.payment_method_id, paidAt: payment.date_approved });
     return Response.json({ received: true });
   }
   if (integration.status !== "active") return Response.json({ received: true });

@@ -1,3 +1,6 @@
+import { confirmBookingPayment } from "@/lib/booking-payment-confirmation";
+import { getOrganizationAsaasCredential } from "@/lib/organization-asaas";
+import { organizationAsaasRequest } from "@/lib/asaas";
 import { timingSafeEqual } from "node:crypto";
 
 import { and, eq, sql } from "drizzle-orm";
@@ -126,6 +129,15 @@ async function processOrganizationCharge(organizationId: string, event: AsaasWeb
     await refreshPosPayment(organizationId, charge.originId);
     revalidatePath("/vendas"); revalidatePath("/financeiro/lancamentos"); revalidatePath("/pacotes");
     revalidatePath(`/vendas/pagamento/${charge.originId}`);
+    return true;
+  }
+  if (charge.originType === "appointment" && charge.metadata?.environment) {
+    const credential = await getOrganizationAsaasCredential(organizationId);
+    if (credential.environment !== charge.metadata.environment) throw new Error("Payment environment mismatch");
+    const verified = await organizationAsaasRequest<AsaasPayment>("/payments/" + encodeURIComponent(payment.id), credential);
+    if (verified.externalReference !== "charge:" + charge.id) throw new Error("Payment reference mismatch");
+    const status = ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"].includes(verified.status ?? "") ? "paid" : verified.status === "REFUNDED" ? "refunded" : "pending";
+    await confirmBookingPayment(charge, { eventId: "booking:asaas:" + event.id, status, amountInCents: Math.round(Number(verified.value) * 100), paymentId: verified.id, method: verified.billingType, paidAt: verified.paymentDate ?? undefined });
     return true;
   }
   const mappedStatus = chargeStatus(event.event);

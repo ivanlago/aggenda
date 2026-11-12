@@ -3,6 +3,7 @@ import { ModalShell } from "@/components/modal-shell";
 import { FormActions, FormSection } from "@/components/form-dialog-context";
 
 import { Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { deleteUnifiedTeamMember, replaceTeamMemberAvailability, updateUnifiedTeamMember } from "@/actions/team";
@@ -73,6 +74,11 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
             <label className="grid gap-1 text-sm font-bold">Telefone<PhoneInput name="phone" defaultValue={member.phone} /></label>
             <label className="grid gap-1 text-sm font-bold md:col-span-2">Apresentação breve<textarea className="field min-h-20" name="bio" defaultValue={member.bio ?? ""} /></label>
             <EntityImageField currentUrl={member.imageUrl} label="Foto do profissional" />
+            <div className="grid gap-2 md:col-span-2">
+              <p className="font-bold">Google Agenda</p>
+              <p className="text-sm text-muted">Conecte a conta Google do atendente para sincronizar seus agendamentos.</p>
+              <div><Link className="secondary-button" href={`/api/google-calendar/connect?professionalId=${encodeURIComponent(member.professionalId)}`} prefetch={false}>Conectar ou reconectar Google Agenda</Link></div>
+            </div>
           </FormSection>}
           <FormActions editing />
         </ActionForm></ModalShell>

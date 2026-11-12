@@ -261,7 +261,8 @@ a[href]:focus-visible {
   .internal-app :is(input.field, select.field):not(dialog *, [role="dialog"] *) {
     height: 38px;
     min-height: 38px;
-    padding: 6px 12px;
+    /* Keep horizontal utilities (such as pl-9/pl-10 for search icons) intact. */
+    padding-block: 6px;
     line-height: 24px;
   }
   .internal-app :is(.primary-button, .secondary-button):not(dialog *, [role="dialog"] *) {

@@ -1,10 +1,11 @@
+import { CircleHelp } from "lucide-react";
 import { DocumentNavigation } from "@/components/document-navigation";
 import { ModalShell } from "@/components/modal-shell";
 import { FormActions } from "@/components/form-dialog-context";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { desc, eq } from "drizzle-orm";
 
-import { createDocumentTemplate, duplicateDocumentTemplate, issueProfessionalDocument, setDocumentTemplateActive, updateDocumentTemplate } from "@/actions/electronic-documents";
+import { updateDocumentTemplateLibrary, createDocumentTemplate, duplicateDocumentTemplate, issueProfessionalDocument, setDocumentTemplateActive, updateDocumentTemplate } from "@/actions/electronic-documents";
 import { ActionForm } from "@/components/action-form";
 import { DeleteDocumentTemplateForm } from "@/components/delete-document-template-form";
 import { PageHeader } from "@/components/page-header";
@@ -36,7 +37,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
     <DocumentNavigation active={showModels ? "modelos" : "emissao"} /><div className="app-tab-content"><div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900"><p className="font-extrabold">Documentos profissionais</p><p className="mt-1">Receituários simples, laudos, atestados e encaminhamentos podem ser emitidos em PDF. Documentos sujeitos a controle especial ou assinatura qualificada devem usar o fluxo regulatório apropriado.</p></div>
 
     {canManage && <div className="grid gap-5">
-      {showModels && <ModalShell title="Novo modelo personalizado" variant="new" wide closeOnSuccess>
+      {showModels && <div className="flex flex-wrap items-center gap-3"><ModalShell title="Novo modelo personalizado" variant="new" wide closeOnSuccess>
       <ActionForm action={createDocumentTemplate} successMessage="Modelo criado." className="form-stack">
         <label className="grid min-w-0 gap-2 text-sm font-bold">Nome<input className="field" name="name" required maxLength={120} placeholder="Nome interno do modelo" /></label>
         <label className="grid min-w-0 gap-2 text-sm font-bold">Tipo de documento<select className="field" name="documentType" defaultValue="consent">{Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -44,7 +45,17 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
         <label className="grid min-w-0 gap-2 text-sm font-bold">Conteúdo do documento<textarea className="field min-h-64" name="content" required maxLength={30000} placeholder="Conteúdo integral do documento" /></label>
         <p className="text-xs text-muted">Variáveis disponíveis: {"{{cliente}}"}, {"{{clinica}}"}, {"{{profissional}}"} e {"{{data}}"}. No conteúdo do modelo, use @AssinaturaProfissional para inserir a imagem do profissional logado. O conteúdo é congelado na emissão.</p>
         <FormActions submitLabel="Criar modelo" />
-      </ActionForm></ModalShell>}
+      </ActionForm></ModalShell>
+      <div className="flex items-center gap-2">
+        <ActionForm action={updateDocumentTemplateLibrary} successMessage="Biblioteca de modelos atualizada."><button className="primary-button">Atualizar biblioteca de modelos</button></ActionForm>
+        <ModalShell title="Como funciona a atualização da biblioteca de modelos" variant="edit" triggerIcon={<CircleHelp className="size-5" aria-hidden="true" />} compact>
+          <div className="grid gap-3 text-sm">
+            <p>Os modelos nativos ficam disponíveis automaticamente nas páginas de Documentos.</p>
+            <p>Atualize a biblioteca para aplicar os textos padrão mais recentes e adicionar modelos disponíveis. Suas cópias personalizadas, padrões por serviço e documentos já emitidos são preservados.</p>
+          </div>
+        </ModalShell>
+      </div>
+      </div>}
 
       {!showModels && <ActionForm action={issueProfessionalDocument} successMessage="Documento profissional emitido." className="panel form-stack">
         <h2 className="text-lg font-extrabold">Outros documentos profissionais</h2>

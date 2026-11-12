@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { CompactSettingsRow } from "@/components/compact-settings-row";
 import { BookingPaymentSettingsContent } from "./booking-payment-content";
 import { ReferenceCatalogStatus } from "@/components/reference-catalog-status";
-import { updateDocumentTemplateLibrary } from "@/actions/electronic-documents";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { CustomDomainSettings } from "@/components/custom-domain-settings";
@@ -30,6 +29,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const { organization } = await requireOrganization();
   if (selectedTab === "rooms") redirect("/salas");
   if (selectedTab === "equipment") redirect("/equipamentos");
+  if (selectedTab === "documents") redirect("/documentos");
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
   const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
@@ -122,13 +122,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     </ActionForm>
   </section>;
 
-  const documents = <section className="panel max-w-4xl">
-    <h2 className="text-xl font-extrabold">Biblioteca de modelos de documentos</h2>
-    <p className="mt-2 text-sm text-muted">Os modelos nativos ficam disponíveis automaticamente nas páginas de Documentos.</p>
-    <p className="mt-2 text-sm text-muted">Atualize a biblioteca para aplicar os textos padrão mais recentes e adicionar modelos disponíveis. Suas cópias personalizadas, padrões por serviço e documentos já emitidos são preservados.</p>
-    {hasOrganizationPermission(organization.role, "documents.manage") && <ActionForm action={updateDocumentTemplateLibrary} successMessage="Biblioteca de modelos atualizada." className="mt-5"><button className="primary-button">Atualizar biblioteca de modelos</button></ActionForm>}
-  </section>;
-
   return <div className="page-wrap">
     <PageHeader eyebrow={organization.name} title="Configurações" description="Configure cada área do negócio em uma seção própria." />
     <SettingsTabs key={selectedTab} defaultTab={selectedTab} tabs={[
@@ -136,7 +129,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       { id: "booking", label: "Agendamento", content: <SettingsTabs key={query.agendamento} defaultTab={query.agendamento} queryParam="agendamento" idPrefix="booking-settings" label="Configurações de agendamento" tabs={[{ id: "general", label: "Agendamento público", content: booking }, { id: "payment", label: "Pagamento antecipado", content: <BookingPaymentSettingsContent /> }]} /> },
       { id: "identity", label: "Identidade", content: identity },
       { id: "reminders", label: "Lembretes", content: reminders },
-      { id: "documents", label: "Documentos", content: documents },
       { id: "catalogs", label: "Catálogos", content: <ReferenceCatalogStatus /> },
       { id: "policies", label: "Políticas", content: policies },
       { id: "whatsapp", label: "WhatsApp e IA", content: <WhatsAppSettingsContent /> },

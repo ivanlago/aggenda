@@ -118,7 +118,6 @@ a[href]:focus-visible {
     min-height: 68px;
     padding-block: 12px;
   }
-  .internal-app:has(.agenda-compact) .app-header-new-appointment { display: none; }
   .page-wrap.agenda-compact { padding-top: 16px; }
   .agenda-compact .agenda-panel { padding: 16px; }
   .page-wrap {
@@ -215,6 +214,44 @@ a[href]:focus-visible {
   outline-offset: 3px;
 }
 .internal-app .app-header { background: #ffffffed; border-color: #dce8e6; }
+/* Outside component layers so the shortcut's inline-flex utility cannot override it. */
+.internal-app:has(.agenda-compact) .app-header-new-appointment { display: none; }
+
+/* Desktop density pilot: dialogs and touch layouts keep their original controls. */
+@media (min-width: 1024px) {
+  .internal-app:has(.agenda-compact) .app-header {
+    min-height: 64px;
+    padding-block: 10px;
+    gap: 12px;
+  }
+  .internal-app:has(.agenda-compact) .app-header input[role="combobox"] { height: 38px; }
+  .internal-app:has(.agenda-compact) .app-header div:has(> input[role="combobox"]) > img { top: 11.5px; }
+  .internal-app:has(.agenda-compact) .app-header > div:first-child > a {
+    height: 38px;
+    padding-inline: 12px;
+  }
+  .page-wrap.agenda-compact { padding-top: 12px; }
+  .agenda-compact > header { margin-bottom: 12px; }
+  .agenda-compact .agenda-panel {
+    padding: 12px 16px;
+    border-radius: 12px;
+    box-shadow: 0 3px 12px rgb(15 23 42 / 3%);
+  }
+  .agenda-compact :is(input.field, select.field):not(dialog *) {
+    height: 38px;
+    min-height: 38px;
+    padding: 6px 12px;
+    line-height: 24px;
+  }
+  .agenda-compact :is(.primary-button, .secondary-button):not(dialog *) {
+    min-height: 38px;
+    padding: 7px 14px;
+    line-height: 22px;
+  }
+  .agenda-compact .primary-button:not(dialog *) { box-shadow: 0 1px 3px rgb(15 23 42 / 10%); }
+  .agenda-compact .app-list-table:not(dialog *) > :is(thead, tbody) > tr > :is(th, td) { padding: 8px; }
+  .agenda-compact .agenda-panel > div:first-child:has(> h2) { margin-bottom: 8px; }
+}
 .internal-app .page-heading h1 { color: var(--structure); }
 .internal-app input:is([type="checkbox"], [type="radio"]) { accent-color: var(--brand); }
 

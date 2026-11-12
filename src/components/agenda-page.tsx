@@ -114,7 +114,7 @@ export async function AgendaPage({ openNewAppointment = false, filters = {} }: {
     <ScheduleBlocks compact organizationId={organization.id} timezone={organization.timezone} canManage={canManageAvailability} scopeId={professionalScopeId} professionalFilter={filters.professionalId} />
     <section className="panel agenda-panel min-w-0">
       <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-extrabold">Atendimentos do período</h2><span className="text-sm text-muted">{items.length} registros</span></div>
-      <div className="min-w-0 max-w-full overflow-x-auto max-h-[40rem] overflow-y-auto" tabIndex={0} role="region" aria-label="Atendimentos do período"><table className="app-list-table w-full text-left text-sm">
+      <div className="min-w-0 max-w-full overflow-x-auto" tabIndex={0} role="region" aria-label="Atendimentos do período"><table className="app-list-table w-full text-left text-sm">
         <thead className="border-b text-xs uppercase text-muted"><tr><th className="p-3">Hora</th><th className="p-3">Atendimento</th><th className="p-3">Status</th><th className="p-3">Profissional</th><th className="p-3">Sala</th><th className="p-3">Cliente</th>{canManageFinance && <th className="relative p-3"><span className="sr-only">Pagamento</span></th>}{canManage && <th className="relative p-3"><span className="sr-only">Editar</span></th>}<th className="relative p-3"><span className="sr-only">Atender</span></th></tr></thead>
         <PaginatedCollection as="tbody" pageSize={20} label="Registros" className="divide-y">{items.map((item) => {
           const dateTime = formatOrganizationDateTime(item.startsAt, organization.timezone);

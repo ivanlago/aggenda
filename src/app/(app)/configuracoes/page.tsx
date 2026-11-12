@@ -1,3 +1,4 @@
+import { CompactSettingsRow } from "@/components/compact-settings-row";
 import { BookingPaymentSettingsContent } from "./booking-payment-content";
 import { ReferenceCatalogStatus } from "@/components/reference-catalog-status";
 import { RoomSettings } from "@/components/room-settings";
@@ -53,7 +54,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     </ActionForm>
   </section>;
 
-  const booking = <section className="panel max-w-4xl">
+  const booking = <section className="panel">
     <h2 className="text-xl font-extrabold">Agendamento público</h2>
     <CustomDomainSettings initial={domainState} defaultUrl={bookingUrl} canManage={canManage} integrationReady={domainIntegrationReady()} />
     {query.guia === "publicar" && <aside id="agendamento-publico" className="mt-6 scroll-mt-24 rounded-xl bg-brand/5 p-4 text-sm">
@@ -67,10 +68,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     <ActionForm action={updateBookingSettings} successMessage="Regras de agendamento salvas." className="mt-6 grid gap-4 sm:grid-cols-3">
       <input type="hidden" name="settingsSection" value="booking" />
       <label className="flex items-center gap-3 text-sm font-bold sm:col-span-3"><input name="bookingEnabled" type="checkbox" defaultChecked={organization.bookingEnabled} disabled={!canManage} />Permitir agendamentos pela página pública</label>
+      <CompactSettingsRow fields={3}>
       <label className="grid gap-2 text-sm font-bold">Antecedência mínima (horas)<input className="field" name="bookingNoticeHours" type="number" min="0" defaultValue={organization.bookingNoticeHours} disabled={!canManage} /></label>
       <label className="grid gap-2 text-sm font-bold">Janela futura (dias)<input className="field" name="bookingHorizonDays" type="number" min="1" max="365" defaultValue={organization.bookingHorizonDays} disabled={!canManage} /></label>
       <label className="grid gap-2 text-sm font-bold">Intervalo dos horários<select className="field" name="slotIntervalMinutes" defaultValue={organization.slotIntervalMinutes} disabled={!canManage}>{[5, 10, 15, 20, 30, 60].map((minutes) => <option key={minutes} value={minutes}>{minutes} minutos</option>)}</select></label>
-      {saveButton("Salvar regras do agendamento")}
+      {canManage && <button className="primary-button">Salvar regras do agendamento</button>}
+      </CompactSettingsRow>
     </ActionForm>
   </section>;
 

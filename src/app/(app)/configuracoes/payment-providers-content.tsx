@@ -1,3 +1,4 @@
+import { CompactSettingsRow } from "@/components/compact-settings-row";
 import Link from "next/link";
 import { and, eq } from "drizzle-orm";
 import { RefreshCcw } from "lucide-react";
@@ -29,12 +30,14 @@ export async function PaymentProvidersSettingsContent({ institution }: { institu
   const efi = integrationRows.find((item) => item.provider === "efi"); const efiMetadata = (efi?.metadata ?? {}) as Record<string, unknown>;
   const rules = onlineInstallmentRules(organization.onlineInstallmentPolicy);
   return <section><p className="mb-4 text-sm text-muted">Conecte as contas da empresa e escolha o provedor padrão para cobranças online em Venda e orçamento, Contas a receber e agendamentos. Acompanhe as cobranças em Financeiro → Lançamentos.</p>
-    <ActionForm action={saveOnlineInstallmentPolicy} successMessage="Regra de parcelamento atualizada." className="panel mb-5 grid gap-3 sm:grid-cols-3">
+    <ActionForm action={saveOnlineInstallmentPolicy} successMessage="Regra de parcelamento atualizada." className="panel mb-5 grid gap-4">
       <h2 className="col-span-full text-lg font-extrabold">Regra de parcelamento online</h2>
-      <label className="grid gap-1 text-sm font-bold">Valor mínimo por parcela (R$)<input className="field" name="minimum" type="number" min="0.01" step="0.01" required defaultValue={rules.minimumInCents / 100} /></label>
-      <label className="grid gap-1 text-sm font-bold">Máximo de parcelas da empresa<input className="field" name="maximum" type="number" min="1" max="24" required defaultValue={rules.maximum} /></label>
+      <CompactSettingsRow fields={3}>
+      <label className="grid gap-2 text-sm font-bold">Valor mínimo por parcela (R$)<input className="field" name="minimum" type="number" min="0.01" step="0.01" required defaultValue={rules.minimumInCents / 100} /></label>
+      <label className="grid gap-2 text-sm font-bold">Máximo de parcelas da empresa<input className="field" name="maximum" type="number" min="1" max="24" required defaultValue={rules.maximum} /></label>
       <label className="grid gap-1 text-sm font-bold">Quantas parcelas sem juros ao cliente<input className="field" name="interestFree" type="number" min="0" max="24" required defaultValue={rules.interestFree} /></label>
-      <button className="secondary-button sm:w-fit">Salvar regra</button>
+      <button className="primary-button">Salvar regra</button>
+      </CompactSettingsRow>
     </ActionForm>
     <h2 className="mb-3 text-lg font-extrabold text-brand">Provedores de pagamento</h2>
     <PaymentProviderTabs

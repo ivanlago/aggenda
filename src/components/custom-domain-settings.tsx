@@ -1,5 +1,6 @@
 "use client";
 
+import { CompactSettingsRow } from "@/components/compact-settings-row";
 import { PaginatedCollection } from "@/components/paginated-collection";
 
 import { useState } from "react";
@@ -35,9 +36,11 @@ export function CustomDomainSettings({ initial, defaultUrl, canManage, integrati
       <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="flex items-center gap-2 font-extrabold"><Globe className="size-5" />Domínio próprio</h3><span className={`status-pill ${state.status === "connected" ? "text-emerald-700" : ""}`} role="status">{statuses[state.status]}</span></div>
       <p className="mt-2 text-sm text-muted">Use um endereço da sua empresa, como agenda.suaclinica.com.br. Você configura a conexão aqui e adiciona os registros DNS no provedor onde administra seu domínio.</p>
       {!integrationReady && <p className="mt-3 text-sm text-muted">A conexão de domínios ainda precisa ser ativada pela equipe do Aggenda. Seu endereço padrão continua funcionando.</p>}
-      <form className="mt-4 flex flex-col items-start gap-3 sm:flex-row sm:items-end" onSubmit={(event) => { event.preventDefault(); void run("connect"); }}>
-        <label className="grid w-full min-w-0 flex-1 gap-2 text-sm font-bold">Endereço do domínio<input className="field" name="domain" placeholder="agenda.suaclinica.com.br" autoCapitalize="none" autoCorrect="off" value={domain} onChange={(event) => setDomain(event.target.value)} disabled={!canManage || Boolean(state.domain) || Boolean(pending) || !integrationReady} required /></label>
+      <form className="mt-4" onSubmit={(event) => { event.preventDefault(); void run("connect"); }}>
+        <CompactSettingsRow>
+        <label className="grid gap-2 text-sm font-bold">Endereço do domínio<input className="field" name="domain" placeholder="agenda.suaclinica.com.br" autoCapitalize="none" autoCorrect="off" value={domain} onChange={(event) => setDomain(event.target.value)} disabled={!canManage || Boolean(state.domain) || Boolean(pending) || !integrationReady} required /></label>
         {canManage && !state.domain && <button className="primary-button shrink-0" disabled={Boolean(pending) || !integrationReady}>{pending === "connect" ? "Conectando…" : "Conectar domínio"}</button>}
+        </CompactSettingsRow>
       </form>
       {state.records.length > 0 && <div className="mt-5"><h4 className="font-bold">Registros DNS necessários</h4><p className="mt-2 text-sm text-muted">Adicione os registros abaixo no painel do seu domínio. Se o provedor já acrescenta o domínio ao nome, informe apenas a parte anterior. Para o domínio principal, o nome costuma ser @. Não remova registros de e-mail.</p><div className="mt-3 overflow-x-auto"><table className="app-list-table w-full text-left text-sm"><thead><tr className="border-b"><th className="p-2">Tipo</th><th className="p-2">Nome</th><th className="p-2">Valor</th></tr></thead><PaginatedCollection as="tbody" label="Registros DNS">{state.records.map((record) => <tr className="border-b align-top" key={`${record.type}:${record.name}:${record.value}`}><td className="p-2 font-bold">{record.type}</td><td className="p-2"><div className="flex items-center gap-2"><code className="break-all">{record.name}</code><CopyButton value={record.name} label="Copiar nome do registro" iconOnly /></div><p className="mt-1 text-xs text-muted">{record.purpose}</p></td><td className="p-2"><div className="flex items-center gap-2"><code className="break-all">{record.value}</code><CopyButton value={record.value} label="Copiar valor do registro" iconOnly /></div></td></tr>)}</PaginatedCollection></table></div><p className="mt-3 text-xs text-muted">A atualização do DNS pode levar algumas horas. Se usar Cloudflare, configure o registro de agendamento como “Somente DNS” durante a conexão.</p></div>}
       {state.status === "https" && <p className="mt-4 text-sm text-muted">O domínio foi confirmado e o DNS está correto. O certificado HTTPS ainda está sendo preparado; verifique novamente em alguns instantes.</p>}

@@ -27,7 +27,7 @@ export async function KitsCatalog({ query = "", status = "active" }: { query?: s
       <label className="grid gap-2 text-sm font-bold">Situação<select className="field" name="status" defaultValue={status}><option value="active">Ativos</option><option value="inactive">Inativos</option><option value="all">Todos</option></select></label>
       <button className="primary-button">Buscar</button><Link className="secondary-button" href="/produtos-servicos?tab=kits">Limpar</Link>
     </form>
-    <div className="panel"><h3 className="font-extrabold">{rows.length} kit(s)</h3><PaginatedCollection label="Kits" className="mt-4 grid gap-4 md:grid-cols-2">{rows.map(kit => <article className="rounded-xl border p-4" key={kit.id}>
+    <div className="panel"><h3 className="font-extrabold">{rows.length} kit(s)</h3><PaginatedCollection label="Kits" className="catalog-records mt-4 grid gap-3">{rows.map(kit => <article className="catalog-record-row rounded-xl border p-3" key={kit.id}>
       <div className="flex items-start justify-between gap-3"><h3 className="font-extrabold">{kit.name}</h3><span className="status-pill">{kit.isActive ? "Ativo" : "Inativo"}</span></div>
       <p className="mt-2 font-bold text-brand">{(kit.priceInCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
       {kit.description && <p className="mt-2 text-sm text-muted">{kit.description}</p>}

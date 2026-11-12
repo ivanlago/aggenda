@@ -35,23 +35,21 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
   const availabilityByDay = new Map(member.availability.map((item) => [item.dayOfWeek, item]));
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4">
+    <article className="team-member-row grid gap-3 rounded-xl border border-slate-200 bg-white p-3">
       <div className="flex flex-wrap items-start gap-4">
         <EntityThumbnail src={member.imageUrl} alt={member.shortName} fallback={member.shortName[0]} />
         <div className="min-w-0 flex-1">
           <p className="text-lg font-extrabold">{member.shortName}</p>
           <p className="truncate text-sm text-muted">{member.email}</p>
-          {canEdit && <p className="mt-1 text-xs text-muted">Última entrada registrada: {member.lastSignedIn ?? "Sem registro"}</p>}
-          <div className="mt-2 flex flex-wrap gap-2">
+        </div>
+      </div>
+          <div className="flex flex-wrap gap-2">
             <span className="status-pill">{roleLabels[member.role] ?? member.role}</span>
             {member.professionName && <span className="status-pill">{member.professionName}</span>}
 
           </div>
-        </div>
-
-        {canDelete && <ActionForm action={deleteUnifiedTeamMember} successMessage="Membro excluído."><input type="hidden" name="userId" value={member.userId} /><button className="icon-button" aria-label="Excluir membro"><Trash2 className="size-4" /></button></ActionForm>}
-      </div>
-
+      {canEdit && <p className="text-xs text-muted"><span className="block font-bold">Última entrada</span>{member.lastSignedIn ?? "Sem registro"}</p>}
+      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
       {canEdit && (
         <ModalShell title={`Editar membro: ${member.shortName}`} triggerLabel="Editar membro" variant="edit" wide closeOnSuccess>
         <ActionForm action={updateUnifiedTeamMember} successMessage="Dados e acesso atualizados." className="mt-4 grid items-start gap-3 rounded-2xl bg-[#f7faf7] p-4 md:grid-cols-2">
@@ -89,6 +87,8 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
             </ActionForm>
         </ModalShell>
       )}
+        {canDelete && <ActionForm action={deleteUnifiedTeamMember} successMessage="Membro excluído."><input type="hidden" name="userId" value={member.userId} /><button className="icon-button" aria-label={`Excluir ${member.shortName}`}><Trash2 className="size-4" /></button></ActionForm>}
+      </div>
     </article>
   );
 }

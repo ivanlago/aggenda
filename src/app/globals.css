@@ -219,6 +219,23 @@ a[href]:focus-visible {
 
 /* Shared desktop density: public pages, dialogs and touch layouts keep their controls. */
 @media (min-width: 1024px) {
+  .team-member-row {
+    display: grid;
+    grid-template-columns: minmax(200px, 1.5fr) minmax(120px, .75fr) minmax(120px, .75fr) minmax(200px, 1.25fr);
+    align-items: center;
+    gap: 16px;
+  }
+  .team-member-row > div:first-child { align-items: center; gap: 12px; }
+  .team-member-row > div:first-child > div > p:first-child { font-size: 0.875rem; }
+  .catalog-record-row {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) minmax(160px, 1fr) minmax(180px, 1fr);
+    align-items: start;
+    gap: 12px 20px;
+  }
+  .catalog-record-row > :is(p, ul, div) { margin-block: 0; }
+  .catalog-record-row > ul { grid-column: 2; grid-row: 1 / span 3; }
+  .catalog-record-row > div:last-child:not(:first-child) { grid-column: 3; }
   .internal-app .app-header {
     min-height: 64px;
     padding-block: 10px;

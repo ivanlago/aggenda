@@ -1,6 +1,6 @@
 "use client";
 import { ModalShell } from "@/components/modal-shell";
-import { FormActions, FormSection } from "@/components/form-dialog-context";
+import { FormActions } from "@/components/form-dialog-context";
 
 import { Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -53,33 +53,33 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
       <div className="flex flex-wrap items-center gap-2 lg:justify-end">
       {canEdit && (
         <ModalShell title={`Editar membro: ${member.shortName}`} triggerLabel="Editar membro" variant="edit" wide closeOnSuccess>
-        <ActionForm action={updateUnifiedTeamMember} successMessage="Dados e acesso atualizados." className="mt-4 grid items-start gap-3 rounded-2xl bg-[#f7faf7] p-4 md:grid-cols-2">
+        <ActionForm action={updateUnifiedTeamMember} successMessage="Dados e acesso atualizados." className="grid min-w-0 items-start gap-4 sm:grid-cols-2">
           <input type="hidden" name="userId" value={member.userId} /><input type="hidden" name="professionalId" value={member.professionalId ?? ""} />
-          <FormSection title="Identificação">
+          <>
           <label className="grid gap-1 text-sm font-bold">Nome completo<input className="field" name="fullName" defaultValue={member.fullName} required /></label>
           <label className="grid gap-1 text-sm font-bold">Nome curto<input className="field" name="shortName" defaultValue={member.shortName} required /></label>
-          </FormSection>
-          <FormSection title="Acesso">
+          </>
+          <>
           <label className="grid gap-1 text-sm font-bold">Perfil de acesso<select className="field" name="role" defaultValue={["owner", "admin", "professional", "receptionist"].includes(member.role) ? member.role : ""} required disabled={member.role === "owner"}>{!["owner", "admin", "professional", "receptionist"].includes(member.role) && <option value="" disabled>Selecione o novo perfil</option>}{member.role === "owner" && <option value="owner">Administrador</option>}<option value="admin">Administrador</option><option value="professional">Atendente</option><option value="receptionist">Secretária</option></select>{member.role === "owner" && <input type="hidden" name="role" value="owner" />}</label>
-          </FormSection>
-          {member.professionalId && <FormSection title="Agenda">
+          </>
+          {member.professionalId && <>
             <label className="grid gap-1 text-sm font-bold">Ordem na agenda<input className="field" name="agendaOrder" type="number" min={0} max={9999} step={1} defaultValue={member.agendaOrder ?? 0} /><span className="text-xs font-normal text-muted">Números menores aparecem primeiro. Empates seguem a ordem alfabética.</span></label>
-          </FormSection>}
-          {member.professionalId && <FormSection title="Perfil profissional">
+          </>}
+          {member.professionalId && <>
             <label className="grid gap-1 text-sm font-bold">Profissão<select className="field" name="professionId" value={professionId} onChange={(event) => setProfessionId(event.target.value)}><option value="">Selecione</option>{professions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
             <label className="grid gap-1 text-sm font-bold">Especialidades<select className="field min-h-24" name="specialtyIds" multiple defaultValue={member.specialtyIds}>{availableSpecialties.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-            <label className="grid gap-1 text-sm font-bold">Conselho<select className="field" name="council" defaultValue={member.council ?? ""}><option value="">Selecione</option>{["CRM", "CRO", "CRP", "COREN", "CREFITO", "OAB", "CREA", "CREF", "OUTRO"].map((item) => <option key={item}>{item}</option>)}</select></label>
+            <div className="grid gap-4 sm:col-span-2 sm:grid-cols-[1fr_1fr_100px]"><label className="grid gap-1 text-sm font-bold">Conselho<select className="field" name="council" defaultValue={member.council ?? ""}><option value="">Selecione</option>{["CRM", "CRO", "CRP", "COREN", "CREFITO", "OAB", "CREA", "CREF", "OUTRO"].map((item) => <option key={item}>{item}</option>)}</select></label>
             <label className="grid gap-1 text-sm font-bold">Número do conselho<input className="field" name="registrationNumber" defaultValue={member.registrationNumber ?? ""} /></label>
-            <label className="grid gap-1 text-sm font-bold">UF do conselho<input className="field" name="registrationState" maxLength={2} defaultValue={member.registrationState ?? ""} /></label>
+            <label className="grid gap-1 text-sm font-bold">UF do conselho<input className="field" name="registrationState" maxLength={2} defaultValue={member.registrationState ?? ""} /></label></div>
             <label className="grid gap-1 text-sm font-bold">Telefone<PhoneInput name="phone" defaultValue={member.phone} /></label>
-            <label className="grid gap-1 text-sm font-bold md:col-span-2">Apresentação breve<textarea className="field min-h-20" name="bio" defaultValue={member.bio ?? ""} /></label>
-            <EntityImageField currentUrl={member.imageUrl} label="Foto do profissional" />
-            <div className="grid gap-2 md:col-span-2">
+            <details className="sm:col-span-2"><summary className="font-bold text-brand">Apresentação breve (opcional)</summary><label className="mt-3 grid gap-2 text-sm font-bold"><span className="sr-only">Apresentação breve</span><textarea className="field min-h-20" name="bio" defaultValue={member.bio ?? ""} /></label></details>
+            <div className="sm:col-span-2"><EntityImageField currentUrl={member.imageUrl} label="Foto do profissional" /></div>
+            <div className="grid gap-2 sm:col-span-2">
               <p className="font-bold">Google Agenda</p>
               <p className="text-sm text-muted">Conecte a conta Google do atendente para sincronizar seus agendamentos.</p>
               <div><Link className="secondary-button" href={`/api/google-calendar/connect?professionalId=${encodeURIComponent(member.professionalId)}`} prefetch={false}>Conectar ou reconectar Google Agenda</Link></div>
             </div>
-          </FormSection>}
+          </>}
           <FormActions editing />
         </ActionForm></ModalShell>
       )}

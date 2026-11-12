@@ -22,7 +22,6 @@ export function TeamCreateForm({ professions, specialties }: { professions: Prof
 
   return (
     <ActionForm action={createUnifiedTeamMember} successMessage="Membro cadastrado e acesso enviado por e-mail." className="grid gap-4">
-      <p className="text-sm text-muted">O perfil de acesso define o que a pessoa pode fazer no sistema. A opção de agenda define se ela também recebe atendimentos.</p>
       <div className="grid gap-3 md:grid-cols-2">
         <label className="grid gap-2 text-sm font-bold">Nome completo<input className="field" name="fullName" required /></label>
         <label className="grid gap-2 text-sm font-bold">Nome curto<input className="field" name="shortName" required placeholder="Ex.: Dra. Marina Costa" /></label>
@@ -48,7 +47,7 @@ export function TeamCreateForm({ professions, specialties }: { professions: Prof
       </div>
 
       {isAttendant === "yes" && (
-        <div className="grid items-start gap-4 rounded-2xl border border-brand/15 bg-[#f7faf7] p-4 md:grid-cols-2">
+        <div className="grid min-w-0 items-start gap-4 sm:grid-cols-2">
           <label className="grid gap-2 text-sm font-bold">Ordem na agenda<input className="field" name="agendaOrder" type="number" min={0} max={9999} step={1} defaultValue={0} /></label>
           <label className="grid gap-2 text-sm font-bold">Profissão
             <select className="field" name="professionId" value={professionId} onChange={(event) => setProfessionId(event.target.value)}>
@@ -61,12 +60,12 @@ export function TeamCreateForm({ professions, specialties }: { professions: Prof
             </select>
             <span className="text-xs font-normal text-muted">Use Ctrl para selecionar mais de uma.</span>
           </label>
-          <label className="grid gap-2 text-sm font-bold">Conselho<select className="field" name="council" defaultValue=""><option value="">Selecione</option>{["CRM", "CRO", "CRP", "COREN", "CREFITO", "OAB", "CREA", "CREF", "OUTRO"].map((item) => <option key={item}>{item}</option>)}</select></label>
+          <div className="grid gap-4 sm:col-span-2 sm:grid-cols-[1fr_1fr_100px]"><label className="grid gap-2 text-sm font-bold">Conselho<select className="field" name="council" defaultValue=""><option value="">Selecione</option>{["CRM", "CRO", "CRP", "COREN", "CREFITO", "OAB", "CREA", "CREF", "OUTRO"].map((item) => <option key={item}>{item}</option>)}</select></label>
           <label className="grid gap-2 text-sm font-bold">Número do conselho<input className="field" name="registrationNumber" /></label>
-          <label className="grid gap-2 text-sm font-bold">UF do conselho<input className="field" name="registrationState" maxLength={2} /></label>
+          <label className="grid gap-2 text-sm font-bold">UF do conselho<input className="field" name="registrationState" maxLength={2} /></label></div>
           <label className="grid gap-2 text-sm font-bold">Telefone<PhoneInput name="phone" /></label>
-          <label className="grid gap-2 text-sm font-bold md:col-span-2">Apresentação breve<textarea className="field min-h-24" name="bio" /></label>
-          <EntityImageField label="Foto do profissional" />
+          <details className="sm:col-span-2"><summary className="font-bold text-brand">Apresentação breve (opcional)</summary><label className="mt-3 grid gap-2 text-sm font-bold"><span className="sr-only">Apresentação breve</span><textarea className="field min-h-24" name="bio" /></label></details>
+          <div className="sm:col-span-2"><EntityImageField label="Foto do profissional" /></div>
         </div>
       )}
       <p className="text-xs text-muted">Após o cadastro, o Aggenda enviará um link de criação de senha válido por 24 horas.</p>

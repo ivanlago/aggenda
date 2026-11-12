@@ -62,9 +62,9 @@ export function AppointmentRescheduleForm({
   }
 
   return (
-    <ActionForm action={action} successMessage="Agendamento remarcado com sucesso." className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+    <ActionForm action={action} successMessage="Agendamento remarcado com sucesso." className="mt-2 grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
       <input type="hidden" name="id" value={appointmentId} />
-      {rooms.length > 0 && <label className="grid gap-2 text-sm font-bold sm:col-span-3">Sala<select className="field" name="roomId" value={roomId} onChange={event => { const next = event.target.value; setRoomId(next); loadAvailability(date, next); }}><option value="">Selecionar automaticamente</option>{rooms.filter(room => room.isActive || room.id === initialRoomId).map(room => <option key={room.id} value={room.id}>{room.name}{!room.isActive ? " (inativa)" : ""}</option>)}</select></label>}
+      {rooms.length > 0 && <label className="grid min-w-0 gap-2 text-sm font-bold">Sala<select className="field" name="roomId" value={roomId} onChange={event => { const next = event.target.value; setRoomId(next); loadAvailability(date, next); }}><option value="">Selecionar automaticamente</option>{rooms.filter(room => room.isActive || room.id === initialRoomId).map(room => <option key={room.id} value={room.id}>{room.name}{!room.isActive ? " (inativa)" : ""}</option>)}</select></label>}
       <label className="grid gap-2 text-sm font-bold">Nova data<input
         className="field py-2"
         type="date"
@@ -83,7 +83,7 @@ export function AppointmentRescheduleForm({
         ))}
       </select></label>
       <button className="primary-button py-2" disabled={loading || !times.length}>Reagendar</button>
-      {availabilityError && <p className="text-sm font-bold text-red-700 sm:col-span-3" role="alert">{availabilityError}</p>}
+      {availabilityError && <p className="text-sm font-bold text-red-700 sm:col-span-2 lg:col-span-4" role="alert">{availabilityError}</p>}
     </ActionForm>
   );
 }

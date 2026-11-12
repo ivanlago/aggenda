@@ -37,7 +37,7 @@ export function AppointmentStatusForm({
     <ActionForm action={action} successMessage={status === "cancelled" ? "Agendamento cancelado com sucesso." : "Situação atualizada com sucesso."} className="grid min-w-0 gap-4">
       <input type="hidden" name="id" value={appointmentId} />
       <div className="flex flex-wrap items-end gap-3">
-      <label className="grid min-w-0 flex-1 gap-2 text-sm font-bold">Situação<select
+      <label className="grid min-w-0 flex-1 basis-56 gap-2 text-sm font-bold">Situação<select
         className="field py-2"
         name="status"
         value={status}
@@ -50,7 +50,7 @@ export function AppointmentStatusForm({
       >
         {statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select></label>
-      {statuses.some(([value]) => value === "cancelled") && initialStatus !== "cancelled" && status !== "cancelled" && <button type="button" className="secondary-button text-red-700" onClick={() => setDraft({ baselineStatus: initialStatus, baselineReason: serverReason, status: "cancelled", cancellationReason })}>Cancelar agendamento</button>}
+      <button className={`primary-button ${status === "cancelled" ? "bg-red-700 hover:bg-red-800" : ""}`}>{status === "cancelled" ? "Confirmar cancelamento" : "Salvar situação do agendamento"}</button>
       </div>
       {status === "cancelled" && (
         <label className="grid min-w-0 gap-2 text-sm font-bold">Motivo do cancelamento *<input
@@ -69,7 +69,7 @@ export function AppointmentStatusForm({
         /></label>
       )}
       {status === "completed" && returnSettings}
-      <div className="flex justify-end"><button className={`primary-button ${status === "cancelled" ? "bg-red-700 hover:bg-red-800" : ""}`}>{status === "cancelled" ? "Confirmar cancelamento" : "Salvar situação do agendamento"}</button></div>
+
     </ActionForm>
   );
 }

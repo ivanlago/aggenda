@@ -11,6 +11,8 @@ import {
   WalletCards,
   Rocket,
   Boxes,
+  DoorOpen,
+  Wrench,
   BanknoteArrowDown,
   ChartNoAxesCombined,
   ChevronDown,
@@ -71,9 +73,6 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     { label: organization.clientLabelPlural, items: [
       { href: "/clientes", label: organization.clientLabelPlural, icon: UsersRound, permission: "clients.read" },
     ] },
-    { label: "Produtos e Serviços", items: [
-      { href: "/produtos-servicos", label: "Produtos e Serviços", icon: Boxes, permission: hasOrganizationPermission(organization.role, "services.read", organization.teamPermissionOverrides) ? "services.read" : "inventory.read" },
-    ] },
     { label: "CRM", items: [
       { href: "/crescimento", label: "CRM", icon: TrendingUp, permission: "crm.read" },
     ] },
@@ -81,7 +80,6 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       { href: "/relatorios", label: "Relatórios", icon: ChartNoAxesCombined, permission: "organization.read" },
     ] },
     { label: "Atendimento", items: [
-      { href: "/estoque/compras", label: "Compras e fornecedores", icon: Boxes, permission: "inventory.manage" },
       { href: "/documentos", label: "Documentos", icon: FileSignature, permission: "documents.read", children: [
         { href: "/documentos/clinicos", label: "Clínicos", icon: FileCheck2, permission: "documents.read", secondary: true },
         { href: "/documentos/juridicos", label: "Jurídicos", icon: ScrollText, permission: "documents.read", secondary: true },
@@ -89,6 +87,12 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
         { href: "/documentos/historico", label: "Histórico", icon: ReceiptText, permission: "documents.read", secondary: true },
       ] },
       { href: "/documentos/assinatura-profissional", label: "Assinatura profissional", icon: FileSignature, permission: "documents.sign" },
+    ] },
+    { label: "Cadastros", items: [
+      { href: "/estoque/compras", label: "Compras e fornecedores", icon: Boxes, permission: "inventory.manage" },
+      { href: "/equipamentos", label: "Equipamentos", icon: Wrench, permission: "organization.settings.manage" },
+      { href: "/produtos-servicos", label: "Produtos e Serviços", icon: Boxes, permission: hasOrganizationPermission(organization.role, "services.read", organization.teamPermissionOverrides) ? "services.read" : "inventory.read" },
+      { href: "/salas", label: "Salas", icon: DoorOpen, permission: "organization.settings.manage" },
     ] },
     { label: "Financeiro", items: [
       { href: "/financeiro/lancamentos", label: "Lançamentos", icon: BanknoteArrowDown, permission: "finance.read" },

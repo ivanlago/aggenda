@@ -33,7 +33,7 @@ export async function saveRoom(form: FormData) {
  }).catch(error => { if (error?.cause?.code === "23505" || error?.code === "23505") return { error: "Já existe uma sala com esse nome." }; throw error; });
  if ("error" in result) return result;
  await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: data.id ? "update" : "create", entityType: "room", entityId: result.id, details: { name: data.name, isActive: data.isActive } });
- revalidatePath("/configuracoes"); revalidatePath("/agenda");
+ revalidatePath("/configuracoes"); revalidatePath("/salas"); revalidatePath("/agenda");
 }
 
 export async function assignAppointmentRoom(form: FormData) {

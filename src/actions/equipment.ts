@@ -39,7 +39,7 @@ export async function saveEquipment(form: FormData) {
       return { id: equipmentId };
     });
     if ("error" in result) return result;
-    revalidatePath("/configuracoes"); revalidatePath("/agenda"); revalidatePath("/produtos-servicos");
+    revalidatePath("/configuracoes"); revalidatePath("/equipamentos"); revalidatePath("/agenda"); revalidatePath("/produtos-servicos");
   } catch (error) {
     const cause = error as { code?: string; cause?: { code?: string } };
     if (cause.code === "23505" || cause.cause?.code === "23505") return { error: "Já existe um equipamento com esse nome." };

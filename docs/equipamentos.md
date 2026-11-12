@@ -1,6 +1,6 @@
 # Equipamentos e disponibilidade
 
-Cadastro em **Configurações → Equipamentos**. Nome, ordem de exibição, status, uso exclusivo/compartilhado e serviços vinculados. O formulário segue o padrão compacto do Aggenda, com edição em modal e lista paginada.
+Cadastro em **Cadastros → Equipamentos**. Nome, ordem de exibição, status, uso exclusivo/compartilhado e serviços vinculados. O formulário segue o padrão compacto do Aggenda, com edição em modal e lista paginada.
 
 - Cada registro representa um equipamento. Cadastre aparelhos distintos separadamente.
 - **Não permite atendimentos simultâneos**: todos os serviços vinculados disputam esse equipamento durante todo o intervalo do atendimento, independentemente de profissional ou sala.

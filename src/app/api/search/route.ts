@@ -20,6 +20,9 @@ const pages: Array<{ label: string; href: string; permission: OrganizationPermis
   { label: "Histórico de documentos", href: "/documentos/historico", permission: "documents.read" },
   { label: "Financeiro", href: "/financeiro", permission: "finance.read" },
   { label: "Equipe e profissionais", href: "/equipe", permission: "team.read" },
+  { label: "Compras e fornecedores", href: "/estoque/compras", permission: "inventory.manage" },
+  { label: "Equipamentos", href: "/equipamentos", permission: "organization.settings.manage" },
+  { label: "Salas", href: "/salas", permission: "organization.settings.manage" },
   { label: "Configurações", href: "/configuracoes", permission: "organization.settings.manage" },
 ];
 const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();

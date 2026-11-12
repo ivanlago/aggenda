@@ -2,7 +2,7 @@
 import { ModalShell } from "@/components/modal-shell";
 import { FormActions } from "@/components/form-dialog-context";
 
-import { CalendarCheck, Trash2 } from "lucide-react";
+import { CalendarCheck, CircleCheck, CalendarDays, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -51,10 +51,19 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
             {member.googleCalendarEmail && <span className="status-pill inline-flex items-center gap-1" title={member.googleCalendarEmail}><CalendarCheck className="size-4" aria-hidden="true" />Google conectado</span>}
 
           </div>
-      {canEdit && <p className="text-xs text-muted"><span className="block font-bold">Última entrada</span>{member.lastSignedIn ?? "Sem registro"}</p>}
-      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+      <div className="min-w-0">{canEdit && <p className="text-xs text-muted"><span className="block font-bold">Última entrada</span>{member.lastSignedIn ?? "Sem registro"}</p>}</div>
+      <div className="team-member-actions flex items-center gap-2 lg:justify-end [&>button]:shrink-0 [&>form]:shrink-0">
+      {canEdit && member.professionalId && (
+        <ModalShell title={`Disponibilidade de ${member.shortName}`} triggerLabel="Disponibilidade" triggerIcon={member.availability.length ? <CircleCheck className="size-4" role="img" aria-label="Horários cadastrados" /> : <CalendarDays className="size-4" aria-hidden="true" />} variant="edit" wide closeOnSuccess>
+            <ActionForm action={replaceTeamMemberAvailability} successMessage="Disponibilidade atualizada." className="mt-5 grid gap-3">
+              <input type="hidden" name="professionalId" value={member.professionalId} />
+              {days.map((day, index) => { const current = availabilityByDay.get(index); return <div className="grid items-center gap-2 rounded-xl border p-3 sm:grid-cols-[1fr_130px_130px]" key={day}><label className="flex items-center gap-2 font-bold"><input type="checkbox" name={`day-${index}`} defaultChecked={Boolean(current)} />{day}</label><input className="field py-2" type="time" name={`starts-${index}`} defaultValue={current?.startsAt ?? "09:00"} aria-label={`Início ${day}`} /><input className="field py-2" type="time" name={`ends-${index}`} defaultValue={current?.endsAt ?? "18:00"} aria-label={`Fim ${day}`} /></div>; })}
+              <FormActions submitLabel="Salvar disponibilidade" />
+            </ActionForm>
+        </ModalShell>
+      )}
       {canEdit && (
-        <ModalShell title={`Editar membro: ${member.shortName}`} triggerLabel="Editar membro" variant="edit" wide closeOnSuccess>
+        <ModalShell title={`Editar membro: ${member.shortName}`} variant="edit" wide closeOnSuccess>
         <ActionForm action={updateUnifiedTeamMember} successMessage="Dados e acesso atualizados." className="grid min-w-0 items-start gap-4 sm:grid-cols-2">
           <input type="hidden" name="userId" value={member.userId} /><input type="hidden" name="professionalId" value={member.professionalId ?? ""} />
           <>
@@ -84,16 +93,7 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
         </ActionForm></ModalShell>
       )}
 
-      {canEdit && member.professionalId && (
-        <ModalShell title={`Disponibilidade de ${member.shortName}`} triggerLabel={member.availability.length ? "Disponibilidade cadastrada" : "Cadastrar disponibilidade"} variant="edit" wide closeOnSuccess>
-            <ActionForm action={replaceTeamMemberAvailability} successMessage="Disponibilidade atualizada." className="mt-5 grid gap-3">
-              <input type="hidden" name="professionalId" value={member.professionalId} />
-              {days.map((day, index) => { const current = availabilityByDay.get(index); return <div className="grid items-center gap-2 rounded-xl border p-3 sm:grid-cols-[1fr_130px_130px]" key={day}><label className="flex items-center gap-2 font-bold"><input type="checkbox" name={`day-${index}`} defaultChecked={Boolean(current)} />{day}</label><input className="field py-2" type="time" name={`starts-${index}`} defaultValue={current?.startsAt ?? "09:00"} aria-label={`Início ${day}`} /><input className="field py-2" type="time" name={`ends-${index}`} defaultValue={current?.endsAt ?? "18:00"} aria-label={`Fim ${day}`} /></div>; })}
-              <FormActions submitLabel="Salvar disponibilidade" />
-            </ActionForm>
-        </ModalShell>
-      )}
-        {canDelete && <ActionForm action={deleteUnifiedTeamMember} successMessage="Membro excluído."><input type="hidden" name="userId" value={member.userId} /><button className="icon-button" aria-label={`Excluir ${member.shortName}`}><Trash2 className="size-4" /></button></ActionForm>}
+        {canDelete && <ActionForm action={deleteUnifiedTeamMember} successMessage="Membro excluído."><input type="hidden" name="userId" value={member.userId} /><button className="icon-button" aria-label={`Excluir ${member.shortName}`}><Trash2 className="size-4" /></button></ActionForm>}{!canDelete && <span className="size-9 shrink-0" aria-hidden="true" />}
       </div>
     </article>
   );

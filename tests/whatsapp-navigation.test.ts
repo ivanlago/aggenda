@@ -4,6 +4,7 @@ import { navigateWhatsApp, parseNavigationState, type NavigationContext } from "
 import { incomingWhatsAppText, whatsappMessageContent, usesInternalWhatsAppAgent } from "../src/lib/whatsapp-message";
 import { buildWhatsAppCatalogPdf } from "../src/lib/whatsapp-catalog-pdf";
 import { PDFDocument } from "pdf-lib";
+import { bookingDepositAmount, depositServiceNotice } from "../src/lib/booking-deposit-guidance";
 
 const context: NavigationContext = {
   name: "Empresa de teste", core: true, bookingUrl: "https://aggenda.example/cliente/teste", address: "Rua de teste, 10", phone: "71999999999", email: null,
@@ -11,6 +12,17 @@ const context: NavigationContext = {
   services: Array.from({ length: 16 }, (_, index) => ({ id: `service-${index}`, name: `Avaliação ${index}`, shortName: null, categoryId: index < 10 ? "category-a" : null, description: "Avaliação inicial.", preparation: "Levar documentos.", durationMinutes: 30, priceInCents: 12000 })),
   products: [{ id: "product-a", label: "Produto de teste · 50 ml", priceInCents: 5900 }],
 };
+
+test("advance-payment guidance uses the saved service rules and distinguishes direct Pix from integrated", () => {
+  const service = { ...context.services[0], depositType: "percentage", depositValue: 25 };
+  assert.equal(bookingDepositAmount(12000, "percentage", 25), 3000);
+  assert.equal(bookingDepositAmount(2000, "fixed", 5000), 2000);
+  assert.equal(bookingDepositAmount(12000, "full"), 12000);
+  assert.equal(bookingDepositAmount(12000, "none"), 0);
+  assert.match(depositServiceNotice(service, "pix_direct"), /30,00.*Pix direto/);
+  const result = navigateWhatsApp({ ...context, bookingPaymentMode: "pix_direct", services: [service] }, `nav:service:${service.id}`, { options: [{ id: `nav:service:${service.id}`, title: service.name }] })!;
+  assert.match(result.reply, /30,00/); assert.match(result.reply, /conferência do crédito pela equipe/);
+});
 
 test("shared menus adapt to mode and catalog; categories and services paginate within WhatsApp limits", () => {
   const home = navigateWhatsApp(context, "Olá!")!;

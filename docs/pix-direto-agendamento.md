@@ -11,7 +11,7 @@ A conta financeira organiza o extrato. O dinheiro é enviado à conta bancária 
 
 ## Fluxo
 
-- O cliente faz a reserva pela área do cliente e abre **Ver Pix e acompanhar agendamento**.
+- O cliente vê o valor do sinal antes de reservar. Após a reserva, a área do cliente apresenta o QR Code e o Pix Copia e Cola no próprio cartão do agendamento; **Ver Pix e acompanhar agendamento** leva a esse cartão. O link individual de gerenciamento também continua disponível.
 - A página apresenta valor, titular, chave, QR Code gerado localmente e Pix Copia e Cola exclusivo daquela reserva.
 - O prazo para informar o pagamento usa `depositExpirationMinutes` do serviço (padrão: 30 minutos). O QR Code estático não pode ser invalidado no banco; por isso o Aggenda deixa de exibi-lo após o prazo e orienta o cliente a falar com a equipe se já pagou.
 - **Já fiz o Pix** registra somente a declaração do cliente. Não gera baixa nem confirmação automática do agendamento.
@@ -26,6 +26,14 @@ O endpoint existente `/api/cron/booking-reservations` expira reservas não pagas
 Cancelar uma reserva sem pagamento cancela o lançamento pendente do sinal. Cancelar uma reserva já paga **não estorna o dinheiro no banco** e preserva o recebimento. A equipe deve tratar devolução e seu registro financeiro conforme a política da empresa.
 
 Os dados Pix e a conta financeira ficam guardados na reserva. Alterações de chave ou modo afetam somente novas reservas.
+
+## Agentes de WhatsApp
+
+Atendimento e Secretária usam o tipo/valor de sinal do catálogo e o modo de recebimento da empresa nas orientações. A Secretária encaminha os serviços com sinal para a área do cliente, onde a reserva e o Pix são gerados. Não envia chave inventada nem reserva um horário pago diretamente pela conversa.
+
+No modo Secretária, perguntas sobre Pix consultam a situação do sinal do próprio cliente. “Já fiz o Pix” direciona à reserva para informar o pagamento; a frase não gera baixa. Pix informado aguarda a equipe, e confirmação de presença não ultrapassa o pagamento pendente. O contexto estruturado enviado ao modelo contém o modo e a situação necessária, sem incluir o cadastro da chave bancária nem o campo de token de gerenciamento das reservas.
+
+Testes adicionais: `tests/whatsapp-agents.test.ts`, `tests/whatsapp-navigation.test.ts`, `tests/whatsapp-hybrid.test.ts` e `tests/booking-pix-panel.test.ts`. As APIs de IA, WhatsApp e agenda externa são substituídas por simulações nos testes; nenhum envio real é feito.
 
 ## Pagamento integrado
 

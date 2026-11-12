@@ -1,4 +1,6 @@
 import { navigateWhatsApp, parseNavigationState, type NavigationState } from "@/lib/whatsapp-navigation";
+import { asksAboutBookingPayment, bookingDepositAgentInstructions, bookingDepositAmount, depositBookingGuidance, depositStatusLabel } from "@/lib/booking-deposit-guidance";
+import { pendingDeposit } from "@/lib/booking-payment";
 import { catalogDocumentUrl, getWhatsAppProducts } from "@/lib/whatsapp-catalog";
 import { roomBookingError } from "@/lib/room-errors";
 import { and, asc, desc, eq, gt, gte, inArray, sql } from "drizzle-orm";
@@ -165,12 +167,12 @@ async function getClient(input: Input, conversation: Conversation) {
 
 async function send(input: Input, conversation: Conversation, data: { reply: string; model: string; intent: string; confidence: number; pending?: Pending; flowState?: FlowState; handoff?: boolean; ai?: boolean; navigationState?: NavigationState; hybridBooking?: HybridBookingContext; hybridRequest?: HybridRequest; document?: { link: string; filename: string } }) {
   if (data.pending?.kind === "book") {
-    const [service] = await db.select({ price: services.priceInCents, deposit: services.depositType }).from(services).where(and(eq(services.id, data.pending.serviceId), eq(services.organizationId, input.organizationId))).limit(1);
-    const [company] = await db.select({ address: organizations.publicAddress, slug: organizations.slug, bookingEnabled: organizations.bookingEnabled }).from(organizations).where(eq(organizations.id, input.organizationId)).limit(1);
-    if (service?.deposit && service.deposit !== "none") {
+    const [service] = await db.select({ price: services.priceInCents, deposit: services.depositType, depositValue: services.depositValue }).from(services).where(and(eq(services.id, data.pending.serviceId), eq(services.organizationId, input.organizationId))).limit(1);
+    const [company] = await db.select({ address: organizations.publicAddress, slug: organizations.slug, bookingEnabled: organizations.bookingEnabled, paymentMode: sql<string>`coalesce(${organizations.bookingPaymentSettings}->>'mode', 'integrated')` }).from(organizations).where(eq(organizations.id, input.organizationId)).limit(1);
+    if (service && bookingDepositAmount(service.price, service.deposit, service.depositValue) > 0) {
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.BETTER_AUTH_URL;
       const link = baseUrl && company?.bookingEnabled ? new URL(`/cliente/${encodeURIComponent(company.slug)}?novo=1&servico=${data.pending.serviceId}`, baseUrl).toString() : null;
-      data = { ...data, pending: undefined, handoff: !link, intent: "deposit_booking", reply: link ? `Este procedimento exige sinal ou pagamento para confirmar a reserva. Conclua o agendamento e o pagamento na área do cliente:\n${link}\nNenhum horário foi reservado nesta conversa.` : "Este procedimento exige sinal ou pagamento. Encaminhei sua solicitação à equipe para concluir a reserva. Nenhum horário foi reservado nesta conversa." };
+      data = { ...data, pending: undefined, hybridBooking: undefined, hybridRequest: undefined, handoff: !link, intent: "deposit_booking", reply: depositBookingGuidance({ priceInCents: service.price, depositType: service.deposit, depositValue: service.depositValue }, company?.paymentMode ?? "integrated", link) };
     } else {
       data.reply += `\n${company?.address ? `Unidade: ${company.address}.\n` : ""}${service?.price != null ? `Preço: ${(service.price / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.` : "Preço: consulte a equipe."}\nA confirmação acima realiza a reserva do horário; a confirmação de presença é uma etapa separada.`;
     }
@@ -192,12 +194,21 @@ async function send(input: Input, conversation: Conversation, data: { reply: str
 }
 
 async function upcoming(organizationId: string, clientId: string) {
-  return db.select({ id: appointments.id, startsAt: appointments.startsAt, status: appointments.status, serviceId: appointments.serviceId, serviceName: services.name, professionalId: appointments.professionalId, professionalName: professionals.name })
+  return db.select({ id: appointments.id, startsAt: appointments.startsAt, status: appointments.status, depositStatus: appointments.depositStatus, depositAmount: appointments.depositAmountInCents, publicManageToken: appointments.publicManageToken, reservationExpiresAt: appointments.reservationExpiresAt, serviceId: appointments.serviceId, serviceName: services.name, professionalId: appointments.professionalId, professionalName: professionals.name })
     .from(appointments).innerJoin(services, eq(services.id, appointments.serviceId)).leftJoin(professionals, eq(professionals.id, appointments.professionalId))
     .where(and(eq(appointments.organizationId, organizationId), eq(appointments.clientId, clientId), inArray(appointments.status, ["scheduled", "confirmed"]), gte(appointments.startsAt, new Date()))).orderBy(asc(appointments.startsAt)).limit(10);
 }
 
 type UpcomingAppointment = Awaited<ReturnType<typeof upcoming>>[number];
+
+function appointmentDepositGuidance(item: Pick<UpcomingAppointment, "depositStatus" | "depositAmount" | "publicManageToken" | "reservationExpiresAt">, baseUrl?: string) {
+  if (item.depositStatus === "paid") return "O sinal já está registrado como recebido.";
+  if (item.depositStatus === "direct_review") return "Seu Pix foi informado e aguarda conferência do crédito pela equipe. Não pague novamente. Isso ainda não confirma o agendamento.";
+  const link = baseUrl && item.publicManageToken ? new URL(`/agendamento/${encodeURIComponent(item.publicManageToken)}`, baseUrl).toString() : null;
+  if (item.reservationExpiresAt && item.reservationExpiresAt <= new Date()) return "O prazo para pagar esta reserva terminou. Não pague o Pix antigo; fale com a equipe se já transferiu.";
+  const amount = (item.depositAmount / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return `Este agendamento aguarda o pagamento de ${amount}. ${item.depositStatus === "direct_pending" ? "Abra a página para ver o QR Code e o Pix Copia e Cola com o valor. Se já transferiu, clique em Já fiz o Pix; a equipe conferirá o crédito." : "Conclua o pagamento na área do cliente e aguarde a confirmação do provedor."}${link ? `\n${link}` : " Digite EQUIPE para solicitar ajuda."}`;
+}
 
 function filterMentionedAppointments(rows: UpcomingAppointment[], value: string, timezone: string) {
   if (/^\d+$/.test(value.trim())) {
@@ -218,6 +229,10 @@ function appointmentChoices(rows: UpcomingAppointment[], timezone: string) {
 }
 
 async function respondRescheduleDestination(input: Input, conversation: Conversation, appointment: UpcomingAppointment, organization: { timezone: string; slotIntervalMinutes: number }, desiredDate?: string, desiredTime?: string, selectedStartsAt?: string, period?: "morning" | "afternoon" | "evening") {
+  if (pendingDeposit(appointment.depositStatus)) {
+    await send(input, conversation, { reply: appointmentDepositGuidance(appointment, process.env.NEXT_PUBLIC_APP_URL ?? process.env.BETTER_AUTH_URL), model: "aggenda-transactional-v1", intent: "deposit_pending", confidence: 1 });
+    return NextResponse.json({ accepted: true, action: "deposit_pending" });
+  }
   if (!appointment.professionalId) {
     await send(input, conversation, { reply: "Esse agendamento não possui profissional definido. Digite EQUIPE para solicitar ajuda no reagendamento.", model: "aggenda-transactional-v1", intent: "reschedule_not_found", confidence: 1 });
     return NextResponse.json({ accepted: true, action: "reply" });
@@ -249,11 +264,11 @@ async function execute(input: Input, pending: Pending, clientId: string, timezon
   if (pending.kind === "book") {
     const startsAt = new Date(pending.startsAt);
     const [[service], [professional]] = await Promise.all([
-      db.select({ name: services.name, duration: services.durationMinutes, price: services.priceInCents, deposit: services.depositType }).from(services).where(and(eq(services.id, pending.serviceId), eq(services.organizationId, input.organizationId), eq(services.isActive, true))).limit(1),
+      db.select({ name: services.name, duration: services.durationMinutes, price: services.priceInCents, deposit: services.depositType, depositValue: services.depositValue }).from(services).where(and(eq(services.id, pending.serviceId), eq(services.organizationId, input.organizationId), eq(services.isActive, true))).limit(1),
       db.select({ name: professionals.name }).from(professionals).where(and(eq(professionals.id, pending.professionalId), eq(professionals.organizationId, input.organizationId), eq(professionals.isActive, true), eq(professionals.isBookable, true))).limit(1),
     ]);
     if (!service || !professional) throw new Error("O serviço ou profissional não está mais disponível.");
-    if (service.deposit !== "none") throw new Error("Este procedimento exige pagamento. Digite MENU e selecione o procedimento novamente para receber as orientações atualizadas.");
+    if (bookingDepositAmount(service.price, service.deposit, service.depositValue) > 0) throw new Error("Este procedimento exige pagamento. Digite MENU e selecione o procedimento novamente para receber as orientações atualizadas.");
     const item = await withAppointmentLock(input.organizationId, pending.professionalId, async (tx) => {
       const [repeat] = await tx.select().from(appointments).where(and(eq(appointments.organizationId, input.organizationId), sql`${appointments.metadata}->>'whatsappCommandMessageId' = ${input.messageId}`)).limit(1); if (repeat) return repeat;
       if (!await isTimeAvailable({ organizationId: input.organizationId, timezone, date: organizationDate(startsAt, timezone), serviceId: pending.serviceId, professionalId: pending.professionalId, startsAt })) throw new Error("Esse horário acabou de ficar indisponível. Escolha outro horário.");
@@ -263,7 +278,7 @@ async function execute(input: Input, pending: Pending, clientId: string, timezon
     await Promise.allSettled([syncAppointmentFinancialEntry(item.id), syncAppointmentToGoogleCalendar(item.id)]);
     return `Agendamento realizado: ${service.name} com ${professional.name}, em ${formatOrganizationDateTime(item.startsAt, timezone)}. Seu horário está reservado; a confirmação de presença é uma etapa separada.`;
   }
-  const [current] = await db.select({ id: appointments.id, startsAt: appointments.startsAt, status: appointments.status, metadata: appointments.metadata, serviceId: appointments.serviceId, serviceName: services.name, professionalId: appointments.professionalId, professionalName: professionals.name })
+  const [current] = await db.select({ id: appointments.id, startsAt: appointments.startsAt, status: appointments.status, depositStatus: appointments.depositStatus, depositAmount: appointments.depositAmountInCents, publicManageToken: appointments.publicManageToken, reservationExpiresAt: appointments.reservationExpiresAt, metadata: appointments.metadata, serviceId: appointments.serviceId, serviceName: services.name, professionalId: appointments.professionalId, professionalName: professionals.name })
     .from(appointments).innerJoin(services, eq(services.id, appointments.serviceId)).leftJoin(professionals, eq(professionals.id, appointments.professionalId))
     .where(and(eq(appointments.id, pending.appointmentId), eq(appointments.organizationId, input.organizationId), eq(appointments.clientId, clientId))).limit(1);
   if (!current) throw new Error("Não encontrei esse agendamento.");
@@ -272,6 +287,7 @@ async function execute(input: Input, pending: Pending, clientId: string, timezon
     await db.transaction(async (tx) => { await tx.update(appointments).set({ status: "cancelled", cancellationReason: pending.reason, metadata: { ...(current.metadata ?? {}), whatsappCommandMessageId: input.messageId, conversationId: input.conversationId }, updatedAt: new Date() }).where(eq(appointments.id, current.id)); await tx.insert(auditLogs).values({ organizationId: input.organizationId, action: "status:cancelled", entityType: "appointment", entityId: current.id, details: { previousStatus: current.status, status: "cancelled", cancellationReason: pending.reason, source: "whatsapp", messageId: input.messageId } }); });
     await Promise.allSettled([deleteAppointmentFromGoogleCalendar(current.id), reconcilePackageUsage(current.id, "cancelled"), syncAppointmentFinancialEntry(current.id)]); return `Seu agendamento de ${current.serviceName}, previsto para ${formatOrganizationDateTime(current.startsAt, timezone)}, foi cancelado.`;
   }
+  if (pendingDeposit(current.depositStatus)) return appointmentDepositGuidance(current, process.env.NEXT_PUBLIC_APP_URL ?? process.env.BETTER_AUTH_URL);
   if (!current.professionalId) throw new Error("Esse agendamento não possui profissional definido.");
   const startsAt = new Date(pending.startsAt); const [service] = await db.select({ duration: services.durationMinutes }).from(services).where(eq(services.id, current.serviceId)).limit(1);
   const updated = await withAppointmentLock(input.organizationId, current.professionalId, async (tx) => {
@@ -328,11 +344,11 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
       return NextResponse.json({ accepted: true, skipped: "response_limit" });
     }
   }
-  const [organization] = await db.select({ name: organizations.name, description: organizations.publicDescription, timezone: organizations.timezone, slotIntervalMinutes: organizations.slotIntervalMinutes, slug: organizations.slug, bookingEnabled: organizations.bookingEnabled, publicAddress: organizations.publicAddress, publicWhatsapp: organizations.publicWhatsapp, publicEmail: organizations.publicEmail }).from(organizations).where(eq(organizations.id, input.organizationId)).limit(1);
+  const [organization] = await db.select({ name: organizations.name, description: organizations.publicDescription, timezone: organizations.timezone, slotIntervalMinutes: organizations.slotIntervalMinutes, slug: organizations.slug, bookingEnabled: organizations.bookingEnabled, publicAddress: organizations.publicAddress, publicWhatsapp: organizations.publicWhatsapp, publicEmail: organizations.publicEmail, bookingPaymentMode: sql<string>`coalesce(${organizations.bookingPaymentSettings}->>'mode', 'integrated')` }).from(organizations).where(eq(organizations.id, input.organizationId)).limit(1);
   if (!organization) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
   const [latest] = await db.select({ rawPayload: chatMessages.rawPayload, createdAt: chatMessages.createdAt }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), eq(chatMessages.direction, "outbound"), conversation.handoffResolvedAt ? gt(chatMessages.createdAt, conversation.handoffResolvedAt) : undefined)).orderBy(desc(chatMessages.occurredAt)).limit(1);
   const [navigationCatalog, categories, products] = await Promise.all([
-    db.select({ id: services.id, name: services.name, shortName: services.shortName, categoryId: services.categoryId, description: services.description, preparation: services.preparation, durationMinutes: services.durationMinutes, priceInCents: services.priceInCents }).from(services).where(and(eq(services.organizationId, input.organizationId), eq(services.isActive, true))).orderBy(services.name),
+    db.select({ id: services.id, name: services.name, shortName: services.shortName, categoryId: services.categoryId, description: services.description, preparation: services.preparation, durationMinutes: services.durationMinutes, priceInCents: services.priceInCents, depositType: services.depositType, depositValue: services.depositValue }).from(services).where(and(eq(services.organizationId, input.organizationId), eq(services.isActive, true))).orderBy(services.name),
     db.select({ id: serviceCategories.id, name: serviceCategories.name }).from(serviceCategories).where(eq(serviceCategories.organizationId, input.organizationId)).orderBy(serviceCategories.name),
     getWhatsAppProducts(input.organizationId),
   ]);
@@ -342,7 +358,7 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
   const activeHybridFlow = hybrid ? parseFlowState(latest?.rawPayload) : null;
   const navigation = hybrid && requestsHuman(input.text)
     ? { reply: "Vou encaminhar sua conversa para nossa equipe. Pode escrever sua dúvida por aqui.", handoff: true } as import("@/lib/whatsapp-navigation").NavigationReply
-    : navigateWhatsApp({ name: organization.name, core: input.whatsappServiceCode === "core_ai", bookingUrl, address: organization.publicAddress, phone: organization.publicWhatsapp, email: organization.publicEmail, services: navigationCatalog, categories, products, skipServiceNameMatch: Boolean(activeHybridFlow) }, input.text, parseNavigationState(latest?.rawPayload?.navigationState));
+    : navigateWhatsApp({ name: organization.name, core: input.whatsappServiceCode === "core_ai", bookingUrl, address: organization.publicAddress, phone: organization.publicWhatsapp, email: organization.publicEmail, services: navigationCatalog, categories, products, bookingPaymentMode: organization.bookingPaymentMode, skipServiceNameMatch: Boolean(activeHybridFlow) }, input.text, parseNavigationState(latest?.rawPayload?.navigationState));
   if (navigation) {
     if (navigation.continueText) input.text = navigation.continueText;
     else {
@@ -353,10 +369,15 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
     }
   }
   const aiAllowed = !["CHAT", "CORE"].includes(input.workflowProduct ?? "");
+  if (input.whatsappServiceCode !== "core_ai" && asksAboutBookingPayment(input.text)) {
+    const reply = "Para pagar o sinal, abra o agendamento na área do cliente. A página mostrará o valor e os dados de pagamento. " + (organization.bookingPaymentMode === "pix_direct" ? "No Pix direto, clique em Já fiz o Pix depois da transferência; a equipe precisa conferir o crédito. " : "No pagamento integrado, aguarde a confirmação do provedor. ") + (bookingUrl ?? "Digite EQUIPE para solicitar ajuda.");
+    await send(input, conversation, { reply, model: "aggenda-navigation-v1", intent: "booking_payment", confidence: 1 });
+    return NextResponse.json({ accepted: true, action: "booking_payment" });
+  }
   if (input.whatsappServiceCode !== "core_ai") {
     const history = await db.select({ direction: chatMessages.direction, body: chatMessages.body }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), conversation.handoffResolvedAt ? gt(chatMessages.createdAt, conversation.handoffResolvedAt) : undefined)).orderBy(desc(chatMessages.occurredAt)).limit(12);
     try {
-      const result = input.whatsappServiceCode === "chat_ai" && aiAllowed ? await generateAiJson({ organizationId: input.organizationId, schema: chatAnswerSchema, messages: [{ role: "system", content: "Atenda em português usando somente o contexto público aprovado. Não execute operações nem afirme ter feito reservas. Para agendar ou gerenciar agendamentos, informe bookingUrl; se indisponível, ofereça equipe. Não invente horários de atendimento nem dados. Use handoff em baixa confiança. Responda JSON com action, reply, intent e confidence." }, { role: "user", content: JSON.stringify({ organization, catalog: navigationCatalog, bookingUrl, products, recentMessages: history.reverse(), currentMessage: input.text }) }] }) : { data: { action: "reply" as const, reply: "Digite MENU para consultar procedimentos, produtos e informações ou EQUIPE para solicitar atendimento.", intent: "menu_help", confidence: 1 }, model: "aggenda-deterministic-v1" };
+      const result = input.whatsappServiceCode === "chat_ai" && aiAllowed ? await generateAiJson({ organizationId: input.organizationId, schema: chatAnswerSchema, messages: [{ role: "system", content: "Atenda em português usando somente o contexto público aprovado. Não execute operações nem afirme ter feito reservas. Para agendar ou gerenciar agendamentos, informe bookingUrl; se indisponível, ofereça equipe. Não invente horários de atendimento nem dados. Use handoff em baixa confiança. Responda JSON com action, reply, intent e confidence." + " " + bookingDepositAgentInstructions }, { role: "user", content: JSON.stringify({ organization, catalog: navigationCatalog, bookingUrl, products, recentMessages: history.reverse(), currentMessage: input.text }) }] }) : { data: { action: "reply" as const, reply: "Digite MENU para consultar procedimentos, produtos e informações ou EQUIPE para solicitar atendimento.", intent: "menu_help", confidence: 1 }, model: "aggenda-deterministic-v1" };
       await send(input, conversation, { reply: result.data.reply, model: result.model, intent: result.data.intent, confidence: result.data.confidence, handoff: result.data.action === "handoff" || result.data.confidence < 0.65, ai: input.whatsappServiceCode === "chat_ai" && aiAllowed });
     } catch (error) {
       const capped = error instanceof Error && error.message.includes("Limite interno");
@@ -383,6 +404,14 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
     db.select({ id: professionals.id, name: professionals.name, serviceId: servicesToProfessionals.serviceId }).from(professionals).leftJoin(servicesToProfessionals, and(eq(servicesToProfessionals.professionalId, professionals.id), eq(servicesToProfessionals.organizationId, input.organizationId))).where(and(eq(professionals.organizationId, input.organizationId), eq(professionals.isActive, true), eq(professionals.isBookable, true))),
     upcoming(input.organizationId, clientId), db.select({ direction: chatMessages.direction, body: chatMessages.body }).from(chatMessages).where(and(eq(chatMessages.conversationId, input.conversationId), conversation.handoffResolvedAt ? gt(chatMessages.createdAt, conversation.handoffResolvedAt) : undefined)).orderBy(desc(chatMessages.occurredAt)).limit(12),
   ]);
+  if (asksAboutBookingPayment(input.text) && !asksToBook(input.text) && !asksToCancel(input.text) && !asksToReschedule(input.text)) {
+    const pending = future.filter(item => pendingDeposit(item.depositStatus));
+    const candidates = pending.length ? pending : future.filter(item => item.depositStatus === "paid");
+    const matches = filterMentionedAppointments(candidates, input.text, organization.timezone);
+    const reply = matches.length === 1 ? appointmentDepositGuidance(matches[0], baseUrl) : candidates.length ? "Qual agendamento deseja consultar?\n" + appointmentChoices(candidates, organization.timezone) : "O pagamento antecipado depende da regra do serviço. A área do cliente gera o pagamento com o valor da reserva. " + (organization.bookingPaymentMode === "pix_direct" ? "No Pix direto, informe o pagamento na página; a equipe confere o crédito antes de confirmar. " : "No pagamento integrado, aguarde a confirmação do provedor. ") + (bookingUrl ?? "Digite EQUIPE para solicitar ajuda.");
+    await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "booking_payment", confidence: 1 });
+    return NextResponse.json({ accepted: true, action: "booking_payment" });
+  }
   const storedBooking = hybridBookingContextSchema.safeParse(latest?.rawPayload?.hybridBooking);
   const storedRequest = hybridRequestSchema.safeParse(latest?.rawPayload?.hybridRequest);
   const rememberedRequest = hybrid && storedRequest.success && Date.parse(storedRequest.data.expiresAt) > Date.now() ? storedRequest.data : undefined;
@@ -452,6 +481,7 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
     const matches = filterMentionedAppointments(candidates, input.text, organization.timezone);
     if (matches.length === 1) {
       const appointment = matches[0];
+      if (pendingDeposit(appointment.depositStatus)) { await send(input, conversation, { reply: appointmentDepositGuidance(appointment, baseUrl), model: "aggenda-transactional-v1", intent: "deposit_pending", confidence: 1 }); return NextResponse.json({ accepted: true, action: "deposit_pending" }); }
       await db.transaction(async tx => {
         await tx.update(appointments).set({ status: "confirmed", confirmedAt: new Date(), updatedAt: new Date() }).where(and(eq(appointments.id, appointment.id), eq(appointments.organizationId, input.organizationId), eq(appointments.clientId, clientId), inArray(appointments.status, ["scheduled", "confirmed"])));
         await tx.insert(auditLogs).values({ organizationId: input.organizationId, action: "status:confirmed", entityType: "appointment", entityId: appointment.id, details: { source: "whatsapp", messageId: input.messageId, previousStatus: appointment.status, status: "confirmed" } });
@@ -637,7 +667,7 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
   }
   let result: { data: z.infer<typeof coreAnswerSchema> & { period?: "morning" | "afternoon" | "evening" | null; goal?: "book" | "reschedule" | "cancel" | "list" | "information" | "handoff" | "other" }; model: string };
   try {
-    result = await generateAiJson({ organizationId: input.organizationId, schema: hybrid ? hybridAnswerSchema : coreAnswerSchema, structuredOutput: hybrid, messages: [{ role: "system", content: hybrid ? hybridSecretaryInstructions : "Você é o agente de agendamentos do Aggenda. Nunca invente IDs ou dados. Use availability para horários, prepare_booking para agendar, prepare_reschedule para reagendar, prepare_cancel para cancelar e confirm_appointment para confirmar. A aplicação fará validações e pedirá confirmação antes de alterações. Se faltar dado, use reply e pergunte somente o próximo. Use handoff em ambiguidade relevante ou confiança abaixo de 0,65. Datas YYYY-MM-DD, horas HH:mm. Responda somente JSON." }, { role: "user", content: JSON.stringify({ today: organizationDate(new Date(), organization.timezone), timezone: organization.timezone, organization, catalog, professionals: professionalRows, upcomingAppointments: future.map(x => ({ ...x, startsAtLocal: formatOrganizationDateTime(x.startsAt, organization.timezone) })), bookingRequest: rememberedRequest, recentMessages: history.reverse(), currentMessage: input.text }) }] });
+    result = await generateAiJson({ organizationId: input.organizationId, schema: hybrid ? hybridAnswerSchema : coreAnswerSchema, structuredOutput: hybrid, messages: [{ role: "system", content: hybrid ? hybridSecretaryInstructions + " " + bookingDepositAgentInstructions : bookingDepositAgentInstructions + " Você é o agente de agendamentos do Aggenda. Nunca invente IDs ou dados. Use availability para horários, prepare_booking para agendar, prepare_reschedule para reagendar, prepare_cancel para cancelar e confirm_appointment para confirmar. A aplicação fará validações e pedirá confirmação antes de alterações. Se faltar dado, use reply e pergunte somente o próximo. Use handoff em ambiguidade relevante ou confiança abaixo de 0,65. Datas YYYY-MM-DD, horas HH:mm. Responda somente JSON." }, { role: "user", content: JSON.stringify({ today: organizationDate(new Date(), organization.timezone), timezone: organization.timezone, organization, catalog, professionals: professionalRows, upcomingAppointments: future.map(x => ({ id: x.id, startsAt: x.startsAt, status: x.status, serviceId: x.serviceId, serviceName: x.serviceName, professionalId: x.professionalId, professionalName: x.professionalName, depositStatus: x.depositStatus, depositAmount: x.depositAmount, paymentStatusLabel: depositStatusLabel(x.depositStatus), startsAtLocal: formatOrganizationDateTime(x.startsAt, organization.timezone) })), bookingRequest: rememberedRequest, recentMessages: history.reverse(), currentMessage: input.text }) }] });
   } catch (error) {
     console.error("[whatsapp-agent] falha ao interpretar mensagem", { conversationId: input.conversationId, messageId: input.messageId, error: error instanceof Error ? error.message : String(error) });
     const capped = error instanceof Error && error.message.includes("Limite interno");
@@ -710,7 +740,7 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
   } else if (answer.action === "prepare_cancel") {
     if (!appointment) reply = future.length ? "Qual agendamento deseja cancelar?" : "Não encontrei agendamentos futuros."; else { nextPending = { kind: "cancel", appointmentId: appointment.id, reason: answer.cancellationReason || "Cancelado pelo cliente via WhatsApp" }; reply = `Confirma cancelar ${appointment.serviceName}, marcado para ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)}? Responda CONFIRMAR.`; }
   } else if (answer.action === "confirm_appointment") {
-    if (!appointment) reply = future.length ? "Qual agendamento deseja confirmar?" : "Não encontrei agendamentos futuros."; else { await db.transaction(async tx => { await tx.update(appointments).set({ status: "confirmed", confirmedAt: new Date(), metadata: { whatsappCommandMessageId: input.messageId, conversationId: input.conversationId }, updatedAt: new Date() }).where(eq(appointments.id, appointment.id)); await tx.insert(auditLogs).values({ organizationId: input.organizationId, action: "status:confirmed", entityType: "appointment", entityId: appointment.id, details: { previousStatus: appointment.status, status: "confirmed", source: "whatsapp", messageId: input.messageId } }); }); reply = `Agendamento de ${appointment.serviceName}, em ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)}, confirmado.`; }
+    if (!appointment) reply = future.length ? "Qual agendamento deseja confirmar?" : "Não encontrei agendamentos futuros."; else if (pendingDeposit(appointment.depositStatus)) { reply = appointmentDepositGuidance(appointment, baseUrl); } else { await db.transaction(async tx => { await tx.update(appointments).set({ status: "confirmed", confirmedAt: new Date(), metadata: sql`coalesce(${appointments.metadata}, '{}'::jsonb) || ${JSON.stringify({ whatsappCommandMessageId: input.messageId, conversationId: input.conversationId })}::jsonb`, updatedAt: new Date() }).where(eq(appointments.id, appointment.id)); await tx.insert(auditLogs).values({ organizationId: input.organizationId, action: "status:confirmed", entityType: "appointment", entityId: appointment.id, details: { previousStatus: appointment.status, status: "confirmed", source: "whatsapp", messageId: input.messageId } }); }); reply = `Agendamento de ${appointment.serviceName}, em ${formatOrganizationDateTime(appointment.startsAt, organization.timezone)}, confirmado.`; }
   }
   const nextRequest: HybridRequest | undefined = hybrid && service && (answer.action === "availability" || answer.action === "prepare_booking") && !nextPending ? {serviceId: service.id, professionalId: professional?.id ?? null, date: answer.date, period: answer.period ?? null, expiresAt: new Date(Date.now() + 15 * 60_000).toISOString()} : undefined;
   await send(input, conversation, { reply, model: result.model, intent: answer.intent, confidence: answer.confidence, pending: nextPending, hybridBooking: nextHybridBooking, hybridRequest: nextRequest, handoff: answer.action === "handoff", ai: true }); return NextResponse.json({ accepted: true, action: answer.action });

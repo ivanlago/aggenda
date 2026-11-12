@@ -1,10 +1,12 @@
+import { depositServiceNotice } from "@/lib/booking-deposit-guidance";
 export type NavigationOption = { id: string; title: string };
 export type NavigationState = { options: NavigationOption[]; page?: number; categoryId?: string };
 export type NavigationService = {
   id: string; name: string; shortName: string | null; categoryId: string | null;
-  description: string | null; preparation: string | null; durationMinutes: number; priceInCents: number | null;
+  description: string | null; preparation: string | null; durationMinutes: number; priceInCents: number | null; depositType?: string; depositValue?: number;
 };
 export type NavigationContext = {
+  bookingPaymentMode?: string;
   skipServiceNameMatch?: boolean;
   name: string; core: boolean; bookingUrl: string | null; address: string | null;
   phone: string | null; email: string | null;
@@ -117,7 +119,7 @@ export function navigateWhatsApp(context: NavigationContext, text: string, state
     const service = context.services.find(item => item.id === action!.split(":")[2]);
     if (!service) return { reply: "Esse procedimento não está mais disponível. Digite MENU para consultar o catálogo atualizado." };
     if (action.startsWith("nav:book:") && context.core) return { reply: "", continueText: `Quero agendar ${service.name}` };
-    const details = [service.name, service.description, `Duração: ${service.durationMinutes} minutos.`, service.priceInCents !== null ? `Preço: ${money(service.priceInCents)}.` : "Preço: consulte a equipe.", service.preparation ? `Preparação: ${service.preparation}` : ""].filter(Boolean).join("\n");
+    const details = [service.name, service.description, `Duração: ${service.durationMinutes} minutos.`, service.priceInCents !== null ? `Preço: ${money(service.priceInCents)}.` : "Preço: consulte a equipe.", service.preparation ? `Preparação: ${service.preparation}` : "", depositServiceNotice(service, context.bookingPaymentMode ?? "integrated")].filter(Boolean).join("\n");
     return context.core ? menu(details, [{ id: `nav:book:${service.id}`, title: "Prosseguir ao agendamento" }, { id: "nav:human", title: "Falar com a equipe" }, { id: "nav:home", title: "Menu principal" }]) : { reply: `${details}\n\n${bookingLink(context, service.id)}` };
   }
   if (normalized.length > 2) {

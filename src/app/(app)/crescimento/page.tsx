@@ -1,3 +1,4 @@
+import { MetricCard } from "@/components/metric-card";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { and, desc, eq, gte, lt } from "drizzle-orm";
 import { BadgePercent, ChartNoAxesCombined, CreditCard, MessageCircleMore } from "lucide-react";
@@ -49,7 +50,7 @@ export default async function GrowthPage({ searchParams }: { searchParams: Promi
       [ChartNoAxesCombined, `${presenceRate}%`, "Taxa de presença no mês"],
       [CreditCard, money(revenue), "Receita de atendimentos concluídos"],
       [BadgePercent, money(margin), "Margem estimada após custos"],
-    ].map(([Icon, value, label]) => <article className="panel" key={String(label)}><Icon className="size-5 text-brand" /><p className="mt-6 text-2xl font-extrabold">{String(value)}</p><p className="mt-1 text-sm text-muted">{String(label)}</p></article>)}</section>
+    ].map(([Icon, value, label]) => <MetricCard key={String(label)} label={<>{String(label)}</>} value={<>{String(value)}</>} icon={<Icon />} />)}</section>
 
     <GrowthTabs key={JSON.stringify(query)} initialTab={initialTab} panels={{
       retornos: hasOrganizationPermission(organization.role, "crm.read") ? <ProcedureReturnsPanel organizationId={organization.id} timezone={organization.timezone} canManage={hasOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides)} filter={query.returnState} search={query.returnSearch} /> : null,

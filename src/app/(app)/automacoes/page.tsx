@@ -1,3 +1,4 @@
+import { MetricCard } from "@/components/metric-card";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { usesInternalWhatsAppAgent } from "@/lib/whatsapp-message";
 import { and, eq } from "drizzle-orm";
@@ -91,10 +92,10 @@ export default async function AutomationsPage() {
             </p>
           )}
           <div className="mt-6 grid gap-3 sm:grid-cols-4">
-            <div className="rounded-2xl bg-[#f3f5f1] p-4"><MessageCircleMore className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{received}</p><p className="text-xs text-muted">recebidas no mês</p></div>
-            <div className="rounded-2xl bg-[#f3f5f1] p-4"><MessageCircleMore className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{sent}</p><p className="text-xs text-muted">enviadas no mês</p></div>
-            <div className="rounded-2xl bg-[#f3f5f1] p-4"><Sparkles className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{aiCalls}</p><p className="text-xs text-muted">chamadas de IA</p></div>
-            <div className="rounded-2xl bg-[#f3f5f1] p-4"><Workflow className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{channels.filter((channel) => channel.isActive).length}</p><p className="text-xs text-muted">canais ativos</p></div>
+            <MetricCard label={<>recebidas no mês</>} value={<>{received}</>} icon={<MessageCircleMore />} />
+            <MetricCard label={<>enviadas no mês</>} value={<>{sent}</>} icon={<MessageCircleMore />} />
+            <MetricCard label={<>chamadas de IA</>} value={<>{aiCalls}</>} icon={<Sparkles />} />
+            <MetricCard label={<>canais ativos</>} value={<>{channels.filter((channel) => channel.isActive).length}</>} icon={<Workflow />} />
           </div>
           <div className="mt-5 grid gap-2 text-sm">
             <p><strong>Franquia WhatsApp:</strong> {plan.whatsappMonthlyLimit === 0 ? "sem limite configurado" : `${plan.whatsappMonthlyLimit}/mês`}</p>

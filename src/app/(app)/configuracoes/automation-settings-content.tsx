@@ -1,3 +1,4 @@
+import { MetricCard } from "@/components/metric-card";
 import Link from "next/link";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { PaginatedCollection } from "@/components/paginated-collection";
@@ -48,4 +49,4 @@ export async function WhatsAppSettingsContent() {
 }
 
 
-function Metric({ icon: Icon, value, label }: { icon: typeof MessageCircleMore; value: number; label: string }) { return <div className="rounded-2xl bg-[#f3f5f1] p-4"><Icon className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{value}</p><p className="text-xs text-muted">{label}</p></div>; }
+function Metric({ icon: Icon, value, label }: { icon: typeof MessageCircleMore; value: number; label: string }) { return <MetricCard label={<>{label}</>} value={<>{value}</>} icon={<Icon />} />; }

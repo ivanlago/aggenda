@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
 
-export function MetricCard({ label, value, icon, valueClassName = "" }: {
+export function MetricCard({ label, value, icon, hint, valueClassName = "" }: {
   label: ReactNode;
   value: ReactNode;
   icon?: ReactNode;
+  hint?: ReactNode;
   valueClassName?: string;
 }) {
   return <article className="panel min-w-0">
@@ -12,5 +13,6 @@ export function MetricCard({ label, value, icon, valueClassName = "" }: {
       <p>{label}</p>
     </div>
     <p className={`mt-2 break-words text-2xl font-extrabold ${valueClassName}`}>{value}</p>
+    {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
   </article>;
 }

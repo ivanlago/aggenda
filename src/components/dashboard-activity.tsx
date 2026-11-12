@@ -1,3 +1,4 @@
+import { MetricCard } from "@/components/metric-card";
 import { organizationDate } from "@/lib/appointment-safety";
 
 type Appointment = { startsAt: Date; status: string };
@@ -40,7 +41,7 @@ export function DashboardActivity({ monthAppointments, recentAppointments, today
   const hasMovement = activity.daily.some(day => day.completed + day.scheduled + day.lost > 0);
   return <section aria-labelledby="dashboard-activity-title">
     <h2 id="dashboard-activity-title" className="mb-3 text-lg font-extrabold">Movimento da clínica</h2>
-    <div className="dashboard-metrics grid gap-3">{cards.map(card => <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" key={card.label}><p className="text-xs font-bold text-muted">{card.label}</p><p className="mt-3 text-3xl font-extrabold text-brand">{card.value}</p><p className="mt-2 text-xs text-muted">{card.hint}</p></article>)}</div>
+    <div className="dashboard-metrics grid gap-3">{cards.map(card => <MetricCard key={card.label} label={card.label} value={card.value} valueClassName="text-brand" hint={card.hint} />)}</div>
     <div className="panel mt-4">
       <h3 className="font-extrabold">Agenda nos últimos 7 dias</h3>
       <p className="mt-1 text-xs text-muted">Quantidade de agendamentos por dia, conforme o status atual.</p>

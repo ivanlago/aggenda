@@ -1,4 +1,5 @@
 import { getOpenPosCash } from "@/lib/pos-cash";
+import { PageHeader } from "@/components/page-header";
 import { activePaymentMethods } from "@/lib/payment-methods";
 import { formatOrganizationDateTime } from "@/lib/organization-time";
 import { paymentMethodLabel } from "@/lib/presentation-labels";
@@ -86,6 +87,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
   }
 
   return <div className="page-wrap">
+    <PageHeader eyebrow="" title="Venda e orçamento" description="" />
     {canSell && <SalesWorkspace initialMode={params.modo === "orcamento" ? "quote" : "sale"} key={sourceQuote?.id ?? `new-${params.pacote ?? params.inicio ?? (params.novo === "1" ? "sale" : "default")}-${params.tipo ?? "all"}`} sale={conversionBlocked || missingStock ? <p className="panel text-sm text-amber-800">{conversionBlocked || "Há itens indisponíveis ou sem estoque suficiente. Atualize o catálogo/estoque antes de converter este orçamento."}</p> : <RetailSaleForm cashSession={cashSession} operatorName={session.user.name} customPaymentMethods={customPaymentMethods} initialItemType={params.pacote || params.tipo === "package" ? "package" : "all"} paymentProviders={posSettings.providers} onlineInstallmentPolicy={organization.onlineInstallmentPolicy ? onlineInstallmentRules(organization.onlineInstallmentPolicy) : undefined} canOverridePagBank={hasOrganizationPermission(organization.role, "integrations.manage")} defaultPaymentProvider={posSettings.defaultProvider} commissionChoices={saleCommission.choices} defaultCommissionBeneficiary={saleCommission.defaultBeneficiary} quoteId={sourceQuote?.id} initialClientId={sourceQuote?.clientId ?? undefined} initialCart={sourceQuote?.items ?? packageSelection.cart} offerings={sourceQuote ? [] : offerings} variants={saleCatalog} clients={clientRows} canDiscount={canDiscount} packageBalances={packageBalances} timezone={organization.timezone} />} quote={<RetailQuoteForm catalog={[...quoteProducts, ...offerings]} clients={clientRows} canDiscount={canDiscount} defaultValidity={organizationDate(new Date(new Date().getTime() + 30 * 86400000), organization.timezone)} />} />}
     <nav className="my-5 flex flex-wrap gap-2"><Link className="secondary-button" href="/vendas/historico">Histórico completo</Link><Link className="secondary-button" href="/vendas/relatorios">Relatórios do PDV</Link></nav>
     <section className="grid gap-4 sm:grid-cols-3">

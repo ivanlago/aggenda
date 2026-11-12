@@ -49,9 +49,7 @@ export default async function ClientsPage({
         eyebrow="Relacionamento"
         title={organization.clientLabelPlural}
         description={`Mantenha ${organization.clientLabelPlural.toLowerCase()} e observações importantes organizados.`}
-      />
-      <div className="grid min-w-0 gap-5">
-        {canManage && <NewClientForm clientLabel={organization.clientLabel}>
+        actions={canManage && <NewClientForm clientLabel={organization.clientLabel}>
 
           <label className="grid min-w-0 gap-2 text-sm font-bold">Nome completo<input className="field" name="name" required placeholder="Nome completo" autoComplete="name" /></label>
           <label className="grid min-w-0 gap-2 text-sm font-bold">Telefone<PhoneInput name="phone" placeholder="(71) 99999-9999" /></label>
@@ -71,6 +69,9 @@ export default async function ClientsPage({
           </div></details>
           <FormActions />
         </NewClientForm>}
+      />
+      <div className="grid min-w-0 gap-5">
+
         <section className="panel">
           <div className="flex flex-col gap-4">
             <h2 className="text-lg font-extrabold">

@@ -1,3 +1,4 @@
+import { MetricCard } from "@/components/metric-card";
 import { ModalShell } from "@/components/modal-shell";
 import { FormActions } from "@/components/form-dialog-context";
 import { PaginatedCollection } from "@/components/paginated-collection";
@@ -80,10 +81,10 @@ export async function CrmPipelinePanel({ organizationId, timezone }: { organizat
       ) : (
         <>
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <article className="panel"><Target className="size-5 text-brand" /><p className="mt-5 text-3xl font-extrabold">{opportunities.length}</p><p className="text-sm text-muted">oportunidades abertas</p></article>
-            <article className="panel"><CircleDollarSign className="size-5 text-brand" /><p className="mt-5 text-3xl font-extrabold">{currency(totalValue)}</p><p className="text-sm text-muted">valor no funil</p></article>
-            <article className="panel"><Clock3 className="size-5 text-brand" /><p className="mt-5 text-3xl font-extrabold">{tasks.length}</p><p className="text-sm text-muted">próximas atividades</p></article>
-            <article className="panel"><UsersRound className="size-5 text-brand" /><p className="mt-5 text-3xl font-extrabold">{overdue}</p><p className="text-sm text-muted">atividades atrasadas</p></article>
+            <MetricCard label={<>oportunidades abertas</>} value={<>{opportunities.length}</>} icon={<Target />} />
+            <MetricCard label={<>valor no funil</>} value={<>{currency(totalValue)}</>} icon={<CircleDollarSign />} />
+            <MetricCard label={<>próximas atividades</>} value={<>{tasks.length}</>} icon={<Clock3 />} />
+            <MetricCard label={<>atividades atrasadas</>} value={<>{overdue}</>} icon={<UsersRound />} />
           </section>
 
           <div className="mt-5"><ModalShell title="Nova oportunidade" variant="new" wide closeOnSuccess>

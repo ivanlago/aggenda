@@ -1,3 +1,4 @@
+import { MetricCard } from "@/components/metric-card";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { Boxes, Calculator, CircleDollarSign, WalletCards } from "lucide-react";
 import Link from "next/link";
@@ -117,9 +118,9 @@ export async function InventoryCatalog() {
       <Link className="secondary-button" href="/calculadora-retorno/produtos" target="_blank" rel="noopener noreferrer"><Calculator className="mr-2 size-4" />Calculadora de retorno de produtos</Link>
     </div>
     <section className="grid gap-4 sm:grid-cols-3">
-      <article className="panel"><Boxes className="size-5 text-brand" /><p className="mt-4 text-3xl font-extrabold">{items.length}</p><p className="text-sm text-muted">produtos cadastrados</p></article>
-      <article className="panel"><WalletCards className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{currency(costValue)}</p><p className="text-sm text-muted">valor de custo</p></article>
-      <article className="panel"><CircleDollarSign className="size-5 text-brand" /><p className="mt-4 text-2xl font-extrabold">{currency(saleValue)}</p><p className="text-sm text-muted">valor de venda</p></article>
+      <MetricCard label={<>produtos cadastrados</>} value={<>{items.length}</>} icon={<Boxes />} />
+      <MetricCard label={<>valor de custo</>} value={<>{currency(costValue)}</>} icon={<WalletCards />} />
+      <MetricCard label={<>valor de venda</>} value={<>{currency(saleValue)}</>} icon={<CircleDollarSign />} />
     </section>
 
     <InventoryTabs products={rows} movements={movementRows} lots={lots} today={today} categories={categories} subcategories={subcategories} canManage={canManage} />

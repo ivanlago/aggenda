@@ -1,3 +1,4 @@
+import { MetricCard } from "@/components/metric-card";
 import { and, count, eq, gte, inArray, lt } from "drizzle-orm";
 import { CalendarDays, Clock3, UsersRound, Wrench } from "lucide-react";
 import Link from "next/link";
@@ -31,7 +32,7 @@ export async function DashboardView() {
   ];
   return <div className="page-wrap">
     <PageHeader eyebrow={organization.name} title={`Olá, ${session.user.name.split(" ")[0]}.`} description="Acompanhe o movimento do negócio e os próximos atendimentos." />
-    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{cards.map(({ icon: Icon, value, label }) => <article className="panel" key={label}><Icon className="size-5 text-brand" /><p className="mt-7 text-3xl font-extrabold">{value}</p><p className="mt-1 text-sm text-muted">{label}</p></article>)}</section>
+    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{cards.map(({ icon: Icon, value, label }) => <MetricCard key={label} label={<>{label}</>} value={<>{value}</>} icon={<Icon />} />)}</section>
     <section className="panel mt-5"><div className="flex items-center justify-between gap-3"><h2 className="text-xl font-extrabold">Próximos atendimentos</h2><Link className="text-sm font-extrabold text-brand" href="/agenda">Ver agenda</Link></div><div className="mt-4 divide-y">{upcoming.map((item) => <article className="grid gap-2 py-4 sm:grid-cols-[150px_1fr_auto] sm:items-center" key={item.id}><p className="font-extrabold text-brand">{formatOrganizationDateTime(item.startsAt, organization.timezone)}</p><div><p className="font-extrabold">{item.client}</p><p className="text-sm text-muted">{item.service}{item.professional ? ` · ${item.professional}` : ""}</p></div><span className="status-pill w-fit">{statusLabels[item.status] ?? item.status}</span></article>)}{!upcoming.length && <p className="empty-state">Nenhum atendimento futuro.</p>}</div></section>
   </div>;
 }

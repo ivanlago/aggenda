@@ -708,6 +708,13 @@
       "when": 1794469104126,
       "tag": "0100_booking_direct_pix",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1794516801763,
+      "tag": "0101_service_equipment",
+      "breakpoints": true
     }
   ]
 }

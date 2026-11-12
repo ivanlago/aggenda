@@ -1493,6 +1493,23 @@ export const appointmentInventoryConsumptions = pgTable("appointment_inventory_c
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }), appointmentId: uuid("appointment_id").notNull().references(() => appointments.id, { onDelete: "cascade" }), productId: uuid("product_id").notNull().references(() => inventoryProducts.id, { onDelete: "restrict" }), quantityMillis: integer("quantity_millis").notNull(), consumedAt: timestamp("consumed_at").defaultNow().notNull(), reversedAt: timestamp("reversed_at"),
 }, (table) => [primaryKey({ columns: [table.appointmentId, table.productId] }), index("appointment_inventory_org_idx").on(table.organizationId)]);
 
+export const equipment = pgTable("equipment", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  allowsConcurrent: boolean("allows_concurrent").default(false).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, table => [uniqueIndex("equipment_org_name_unique").on(table.organizationId, sql`lower(${table.name})`), check("equipment_name_valid", sql`length(trim(${table.name})) between 1 and 100`)]);
+
+export const servicesToEquipment = pgTable("services_to_equipment", {
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  serviceId: uuid("service_id").notNull().references(() => services.id, { onDelete: "cascade" }),
+  equipmentId: uuid("equipment_id").notNull().references(() => equipment.id, { onDelete: "cascade" }),
+}, table => [primaryKey({ columns: [table.serviceId, table.equipmentId] }), index("service_equipment_org_idx").on(table.organizationId, table.equipmentId)]);
+
 export const servicesToProfessionals = pgTable(
   "services_to_professionals",
   {

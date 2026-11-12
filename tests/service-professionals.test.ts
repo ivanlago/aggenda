@@ -23,7 +23,7 @@ test("service qualifications save atomically, isolate tenants and govern real av
     return exported.exports;
   }
   try {
-    const tables = {services: schema.services, professionals: schema.professionals, services_to_professionals: schema.servicesToProfessionals, weekly_availability: schema.weeklyAvailability, availability_exceptions: schema.availabilityExceptions, rooms: schema.rooms, appointments: schema.appointments};
+    const tables = {equipment: schema.equipment, services_to_equipment: schema.servicesToEquipment, services: schema.services, professionals: schema.professionals, services_to_professionals: schema.servicesToProfessionals, weekly_availability: schema.weeklyAvailability, availability_exceptions: schema.availabilityExceptions, rooms: schema.rooms, appointments: schema.appointments};
     for (const [name, table] of Object.entries(tables)) {
       const columns = Object.values(getTableColumns(table)).map(column => {
         const type = column.enumValues ? "text" : column.getSQLType();

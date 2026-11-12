@@ -1,4 +1,5 @@
 import { zonedDate, zonedParts } from "@/lib/organization-time";
+import { equipmentAvailability } from "@/lib/equipment-availability";
 export { zonedDate } from "@/lib/organization-time";
 import { and, eq, gt, gte, inArray, isNull, lt, ne, or } from "drizzle-orm";
 
@@ -111,7 +112,7 @@ export async function getAvailableTimes(input: AvailabilityInput): Promise<strin
     );
   }
 
-  const [busy, exceptions, roomItems, roomBookings] = await Promise.all([
+  const [busy, exceptions, roomItems, roomBookings, equipmentState] = await Promise.all([
     db
       .select({ startsAt: appointments.startsAt, endsAt: appointments.endsAt })
       .from(appointments)
@@ -123,7 +124,10 @@ export async function getAvailableTimes(input: AvailabilityInput): Promise<strin
       inArray(appointments.status, ["scheduled", "confirmed", "completed"]),
       input.excludeAppointmentId ? ne(appointments.id, input.excludeAppointmentId) : undefined,
     )),
+    equipmentAvailability({ organizationId: input.organizationId, serviceId: input.serviceId, startsAt: dayStart, endsAt: dayEnd, excludeAppointmentId: input.excludeAppointmentId }),
   ]);
+
+  if (equipmentState.inactive) return [];
 
   const eligibleRooms = roomItems.filter(room => room.isActive && (!input.roomId || room.id === input.roomId));
   if (input.roomId && !eligibleRooms.length) return [];
@@ -155,6 +159,7 @@ export async function getAvailableTimes(input: AvailabilityInput): Promise<strin
       const end = new Date(start.getTime() + service.duration * 60_000);
       if (start < minimum) continue;
       if (busy.some((item) => start < item.endsAt && end > item.startsAt)) continue;
+      if (equipmentState.busy.some(item => start < item.endsAt && end > item.startsAt)) continue;
       if (blocked.some((item) => start < item.endsAt && end > item.startsAt)) continue;
       if (roomItems.length && !eligibleRooms.some(room => !roomBookings.some(item => item.roomId === room.id && start < item.endsAt && end > item.startsAt))) continue;
       slots.push(start.toISOString());

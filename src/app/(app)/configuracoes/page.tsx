@@ -1,4 +1,5 @@
 import { CompactSettingsRow } from "@/components/compact-settings-row";
+import { EquipmentSettings } from "@/components/equipment-settings";
 import { BookingPaymentSettingsContent } from "./booking-payment-content";
 import { ReferenceCatalogStatus } from "@/components/reference-catalog-status";
 import { RoomSettings } from "@/components/room-settings";
@@ -133,6 +134,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       { id: "terminology", label: "Terminologia", content: terminology },
       { id: "booking", label: "Agendamento", content: <SettingsTabs key={query.agendamento} defaultTab={query.agendamento} queryParam="agendamento" idPrefix="booking-settings" label="Configurações de agendamento" tabs={[{ id: "general", label: "Agendamento público", content: booking }, { id: "payment", label: "Pagamento antecipado", content: <BookingPaymentSettingsContent /> }]} /> },
       { id: "rooms", label: "Salas", content: <RoomSettings organizationId={organization.id} canManage={canManage} /> },
+      { id: "equipment", label: "Equipamentos", content: <EquipmentSettings organizationId={organization.id} canManage={canManage} /> },
       { id: "identity", label: "Identidade", content: identity },
       { id: "reminders", label: "Lembretes", content: reminders },
       { id: "documents", label: "Documentos", content: documents },

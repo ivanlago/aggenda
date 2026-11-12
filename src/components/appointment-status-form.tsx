@@ -34,9 +34,10 @@ export function AppointmentStatusForm({
   const cancellationReason = serverValueChanged ? serverReason : draft.cancellationReason;
 
   return (
-    <ActionForm action={action} successMessage="Status atualizado com sucesso.">
+    <ActionForm action={action} successMessage={status === "cancelled" ? "Agendamento cancelado com sucesso." : "Situação atualizada com sucesso."} className="grid min-w-0 gap-4">
       <input type="hidden" name="id" value={appointmentId} />
-      <label className="grid gap-2 text-sm font-bold">Situação<select
+      <div className="flex flex-wrap items-end gap-3">
+      <label className="grid min-w-0 flex-1 gap-2 text-sm font-bold">Situação<select
         className="field py-2"
         name="status"
         value={status}
@@ -49,9 +50,11 @@ export function AppointmentStatusForm({
       >
         {statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select></label>
+      {statuses.some(([value]) => value === "cancelled") && initialStatus !== "cancelled" && status !== "cancelled" && <button type="button" className="secondary-button text-red-700" onClick={() => setDraft({ baselineStatus: initialStatus, baselineReason: serverReason, status: "cancelled", cancellationReason })}>Cancelar agendamento</button>}
+      </div>
       {status === "cancelled" && (
-        <label className="grid min-w-0 gap-2 text-sm font-bold">Motivo do cancelamento<input
-          className="field mt-2 py-2"
+        <label className="grid min-w-0 gap-2 text-sm font-bold">Motivo do cancelamento *<input
+          className="field py-2"
           name="cancellationReason"
           value={cancellationReason}
           onChange={(event) => setDraft({
@@ -66,7 +69,7 @@ export function AppointmentStatusForm({
         /></label>
       )}
       {status === "completed" && returnSettings}
-      <button className="secondary-button mt-3">Salvar situação do agendamento</button>
+      <div className="flex justify-end"><button className={`primary-button ${status === "cancelled" ? "bg-red-700 hover:bg-red-800" : ""}`}>{status === "cancelled" ? "Confirmar cancelamento" : "Salvar situação do agendamento"}</button></div>
     </ActionForm>
   );
 }

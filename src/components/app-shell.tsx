@@ -25,7 +25,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-import { selectActiveOrganization } from "@/actions/access";
 import { commercialUsageSummary } from "@/lib/commercial-access";
 import { hasOrganizationPermission, type OrganizationPermission } from "@/lib/permissions";
 import {
@@ -40,7 +39,7 @@ import { PaymentCatalogProvider } from "@/components/payment-catalog-context";
 import { AppNavigation } from "./app-navigation";
 import { AppHeader } from "./app-header";
 
-import { SignOutButton } from "./sign-out-button";
+
 import { AppNavLink } from "./app-nav-link";
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
@@ -125,7 +124,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             </span>
             Aggenda
           </Link>
-          <div className="lg:hidden"><SignOutButton compact /></div>
+
         </div>
         <AppNavigation>
           {navigation.map((group) => group.items.length === 1 && group.items[0].label === group.label ? (
@@ -174,23 +173,8 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             </AppNavLink>
           )}
         </AppNavigation>
-        <div className="app-sidebar-footer mt-4 hidden shrink-0 border-t border-slate-200 pt-4 lg:block">
-          {memberships.length > 1 && (
-            <form action={selectActiveOrganization} className="mb-4 grid gap-2">
-              <select className="rounded-lg border border-slate-200 bg-surface-soft px-2 py-2 text-xs" name="organizationId" defaultValue={organization.id}>
-                {memberships.map((membership) => (
-                  <option className="text-black" key={membership.id} value={membership.id}>{membership.name}</option>
-                ))}
-              </select>
-              <button className="rounded-lg bg-brand px-2 py-1.5 text-xs font-bold text-white">Trocar empresa</button>
-            </form>
-          )}
-          <p className="truncate text-sm font-extrabold">{organization.name}</p>
-          <p className="mt-1 truncate text-xs text-muted">{session.user.email}</p>
-          <div className="mt-4"><SignOutButton /></div>
-        </div>
       </aside>
-      <main className="min-w-0"><AppHeader organizationId={organization.id} role={organization.role} teamPermissionOverrides={organization.teamPermissionOverrides} timezone={organization.timezone} userId={session.user.id} userName={session.user.name} />
+      <main className="min-w-0"><AppHeader organizationName={organization.name} userEmail={session.user.email} memberships={memberships} organizationId={organization.id} role={organization.role} teamPermissionOverrides={organization.teamPermissionOverrides} timezone={organization.timezone} userId={session.user.id} userName={session.user.name} />
         {usage && hasOrganizationPermission(organization.role, "billing.manage") && (["responses", "documents", "notes"] as const).map((metric) => {
           const used = usage.quantities[metric] ?? 0; const limit = usage.available[metric];
           if (!limit || used / limit < 0.8) return null;

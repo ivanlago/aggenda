@@ -113,6 +113,14 @@ a[href]:focus-visible {
 }
 
 @layer components {
+  /* Agenda pilot: density changes stay scoped to this operational page. */
+  .internal-app:has(.agenda-compact) .app-header {
+    min-height: 68px;
+    padding-block: 12px;
+  }
+  .internal-app:has(.agenda-compact) .app-header-new-appointment { display: none; }
+  .page-wrap.agenda-compact { padding-top: 16px; }
+  .agenda-compact .agenda-panel { padding: 16px; }
   .page-wrap {
     @apply mx-auto w-full max-w-[1440px] p-5 sm:p-7 lg:p-8;
   }

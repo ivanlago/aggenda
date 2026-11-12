@@ -10,7 +10,9 @@ import { rescheduleAppointment } from "@/actions/schedule";
 import { db } from "@/db";
 import { appointments, clientPackageBalances, clientPackages, clients, financialEntries, packageUsages, rooms, professionals, servicePackages, services, servicesToProfessionals } from "@/db/schema";
 import { formatOrganizationDateTime } from "@/lib/appointment-safety";
-import { agendaRange } from "@/lib/agenda-range";
+import { agendaRange, shiftAgendaDate } from "@/lib/agenda-range";
+import { organizationDate } from "@/lib/organization-time";
+import { ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization, requireProfessionalScope } from "@/lib/session";
 
@@ -18,7 +20,6 @@ import { AppointmentCreateForm } from "./appointment-create-form";
 import { AppointmentRescheduleForm } from "./appointment-reschedule-form";
 import { AppointmentStatusForm } from "./appointment-status-form";
 import { ModalShell } from "./modal-shell";
-import { PageHeader } from "./page-header";
 import { AppointmentPaymentForm } from "@/app/dashboard/appointment-payment-form";
 
 const statuses = [["scheduled", "Agendado"], ["confirmed", "Confirmado"], ["completed", "Concluído"], ["cancelled", "Cancelado"], ["no_show", "Não compareceu"]] as const;
@@ -47,6 +48,12 @@ export async function AgendaPage({ openNewAppointment = false, filters = {} }: {
   const canSendWhatsApp = !["viewer", "member"].includes(organization.role);
   const range = agendaRange(filters.date, filters.period, organization.timezone);
   const period = range.period;
+  const advancedCount = [filters.serviceId, filters.status, filters.roomId, filters.client].filter(Boolean).length;
+  const dateHref = (date: string) => {
+    const query = new URLSearchParams({date, period});
+    for (const key of ["serviceId", "status", "roomId", "client", "professionalId"]) if (filters[key]) query.set(key, filters[key]!);
+    return `/agenda?${query}`;
+  };
   const selectedStatus = statuses.some(([value]) => value === filters.status) ? filters.status as typeof statuses[number][0] : undefined;
   const [clientItems, professionalItems, serviceItems, links, packageRows, items, roomItems] = await Promise.all([
     db.select().from(clients).where(and(eq(clients.organizationId, organization.id), professionalScopeId ? inArray(clients.id, db.select({ id: appointments.clientId }).from(appointments).where(and(eq(appointments.organizationId, organization.id), eq(appointments.professionalId, professionalScopeId)))) : undefined)).orderBy(clients.name),
@@ -59,9 +66,10 @@ export async function AgendaPage({ openNewAppointment = false, filters = {} }: {
   ]);
   const createForm = <AppointmentCreateForm rooms={roomItems} action={createAppointment} clients={clientItems} services={serviceItems} professionals={professionalItems} serviceProfessionalLinks={links} packageBalances={packageRows.filter((item) => item.used < item.total && (!item.expiresAt || item.expiresAt > new Date())).map((item) => ({ ...item, remaining: item.total - item.used, expiresAt: item.expiresAt?.toISOString() ?? null }))} labels={{ client: organization.clientLabel, service: organization.serviceLabel, professional: organization.professionalLabel, appointment: organization.appointmentLabel }} timezone={organization.timezone} embedded />;
 
-  return <div className="page-wrap">
-    <PageHeader eyebrow="Operação" title="Agenda" description="Consulte períodos anteriores e gerencie os atendimentos da clínica." />
-    <div className="mb-5 flex flex-wrap gap-3">
+  return <div className="page-wrap agenda-compact">
+    <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <h1 className="text-2xl font-extrabold tracking-tight">Agenda</h1>
+    <div className="flex flex-wrap gap-2">
       {canManage && <ModalShell key={openNewAppointment ? filters.inicio ?? "open" : "closed"} title="Novo agendamento" wide variant="new" defaultOpen={openNewAppointment} closeOnSuccess>
         {filters.guia === "primeiro" && <aside className="mb-4 rounded-xl bg-brand/5 p-4 text-sm">
           <p className="font-bold">Seu primeiro agendamento</p>
@@ -77,16 +85,34 @@ export async function AgendaPage({ openNewAppointment = false, filters = {} }: {
       </ModalShell>}
       {canManageAvailability && <div><ScheduleBlockForm key={filters.bloquear === "1" ? "open-block" : "closed-block"} professionals={professionalItems} defaultOpen={filters.bloquear === "1"} /></div>}
     </div>
-    <form className="panel mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6" action="/agenda">
-      <label className="grid min-w-0 gap-1 text-sm font-bold">Atendimento<select className="field" name="serviceId" defaultValue={filters.serviceId ?? ""}><option value="">Todos os atendimentos</option>{serviceItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-      <label className="grid min-w-0 gap-1 text-sm font-bold">Situação<select className="field" name="status" defaultValue={filters.status ?? ""}><option value="">Todos os status</option>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-      <label className="grid min-w-0 gap-1 text-sm font-bold">Profissional<select className="field" name="professionalId" defaultValue={filters.professionalId ?? ""}><option value="">Todos os profissionais</option>{professionalItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-      <label className="grid min-w-0 gap-1 text-sm font-bold">Sala<select className="field" name="roomId" defaultValue={filters.roomId ?? ""}><option value="">Todas as salas</option>{roomItems.map(room => <option key={room.id} value={room.id}>{room.name}{!room.isActive ? " (inativa)" : ""}</option>)}</select></label>
-      <label className="grid min-w-0 gap-1 text-sm font-bold">Período<select className="field" name="period" defaultValue={period}><option value="day">Dia</option><option value="week">Semana</option><option value="month">Mês</option></select></label>
-      <label className="grid min-w-0 gap-1 text-sm font-bold">Cliente<input className="field min-w-0 flex-1" name="client" defaultValue={filters.client ?? ""} placeholder="Buscar cliente" /></label><label className="grid min-w-0 gap-1 text-sm font-bold">Data inicial<input className="field" name="date" type="date" required defaultValue={range.anchor} /></label><button className="secondary-button self-end">Filtrar</button>
+    </header>
+    <form key={dateHref(range.anchor)} className="panel agenda-panel mb-3" action="/agenda">
+      <div className="grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[auto_minmax(0,1fr)_minmax(0,.75fr)_minmax(0,1.2fr)_auto]">
+        <nav aria-label="Navegar pelo período" className="flex items-center gap-1">
+          <Link className="icon-button" aria-label="Período anterior" href={dateHref(shiftAgendaDate(range.anchor, period, -1))}><ChevronLeft className="size-5" /></Link>
+          <Link className="secondary-button" href={dateHref(organizationDate(new Date(), organization.timezone))}>Hoje</Link>
+          <Link className="icon-button" aria-label="Próximo período" href={dateHref(shiftAgendaDate(range.anchor, period, 1))}><ChevronRight className="size-5" /></Link>
+        </nav>
+        <label className="grid min-w-0 gap-1 text-sm font-bold">Data inicial<input className="field" name="date" type="date" required defaultValue={range.anchor} key={range.anchor} /></label>
+        <label className="grid min-w-0 gap-1 text-sm font-bold">Período<select className="field" name="period" defaultValue={period} key={period}><option value="day">Dia</option><option value="week">Semana</option><option value="month">Mês</option></select></label>
+        <label className="grid min-w-0 gap-1 text-sm font-bold">Profissional<select className="field" name="professionalId" defaultValue={filters.professionalId ?? ""}><option value="">Todos os profissionais</option>{professionalItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        <button className="primary-button" type="submit">Aplicar</button>
+      </div>
+      <div className="mt-3 flex items-start gap-4">
+      <details className="min-w-0 flex-1">
+        <summary className="w-fit cursor-pointer text-sm font-bold text-brand"><SlidersHorizontal className="mr-2 inline size-4" />Filtros adicionais{advancedCount > 0 && <span className="ml-2 rounded-full bg-brand/10 px-2 py-0.5 text-xs">{advancedCount} ativos</span>}</summary>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <label className="grid min-w-0 gap-1 text-sm font-bold">Atendimento<select className="field" name="serviceId" defaultValue={filters.serviceId ?? ""}><option value="">Todos os atendimentos</option>{serviceItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label className="grid min-w-0 gap-1 text-sm font-bold">Situação<select className="field" name="status" defaultValue={filters.status ?? ""}><option value="">Todos os status</option>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label className="grid min-w-0 gap-1 text-sm font-bold">Sala<select className="field" name="roomId" defaultValue={filters.roomId ?? ""}><option value="">Todas as salas</option>{roomItems.map(room => <option key={room.id} value={room.id}>{room.name}{!room.isActive ? " (inativa)" : ""}</option>)}</select></label>
+          <label className="grid min-w-0 gap-1 text-sm font-bold">Cliente<input className="field" name="client" defaultValue={filters.client ?? ""} placeholder="Buscar cliente" /></label>
+        </div>
+      </details>
+      {advancedCount > 0 && <Link className="shrink-0 text-sm font-bold text-brand" href={`/agenda?${new URLSearchParams({date: range.anchor, period, ...(filters.professionalId ? {professionalId: filters.professionalId} : {})})}`}>Limpar filtros adicionais</Link>}
+      </div>
     </form>
-    <ScheduleBlocks organizationId={organization.id} timezone={organization.timezone} canManage={canManageAvailability} scopeId={professionalScopeId} professionalFilter={filters.professionalId} />
-    <section className="panel min-w-0">
+    <ScheduleBlocks compact organizationId={organization.id} timezone={organization.timezone} canManage={canManageAvailability} scopeId={professionalScopeId} professionalFilter={filters.professionalId} />
+    <section className="panel agenda-panel min-w-0">
       <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-extrabold">Atendimentos do período</h2><span className="text-sm text-muted">{items.length} registros</span></div>
       <div className="min-w-0 max-w-full overflow-x-auto max-h-[40rem] overflow-y-auto" tabIndex={0} role="region" aria-label="Atendimentos do período"><table className="app-list-table w-full text-left text-sm">
         <thead className="border-b text-xs uppercase text-muted"><tr><th className="p-3">Hora</th><th className="p-3">Atendimento</th><th className="p-3">Status</th><th className="p-3">Profissional</th><th className="p-3">Sala</th><th className="p-3">Cliente</th>{canManageFinance && <th className="relative p-3"><span className="sr-only">Pagamento</span></th>}{canManage && <th className="relative p-3"><span className="sr-only">Editar</span></th>}<th className="relative p-3"><span className="sr-only">Atender</span></th></tr></thead>

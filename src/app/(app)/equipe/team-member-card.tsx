@@ -2,7 +2,7 @@
 import { ModalShell } from "@/components/modal-shell";
 import { FormActions } from "@/components/form-dialog-context";
 
-import { Trash2 } from "lucide-react";
+import { CalendarCheck, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -26,6 +26,7 @@ export type TeamMemberCardData = {
   imageUrl: string | null;
   agendaOrder: number | null;
   lastSignedIn: string | null;
+  googleCalendarEmail?: string | null;
 };
 
 export function TeamMemberCard({ member, professions, specialties, canEdit, canDelete }: {
@@ -47,6 +48,7 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
           <div className="flex flex-wrap gap-2">
             <span className="status-pill">{roleLabels[member.role] ?? member.role}</span>
             {member.professionName && <span className="status-pill">{member.professionName}</span>}
+            {member.googleCalendarEmail && <span className="status-pill inline-flex items-center gap-1" title={member.googleCalendarEmail}><CalendarCheck className="size-4" aria-hidden="true" />Google conectado</span>}
 
           </div>
       {canEdit && <p className="text-xs text-muted"><span className="block font-bold">Última entrada</span>{member.lastSignedIn ?? "Sem registro"}</p>}
@@ -72,9 +74,10 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
             <div className="grid min-w-0 items-start gap-4 sm:col-span-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(140px,.7fr)]"><label className="grid gap-1 text-sm font-bold">Profissão<select className="field" name="professionId" value={professionId} onChange={(event) => setProfessionId(event.target.value)}><option value="">Selecione</option>{professions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="grid gap-1 text-sm font-bold">Conselho<select className="field" name="council" defaultValue={member.council ?? ""}><option value="">Selecione</option>{["CRM", "CRO", "CRP", "COREN", "CREFITO", "OAB", "CREA", "CREF", "OUTRO"].map((item) => <option key={item}>{item}</option>)}</select></label><label className="grid gap-1 text-sm font-bold">Número do conselho<input className="field" name="registrationNumber" defaultValue={member.registrationNumber ?? ""} /></label><label className="grid gap-1 text-sm font-bold"><span className="whitespace-nowrap">UF do conselho</span><input className="field" name="registrationState" maxLength={2} defaultValue={member.registrationState ?? ""} /></label></div>
             <div className="grid min-w-0 items-start gap-4 sm:col-span-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]"><label className="grid gap-1 text-sm font-bold">Especialidade<select className="field h-24 min-h-24" name="specialtyIds" multiple defaultValue={member.specialtyIds}>{availableSpecialties.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="grid min-w-0 gap-1 text-sm font-bold">Apresentação breve (opcional)<textarea className="field h-24 min-h-24" name="bio" defaultValue={member.bio ?? ""} /></label></div>
             <div className="grid min-w-0 items-start gap-4 sm:col-span-2 sm:grid-cols-2"><div className="min-w-0"><EntityImageField currentUrl={member.imageUrl} label="Foto do profissional" /></div><div className="grid min-w-0 content-start gap-2">
-              <p className="font-bold">Google Agenda</p>
+              <p className="flex flex-wrap items-center gap-2 font-bold">Google Agenda{member.googleCalendarEmail && <span className="status-pill inline-flex items-center gap-1"><CalendarCheck className="size-4" aria-hidden="true" />Conectado</span>}</p>
+              {member.googleCalendarEmail && <p className="break-words text-sm text-brand">{member.googleCalendarEmail}</p>}
               <p className="text-sm text-muted">Conecte a conta Google do atendente para sincronizar seus agendamentos.</p>
-              <div><Link className="secondary-button" href={`/api/google-calendar/connect?professionalId=${encodeURIComponent(member.professionalId)}`} prefetch={false}>Conectar ou reconectar Google Agenda</Link></div>
+              <div><Link className="secondary-button" href={`/api/google-calendar/connect?professionalId=${encodeURIComponent(member.professionalId)}`} prefetch={false}>{member.googleCalendarEmail ? "Reconectar Google Agenda" : "Conectar Google Agenda"}</Link></div>
             </div></div>
           </>}
           <FormActions editing />

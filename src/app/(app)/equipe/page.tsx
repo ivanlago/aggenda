@@ -7,7 +7,7 @@ import { and, eq } from "drizzle-orm";
 
 import { PageHeader } from "@/components/page-header";
 import { db } from "@/db";
-import { organizationMembers, professionalRegistrations, professionalSpecialties, professionals, professions, specialties, users, weeklyAvailability } from "@/db/schema";
+import { organizationMembers, professionalGoogleCalendarAccounts, professionalRegistrations, professionalSpecialties, professionals, professions, specialties, users, weeklyAvailability } from "@/db/schema";
 import { configurableTeamPermissions, hasOrganizationPermission, teamRoles, teamRoleLabels, type OrganizationPermission } from "@/lib/permissions";
 import { requireOrganization } from "@/lib/session";
 
@@ -22,7 +22,7 @@ export default async function TeamPage() {
   const canManage = hasOrganizationPermission(organization.role, "team.manage");
   if (!canRead) return <div className="page-wrap"><Link className="secondary-button" href="/equipe/minha-assinatura">Minha assinatura visual</Link><p className="panel">Acesso restrito à gestão da equipe.</p></div>;
 
-  const [members, professionOptions, specialtyOptions, specialtyRows, registrationRows, availabilityRows] = await Promise.all([
+  const [members, professionOptions, specialtyOptions, specialtyRows, registrationRows, availabilityRows, googleAccounts] = await Promise.all([
     db.select({ userId: users.id, fullName: users.name, shortName: users.shortName, email: users.email, lastSignedInAt: users.lastSignedInAt, role: organizationMembers.role, professionalId: professionals.id, professionalName: professionals.name, agendaOrder: professionals.agendaOrder, professionId: professionals.professionId, professionName: professions.name, phone: professionals.phone, bio: professionals.bio, imageUrl: professionals.imageUrl })
       .from(organizationMembers).innerJoin(users, eq(users.id, organizationMembers.userId))
       .leftJoin(professionals, and(eq(professionals.organizationId, organization.id), eq(professionals.userId, users.id)))
@@ -33,6 +33,7 @@ export default async function TeamPage() {
     db.select({ professionalId: professionalSpecialties.professionalId, specialtyId: professionalSpecialties.specialtyId }).from(professionalSpecialties).where(eq(professionalSpecialties.organizationId, organization.id)),
     db.select({ professionalId: professionalRegistrations.professionalId, council: professionalRegistrations.council, registrationNumber: professionalRegistrations.registrationNumber, state: professionalRegistrations.state }).from(professionalRegistrations).where(eq(professionalRegistrations.organizationId, organization.id)),
     db.select({ professionalId: weeklyAvailability.professionalId, dayOfWeek: weeklyAvailability.dayOfWeek, startsAt: weeklyAvailability.startsAt, endsAt: weeklyAvailability.endsAt }).from(weeklyAvailability).where(eq(weeklyAvailability.organizationId, organization.id)),
+    db.select({ professionalId: professionalGoogleCalendarAccounts.professionalId, googleEmail: professionalGoogleCalendarAccounts.googleEmail }).from(professionalGoogleCalendarAccounts).where(eq(professionalGoogleCalendarAccounts.organizationId, organization.id)),
   ]);
 
   const memberCards: TeamMemberCardData[] = members.map((member) => {
@@ -47,6 +48,7 @@ export default async function TeamPage() {
       registrationNumber: registration?.registrationNumber ?? null,
       registrationState: registration?.state ?? null,
       imageUrl: member.imageUrl,
+      googleCalendarEmail: googleAccounts.find(account => account.professionalId === member.professionalId)?.googleEmail ?? null,
       specialtyIds: specialtyRows.filter((row) => row.professionalId === member.professionalId).map((row) => row.specialtyId),
       availability: availabilityRows.filter((row) => row.professionalId === member.professionalId).map((row) => ({ dayOfWeek: row.dayOfWeek, startsAt: row.startsAt, endsAt: row.endsAt })),
     };

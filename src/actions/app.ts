@@ -1081,10 +1081,12 @@ export async function registerAppointmentPayment(formData: FormData) {
   const amountInCents = optionalMoneyInCents(formData, "amount");
   const paymentMethod = textValue(formData, "paymentMethod");
   if (paymentMethod !== "package" && !amountInCents) throw new Error("Informe valor e forma de pagamento válidos.");
-  const [appointment] = await db.select({ clientId: appointments.clientId, serviceId: appointments.serviceId, status: appointments.status, metadata: appointments.metadata, service: services.name })
+  const [appointment] = await db.select({ clientId: appointments.clientId, serviceId: appointments.serviceId, status: appointments.status, depositStatus: appointments.depositStatus, depositAmount: appointments.depositAmountInCents, price: appointments.priceInCents, metadata: appointments.metadata, service: services.name })
     .from(appointments).innerJoin(services, eq(services.id, appointments.serviceId))
     .where(and(eq(appointments.id, appointmentId), eq(appointments.organizationId, organization.id))).limit(1);
   if (!appointment) throw new Error("Agendamento não encontrado.");
+  if (["direct_pending", "direct_review"].includes(appointment.depositStatus)) throw new Error("Confira e confirme o sinal Pix na edição do agendamento antes de receber o saldo.");
+  if (appointment.depositAmount > 0 && appointment.metadata?.directPix && (paymentMethod === "package" || !amountInCents || amountInCents > Math.max(0, (appointment.price ?? 0) - appointment.depositAmount))) throw new Error("O sinal já possui lançamento próprio. Receba somente o saldo restante do atendimento.");
   if (appointment.metadata?.primaryProcedureRemoved === true) throw new Error("O serviço foi removido deste atendimento.");
   if (paymentMethod === "package") {
     const clientPackageId = textValue(formData, "clientPackageId");
@@ -1180,6 +1182,7 @@ export async function updateFinancialEntryStatus(formData: FormData) {
     eq(financialEntries.id, id), eq(financialEntries.organizationId, organization.id)
   )).limit(1);
   if (!current) throw new Error("Lançamento financeiro não encontrado.");
+  if (current.source === "appointment_deposit_direct") throw new Error("Confira e confirme este Pix pela edição do agendamento na Agenda. O sinal possui conferência própria.");
   if (current.source === "commission_payment") throw new Error("Gerencie esta quitação pela tela de comissões para preservar o saldo e o histórico.");
   if (current.source === "retail_sale") throw new Error("Gerencie o recebimento pela venda no PDV. Pagamentos integrados dependem da confirmação do provedor.");
   const [linkedSale] = await db.select({ id: retailSales.id }).from(retailSales).where(and(eq(retailSales.organizationId, organization.id), or(eq(retailSales.financialEntryId, id), eq(retailSales.appointmentFinancialEntryId, id)))).limit(1);

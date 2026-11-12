@@ -5,7 +5,7 @@ import { appointments } from "@/db/schema";
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export const activePublicAppointment = (now = new Date()) => and(
   inArray(appointments.status, ["scheduled", "confirmed"]),
-  or(ne(appointments.depositStatus, "pending"), isNull(appointments.reservationExpiresAt), gt(appointments.reservationExpiresAt, now)),
+  or(sql`${appointments.depositStatus} not in ('pending', 'direct_pending')`, isNull(appointments.reservationExpiresAt), gt(appointments.reservationExpiresAt, now)),
 );
 
 export class PublicBookingConflict extends Error {

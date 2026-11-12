@@ -61,6 +61,7 @@ export const getOrganizationMemberships = cache(async (userId: string) => {
       patientRecoveryDays: organizations.patientRecoveryDays,
       cancellationPolicy: organizations.cancellationPolicy,
       depositRefundPolicy: organizations.depositRefundPolicy,
+      bookingPaymentSettings: organizations.bookingPaymentSettings,
       latenessPolicy: organizations.latenessPolicy,
       publicPrivacyPolicy: organizations.publicPrivacyPolicy,
       clientLabel: organizations.clientLabel,

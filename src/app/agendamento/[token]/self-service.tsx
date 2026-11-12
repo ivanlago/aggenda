@@ -4,12 +4,14 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 export function AppointmentSelfService({
+  depositPending = false,
   token,
   status,
   timezone,
   bookingHorizonDays,
   bookingUrl,
 }: {
+  depositPending?: boolean;
   token: string;
   status: string;
   timezone: string;
@@ -80,8 +82,8 @@ export function AppointmentSelfService({
   return <div className="mt-5">
     <p className="text-sm text-muted">Use esta página pessoal para confirmar, escolher outro horário ou cancelar seu agendamento.</p>
     <div className="mt-4 flex flex-wrap gap-3">
-      {currentStatus !== "confirmed" && <button className="primary-button" disabled={loading} onClick={() => update("confirm")}>Confirmar presença</button>}
-      <button className="secondary-button" disabled={loading} onClick={() => { setShowReschedule((value) => !value); setMessage(""); }}>Reagendar</button>
+      {!depositPending && currentStatus !== "confirmed" && <button className="primary-button" disabled={loading} onClick={() => update("confirm")}>Confirmar presença</button>}
+      <button className="secondary-button" disabled={loading || depositPending} onClick={() => { setShowReschedule((value) => !value); setMessage(""); }}>Reagendar</button>
     </div>
 
     {showReschedule && <section className="mt-5 rounded-2xl border p-4">

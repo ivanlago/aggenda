@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -20,6 +20,8 @@ export async function syncAppointmentFinancialEntry(appointmentId: string) {
     clientName: clients.name,
     serviceName: services.name,
     amountInCents: appointments.priceInCents,
+    depositAmount: appointments.depositAmountInCents,
+    depositStatus: appointments.depositStatus,
     startsAt: appointments.startsAt,
     appointmentStatus: appointments.status,
     timezone: organizations.timezone,
@@ -30,6 +32,14 @@ export async function syncAppointmentFinancialEntry(appointmentId: string) {
     .where(eq(appointments.id, appointmentId))
     .limit(1);
   if (!sale) return;
+  // The deposit has its own receivable. Only the remaining balance belongs here.
+  const remainingInCents = Math.max(0, (sale.amountInCents ?? 0) - sale.depositAmount);
+  if (sale.appointmentStatus === "cancelled") {
+    await db.update(financialEntries).set({ status: "cancelled", updatedAt: new Date() }).where(and(
+      eq(financialEntries.attendanceId, appointmentId), eq(financialEntries.organizationId, sale.organizationId),
+      eq(financialEntries.source, "appointment_deposit_direct"), eq(financialEntries.status, "pending"),
+    ));
+  }
 
   const [existing] = await db.select({
     id: financialEntries.id,
@@ -37,7 +47,7 @@ export async function syncAppointmentFinancialEntry(appointmentId: string) {
   }).from(financialEntries)
     .where(eq(financialEntries.appointmentId, appointmentId))
     .limit(1);
-  if (!sale.amountInCents || sale.amountInCents <= 0) {
+  if (remainingInCents <= 0) {
     if (existing?.status === "pending") {
       await db.delete(financialEntries).where(eq(financialEntries.id, existing.id));
     }
@@ -57,7 +67,7 @@ export async function syncAppointmentFinancialEntry(appointmentId: string) {
     status,
     description: `${sale.serviceName} - ${sale.clientName}`,
     category: "Atendimentos",
-    amountInCents: sale.amountInCents,
+    amountInCents: remainingInCents,
     dueDate: organizationDate(sale.startsAt, sale.timezone),
     updatedAt: new Date(),
   };

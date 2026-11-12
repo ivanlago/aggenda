@@ -396,6 +396,8 @@ export async function registerRetailSale(data: FormData) {
       const [existing] = await tx.select().from(financialEntries).where(and(eq(financialEntries.appointmentId, current.id), eq(financialEntries.organizationId, organization.id)));
       const [usage] = await tx.select().from(packageUsages).where(and(eq(packageUsages.appointmentId, current.id), eq(packageUsages.organizationId, organization.id), inArray(packageUsages.status, ["reserved", "consumed"])));
       if (existing?.status === "received" || usage) throw new Error("Este serviço já foi pago ou está coberto por pacote. Atualize o carrinho.");
+      if (["direct_pending", "direct_review"].includes(current.depositStatus)) throw new Error("Confira e confirme o sinal Pix na edição do agendamento antes de receber o saldo.");
+      if (current.metadata?.directPix && current.depositStatus === "paid" && (current.priceInCents ?? 0) <= current.depositAmountInCents) throw new Error("Este serviço já foi pago integralmente por Pix direto.");
       if (["cancelled", "no_show"].includes(current.status)) throw new Error("Revise a situação do atendimento antes de receber.");
       const [service] = await tx.select().from(services).where(and(eq(services.id, current.serviceId), eq(services.organizationId, organization.id)));
       appointmentLine = { id: appointmentKeys[0], serviceId: service.id, packageId: null, productName: service.name, variantName: "Serviço realizado", price: existing?.amountInCents ?? current.priceInCents ?? service.priceInCents };

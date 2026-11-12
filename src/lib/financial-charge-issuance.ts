@@ -11,11 +11,12 @@ export async function reserveFinancialCharge(charge: Charge & { id: string; fina
   accountId: string; paymentMethodId: string; paymentMethodName: string; method: string;
 }) {
   return db.transaction(async tx => {
-    const [entry] = await tx.select({ id: financialEntries.id }).from(financialEntries).where(and(
+    const [entry] = await tx.select({ id: financialEntries.id, source: financialEntries.source }).from(financialEntries).where(and(
       eq(financialEntries.id, charge.financialEntryId), eq(financialEntries.organizationId, charge.organizationId),
       eq(financialEntries.type, "receivable"), eq(financialEntries.status, "pending"),
     )).for("update");
     if (!entry) return { error: "Selecione uma conta a receber pendente." };
+    if (entry.source === "appointment_deposit_direct") return { error: "Este sinal utiliza Pix direto. Confira o recebimento pela edição do agendamento na Agenda." };
     const [active] = await tx.select({ id: paymentCharges.id }).from(paymentCharges).where(and(
       eq(paymentCharges.organizationId, charge.organizationId), eq(paymentCharges.financialEntryId, entry.id),
       inArray(paymentCharges.status, managedChargeStatuses),

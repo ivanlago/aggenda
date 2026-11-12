@@ -1,3 +1,4 @@
+import type { BookingPaymentSettings } from "@/lib/booking-payment";
 import {
   check,
   foreignKey,
@@ -258,6 +259,7 @@ export const organizations = pgTable("organizations", {
   patientRecoveryDays: integer("patient_recovery_days").default(90).notNull(),
   cancellationPolicy: text("cancellation_policy"),
   depositRefundPolicy: text("deposit_refund_policy"),
+  bookingPaymentSettings: jsonb("booking_payment_settings").$type<BookingPaymentSettings>().default({ mode: "integrated" }).notNull(),
   latenessPolicy: text("lateness_policy"),
   publicPrivacyPolicy: text("public_privacy_policy"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

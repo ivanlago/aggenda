@@ -7,6 +7,7 @@ export const sourceLabels: Record<string, string> = {
   commission_payment: "Quitação de comissões",
   manual: "Manual",
   appointment: "Agendamento",
+  appointment_deposit_direct: "Sinal por Pix direto",
   package: "Pacote",
   installment: "Parcelado",
   recurring: "Recorrente",

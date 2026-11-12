@@ -701,6 +701,13 @@
       "when": 1794310238726,
       "tag": "0099_online_installment_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1794469104126,
+      "tag": "0100_booking_direct_pix",
+      "breakpoints": true
     }
   ]
 }

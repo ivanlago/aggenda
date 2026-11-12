@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { appointments, clients, organizations, services } from "@/db/schema";
 import { enqueueAppointmentNotification } from "@/lib/whatsapp-notifications";
 import { syncAppointmentFinancialEntry } from "@/lib/finance";
+import { pendingDeposit } from "@/lib/booking-payment";
 import { deleteAppointmentFromGoogleCalendar, syncAppointmentToGoogleCalendar } from "@/lib/google-calendar";
 import { isTimeAvailable } from "@/lib/availability";
 import { organizationDate, withAppointmentLock } from "@/lib/appointment-safety";
@@ -20,6 +21,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     id: appointments.id, organizationId: appointments.organizationId, clientId: appointments.clientId,
     serviceId: appointments.serviceId, professionalId: appointments.professionalId, startsAt: appointments.startsAt,
     status: appointments.status, confirmedAt: appointments.confirmedAt, duration: services.durationMinutes,
+    depositStatus: appointments.depositStatus,
     timezone: organizations.timezone, noticeHours: organizations.bookingNoticeHours,
     horizonDays: organizations.bookingHorizonDays, slotIntervalMinutes: organizations.slotIntervalMinutes,
     clientName: clients.name, clientEmail: clients.email, organizationName: organizations.name,
@@ -31,6 +33,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     .where(eq(appointments.publicManageToken, token)).limit(1);
   if (!item) return Response.json({ error: "Agendamento não encontrado." }, { status: 404 });
   if (["cancelled", "completed", "no_show"].includes(item.status)) return Response.json({ error: "Este agendamento não aceita mais alterações." }, { status: 409 });
+  if (body.action !== "cancel" && pendingDeposit(item.depositStatus)) return Response.json({ error: "Aguarde a confirmação do pagamento pela equipe antes de confirmar presença ou reagendar." }, { status: 409 });
 
   if (body.action === "reschedule") {
     const startsAt = new Date(body.startsAt ?? "");

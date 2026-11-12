@@ -65,7 +65,7 @@ export async function loadChargeableEntries(database: typeof db, organizationId:
     clientName: clients.name, clientEmail: clients.email, clientPhone: clients.phone,
   }).from(financialEntries).leftJoin(clients, and(eq(clients.id, financialEntries.clientId), eq(clients.organizationId, organizationId)))
     .where(and(eq(financialEntries.organizationId, organizationId), eq(financialEntries.type, "receivable"),
-      eq(financialEntries.status, "pending"), ne(financialEntries.source, "retail_sale"),
+      eq(financialEntries.status, "pending"), ne(financialEntries.source, "retail_sale"), ne(financialEntries.source, "appointment_deposit_direct"),
       notExists(database.select({ id: paymentCharges.id }).from(paymentCharges).where(and(
         eq(paymentCharges.organizationId, organizationId), eq(paymentCharges.financialEntryId, financialEntries.id), inArray(paymentCharges.status, managedChargeStatuses),
       )))))

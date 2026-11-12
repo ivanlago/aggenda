@@ -1,4 +1,5 @@
 import { roomBookingError } from "@/lib/room-errors";
+import { bookingPaymentSettings, createDirectPixPayload, directPixReservation } from "@/lib/booking-payment";
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
@@ -7,6 +8,7 @@ import {
   appointments,
   auditLogs,
   financialEntries,
+  financialAccounts,
   organizations,
   paymentChargeEvents,
   paymentCharges,
@@ -96,6 +98,8 @@ export async function POST(
   if (targetDate < today || targetDate > maximum.toISOString().slice(0, 10)) return Response.json({ error: "Data fora da janela de agendamento." }, { status: 400 });
   const acknowledgedIds = Array.isArray(body.acknowledgedAppointmentIds) ? body.acknowledgedAppointmentIds.filter((id): id is string => typeof id === "string").slice(0, 100) : [];
   try {
+    const paymentSettings = bookingPaymentSettings(organization.bookingPaymentSettings);
+    const direct = paymentSettings.mode === "pix_direct";
     const manageToken = randomUUID();
     const appointment = await withAppointmentLock(organization.id, professionalId, async (tx) => {
       await lockBookingPatient(tx, organization.id, portalClient.id);
@@ -109,7 +113,13 @@ export async function POST(
       const { voucher } = pricing;
       const finalPrice = pricing.finalPriceInCents;
       const depositAmount = service.depositType === "full" ? finalPrice : service.depositType === "percentage" ? Math.round(finalPrice * service.depositValue / 100) : service.depositType === "fixed" ? Math.min(finalPrice, service.depositValue) : 0;
-      if (depositAmount > 0 && ![11, 14].includes(document.length)) throw new Error("DEPOSIT_DOCUMENT_INVALID");
+      if (depositAmount > 0) {
+        if (direct) {
+          const [account] = paymentSettings.accountId ? await tx.select({ id: financialAccounts.id }).from(financialAccounts).where(and(eq(financialAccounts.id, paymentSettings.accountId), eq(financialAccounts.organizationId, organization.id), eq(financialAccounts.isActive, true))).limit(1) : [];
+          if (!account || !paymentSettings.key || !paymentSettings.receiverName || !paymentSettings.city) throw new Error("DIRECT_PIX_NOT_CONFIGURED");
+        } else await getOrganizationAsaasCredential(organization.id);
+      }
+      if (depositAmount > 0 && !direct && ![11, 14].includes(document.length)) throw new Error("DEPOSIT_DOCUMENT_INVALID");
       const available = await isTimeAvailable({
         organizationId: organization.id, timezone: organization.timezone,
         date: organizationDate(startsAt, organization.timezone), serviceId, professionalId,
@@ -130,12 +140,17 @@ export async function POST(
           endsAt: appointmentEnd,
           priceInCents: finalPrice,
           source: "booking_page",
-          depositStatus: depositAmount > 0 ? "pending" : "not_required",
+          depositStatus: depositAmount > 0 ? (direct ? "direct_pending" : "pending") : "not_required",
           depositAmountInCents: depositAmount,
           reservationExpiresAt: depositAmount > 0 ? new Date(Date.now() + service.expiration * 60_000) : null,
           publicManageToken: manageToken,
         })
         .returning({ id: appointments.id, clientId: appointments.clientId });
+      if (depositAmount > 0 && direct) {
+        const payload = createDirectPixPayload({ key: paymentSettings.key!, receiverName: paymentSettings.receiverName!, city: paymentSettings.city!, amountInCents: depositAmount, reference: created.id });
+        const [entry] = await tx.insert(financialEntries).values({ organizationId: organization.id, clientId, attendanceId: created.id, type: "receivable", source: "appointment_deposit_direct", status: "pending", description: `Sinal Pix - ${service.name}`, category: "Sinais de agendamento", amountInCents: depositAmount, accountId: paymentSettings.accountId!, dueDate: organizationDate(new Date(), organization.timezone), paymentMethod: "pix", paymentMethodName: "Pix direto" }).returning({ id: financialEntries.id });
+        await tx.update(appointments).set({ metadata: { directPix: { key: paymentSettings.key!, receiverName: paymentSettings.receiverName!, city: paymentSettings.city!, accountId: paymentSettings.accountId!, payload, entryId: entry.id } } }).where(eq(appointments.id, created.id));
+      }
       await tx.insert(auditLogs).values({
         organizationId: organization.id,
         action: "create",
@@ -158,7 +173,7 @@ export async function POST(
     if (appointment.replay) {
       const [charge] = await db.select({ url: paymentCharges.invoiceUrl }).from(paymentCharges)
         .where(and(eq(paymentCharges.organizationId, organization.id), eq(paymentCharges.originId, appointment.id), eq(paymentCharges.originType, "appointment"))).limit(1);
-      return Response.json({ id: appointment.id, existing: true, paymentUrl: charge?.url || undefined, depositPending: appointment.depositStatus === "pending", manageUrl: appointment.publicManageToken ? `/agendamento/${appointment.publicManageToken}` : undefined }, { headers: { "Cache-Control": "no-store" } });
+      return Response.json({ id: appointment.id, existing: true, paymentUrl: charge?.url || undefined, depositPending: ["pending", "direct_pending", "direct_review"].includes(appointment.depositStatus), directPix: Boolean(directPixReservation(appointment.metadata)), manageUrl: appointment.publicManageToken ? `/agendamento/${appointment.publicManageToken}` : undefined }, { headers: { "Cache-Control": "no-store" } });
     }
     const { finalPrice, depositAmount } = appointment;
     await syncAppointmentFinancialEntry(appointment.id);
@@ -169,7 +184,7 @@ export async function POST(
     }
     await syncAppointmentToGoogleCalendar(appointment.id);
     let paymentUrl: string | undefined;
-    if (depositAmount > 0) {
+    if (depositAmount > 0 && !direct) {
       const credential = await getOrganizationAsaasCredential(organization.id);
       type CustomerList = { data?: Array<{ id: string }> }; type Customer = { id: string }; type Payment = { id: string; invoiceUrl?: string };
       const found = await organizationAsaasRequest<CustomerList>(`/customers?cpfCnpj=${document}&limit=1`, credential);
@@ -200,8 +215,9 @@ export async function POST(
         console.error("[public-booking] Falha ao enviar link de gerenciamento", emailError);
       }
     }
-    return Response.json({ id: appointment.id, manageToken, paymentUrl, manageUrl: `/agendamento/${manageToken}` }, { status: 201 });
+    return Response.json({ id: appointment.id, manageToken, paymentUrl, directPix: depositAmount > 0 && direct, depositPending: depositAmount > 0, manageUrl: `/agendamento/${manageToken}` }, { status: 201 });
   } catch (error) {
+    if (error instanceof Error && error.message === "DIRECT_PIX_NOT_CONFIGURED") return Response.json({ error: "O recebimento Pix deste serviço ainda não está configurado. Fale com a equipe." }, { status: 409 });
     if (error instanceof PublicBookingConflict) {
       const messages = { CLIENT_APPOINTMENT_CONFLICT: "Este paciente já possui outro agendamento neste horário. Reagende o existente ou escolha um horário sem sobreposição.", SERVICE_REPEAT_BLOCKED: "Já existe uma reserva futura deste procedimento. Gerencie a reserva existente ou fale com a clínica.", SERVICE_REPEAT_CONFIRMATION: "Este paciente já possui reserva futura deste procedimento. Confira e confirme se deseja outra sessão." };
       return Response.json({ error: messages[error.code], code: error.code, existingAppointments: error.existing.map(item => ({ id: item.id, startsAt: item.startsAt, manageUrl: item.publicManageToken ? `/agendamento/${item.publicManageToken}` : undefined })) }, { status: 409, headers: { "Cache-Control": "no-store" } });

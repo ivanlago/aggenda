@@ -217,40 +217,58 @@ a[href]:focus-visible {
 /* Outside component layers so the shortcut's inline-flex utility cannot override it. */
 .internal-app:has(.agenda-compact) .app-header-new-appointment { display: none; }
 
-/* Desktop density pilot: dialogs and touch layouts keep their original controls. */
+/* Shared desktop density: public pages, dialogs and touch layouts keep their controls. */
 @media (min-width: 1024px) {
-  .internal-app:has(.agenda-compact) .app-header {
+  .internal-app .app-header {
     min-height: 64px;
     padding-block: 10px;
     gap: 12px;
   }
-  .internal-app:has(.agenda-compact) .app-header input[role="combobox"] { height: 38px; }
-  .internal-app:has(.agenda-compact) .app-header div:has(> input[role="combobox"]) > img { top: 11.5px; }
-  .internal-app:has(.agenda-compact) .app-header > div:first-child > a {
+  .internal-app .app-header input[role="combobox"] { height: 38px; }
+  .internal-app .app-header div:has(> input[role="combobox"]) > img { top: 11.5px; }
+  .internal-app .app-header > div:first-child > a {
     height: 38px;
     padding-inline: 12px;
   }
-  .page-wrap.agenda-compact { padding-top: 12px; }
-  .agenda-compact > header { margin-bottom: 12px; }
-  .agenda-compact .agenda-panel {
+  .internal-app .page-wrap { padding-top: 12px; }
+  .internal-app .page-wrap > header,
+  .internal-app .page-heading { margin-bottom: 12px; }
+  .internal-app .page-heading > p:first-child:has(+ h1) { display: none; }
+  .internal-app .page-heading h1 { margin-top: 0; font-size: 1.5rem; line-height: 2rem; }
+  .internal-app .page-heading h1 + p { margin-top: 4px; font-size: 0.875rem; }
+  .internal-app .panel:not(dialog, dialog *, [role="dialog"], [role="dialog"] *) {
     padding: 12px 16px;
     border-radius: 12px;
     box-shadow: 0 3px 12px rgb(15 23 42 / 3%);
   }
-  .agenda-compact :is(input.field, select.field):not(dialog *) {
+  .internal-app :is(input.field, select.field):not(dialog *, [role="dialog"] *) {
     height: 38px;
     min-height: 38px;
     padding: 6px 12px;
     line-height: 24px;
   }
-  .agenda-compact :is(.primary-button, .secondary-button):not(dialog *) {
+  .internal-app :is(.primary-button, .secondary-button):not(dialog *, [role="dialog"] *) {
     min-height: 38px;
     padding: 7px 14px;
     line-height: 22px;
   }
-  .agenda-compact .primary-button:not(dialog *) { box-shadow: 0 1px 3px rgb(15 23 42 / 10%); }
-  .agenda-compact .app-list-table:not(dialog *) > :is(thead, tbody) > tr > :is(th, td) { padding: 8px; }
-  .agenda-compact .agenda-panel > div:first-child:has(> h2) { margin-bottom: 8px; }
+  .internal-app .primary-button:not(dialog *, [role="dialog"] *) { box-shadow: 0 1px 3px rgb(15 23 42 / 10%); }
+  .internal-app table:not(dialog *, [role="dialog"] *) > :is(thead, tbody) > tr > :is(th, td) { padding: 8px; }
+  .internal-app .panel:not(dialog, dialog *, [role="dialog"], [role="dialog"] *) > div:first-child:has(> h2) { margin-bottom: 8px; }
+  .internal-app .app-tab:not(dialog *, [role="dialog"] *) { min-height: 40px; padding-block: 7px; }
+  .internal-app .app-tab-content:not(dialog *, [role="dialog"] *) { padding-block: 16px; }
+  .internal-app .page-wrap > :is(.mt-5, .mt-6, .mt-8) { margin-top: 16px; }
+  .internal-app .page-wrap > :is(.gap-5, .gap-6) { gap: 16px; }
+  .internal-app article.panel > p.text-3xl:not(dialog *, [role="dialog"] *) {
+    margin-top: 8px;
+    font-size: 1.5rem;
+    line-height: 2rem;
+  }
+  /* Paginated lists use the page scrollbar; pickers and conversation panes keep theirs. */
+  .internal-app .max-h-\[40rem\].overflow-y-auto:not(dialog *, [role="dialog"] *) {
+    max-height: none;
+    overflow-y: visible;
+  }
 }
 .internal-app .page-heading h1 { color: var(--structure); }
 .internal-app input:is([type="checkbox"], [type="radio"]) { accent-color: var(--brand); }

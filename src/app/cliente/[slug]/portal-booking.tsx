@@ -11,15 +11,16 @@ type Service = { id: string; name: string; durationMinutes: number; priceInCents
 type Upcoming = { id: string; serviceId: string; startsAt: string; endsAt: string; service: string; manageUrl?: string };
 type Professional = { id: string; name: string };
 
-export function PortalBooking({ directPix = false, slug, services, professionals, timezone, horizonDays, hasUpcoming, patientId, patientName, upcoming, initialVoucherCode = "", initialServiceId = "" }: { directPix?: boolean; slug: string; services: Service[]; professionals: Professional[]; timezone: string; horizonDays: number; hasUpcoming: boolean; patientId: string; patientName: string; upcoming: Upcoming[]; initialVoucherCode?: string; initialServiceId?: string }) {
+export function PortalBooking({ directPix = false, slug, services, professionals, timezone, horizonDays, hasUpcoming, patientId, patientName, upcoming, initialVoucherCode = "", initialServiceId = "", initialProfessionalId = "", initialStartsAt = "" }: { directPix?: boolean; slug: string; services: Service[]; professionals: Professional[]; timezone: string; horizonDays: number; hasUpcoming: boolean; patientId: string; patientName: string; upcoming: Upcoming[]; initialVoucherCode?: string; initialServiceId?: string; initialProfessionalId?: string; initialStartsAt?: string }) {
   const router = useRouter();
+  const hasInitialSelection = Boolean(initialStartsAt && Number.isFinite(Date.parse(initialStartsAt)) && services.find(service => service.id === initialServiceId)?.professionalIds.includes(initialProfessionalId) && professionals.some(person => person.id === initialProfessionalId));
   const [serviceId, setServiceId] = useState(() => services.some(service => service.id === initialServiceId) ? initialServiceId : "");
-  const [professionalId, setProfessionalId] = useState("");
-  const [date, setDate] = useState("");
+  const [professionalId, setProfessionalId] = useState(() => services.find(service => service.id === initialServiceId)?.professionalIds.includes(initialProfessionalId) && professionals.some(person => person.id === initialProfessionalId) ? initialProfessionalId : "");
+  const [date, setDate] = useState(() => hasInitialSelection ? organizationDate(new Date(initialStartsAt), timezone) : "");
   const [startsAt, setStartsAt] = useState("");
   const [times, setTimes] = useState<string[]>([]);
   const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(hasInitialSelection);
   const [document, setDocument] = useState("");
   const [voucherPending, setVoucherPending] = useState(false);
   const [voucherQuote, setVoucherQuote] = useState<VoucherQuote | null>(null);
@@ -44,6 +45,29 @@ export function PortalBooking({ directPix = false, slug, services, professionals
   const repeatBlocked = repeats.length > 0 && selectedService?.repeatPolicy === "block";
   const minimumDate = organizationDate(new Date(), timezone);
   const maximum = new Date(`${minimumDate}T12:00:00Z`); maximum.setUTCDate(maximum.getUTCDate() + horizonDays);
+
+  // Link parameters are preferences only. Never trust a previously offered slot.
+  useEffect(() => {
+    if (!initialStartsAt || !Number.isFinite(Date.parse(initialStartsAt)) || !initialProfessionalId || !services.find(service => service.id === initialServiceId)?.professionalIds.includes(initialProfessionalId) || !professionals.some(person => person.id === initialProfessionalId)) return;
+    const selectedDate = organizationDate(new Date(initialStartsAt), timezone);
+    const controller = new AbortController(); availabilityRequest.current = controller;
+    void (async () => {
+      try {
+        const response = await fetch(`/api/public/booking/${slug}/availability?date=${selectedDate}&serviceId=${initialServiceId}&professionalId=${initialProfessionalId}&patientId=${patientId}`, { signal: controller.signal });
+        const result = await response.json();
+        if (controller.signal.aborted) return;
+        if (!response.ok) { setMessage(result.error || "Não foi possível consultar os horários."); return; }
+        const available: string[] = result.availableTimes || [];
+        setTimes(available);
+        const chosen = available.find(slot => Date.parse(slot) === Date.parse(initialStartsAt));
+        if (chosen) setStartsAt(chosen);
+        else setMessage("O horário escolhido na conversa não está mais disponível. Selecione outro horário.");
+      } catch {
+        if (!controller.signal.aborted) setMessage("Não foi possível consultar os horários. Escolha a data novamente.");
+      } finally { if (!controller.signal.aborted) setLoading(false); }
+    })();
+    return () => controller.abort();
+  }, [initialStartsAt, initialProfessionalId, initialServiceId, services, professionals, timezone, slug, patientId]);
 
   async function loadDate(nextDate: string) {
     availabilityRequest.current?.abort(); setLoading(false);

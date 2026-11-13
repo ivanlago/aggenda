@@ -1,4 +1,5 @@
 "use server";
+import { parseCommissionPercentage } from "@/lib/item-commission";
 
 import { resolveOrganizationPayment } from "@/lib/payment-methods";
 import { parseClinicalVisitDate, validateClinicalPhotoPair } from "@/lib/clinical-photo";
@@ -831,6 +832,8 @@ export async function createService(formData: FormData) {
     publicRepeatPolicy: textValue(formData, "publicRepeatPolicy") === "block" ? "block" : "warn",
     durationMinutes,
     priceInCents: optionalMoneyInCents(formData, "price"),
+    executionCommissionRateBasisPoints: parseCommissionPercentage(formData.get("executionCommissionPercentage")),
+    commissionRateBasisPoints: parseCommissionPercentage(formData.get("commissionPercentage")),
     estimatedCostInCents: optionalMoneyInCents(formData, "estimatedCost") ?? 0,
     hidePublicPrice: formData.get("hidePublicPrice") === "on",
     ...serviceDepositSettings(formData),
@@ -897,6 +900,8 @@ export async function updateService(formData: FormData) {
     ...serviceReturnSettings(formData),
     publicRepeatPolicy: textValue(formData, "publicRepeatPolicy") === "block" ? "block" : "warn",
     priceInCents: optionalMoneyInCents(formData, "price"),
+    executionCommissionRateBasisPoints: parseCommissionPercentage(formData.get("executionCommissionPercentage")),
+    commissionRateBasisPoints: parseCommissionPercentage(formData.get("commissionPercentage")),
     estimatedCostInCents: optionalMoneyInCents(formData, "estimatedCost") ?? 0,
     hidePublicPrice: formData.get("hidePublicPrice") === "on",
     ...serviceDepositSettings(formData),

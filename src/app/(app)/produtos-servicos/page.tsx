@@ -19,7 +19,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
   return <div className="page-wrap">
     <PageHeader eyebrow="Catálogo" title="Produtos e Serviços" description="Cadastre produtos e serviços, organize pacotes e monte kits com os itens do seu catálogo." />
     <nav className="app-tabs" aria-label="Áreas de produtos e serviços">
-      {[["produtos", "Produtos"], ["servicos", "Serviços"], ["kits", "Kit de Produtos/Serviços"], ["pacotes", "Pacotes"]].map(([key, label]) => <Link key={key} className="app-tab" aria-current={tab === key ? "page" : undefined} href={key === "produtos" ? "/produtos-servicos" : `/produtos-servicos?tab=${key}`}>{label}</Link>)}
+      {[["produtos", "Produtos"], ["servicos", "Serviços"], ["kits", "Kits de produtos"], ["pacotes", "Pacotes"]].map(([key, label]) => <Link key={key} className="app-tab" aria-current={tab === key ? "page" : undefined} href={key === "produtos" ? "/produtos-servicos" : `/produtos-servicos?tab=${key}`}>{label}</Link>)}
     </nav>
     <div className="app-tab-content">
     {tab === "produtos" && canReadInventory && <InventoryCatalog />}

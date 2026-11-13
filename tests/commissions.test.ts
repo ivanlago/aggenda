@@ -21,14 +21,14 @@ test("commission math uses net cents, fixed quantities and exact package allocat
 });
 
 test("actual commission actions reject users without financial management before touching data",async()=>{
-  const output=await build({entryPoints:["src/actions/commissions.ts"],bundle:true,write:false,format:"cjs",platform:"node",packages:"external",plugins:[{name:"commission-auth",setup(builder){
+  const output=await build({stdin:{contents:'export * from "./src/actions/commissions"; export * from "./src/actions/collaborator-commissions";',resolveDir:process.cwd(),loader:"ts"},bundle:true,write:false,format:"cjs",platform:"node",packages:"external",plugins:[{name:"commission-auth",setup(builder){
     const mocks:Record<string,string>={"@/db":"export const db=new Proxy({},{get(){throw new Error('Database must not be accessed')}});","@/lib/session":"export async function requireOrganization(){return {session:{user:{id:'viewer'}},organization:{id:'outside',role:'viewer',timezone:'America/Bahia'}}}","next/cache":"export function revalidatePath(){}"};
     builder.onResolve({filter:/./},args=>mocks[args.path]?{path:args.path,namespace:"commission-auth"}:undefined);
     builder.onLoad({filter:/./,namespace:"commission-auth"},args=>({contents:mocks[args.path],loader:"js"}));
   }}]});
   const exported={exports:{} as Record<string,(data:FormData)=>Promise<unknown>>};
   new Function("require","module","exports",output.outputFiles[0].text)(createRequire(import.meta.url),exported,exported.exports);
-  for(const name of ["saveCommissionRule","deactivateCommissionRule","calculateCommissions","payCommissions","reverseCommissionPayment","assignSaleCommissionBeneficiary"]) await assert.rejects(exported.exports[name](new FormData()),error=>error instanceof Error&&!error.message.includes("Database must"));
+  for(const name of ["saveCollaboratorCommissions","saveCommissionRule","deactivateCommissionRule","calculateCommissions","payCommissions","reverseCommissionPayment","assignSaleCommissionBeneficiary"]) await assert.rejects(exported.exports[name](new FormData()),error=>error instanceof Error&&!error.message.includes("Database must"));
 });
 
 test("commission migration, unified ledger, settlement, replay, refund adjustments and reversal against PostgreSQL",async()=>{
@@ -63,14 +63,13 @@ test("commission migration, unified ledger, settlement, replay, refund adjustmen
     await pg.exec(await readFile(new URL("../drizzle/0076_commission_ledger.sql",import.meta.url),"utf8"));
     assert.equal((await pg.query<{source_key:string}>("SELECT source_key FROM commission_entries WHERE id=$1",[legacy])).rows[0].source_key,`appointment:${visit}`);
     const database=drizzle(pg,{schema}) as unknown as typeof db,repo=new CommissionRepository(database);
+    await pg.query("UPDATE organizations SET commission_policy_version=1 WHERE id=$1",[org]);
     const saleRule = randomUUID();
     await pg.query("INSERT INTO commission_rules(id,organization_id,beneficiary_user_id,source_type,calculation_type,value,trigger,is_active) VALUES ($1,$2,'seller','product','percentage',1000,'received',true)",[saleRule,org]);
-    assert.deepEqual(await saleCommissionBeneficiaries(database,org,"seller"), {
-      choices: [{value:"user:seller",label:"Beneficiário teste · equipe"}], defaultBeneficiary:"user:seller",
-    });
-    assert.equal((await saleCommissionBeneficiaries(database,org,"cashier")).defaultBeneficiary, "");
+    assert.equal((await saleCommissionBeneficiaries(database,org,"seller")).defaultBeneficiary,"user:seller");
+    assert.equal((await saleCommissionBeneficiaries(database,org,"cashier")).defaultBeneficiary, "user:cashier");
     await pg.query("UPDATE commission_rules SET is_active=false WHERE id=$1",[saleRule]);
-    assert.deepEqual(await saleCommissionBeneficiaries(database,org,"seller"), {choices:[],defaultBeneficiary:""});
+    assert.equal((await saleCommissionBeneficiaries(database,org,"seller")).defaultBeneficiary,"user:seller");
     const sale=randomUUID(),product=randomUUID(),bill=randomUUID(),item=randomUUID();
     await pg.query("INSERT INTO retail_product_variants(id,organization_id) VALUES ($1,$2)",[product,org]);
     await pg.query("INSERT INTO financial_entries(id,organization_id,type,status,amount_in_cents) VALUES ($1,$2,'receivable','received',9000)",[bill,org]);
@@ -139,5 +138,14 @@ test("commission migration, unified ledger, settlement, replay, refund adjustmen
     const packageEntries=(await pg.query<{base_amount_in_cents:number;amount_in_cents:number}>("SELECT base_amount_in_cents,amount_in_cents FROM commission_entries WHERE source_key IN ($1,$2)",[`appointment:${packVisit}`,`package-use:${extraUsage}`])).rows;
     assert.equal(packageEntries.reduce((sum,item)=>sum+item.base_amount_in_cents,0),10000);
     assert.equal(packageEntries.reduce((sum,item)=>sum+item.amount_in_cents,0),2000);
+    // At cutover, keep old entries reconcilable but never commission new executions.
+    await pg.exec("CREATE FUNCTION aggenda_sync_attendance_commissions(uuid) RETURNS void LANGUAGE plpgsql AS $$ BEGIN RETURN; END $$; CREATE FUNCTION aggenda_sync_sale_commissions(uuid) RETURNS void LANGUAGE plpgsql AS $$ BEGIN RETURN; END $$");
+    await pg.query("UPDATE organizations SET commission_policy_version=2 WHERE id=$1",[org]);
+    const freshVisit=randomUUID();
+    await pg.query("INSERT INTO appointments(id,organization_id,professional_id,service_id,status,price_in_cents,starts_at) VALUES($1,$2,$3,$4,'completed',10000,'2026-10-10')",[freshVisit,org,professional,service]);
+    await pg.query("UPDATE appointments SET status='cancelled' WHERE id=$1",[packVisit]);
+    await repo.refresh(org,"America/Bahia","cashier","2026-10");
+    assert.equal((await pg.query("SELECT id FROM commission_entries WHERE appointment_id=$1",[freshVisit])).rows.length,0,"Execution alone no longer creates commissions");
+    assert.equal((await pg.query<{status:string}>("SELECT status FROM commission_entries WHERE appointment_id=$1",[packVisit])).rows[0].status,"cancelled","Historical pending entries remain reconcilable");
   }finally{await pg.close();}
 });

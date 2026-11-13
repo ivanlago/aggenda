@@ -1,5 +1,6 @@
 "use client";
 
+import { ItemCommissionField } from "@/components/item-commission-field";
 import { useId, useState } from "react";
 import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import { saveServicePackage } from "@/actions/package-catalog";
@@ -20,6 +21,7 @@ export function PackageForm({ procedures, template }: { procedures: PackageProce
     <label className="col-span-full grid gap-2 text-sm font-bold">Nome do pacote *<input className="field" name="name" required minLength={2} maxLength={120} defaultValue={template?.name} placeholder="Ex.: Pacote com 6 sessões" /></label>
       <label className="grid gap-2 text-sm font-bold">Preço do pacote (R$) *<input className="field" name="price" inputMode="decimal" required defaultValue={template ? (template.priceInCents / 100).toFixed(2).replace(".", ",") : ""} placeholder="499,00" /></label>
       <label className="grid gap-2 text-sm font-bold">Validade em dias<input className="field" name="validityDays" type="number" min="1" max="36500" defaultValue={template?.validityDays ?? ""} /><span className="text-xs font-normal text-muted">Contada a partir da aquisição. Vazio significa sem prazo.</span></label>
+      <ItemCommissionField value={template?.commissionRateBasisPoints} executionValue={template?.executionCommissionRateBasisPoints??0} />
     <div className="col-span-full grid min-w-0 items-start gap-4 md:grid-cols-2">
       <div className="grid min-w-0 gap-2">
         <label className="grid gap-2 text-sm font-bold">Buscar serviço<input className="field" type="search" value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} placeholder="Digite para encontrar um serviço" /></label>

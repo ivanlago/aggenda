@@ -24,7 +24,7 @@ import { verifyDetachedPades } from "@/lib/signatures/cms-verification";
 import { PostgresSignatureRepository } from "@/lib/signatures/postgres-repository";
 
 const text = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
-const refresh = () => { revalidatePath("/documentos/historico"); revalidatePath("/documentos/assinatura-profissional"); };
+const refresh = () => { revalidatePath("/equipe"); revalidatePath("/documentos/historico"); revalidatePath("/documentos/assinatura-profissional"); };
 
 export async function registerProfessionalSigningIdentity(form: FormData) {
   const { organization, session } = await requireOrganization();
@@ -40,6 +40,21 @@ export async function registerProfessionalSigningIdentity(form: FormData) {
     await tx.update(professionalSigningCeremonies).set({ state: "cancelled" }).where(and(eq(professionalSigningCeremonies.organizationId, organization.id), eq(professionalSigningCeremonies.professionalId, professionalId), eq(professionalSigningCeremonies.state, "open")));
   });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "verify_identity", entityType: "professional_signing_identity", entityId: professionalId });
+  refresh();
+}
+
+export async function registerOwnSigningIdentity(form: FormData) {
+  const {organization,session}=await requireOrganization();
+  assertOrganizationPermission(organization.role,"documents.sign",organization.teamPermissionOverrides);
+  const cpf=text(form,"cpf").replace(/\D/g,"");
+  if(!validCpf(cpf)||text(form,"verified")!=="on") return {error:"Informe seu CPF válido e confirme a identidade."};
+  await db.transaction(async tx=>{
+    const [professional]=await tx.select({id:professionals.id}).from(professionals).where(and(eq(professionals.organizationId,organization.id),eq(professionals.userId,session.user.id),eq(professionals.isActive,true))).for("update");
+    if(!professional) throw new Error("Seu usuário precisa estar vinculado a um profissional ativo.");
+    await tx.insert(professionalSigningIdentities).values({organizationId:organization.id,professionalId:professional.id,cpf,verifiedBy:session.user.id}).onConflictDoUpdate({target:[professionalSigningIdentities.organizationId,professionalSigningIdentities.professionalId],set:{cpf,verifiedBy:session.user.id,updatedAt:new Date()}});
+    await tx.update(professionalSigningCeremonies).set({state:"cancelled"}).where(and(eq(professionalSigningCeremonies.organizationId,organization.id),eq(professionalSigningCeremonies.professionalId,professional.id),eq(professionalSigningCeremonies.state,"open")));
+  });
+  await writeAuditLog({organizationId:organization.id,userId:session.user.id,action:"register_own_identity",entityType:"professional_signing_identity",entityId:session.user.id});
   refresh();
 }
 

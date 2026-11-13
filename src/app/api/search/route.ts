@@ -11,7 +11,7 @@ const pages: Array<{ label: string; href: string; permission: OrganizationPermis
   { label: "Clientes e prontuários", href: "/clientes", permission: "clients.read" },
   { label: "Produtos e Serviços", href: "/produtos-servicos", permission: "services.read" },
   { label: "Pacotes", href: "/produtos-servicos?tab=pacotes", permission: "services.read" },
-  { label: "Kit de Produtos/Serviços", href: "/produtos-servicos?tab=kits", permission: "services.read" },
+  { label: "Kits de produtos", href: "/produtos-servicos?tab=kits", permission: "services.read" },
   { label: "Venda e orçamento", href: "/vendas", permission: "inventory.read" },
   { label: "CRM e conversas comerciais", href: "/crescimento", permission: "crm.read" },
   { label: "Produtos e Serviços", href: "/produtos-servicos", permission: "inventory.read" },

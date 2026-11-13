@@ -2,7 +2,7 @@ import { ChevronDown } from "lucide-react";
 import { selectActiveOrganization } from "@/actions/access";
 import { SignOutButton } from "./sign-out-button";
 import Link from "next/link";
-import { getOrganizationProfessionalId } from "@/lib/session";
+
 import { AppSearch } from "@/components/app-search";
 import Image from "next/image";
 import { HeaderShortcut } from "@/components/header-shortcut";
@@ -11,7 +11,7 @@ import { getHeaderIdentity, getOpenCommercialConversationCount } from "@/lib/hea
 import { hasOrganizationPermission, type TeamPermissionOverrides } from "@/lib/permissions";
 
 export async function AppHeader({ organizationName, userEmail, memberships, organizationId, role, teamPermissionOverrides, timezone, userId, userName }: { organizationName: string; userEmail: string; memberships: Array<{ id: string; name: string }>; organizationId: string; role: string; teamPermissionOverrides?: TeamPermissionOverrides | null; timezone: string; userId: string; userName: string }) {
-  const [identity, openCount, professionalId] = await Promise.all([getHeaderIdentity(organizationId, userId, userName), getOpenCommercialConversationCount(organizationId, role), getOrganizationProfessionalId(organizationId, userId)]);
+  const [identity, openCount] = await Promise.all([getHeaderIdentity(organizationId, userId, userName), getOpenCommercialConversationCount(organizationId, role)]);
   const today = new Intl.DateTimeFormat("sv-SE", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   return <header className="app-header relative z-20 flex min-h-20 flex-wrap items-center justify-between gap-4 border-b border-slate-200/60 px-4 py-4 shadow-[0_1px_8px_rgba(18,60,70,0.04)] backdrop-blur-xl sm:px-6">
     <div className="flex w-full min-w-0 flex-1 flex-wrap items-center gap-3">
@@ -36,7 +36,7 @@ export async function AppHeader({ organizationName, userEmail, memberships, orga
             </select>
             <button className="rounded-lg bg-brand px-3 py-2 text-xs font-bold text-white">Trocar empresa</button>
           </form>}
-          {professionalId && <Link href="/equipe/minha-assinatura" className="mt-3 block text-xs font-bold text-brand">Minha assinatura visual</Link>}
+          {<Link href={`/equipe#membro-${userId}`} className="mt-3 block text-xs font-bold text-brand">Meu cadastro e assinaturas</Link>}
           <div className="mt-3 border-t border-slate-200 pt-3"><SignOutButton /></div>
         </div>
       </details>

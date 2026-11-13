@@ -215,6 +215,7 @@ export const verifications = pgTable("verifications", {
 });
 
 export const organizations = pgTable("organizations", {
+  commissionPolicyVersion: integer("commission_policy_version").default(2).notNull(),
   onlineInstallmentPolicy: jsonb("online_installment_policy").$type<Record<string, unknown>>(),
   teamPermissionOverrides: jsonb("team_permission_overrides").$type<import("@/lib/permissions").TeamPermissionOverrides>(),
   id: uuid("id").defaultRandom().primaryKey(),
@@ -275,6 +276,7 @@ export const organizationMembers = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    signatureImage: text("signature_image"),
     role: organizationRoleEnum("role").default("member").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
@@ -1275,6 +1277,8 @@ export const services = pgTable(
     imageUrl: text("image_url"),
     imagePublicId: text("image_public_id"),
     durationMinutes: integer("duration_minutes").notNull(),
+    executionCommissionRateBasisPoints: integer("execution_commission_rate_basis_points").default(0).notNull(),
+    commissionRateBasisPoints: integer("commission_rate_basis_points").default(0).notNull(),
     priceInCents: integer("price_in_cents"),
     estimatedCostInCents: integer("estimated_cost_in_cents").default(0).notNull(),
     hidePublicPrice: boolean("hide_public_price").default(false).notNull(),
@@ -1406,6 +1410,7 @@ export const retailSales = pgTable("retail_sales", {
   attendanceId: uuid("attendance_id"),
   financialEntryId: uuid("financial_entry_id").references(() => financialEntries.id, { onDelete: "set null" }),
   appointmentFinancialEntryId: uuid("appointment_financial_entry_id").references((): import("drizzle-orm/pg-core").AnyPgColumn => financialEntries.id, { onDelete: "set null" }),
+  commissionBilledAt: timestamp("commission_billed_at").defaultNow(),
   commissionProfessionalId: uuid("commission_professional_id").references(() => professionals.id, { onDelete: "restrict" }),
   commissionUserId: text("commission_user_id").references(() => users.id, { onDelete: "restrict" }),
   status: text("status").default("completed").notNull(),
@@ -1461,6 +1466,8 @@ export const retailSaleItems = pgTable("retail_sale_items", {
   unitPriceInCents: integer("unit_price_in_cents").notNull(),
   discountInCents: integer("discount_in_cents").default(0).notNull(),
   unitCostInCents: integer("unit_cost_in_cents").default(0).notNull(),
+  kitId: uuid("kit_id"),
+  commissionRateBasisPoints: integer("commission_rate_basis_points"),
   commissionInCents: integer("commission_in_cents").default(0).notNull(),
   totalInCents: integer("total_in_cents").notNull(),
 }, (table) => [index("retail_sale_items_sale_idx").on(table.saleId)]);
@@ -1538,6 +1545,8 @@ export const servicePackages = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description"),
+    executionCommissionRateBasisPoints: integer("execution_commission_rate_basis_points").default(0).notNull(),
+    commissionRateBasisPoints: integer("commission_rate_basis_points").default(0).notNull(),
     priceInCents: integer("price_in_cents").notNull(),
     validityDays: integer("validity_days"),
     isActive: boolean("is_active").default(true).notNull(),
@@ -1751,6 +1760,9 @@ export const appointments = pgTable(
     professionalId: uuid("professional_id").references(() => professionals.id, {
       onDelete: "set null",
     }),
+    commissionAssistantId: uuid("commission_assistant_id").references(() => professionals.id, { onDelete:"restrict" }),
+    commissionAssistantShareBasisPoints: integer("commission_assistant_share_basis_points").default(0).notNull(),
+    executionCommissionEligible: boolean("execution_commission_eligible").default(true).notNull(),
     serviceId: uuid("service_id")
       .notNull()
       .references(() => services.id, { onDelete: "restrict" }),
@@ -2427,7 +2439,8 @@ export const catalogKits = pgTable("catalog_kits", {
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description"),
-  priceInCents: integer("price_in_cents").notNull(),
+  commissionRateBasisPoints: integer("commission_rate_basis_points").default(0).notNull(),
+    priceInCents: integer("price_in_cents").notNull(),
   items: jsonb("items").$type<Array<{ type: "product" | "service"; id: string; name: string; quantity: number }>>().notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -2448,3 +2461,27 @@ export const cashMovements = pgTable("cash_movements", {
   cashClosingId: uuid("cash_closing_id").references(() => cashClosings.id, { onDelete: "restrict" }),
   isLegacy: boolean("is_legacy").default(false).notNull(),
 }, table => [index("cash_movements_account_time_idx").on(table.organizationId, table.accountId, table.occurredAt), index("cash_movements_source_idx").on(table.sourceType, table.sourceId), index("cash_movements_session_time_idx").on(table.cashClosingId, table.occurredAt)]);
+
+export const collaboratorItemCommissions = pgTable("collaborator_item_commissions", {
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  itemType: text("item_type").notNull(),
+  itemId: uuid("item_id").notNull(),
+  percentageBasisPoints: integer("percentage_basis_points"),
+  executionPercentageBasisPoints: integer("execution_percentage_basis_points"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, table => [primaryKey({columns:[table.organizationId,table.userId,table.itemType,table.itemId]}),
+  check("collaborator_commission_valid",sql`${table.itemType} in ('product','service','package','kit') and ${table.percentageBasisPoints} between 0 and 10000`)]);
+
+export const executionCommissionSnapshots = pgTable("execution_commission_snapshots", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(()=>organizations.id,{onDelete:"cascade"}),
+  appointmentId: uuid("appointment_id").notNull().references(()=>appointments.id,{onDelete:"restrict"}),
+  sourceKey:text("source_key").notNull(),sourceType:text("source_type").notNull(),sourceId:uuid("source_id").notNull(),
+  clientPackageId:uuid("client_package_id").references(()=>clientPackages.id,{onDelete:"restrict"}),
+  quantity:integer("quantity").notNull(),baseInCents:integer("base_in_cents").notNull(),rateBasisPoints:integer("rate_basis_points").notNull(),totalInCents:integer("total_in_cents").notNull(),
+  executorId:uuid("executor_id").notNull().references(()=>professionals.id,{onDelete:"restrict"}),
+  assistantId:uuid("assistant_id").references(()=>professionals.id,{onDelete:"restrict"}),assistantShareBasisPoints:integer("assistant_share_basis_points").default(0).notNull(),
+  sessionSlots:integer("session_slots").array(),allocationHeld:boolean("allocation_held").default(true).notNull(),description:text("description").notNull(),
+  createdAt:timestamp("created_at").defaultNow().notNull(),
+},t=>[uniqueIndex("execution_snapshot_source_unique").on(t.organizationId,t.sourceKey),index("execution_snapshot_appointment_idx").on(t.appointmentId)]);

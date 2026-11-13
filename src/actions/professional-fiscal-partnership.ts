@@ -22,6 +22,10 @@ export async function saveFiscalPartnership(form: FormData) {
   )).limit(1);
   if (!professional) return { error: "Profissional não encontrado nesta empresa." };
 
+  if(form.get("active")!=="on") {
+    await db.update(professionalFiscalPartnerships).set({isActive:false,updatedAt:new Date()}).where(and(eq(professionalFiscalPartnerships.professionalId,professionalId),eq(professionalFiscalPartnerships.organizationId,organization.id)));
+    revalidatePath(page); revalidatePath("/equipe"); return;
+  }
   const cpf = field(form, "cpf").replace(/[.\s-]/g, "");
   const cnpj = field(form, "cnpj").replace(/[./\s-]/g, "").toUpperCase();
   if (cpf && !/^\d{11}$/.test(cpf)) return { error: "Informe um CPF com 11 dígitos." };
@@ -30,7 +34,7 @@ export async function saveFiscalPartnership(form: FormData) {
   await db.insert(professionalFiscalPartnerships).values({ ...values, professionalId, organizationId: organization.id })
     .onConflictDoUpdate({ target: professionalFiscalPartnerships.professionalId, set: values,
       setWhere: eq(professionalFiscalPartnerships.organizationId, organization.id) });
-  revalidatePath(page);
+  revalidatePath(page); revalidatePath("/equipe");
 }
 
 export async function saveFiscalServiceShare(form: FormData) {
@@ -55,5 +59,5 @@ export async function saveFiscalServiceShare(form: FormData) {
   await db.insert(professionalFiscalShares).values({ professionalId, serviceId, percentageBasisPoints })
     .onConflictDoUpdate({ target: [professionalFiscalShares.professionalId, professionalFiscalShares.serviceId],
       set: { percentageBasisPoints } });
-  revalidatePath(page);
+  revalidatePath(page); revalidatePath("/equipe");
 }

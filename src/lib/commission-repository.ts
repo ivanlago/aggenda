@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { db } from "@/db";
-import { appointments, attendancePackageItems, auditLogs, clientPackageBalances, clientPackages, commissionEntries, commissionPaymentItems, commissionPayments, commissionRules, financialAccounts, financialEntries, paymentCharges, packageUsages, retailSaleItems, retailSales, services } from "@/db/schema";
+import { organizations, appointments, attendancePackageItems, auditLogs, clientPackageBalances, clientPackages, commissionEntries, commissionPaymentItems, commissionPayments, commissionRules, financialAccounts, financialEntries, paymentCharges, packageUsages, retailSaleItems, retailSales, services } from "@/db/schema";
 import { organizationDate, zonedDate } from "./organization-time";
 import { assertCommissionBeneficiary } from "./commission-beneficiaries";
 import { CommissionError, beneficiaryKey, commissionAmount, packageSessionBase, type CommissionBeneficiary } from "./commission-beneficiary";
@@ -17,7 +17,13 @@ export class CommissionRepository {
     return this.database.transaction(async tx => { await this.lock(tx, org); return this.refreshWith(tx, org, timezone, actor, competence); });
   }
   private async refreshWith(tx: Transaction, org: string, timezone: string, actor: string, competence?: string) {
-    const [rules, old, visits, products, sales, finances, charges, uses, extraUses, packages, balances, catalog] = await Promise.all([
+    const [policy] = await tx.select({version:organizations.commissionPolicyVersion}).from(organizations).where(eq(organizations.id,org));
+    const billedPolicy=policy?.version===2;
+    if (billedPolicy) {
+      await tx.execute(sql`select aggenda_sync_attendance_commissions(id) from appointments where organization_id=${org} and execution_commission_eligible and status='completed'`);
+      await tx.execute(sql`select aggenda_sync_sale_commissions(id) from retail_sales where organization_id=${org} and commission_billed_at is not null`);
+    }
+    const [rules, oldRows, visits, products, sales, finances, charges, uses, extraUses, packages, balances, catalog] = await Promise.all([
       tx.select().from(commissionRules).where(eq(commissionRules.organizationId, org)),
       tx.select().from(commissionEntries).where(eq(commissionEntries.organizationId, org)),
       tx.select({id:appointments.id,professionalId:appointments.professionalId,serviceId:appointments.serviceId,priceInCents:appointments.priceInCents,startsAt:appointments.startsAt,status:appointments.status,metadata:appointments.metadata}).from(appointments).where(eq(appointments.organizationId, org)),
@@ -31,6 +37,9 @@ export class CommissionRepository {
       tx.select().from(clientPackageBalances).where(eq(clientPackageBalances.organizationId, org)),
       tx.select({ id: services.id, name: services.name }).from(services).where(eq(services.organizationId, org)),
     ]);
+    // Preserve legacy lifecycle only for entries that already existed at cutover.
+    // Billed entries and their adjustments are owned exclusively by the SQL ledger.
+    const old=billedPolicy?oldRows.filter(item=>!item.sourceKey?.startsWith("billed")&&!item.sourceKey?.startsWith("execution:")):oldRows;
     const existing = new Map(old.filter(item => !item.originalEntryId && item.sourceKey).map(item => [item.sourceKey!, item]));
     const saleMap = new Map(sales.map(item => [item.id, item]));
     const visitMap = new Map(visits.map(item => [item.id, item]));
@@ -58,7 +67,7 @@ export class CommissionRepository {
       const depositIds = charges.filter(item => item.originId === visit.id).map(item => item.financialEntryId);
       const bills = finances.filter(item => item.type === "receivable" && (item.appointmentId === visit.id || depositIds.includes(item.id)));
       const liveBills = bills.filter(item => item.status !== "cancelled");
-      const primarySales = products.filter(item => item.serviceId === visit.serviceId && item.variantName === "Procedimento realizado" && saleMap.get(item.saleId)?.attendanceId === visit.id);
+      const primarySales = products.filter(item => item.serviceId === visit.serviceId && ["Procedimento realizado","Serviço realizado"].includes(item.variantName) && saleMap.get(item.saleId)?.attendanceId === visit.id);
       const refunded = primarySales.length > 0 && !primarySales.some(item => saleMap.get(item.saleId)?.status === "completed");
       const base = liveBills.length ? liveBills.reduce((sum,item) => sum + item.amountInCents,0) : visit.priceInCents || 0;
       sources.push({ key: `appointment:${visit.id}`, type: "appointment", appointmentId: visit.id, professionalId: visit.professionalId, beneficiaryUserId: null, description: serviceMap.get(visit.serviceId) || "Procedimento", base, quantity: 1, competence: organizationDate(visit.startsAt,timezone).slice(0,7), ready: visit.status === "completed" && !refunded, received: liveBills.length > 0 && liveBills.every(item => item.status === "received"), serviceId: visit.serviceId });
@@ -66,11 +75,12 @@ export class CommissionRepository {
     for (const item of products) {
       const sale = saleMap.get(item.saleId);
       if (!sale || item.packageId || (!sale.commissionProfessionalId && !sale.commissionUserId)) continue;
-      if (sale.attendanceId && item.serviceId === visitMap.get(sale.attendanceId)?.serviceId && item.variantName === "Procedimento realizado") continue;
+      if (sale.attendanceId && item.serviceId === visitMap.get(sale.attendanceId)?.serviceId && ["Procedimento realizado","Serviço realizado"].includes(item.variantName)) continue;
       sources.push({ key: `sale-item:${item.id}`, type: item.variantId ? "product" : "service", saleId: sale.id, saleItemId: item.id, professionalId: sale.commissionProfessionalId, beneficiaryUserId: sale.commissionUserId, description: `${item.productName} · ${item.variantName} · ${item.quantity} un.`, base: item.totalInCents, quantity: item.quantity, competence: organizationDate(sale.soldAt, timezone).slice(0,7), ready: sale.status === "completed", received: financeMap.get(sale.financialEntryId || sale.appointmentFinancialEntryId || "")?.status === "received", serviceId: item.serviceId || undefined, variantId: item.variantId || undefined, fallback: item.variantId ? item.commissionInCents : undefined });
     }
     const desired = new Map<string, { source: Source; amount: number; rule?: typeof commissionRules.$inferSelect; type: string; value: number }>();
     for (const source of sources) {
+      if(billedPolicy&&!existing.has(source.key)) continue;
       let prior = existing.get(source.key);
       if (prior && beneficiaryKey(prior) !== beneficiaryKey(source)) {
         if(prior.status==="paid") throw new CommissionError("O beneficiário de uma origem já quitada mudou. Estorne a quitação anterior antes de mudar o profissional.");

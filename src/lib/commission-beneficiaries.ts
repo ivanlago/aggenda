@@ -1,6 +1,6 @@
-import { and, eq, gt, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { db } from "@/db";
-import { commissionEntries, commissionRules, organizationMembers, professionals, users } from "@/db/schema";
+import { commissionEntries, organizationMembers, professionals, users } from "@/db/schema";
 import { CommissionError, beneficiaryKey, type CommissionBeneficiary, type CommissionBeneficiaryOption } from "./commission-beneficiary";
 
 export async function commissionBeneficiaries(database: typeof db, organizationId: string, includeLinkedMembers = false): Promise<(CommissionBeneficiaryOption & { userId: string | null })[]> {
@@ -15,13 +15,7 @@ export async function commissionBeneficiaries(database: typeof db, organizationI
 }
 
 export async function saleCommissionBeneficiaries(database: typeof db, organizationId: string, userId: string) {
-  const [people, rules] = await Promise.all([
-    commissionBeneficiaries(database, organizationId, true),
-    database.select({ professionalId: commissionRules.professionalId, beneficiaryUserId: commissionRules.beneficiaryUserId })
-      .from(commissionRules).where(and(eq(commissionRules.organizationId, organizationId), eq(commissionRules.isActive, true), inArray(commissionRules.sourceType, ["product", "service"]), gt(commissionRules.value, 0))),
-  ]);
-  const eligible = new Set(rules.map(beneficiaryKey));
-  const options = people.filter(person => eligible.has(person.value));
+  const options = await commissionBeneficiaries(database, organizationId);
   return {
     choices: options.map(({ value, label }) => ({ value, label })),
     defaultBeneficiary: options.find(person => person.userId === userId)?.value ?? "",

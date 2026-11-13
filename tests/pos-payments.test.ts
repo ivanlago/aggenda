@@ -47,7 +47,7 @@ test("todos os provedores aptos aparecem sem padrão; padrão não filtra opçõ
 
 test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento e estorno", async t => {
   const pg = new PGlite();
-  const tables = { cash_closings:schema.cashClosings, financial_accounts:schema.financialAccounts, payment_methods:schema.paymentMethods, users:schema.users, organizations:schema.organizations, organization_members:schema.organizationMembers,
+  const tables = { catalog_kits:schema.catalogKits,commission_entries:schema.commissionEntries, cash_closings:schema.cashClosings, financial_accounts:schema.financialAccounts, payment_methods:schema.paymentMethods, users:schema.users, organizations:schema.organizations, organization_members:schema.organizationMembers,
     professionals:schema.professionals, clients:schema.clients, services:schema.services, service_packages:schema.servicePackages,
     service_package_items:schema.servicePackageItems, retail_products:schema.retailProducts, retail_product_variants:schema.retailProductVariants,
     retail_sales:schema.retailSales, retail_sale_items:schema.retailSaleItems, retail_sale_payments:schema.retailSalePayments,
@@ -57,7 +57,8 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
     inventory_lots:schema.inventoryLots, inventory_lot_allocations:schema.inventoryLotAllocations, inventory_lot_recalls:schema.inventoryLotRecalls,
     inventory_movements:schema.inventoryMovements, appointments:schema.appointments, package_usages:schema.packageUsages };
   const omitted: Record<string,string[]> = {
-    retail_sales:["payment_provider","checkout_key","checkout_input_hash","stock_restored_at","cash_closing_id"],
+    organizations:["commission_policy_version"],services:["commission_rate_basis_points"],service_packages:["commission_rate_basis_points"],catalog_kits:["commission_rate_basis_points"],retail_sale_items:["kit_id","commission_rate_basis_points"],
+    retail_sales:["commission_billed_at","payment_provider","checkout_key","checkout_input_hash","stock_restored_at","cash_closing_id"],
     organization_financial_integrations:["is_default_pos"],
     financial_entries:["payment_method_id","payment_method_name","cash_managed_by_sale"],
     payment_methods:["kind","provider","default_account_id"],
@@ -83,6 +84,8 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
     await pg.exec(await readFile(new URL("../drizzle/0098_retail_card_installments.sql",import.meta.url),"utf8"));
     await pg.exec("CREATE UNIQUE INDEX payment_charge_events_provider_event_unique ON payment_charge_events(provider_event_id)");
     const org = randomUUID(), outside = randomUUID(), client = randomUUID(), stock = randomUUID(), product = randomUUID(), variant = randomUUID(), procedure = randomUUID(), pack = randomUUID();
+    await pg.exec("CREATE UNIQUE INDEX commission_entries_source_unique ON commission_entries(organization_id,source_key)");
+    await pg.exec(await readFile(new URL("../drizzle/0102_billed_item_commissions.sql",import.meta.url),"utf8"));
     await pg.query("INSERT INTO users(id,name) VALUES ('cashier','Operador teste')");
     await pg.query("INSERT INTO organizations(id,name,timezone) VALUES ($1,'Clínica teste','America/Bahia'),($2,'Outra clínica','America/Bahia')",[org,outside]);
     const originalCash = randomUUID();
@@ -126,6 +129,23 @@ test("PDV real em PostgreSQL isolado: reserva, aprovação, replay, cancelamento
       return { saleId,charge,key,form };
     }
     const repository = new PosPaymentRepository(database);
+    await t.test("nova comissão ao finalizar: kit baixa componentes, herda percentual individual e cancela sem duplicar",async()=>{
+      await pg.query("INSERT INTO organization_members(organization_id,user_id,role) VALUES($1,'cashier','owner')",[org]);
+      await pg.query("UPDATE services SET commission_rate_basis_points=1000 WHERE id=$1",[procedure]);
+      await pg.query("UPDATE service_packages SET commission_rate_basis_points=2000 WHERE id=$1",[pack]);
+      const kit=randomUUID();
+      await pg.query("INSERT INTO catalog_kits(id,organization_id,name,price_in_cents,items,is_active,commission_rate_basis_points) VALUES($1,$2,'Kit teste',2000,$3,true,500)",[kit,org,JSON.stringify([{type:"product",id:variant,name:"Produto",quantity:2}])]);
+      await pg.query("INSERT INTO collaborator_item_commissions(organization_id,user_id,item_type,item_id,percentage_basis_points) VALUES($1,'cashier','kit',$2,1500)",[org,kit]);
+      const form=new FormData();form.set("checkoutProvider","mercado_pago");form.set("onlinePaymentMethodId",catalogIds.mercado_pago);form.set("checkoutKey",randomUUID());form.set("items",JSON.stringify([{variantId:`kit:${kit}`,quantity:1,discountInCents:0},{variantId:`service:${procedure}`,quantity:1,discountInCents:0},{variantId:`package:${pack}`,quantity:1,discountInCents:0}]));form.set("payments","[]");form.set("clientId",client);form.set("commissionBeneficiary","user:cashier");
+      const result=await register(form);assert.ok(result.openUrl,result.error);
+      const saleId=result.openUrl!.split("/").at(-1)!;
+      const rows=(await pg.query<{source_type:string;amount_in_cents:number}>("SELECT source_type,amount_in_cents FROM commission_entries WHERE sale_id=$1 ORDER BY source_type",[saleId])).rows;
+      assert.deepEqual(rows,[{source_type:"kit",amount_in_cents:300},{source_type:"package",amount_in_cents:400},{source_type:"service",amount_in_cents:100}]);
+      assert.equal((await pg.query<{current_quantity_millis:number}>("SELECT current_quantity_millis FROM inventory_products WHERE id=$1",[stock])).rows[0].current_quantity_millis,8000);
+      await repository.cancelUnpaid(org,saleId,"cashier");
+      assert.equal((await pg.query<{current_quantity_millis:number}>("SELECT current_quantity_millis FROM inventory_products WHERE id=$1",[stock])).rows[0].current_quantity_millis,10000);
+      assert.equal((await pg.query("SELECT id FROM commission_entries WHERE sale_id=$1 AND status<>'cancelled'",[saleId])).rows.length,0);
+    });
     await t.test("Asaas e PagBank: checkout, aprovação, estorno parcial, cancelamento e padrão por empresa",async()=>{
       for(const provider of ["asaas","pagbank"]) await pg.query("INSERT INTO organization_financial_integrations(id,organization_id,provider,status,environment,metadata) VALUES ($1,$2,$3,'active','production',$4)",[randomUUID(),org,provider,JSON.stringify({webhookStatus:provider==="asaas"?"active":"configured"})]);
       let asaasPayments:unknown[]=[],pagBankCharges:unknown[]=[],asaasCreates=0,pagBankCreates=0;

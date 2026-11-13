@@ -6,10 +6,11 @@ import { kitInputSchema } from "../src/lib/catalog-kit-input";
 
 const orgId = "11111111-1111-4111-8111-111111111111";
 const itemId = "22222222-2222-4222-8222-222222222222";
-const input = { name: "Kit completo", description: "", priceInCents: 12500, isActive: true, items: [{ type: "product", id: itemId, quantity: 2 }, { type: "service", id: orgId, quantity: 1 }] };
+const input = { name: "Kit completo", description: "", priceInCents: 12500, isActive: true, items: [{ type: "product", id: itemId, quantity: 2 }] };
 
-test("kit accepts products and services with whole quantities", () => {
-  assert.equal(kitInputSchema.parse(input).items.length, 2);
+test("kit accepts only products with whole quantities", () => {
+  assert.equal(kitInputSchema.parse(input).items.length, 1);
+  assert.equal(kitInputSchema.safeParse({...input,items:[{type:"service",id:orgId,quantity:1}]}).success,false);
   for (const quantity of [0, -1, 1.5, 10001, NaN]) {
     assert.equal(kitInputSchema.safeParse({ ...input, items: [{ ...input.items[0], quantity }] }).success, false);
   }

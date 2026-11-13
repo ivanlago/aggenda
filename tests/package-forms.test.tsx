@@ -20,6 +20,8 @@ test("package and charge dialogs follow the shared lifecycle and submit only sel
   const bundle = await build({ stdin: { contents: 'export { PackageDialog } from "./src/components/package-form"; export { ChargeCreateDialog } from "./src/components/charge-create-form";', resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, format: "cjs", platform: "node", packages: "external", jsx: "automatic", plugins: [{ name: "forms", setup(builder) {
     const mocks: Record<string, string> = {
       "next/navigation": "const router={refresh(){}};export function useRouter(){return router}",
+      "@/actions/payment-charges":"export async function consultAsaasCardFees(){return {error:'Not used in fixture'}}",
+      "@/actions/pagbank":"export async function simulatePagBankInstallments(){return {error:'Not used in fixture'}}",
       "@/actions/package-catalog": "export const saveServicePackage=(data)=>globalThis.packageTestSave(data)",
       "@/actions/mercado-pago": "export const createProviderCharge=(data)=>globalThis.packageTestSave(data)",
     };

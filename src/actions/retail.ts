@@ -20,7 +20,7 @@ import {
   appointmentInventoryConsumptions,
   appointments, packageUsages,
   clients,
-  services, servicePackages, servicePackageItems, clientPackages, clientPackageBalances,
+  catalogKits, services, servicePackages, servicePackageItems, clientPackages, clientPackageBalances,
   financialEntries,
   inventoryLots,
   inventoryCategories,
@@ -296,16 +296,17 @@ export async function registerRetailSale(data: FormData) {
   const hasItemDiscount = [...grouped.values()].some((item) => item.discountInCents > 0);
   if (hasItemDiscount && !sourceQuote) assertOrganizationPermission(organization.role, "sales.discount");
   const serviceIds = [...grouped.keys()].filter((id) => id.startsWith("service:")).map((id) => id.slice(8));
+  const kitIds = [...grouped.keys()].filter(id=>id.startsWith("kit:")).map(id=>id.slice(4));
   const packageIds = [...grouped.keys()].filter((id) => id.startsWith("package:")).map((id) => id.slice(8));
   const variantIds = [...grouped.keys()].filter((id) => !id.includes(":"));
   const appointmentKeys = [...grouped.keys()].filter((id) => id.startsWith("appointment:"));
-  if (variantIds.length + serviceIds.length + packageIds.length + appointmentKeys.length !== grouped.size) throw new Error("Tipo de item inválido.");
+  if (variantIds.length + serviceIds.length + packageIds.length + kitIds.length + appointmentKeys.length !== grouped.size) throw new Error("Tipo de item inválido.");
   if (appointmentKeys.length && (!attendance || appointmentKeys.length !== 1 || appointmentKeys[0] !== `appointment:${attendanceId}` || grouped.get(appointmentKeys[0])!.quantity !== 1)) throw new Error("Serviço do atendimento inválido.");
   if (attendance && attendance.appointment.metadata?.primaryProcedureRemoved !== true && serviceIds.includes(attendance.appointment.serviceId)) throw new Error("Use o item do serviço realizado, já incluído no carrinho, para receber este atendimento.");
   const clientId = attendance?.appointment.clientId ?? (text(data, "clientId") || null);
   const [client] = clientId ? await db.select({ id: clients.id, name:clients.name, email: clients.email, phone: clients.phone }).from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1) : [];
   if (clientId && !client) throw new Error("Cliente não encontrado.");
-  if ((serviceIds.length || packageIds.length) && !clientId) throw new Error("Selecione o cliente para vender serviços ou pacotes.");
+  if ((serviceIds.length || packageIds.length || kitIds.length) && !clientId) throw new Error("Selecione o cliente para vender serviços ou pacotes.");
   const receiptEmail = text(data, "receiptEmail") || client?.email || null;
   const receiptPhone = text(data, "receiptPhone") || client?.phone || null;
   if (receiptEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(receiptEmail)) throw new Error("Informe um e-mail válido para o recibo.");
@@ -402,6 +403,21 @@ export async function registerRetailSale(data: FormData) {
       const [service] = await tx.select().from(services).where(and(eq(services.id, current.serviceId), eq(services.organizationId, organization.id)));
       appointmentLine = { id: appointmentKeys[0], serviceId: service.id, packageId: null, productName: service.name, variantName: "Serviço realizado", price: existing?.amountInCents ?? current.priceInCents ?? service.priceInCents };
     }
+    const kitRows=kitIds.length?await tx.select().from(catalogKits).where(and(eq(catalogKits.organizationId,organization.id),eq(catalogKits.isActive,true),inArray(catalogKits.id,kitIds))).for("share"):[];
+    if(kitRows.length!==kitIds.length) throw new Error("Kit indisponível.");
+    if(kitRows.some(kit=>kit.items.some(part=>part.type!=="product"))) throw new Error("Revise o kit: apenas produtos são permitidos.");
+    const kitProducts=new Map<string,number>();
+    for(const kit of kitRows){
+      const count=grouped.get(`kit:${kit.id}`)!.quantity;
+      for(const part of kit.items){
+        if(part.type==="product") kitProducts.set(part.id,(kitProducts.get(part.id)??0)+part.quantity*count);
+        else {
+          const [valid]=await tx.select({id:services.id}).from(services).where(and(eq(services.id,part.id),eq(services.organizationId,organization.id),eq(services.isActive,true)));
+          if(!valid) throw new Error("Serviço do kit indisponível.");
+        }
+      }
+    }
+    const allVariantIds=[...new Set([...variantIds,...kitProducts.keys()])];
     const variants = await tx.select({
       id: retailProductVariants.id, inventoryProductId: retailProductVariants.inventoryProductId,
       variantName: retailProductVariants.name, price: retailProductVariants.salePriceInCents,
@@ -410,15 +426,15 @@ export async function registerRetailSale(data: FormData) {
     }).from(retailProductVariants).innerJoin(retailProducts, eq(retailProducts.id, retailProductVariants.productId)).where(and(
       eq(retailProductVariants.organizationId, organization.id), eq(retailProductVariants.isActive, true),
       eq(retailProductVariants.isForSale, true),
-      eq(retailProducts.isActive, true), inArray(retailProductVariants.id, variantIds),
+      eq(retailProducts.isActive, true), inArray(retailProductVariants.id, allVariantIds),
     ));
-    if (variants.length !== variantIds.length) throw new Error("Um ou mais produtos não estão disponíveis.");
+    if (variants.length !== allVariantIds.length) throw new Error("Um ou mais produtos não estão disponíveis.");
     const stockIds = variants.map((item) => item.inventoryProductId).sort();
     if (stockIds.length) await tx.execute(sql`select id from inventory_products where id in (${sql.join(stockIds.map((id) => sql`${id}`), sql`, `)}) order by id for update`);
     const stock = await tx.select({ id: inventoryProducts.id, balance: inventoryProducts.currentQuantityMillis, cost: inventoryProducts.costInCents }).from(inventoryProducts).where(and(
       eq(inventoryProducts.organizationId, organization.id), inArray(inventoryProducts.id, stockIds), eq(inventoryProducts.isActive, true),
     ));
-    const productLines = variants.map((catalogVariant) => {
+    const productLines = variants.filter(item=>variantIds.includes(item.id)).map((catalogVariant) => {
       const variant = { ...catalogVariant, price: quotedPrices.get(catalogVariant.id) ?? catalogVariant.price };
       const requestedLine = grouped.get(variant.id)!;
       const requested = requestedLine.quantity;
@@ -434,9 +450,10 @@ export async function registerRetailSale(data: FormData) {
     const packageRows = packageIds.length ? await tx.select().from(servicePackages).where(and(eq(servicePackages.organizationId, organization.id), eq(servicePackages.isActive, true), inArray(servicePackages.id, packageIds))).for("share") : [];
     if (procedureRows.length !== serviceIds.length || packageRows.length !== packageIds.length) throw new Error("Serviço ou pacote indisponível.");
     const additionalLines = [
-      ...(appointmentLine ? [appointmentLine] : []),
-      ...procedureRows.map((item) => ({ id: `service:${item.id}`, serviceId: item.id, packageId: null as string | null, productName: item.name, variantName: "Serviço", price: item.priceInCents })),
-      ...packageRows.map((item) => ({ id: `package:${item.id}`, serviceId: null as string | null, packageId: item.id, productName: item.name, variantName: "Pacote", price: item.priceInCents })),
+      ...(appointmentLine ? [{...appointmentLine,kitId:null as string|null}] : []),
+      ...kitRows.map(item=>({id:`kit:${item.id}`,serviceId:null as string|null,packageId:null as string|null,kitId:item.id,productName:item.name,variantName:"Kit",price:item.priceInCents})),
+      ...procedureRows.map((item) => ({ id: `service:${item.id}`, serviceId: item.id, kitId:null as string|null, packageId: null as string | null, productName: item.name, variantName: "Serviço", price: item.priceInCents })),
+      ...packageRows.map((item) => ({ id: `package:${item.id}`, serviceId: null as string | null, kitId:null as string|null, packageId: item.id, productName: item.name, variantName: "Pacote", price: item.priceInCents })),
     ].map((catalogItem) => {
       const item = { ...catalogItem, price: quotedPrices.get(catalogItem.id) ?? catalogItem.price };
       const requested = grouped.get(item.id)!;
@@ -444,7 +461,17 @@ export async function registerRetailSale(data: FormData) {
       if (item.packageId && requested.quantity > 100) throw new Error("Limite de 100 pacotes por item.");
       return { ...item, price: item.price, quantity: requested.quantity, discount: requested.discountInCents, total: item.price * requested.quantity - requested.discountInCents, inventoryProductId: null, cost: 0, commission: 0 };
     });
-    const lines = [...productLines, ...additionalLines];
+    const kitStockLines=[...kitProducts].map(([id,quantity])=>{
+      const variant=variants.find(item=>item.id===id)!;
+      const balance=stock.find(item=>item.id===variant.inventoryProductId)?.balance;
+      if(balance==null) throw new Error("Estoque do kit indisponível.");
+      return {...variant,price:0,quantity,balance,discount:0,cost:stock.find(item=>item.id===variant.inventoryProductId)?.cost??0,total:0,commission:0,variantName:variant.variantName+" · composição de kit"};
+    });
+    const stockLines=[...productLines,...kitStockLines];
+    const stockTotals=new Map<string,number>();
+    for(const line of stockLines) stockTotals.set(line.inventoryProductId,(stockTotals.get(line.inventoryProductId)??0)+line.quantity*1000);
+    for(const [id,needed] of stockTotals) if((stock.find(item=>item.id===id)?.balance??0)<needed) throw new Error("Estoque insuficiente para os produtos e kits selecionados.");
+    const lines = [...productLines, ...additionalLines, ...kitStockLines];
     const subtotalInCents = lines.reduce((sum, item) => sum + item.quantity * item.price, 0);
     const discountInCents = lines.reduce((sum, item) => sum + item.discount, 0);
     const totalInCents = subtotalInCents - discountInCents;
@@ -507,7 +534,7 @@ export async function registerRetailSale(data: FormData) {
     }).returning({ id: retailSales.id, receiptToken: retailSales.receiptToken });
     await tx.insert(retailSaleItems).values(lines.map((item) => ({
       organizationId: organization.id, saleId: sale.id, variantId: item.inventoryProductId ? item.id : null, inventoryProductId: item.inventoryProductId,
-      serviceId: "serviceId" in item ? item.serviceId : null, packageId: "packageId" in item ? item.packageId : null,
+      kitId: "kitId" in item ? item.kitId : null, serviceId: "serviceId" in item ? item.serviceId : null, packageId: "packageId" in item ? item.packageId : null,
       productName: item.productName, variantName: item.variantName, quantity: item.quantity,
       unitPriceInCents: item.price, totalInCents: item.total,
       discountInCents: item.discount, unitCostInCents: item.cost, commissionInCents: item.commission,
@@ -529,9 +556,11 @@ export async function registerRetailSale(data: FormData) {
         }
       }
     }
-    for (const item of productLines.sort((a, b) => a.inventoryProductId.localeCompare(b.inventoryProductId))) {
+    const runningStock=new Map(stock.map(item=>[item.id,item.balance]));
+    for (const item of stockLines.sort((a, b) => a.inventoryProductId.localeCompare(b.inventoryProductId))) {
       await allocateLots(tx, { organizationId: organization.id, productId: item.inventoryProductId, referenceType: "sale", referenceId: sale.id, clientId, userId: session.user.id, quantityMillis: item.quantity * 1000, pool: "sale" });
-      const newBalance = item.balance - item.quantity * 1000;
+      const newBalance = runningStock.get(item.inventoryProductId)! - item.quantity * 1000;
+      runningStock.set(item.inventoryProductId,newBalance);
       await tx.update(inventoryProducts).set({ currentQuantityMillis: newBalance, updatedAt: new Date() }).where(eq(inventoryProducts.id, item.inventoryProductId));
       await tx.insert(inventoryMovements).values({
         organizationId: organization.id, productId: item.inventoryProductId, retailSaleId: sale.id,

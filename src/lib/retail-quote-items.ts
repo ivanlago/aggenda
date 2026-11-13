@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const quoteItemsSchema = z.array(z.object({
-  variantId: z.string().regex(/^(?:(?:service|package):)?[0-9a-f-]{36}$/i),
+  variantId: z.string().regex(/^(?:(?:service|package|kit):)?[0-9a-f-]{36}$/i),
   quantity: z.number().int().min(1).max(10000),
   discountInCents: z.number().int().min(0).max(100000000),
 })).min(1).max(50).refine((items) => new Set(items.map((item) => item.variantId)).size === items.length, "Itens duplicados.");
@@ -9,7 +9,7 @@ export const quoteItemsSchema = z.array(z.object({
 export type QuoteLine = {
   variantId: string;
   label: string;
-  kind: "product" | "service" | "package";
+  kind: "product" | "service" | "package" | "kit";
   quantity: number;
   unitPriceInCents: number;
   discountInCents: number;

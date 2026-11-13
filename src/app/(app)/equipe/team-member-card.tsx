@@ -4,7 +4,8 @@ import { FormActions } from "@/components/form-dialog-context";
 
 import { CalendarCheck, CircleCheck, CalendarDays, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { MemberSettingsTabs } from "@/components/member-settings-tabs";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { deleteUnifiedTeamMember, replaceTeamMemberAvailability, updateUnifiedTeamMember } from "@/actions/team";
 import { ActionForm } from "@/components/action-form";
@@ -29,15 +30,15 @@ export type TeamMemberCardData = {
   googleCalendarEmail?: string | null;
 };
 
-export function TeamMemberCard({ member, professions, specialties, canEdit, canDelete }: {
-  member: TeamMemberCardData; professions: Profession[]; specialties: Specialty[]; canEdit: boolean; canDelete: boolean;
+export function TeamMemberCard({ member, professions, specialties, canEdit, canDelete, commissionPanel, visualPanel, signaturePanel, own = false }: {
+  member: TeamMemberCardData; professions: Profession[]; specialties: Specialty[]; canEdit: boolean; canDelete: boolean; own?: boolean; commissionPanel: ReactNode; visualPanel: ReactNode; signaturePanel: ReactNode;
 }) {
   const [professionId, setProfessionId] = useState(member.professionId ?? "");
   const availableSpecialties = useMemo(() => specialties.filter((item) => item.professionId === professionId), [professionId, specialties]);
   const availabilityByDay = new Map(member.availability.map((item) => [item.dayOfWeek, item]));
 
   return (
-    <article className="team-member-row grid gap-3 rounded-xl border border-slate-200 bg-white p-3">
+    <article id={`membro-${member.userId}`} className="team-member-row grid gap-3 rounded-xl border border-slate-200 bg-white p-3">
       <div className="flex flex-wrap items-start gap-4">
         <EntityThumbnail src={member.imageUrl} alt={member.shortName} fallback={member.shortName[0]} />
         <div className="min-w-0 flex-1">
@@ -62,9 +63,9 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
             </ActionForm>
         </ModalShell>
       )}
-      {canEdit && (
+      {(canEdit || own) && (
         <ModalShell title={`Editar membro: ${member.shortName}`} variant="edit" wide closeOnSuccess>
-        <ActionForm action={updateUnifiedTeamMember} successMessage="Dados e acesso atualizados." className="grid min-w-0 items-start gap-4 sm:grid-cols-2">
+        <MemberSettingsTabs commission={commissionPanel} visual={visualPanel} professional={signaturePanel} profile={canEdit ? <ActionForm action={updateUnifiedTeamMember} successMessage="Dados e acesso atualizados." className="grid min-w-0 items-start gap-4 sm:grid-cols-2">
           <input type="hidden" name="userId" value={member.userId} /><input type="hidden" name="professionalId" value={member.professionalId ?? ""} />
           <>
           <label className="grid gap-1 text-sm font-bold">Nome completo<input className="field" name="fullName" defaultValue={member.fullName} required /></label>
@@ -90,7 +91,7 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
             </div></div>
           </>}
           <FormActions editing />
-        </ActionForm></ModalShell>
+        </ActionForm> : <p className="text-sm">{member.shortName} · {member.email}</p>} /></ModalShell>
       )}
 
         {canDelete && <ActionForm action={deleteUnifiedTeamMember} successMessage="Membro excluído."><input type="hidden" name="userId" value={member.userId} /><button className="icon-button" aria-label={`Excluir ${member.shortName}`}><Trash2 className="size-4" /></button></ActionForm>}{!canDelete && <span className="size-9 shrink-0" aria-hidden="true" />}

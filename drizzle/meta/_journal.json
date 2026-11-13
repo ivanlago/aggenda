@@ -715,6 +715,34 @@
       "when": 1794516801763,
       "tag": "0101_service_equipment",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1794536233497,
+      "tag": "0102_billed_item_commissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1794537040151,
+      "tag": "0103_member_visual_signatures",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1794537698173,
+      "tag": "0104_carry_commission_percentages",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1794543510662,
+      "tag": "0105_execution_commissions",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { ItemCommissionField } from "@/components/item-commission-field";
 import { useId, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { createService, updateService } from "@/actions/app";
@@ -65,6 +66,7 @@ export function ServiceForm({ item, label, categories, professionals, selectedPr
     <div className="col-span-full grid min-w-0 gap-4 sm:grid-cols-2">
       <label className="grid gap-2 text-sm font-bold">Custo estimado (R$)<input className="field" name="estimatedCost" inputMode="decimal" value={cost} onChange={(event) => setCost(event.target.value)} placeholder="Produtos, taxas etc." /></label>
       <label className="grid gap-2 text-sm font-bold">Preço (R$)<input className="field" name="price" inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="0,00" /></label>
+      <ItemCommissionField value={item?.commissionRateBasisPoints} executionValue={item?.executionCommissionRateBasisPoints??0} />
       {contribution !== null && <p className="rounded-lg bg-brand/5 p-3 text-sm sm:col-span-2">
         Margem estimada por atendimento: <strong>{currency.format(contribution / 100)}</strong>. Considera apenas o custo informado.
       </p>}

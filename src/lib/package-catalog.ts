@@ -1,3 +1,4 @@
+import { parseCommissionPercentage } from "./item-commission";
 import { z } from "zod";
 
 const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
@@ -19,14 +20,16 @@ export function parsePackageTemplate(data: FormData) {
     id: data.get("id") ? z.uuid().parse(data.get("id")) : undefined,
     name: z.string().trim().min(2).max(120).parse(data.get("name")),
     description: z.string().trim().max(5000).parse(data.get("description") ?? "") || null,
+    executionCommissionRateBasisPoints: parseCommissionPercentage(data.get("executionCommissionPercentage")),
+    commissionRateBasisPoints: parseCommissionPercentage(data.get("commissionPercentage")),
     priceInCents: packageAmount(data.get("price")),
     validityDays: validity ? z.coerce.number().int().min(1).max(36500).parse(validity) : null,
     items,
   };
 }
-export type PackageTemplateInput = Omit<ReturnType<typeof parsePackageTemplate>, "id"> & { id?: string };
+export type PackageTemplateInput = Omit<ReturnType<typeof parsePackageTemplate>, "id" | "commissionRateBasisPoints" | "executionCommissionRateBasisPoints"> & { id?: string; executionCommissionRateBasisPoints?: number; commissionRateBasisPoints?: number };
 export type PackageProcedure = { id: string; name: string; isActive?: boolean };
-export type PackageTemplate = { id: string; name: string; description: string | null; priceInCents: number; validityDays: number | null; isActive: boolean; items: { serviceId: string; serviceName: string; quantity: number }[] };
+export type PackageTemplate = { executionCommissionRateBasisPoints?: number; commissionRateBasisPoints?: number; id: string; name: string; description: string | null; priceInCents: number; validityDays: number | null; isActive: boolean; items: { serviceId: string; serviceName: string; quantity: number }[] };
 
 export function packageSituation(status: string, expiresAt: Date | null, balances: { total: number; used: number; reserved: number }[], now: Date) {
   const remaining = balances.reduce((sum, balance) => sum + Math.max(0, balance.total - balance.used + balance.reserved), 0);

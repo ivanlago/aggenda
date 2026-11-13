@@ -8,7 +8,7 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/db";
-import { clientHistoryEntries, clients, documentTemplates, electronicDocumentEvents, electronicDocuments, professionals, professionalRegistrations, services, organizations, commercialUsage, commercialContracts } from "@/db/schema";
+import { clientHistoryEntries, clients, documentTemplates, electronicDocumentEvents, electronicDocuments, professionals, professionalRegistrations, services, organizationMembers, organizations, commercialUsage, commercialContracts } from "@/db/schema";
 import { writeAuditLog } from "@/lib/audit";
 import { createDocumentCredentials, matchesHash, professionalSignaturePlaceholder, renderDocumentTemplate, sha256 } from "@/lib/electronic-documents";
 import { legalDefinitions, legalKey, legalFieldValues, legalContextValues, renderLegalDocument, reusableLegalFields } from "@/lib/legal-documents";
@@ -309,12 +309,14 @@ export async function issueElectronicDocument(data: FormData) {
     const [issuer] = await db.select({ id: professionals.id, image: professionals.signatureImage })
       .from(professionals).where(and(eq(professionals.organizationId, organization.id),
         eq(professionals.userId, session.user.id), eq(professionals.isActive, true))).limit(1);
-    if (!issuer?.image) return { error: "Cadastre sua imagem em Minha assinatura visual antes de emitir este modelo." };
-    if (issuerProfessionalId && issuerProfessionalId !== issuer.id) {
+    const [ownMember]=await db.select({image:organizationMembers.signatureImage}).from(organizationMembers).where(and(eq(organizationMembers.organizationId,organization.id),eq(organizationMembers.userId,session.user.id)));
+    const ownImage=issuer?.image??ownMember?.image;
+    if (!ownImage) return { error: "Cadastre sua imagem na aba Assinatura visual do seu cadastro antes de emitir este modelo." };
+    if (issuerProfessionalId && issuerProfessionalId !== issuer?.id) {
       return { error: "O profissional responsável deve emitir este modelo com a própria assinatura visual." };
     }
-    issuerProfessionalId = issuer.id;
-    professionalSignatureImage = issuer.image;
+    issuerProfessionalId = issuer?.id??null;
+    professionalSignatureImage = ownImage;
   }
   const documentId = crypto.randomUUID();
   const [created] = await db.transaction(async (tx) => {

@@ -43,7 +43,7 @@ test("package sales use only the current organization's available catalog", () =
 
 test("package versions preserve purchased conditions without creating revenue", async () => {
   const pg = new PGlite();
-  const tables = { services: schema.services, clients: schema.clients, service_packages: schema.servicePackages, service_package_items: schema.servicePackageItems, client_packages: schema.clientPackages, client_package_balances: schema.clientPackageBalances, audit_logs: schema.auditLogs, financial_entries: schema.financialEntries, retail_sales: schema.retailSales, payment_charges: schema.paymentCharges };
+  const tables = { collaborator_item_commissions:schema.collaboratorItemCommissions, services: schema.services, clients: schema.clients, service_packages: schema.servicePackages, service_package_items: schema.servicePackageItems, client_packages: schema.clientPackages, client_package_balances: schema.clientPackageBalances, audit_logs: schema.auditLogs, financial_entries: schema.financialEntries, retail_sales: schema.retailSales, payment_charges: schema.paymentCharges };
   try {
     for (const [name, table] of Object.entries(tables)) {
       const columns = Object.values(getTableColumns(table)).map((column) => {
@@ -62,8 +62,10 @@ test("package versions preserve purchased conditions without creating revenue", 
     const assigned = randomUUID();
     await pg.query("INSERT INTO client_packages(id,organization_id,client_id,package_id,price_in_cents) VALUES ($1,$2,$3,$4,49900)", [assigned, org, client, original]);
     await pg.query("INSERT INTO client_package_balances(id,organization_id,client_package_id,service_id,total_quantity,used_quantity) VALUES ($1,$2,$3,$4,6,2)", [randomUUID(), org, assigned, service]);
+    await pg.query("INSERT INTO collaborator_item_commissions(organization_id,user_id,item_type,item_id,percentage_basis_points) VALUES($1,'seller','package',$2,1250)",[org,original]);
     const replacement = await savePackageTemplate(database, org, { id: original, name: "Pacote novo", description: "Nova condição", priceInCents: 60000, validityDays: 90, items: [{ serviceId: service, quantity: 10 }] });
     assert.notEqual(replacement, original);
+    assert.equal((await pg.query<{percentage_basis_points:number}>("SELECT percentage_basis_points FROM collaborator_item_commissions WHERE item_id=$1",[replacement])).rows[0].percentage_basis_points,1250);
     assert.deepEqual((await pg.query("SELECT name,price_in_cents,validity_days,is_active FROM service_packages WHERE id=$1", [original])).rows[0], { name: "Pacote original", price_in_cents: 49900, validity_days: 30, is_active: false });
     assert.equal((await pg.query<{ quantity: number }>("SELECT quantity FROM service_package_items WHERE package_id=$1", [original])).rows[0].quantity, 6);
     assert.equal((await pg.query<{ package_id: string }>("SELECT package_id FROM client_packages WHERE id=$1", [assigned])).rows[0].package_id, original);

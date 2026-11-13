@@ -22,6 +22,16 @@ export function asksAboutBookingPayment(text: string) {
   return /\b(pix|sinal|paguei|ja paguei|ja fiz o pagamento|ja fiz a transferencia|pagamento antecipado|pagar (a |o )?(reserva|agendamento))\b/.test(value);
 }
 
+// A question about the terms of a new service must not select an older receipt.
+export function asksAboutNewBookingPayment(text: string) {
+  const value = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (!asksAboutBookingPayment(text)) return false;
+  return /\b(preciso|devo|tem que|tenho que|e necessario).*pagar\b/.test(value)
+    || /\b(quanto|qual).*\b(sinal|pagamento antecipado)\b/.test(value)
+    || /\b(agendar|marcar|reservar)\b/.test(value)
+    || (/\b(quero|gostaria|desejo)\b/.test(value) && /\b(quanto custa|amanha|hoje|tem sinal|tem algum sinal)\b/.test(value));
+}
+
 export function depositStatusLabel(status: string) {
   return status === "direct_pending" ? "aguardando Pix" : status === "direct_review" ? "Pix informado, aguardando conferência" : status === "pending" ? "aguardando pagamento" : status === "paid" ? "sinal recebido" : null;
 }

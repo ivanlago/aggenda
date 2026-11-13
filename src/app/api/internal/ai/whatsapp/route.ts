@@ -1,5 +1,5 @@
 import { navigateWhatsApp, parseNavigationState, type NavigationState } from "@/lib/whatsapp-navigation";
-import { asksAboutBookingPayment, bookingDepositAgentInstructions, bookingDepositAmount, depositBookingGuidance, depositStatusLabel } from "@/lib/booking-deposit-guidance";
+import { asksAboutBookingPayment, asksAboutNewBookingPayment, bookingDepositAgentInstructions, bookingDepositAmount, depositBookingGuidance, depositServiceNotice, depositStatusLabel } from "@/lib/booking-deposit-guidance";
 import { pendingDeposit } from "@/lib/booking-payment";
 import { catalogDocumentUrl, getWhatsAppProducts } from "@/lib/whatsapp-catalog";
 import { roomBookingError } from "@/lib/room-errors";
@@ -369,6 +369,16 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
     }
   }
   const aiAllowed = !["CHAT", "CORE"].includes(input.workflowProduct ?? "");
+  if (asksAboutNewBookingPayment(input.text)) {
+    const service = mentionedByName(navigationCatalog, [input.text]);
+    const price = service?.priceInCents != null ? (service.priceInCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : null;
+    const link = service && bookingUrl ? `${bookingUrl}?novo=1&servico=${service.id}` : bookingUrl;
+    const reply = service
+      ? `${service.name}${price ? ` custa ${price}` : ": consulte o preço com a equipe"}. ${depositServiceNotice(service, organization.bookingPaymentMode) || "Este serviço não exige sinal antecipado."}\n${link ? `Consulte os horários e conclua a reserva na área do cliente:\n${link}` : "Digite EQUIPE para consultar os horários."}\nNenhum horário foi reservado nesta conversa.`
+      : "O sinal depende do serviço escolhido. Qual serviço deseja agendar?";
+    await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "new_booking_payment", confidence: 1 });
+    return NextResponse.json({ accepted: true, action: "new_booking_payment" });
+  }
   if (input.whatsappServiceCode !== "core_ai" && asksAboutBookingPayment(input.text)) {
     const reply = "Para pagar o sinal, abra o agendamento na área do cliente. A página mostrará o valor e os dados de pagamento. " + (organization.bookingPaymentMode === "pix_direct" ? "No Pix direto, clique em Já fiz o Pix depois da transferência; a equipe precisa conferir o crédito. " : "No pagamento integrado, aguarde a confirmação do provedor. ") + (bookingUrl ?? "Digite EQUIPE para solicitar ajuda.");
     await send(input, conversation, { reply, model: "aggenda-navigation-v1", intent: "booking_payment", confidence: 1 });

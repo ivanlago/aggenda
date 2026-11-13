@@ -4,7 +4,16 @@ import { navigateWhatsApp, parseNavigationState, type NavigationContext } from "
 import { incomingWhatsAppText, whatsappMessageContent, usesInternalWhatsAppAgent } from "../src/lib/whatsapp-message";
 import { buildWhatsAppCatalogPdf } from "../src/lib/whatsapp-catalog-pdf";
 import { PDFDocument } from "pdf-lib";
-import { bookingDepositAmount, depositServiceNotice } from "../src/lib/booking-deposit-guidance";
+import { asksAboutNewBookingPayment, bookingDepositAmount, depositServiceNotice } from "../src/lib/booking-deposit-guidance";
+
+test("questions about a new deposit do not refer to a past payment", () => {
+  for (const text of ["Quero uma limpeza de pele amanhã à tarde. Quanto custa? e preciso pagar algum sinal?", "Preciso pagar sinal?", "Qual o valor do sinal?", "Gostaria de marcar avaliação, tem sinal?"]) {
+    assert.equal(asksAboutNewBookingPayment(text), true, text);
+  }
+  for (const text of ["Já fiz o Pix", "Meu Pix já foi recebido?", "O sinal foi recebido?", "Quero saber se meu sinal foi recebido", "Quero uma avaliação"]) {
+    assert.equal(asksAboutNewBookingPayment(text), false, text);
+  }
+});
 
 const context: NavigationContext = {
   name: "Empresa de teste", core: true, bookingUrl: "https://aggenda.example/cliente/teste", address: "Rua de teste, 10", phone: "71999999999", email: null,

@@ -193,6 +193,17 @@ test("both real agent routes share navigation; Chat only links, Core books after
     await pg.query("UPDATE appointments SET deposit_status='direct_review' WHERE id=$1", [pendingPix.id]);
     assert.match((await call(core, "Meu Pix já foi recebido?", "core_ai")).output.body, /aguarda conferência/);
     assert.match((await call(chat, "Já fiz o Pix")).output.body, /equipe precisa conferir/);
+    await pg.query("UPDATE appointments SET deposit_status='paid' WHERE id=$1", [pendingPix.id]);
+    for (const mode of ["core_ai", "chat_ai"]) {
+      const inquiry = await call(mode === "core_ai" ? core : chat, "Quero uma avaliação amanhã à tarde. Quanto custa? e preciso pagar algum sinal?", mode);
+      assert.match(inquiry.output.body, /120,00/);
+      assert.match(inquiry.output.body, /50,00/);
+      assert.match(inquiry.output.body, /Pix direto/);
+      assert.match(inquiry.output.body, new RegExp(`servico=${service}`));
+      assert.doesNotMatch(inquiry.output.body, /já está registrado como recebido/);
+      assert.equal(inquiry.output.raw_payload.pendingAction, undefined);
+    }
+    assert.match((await call(core, "Meu Pix já foi recebido?", "core_ai")).output.body, /já está registrado como recebido/);
     await pg.query("UPDATE appointments SET deposit_status='not_required',deposit_amount_in_cents=0,reservation_expires_at=null,public_manage_token=null,status=$1,metadata=$2 WHERE id=$3", [pendingPix.status, pendingPix.metadata, pendingPix.id]);
     await pg.query("UPDATE organizations SET booking_payment_settings=$1 WHERE id=$2", [{ mode: "integrated" }, organization]);
     await pg.query("UPDATE services SET deposit_type='none' WHERE id=$1", [service]);

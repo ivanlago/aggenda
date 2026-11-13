@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { createRetailProduct, updateRetailVariant } from "@/actions/retail";
 import { ActionForm } from "@/components/action-form";
+import { ItemCommissionField } from "@/components/item-commission-field";
 import { CatalogImageField } from "@/components/catalog-image-field";
 import { ModalShell } from "@/components/modal-shell";
 import { FormActions } from "@/components/form-dialog-context";
@@ -43,6 +44,7 @@ function ProductFields({ categories, subcategories, product }: Props & { product
       <label className="grid gap-2 text-sm font-bold">Custo unitário (R$)<input className="field" name="cost" inputMode="decimal" placeholder="0,00" defaultValue={product?.costValue} /></label>
       <label className="grid gap-2 text-sm font-bold">Preço de venda unitário (R$)<input className="field" name="salePrice" inputMode="decimal" placeholder="0,00" defaultValue={product?.saleValue} /></label>
     </div>
+    <ItemCommissionField name="commissionRate" value={product?.commissionRateBasisPoints} />
     <div className={`col-span-full grid min-w-0 gap-4 ${product ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
       {!product && <><label className="grid gap-2 text-sm font-bold">Unidade do saldo<select className="field" name="unit" defaultValue="unit"><option value="unit">Unidade</option><option value="mL">mL</option><option value="mg">mg</option><option value="g">g</option><option value="UI">UI</option></select></label><label className="grid gap-2 text-sm font-bold">Quantidade inicial *<input className="field" name="initialQuantity" inputMode="decimal" required defaultValue="0" /></label></>}
       <label className="grid gap-2 text-sm font-bold">Quantidade mínima *<input className="field" name="minimumQuantity" inputMode="decimal" required defaultValue={product?.minimumValue ?? "0"} /></label>

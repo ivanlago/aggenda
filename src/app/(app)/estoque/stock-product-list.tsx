@@ -24,6 +24,7 @@ export type StockProductRow = {
   description: string;
   costValue: string;
   saleValue: string;
+  commissionRateBasisPoints: number;
   minimumValue: string;
   quantity: number;
   quantityLabel: string;

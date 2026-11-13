@@ -19,9 +19,11 @@ function KitForm({ choices, kit }: { choices: KitChoice[]; kit?: KitRecord }) {
     <input type="hidden" name="items" value={JSON.stringify(items)} />
     <label className="grid gap-2 text-sm font-bold">Nome do kit *<input className="field" name="name" minLength={2} maxLength={120} defaultValue={kit?.name} required /></label>
     <label className="grid gap-2 text-sm font-bold">Descrição<textarea className="field" name="description" maxLength={2000} defaultValue={kit?.description ?? ""} /></label>
+    <div className="grid min-w-0 items-start gap-4 sm:grid-cols-3">
     <label className="grid gap-2 text-sm font-bold">Preço de venda (R$) *<input className="field" name="price" inputMode="decimal" defaultValue={kit ? (kit.priceInCents / 100).toFixed(2).replace(".", ",") : ""} required /></label>
       <ItemCommissionField value={kit?.commissionRateBasisPoints} />
-    <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" name="isActive" defaultChecked={kit?.isActive ?? true} />Kit ativo</label>
+    <label className="flex min-h-12 items-center gap-2 text-sm font-bold sm:mt-6"><input type="checkbox" name="isActive" defaultChecked={kit?.isActive ?? true} />Kit ativo</label>
+    </div>
     <label className="grid gap-2 text-sm font-bold">Adicionar produto<input className="field" type="search" value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === "Enter") event.preventDefault(); }} placeholder="Buscar pelo nome" /></label>
     <div className="grid max-h-48 gap-2 overflow-auto rounded-xl border p-3">
       {available.slice(0, 30).map(choice => <button key={`${choice.type}:${choice.id}`} className="secondary-button justify-between" type="button" onClick={() => setItems(current => [...current, { ...choice, quantity: 1 }])}>{choice.name}<span className="text-xs text-muted">{choice.type === "product" ? "Produto" : "Serviço"} · Adicionar</span></button>)}

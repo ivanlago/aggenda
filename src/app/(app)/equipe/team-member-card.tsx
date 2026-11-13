@@ -47,13 +47,16 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
           <p className="truncate text-sm text-muted">{member.email}</p>
         </div>
       </div>
-          <div className="flex flex-wrap gap-2">
-            <span className="status-pill">{roleLabels[member.role] ?? member.role}</span>
-            {member.receivesAppointments && <span className="status-pill">Recebe agendamentos</span>}
-            {member.professionName && <span className="status-pill">{member.professionName}</span>}
-            {member.googleCalendarEmail && <span className="status-pill inline-flex items-center gap-1" title={member.googleCalendarEmail}><CalendarCheck className="size-4" aria-hidden="true" />Google conectado</span>}
-
-          </div>
+      <div className="team-member-attributes grid min-w-0 gap-1.5">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="status-pill shrink-0">{roleLabels[member.role] ?? member.role}</span>
+          {member.receivesAppointments && <span className="status-pill whitespace-nowrap">Recebe agendamentos</span>}
+        </div>
+        {(member.professionName || member.googleCalendarEmail) && <div className="flex min-w-0 items-center gap-1.5">
+          {member.professionName && <span className="status-pill min-w-0 truncate" title={member.professionName}>{member.professionName}</span>}
+          {member.googleCalendarEmail && <span className="status-pill inline-flex shrink-0 items-center gap-1 whitespace-nowrap" title={member.googleCalendarEmail}><CalendarCheck className="size-3.5" aria-hidden="true" />Google conectado</span>}
+        </div>}
+      </div>
       <div className="min-w-0">{canEdit && <p className="text-xs text-muted"><span className="block font-bold">Última entrada</span>{member.lastSignedIn ?? "Sem registro"}</p>}</div>
       <div className="team-member-actions flex items-center gap-2 lg:justify-end [&>button]:shrink-0 [&>form]:shrink-0">
       {canEdit && member.professionalId && member.receivesAppointments && (

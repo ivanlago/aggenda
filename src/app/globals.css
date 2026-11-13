@@ -221,12 +221,13 @@ a[href]:focus-visible {
 @media (min-width: 1024px) {
   .team-member-row {
     display: grid;
-    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1.5fr) minmax(290px, 1fr) minmax(0, 1fr);
     align-items: center;
     gap: 16px;
   }
   .team-member-row > div:first-child { align-items: center; gap: 12px; }
   .team-member-row > div:first-child > div > p:first-child { font-size: 0.875rem; }
+  .team-member-attributes .status-pill { font-size: 0.75rem; padding: 4px 8px; }
   .team-member-actions { grid-column: 1 / -1; }
   .catalog-record-row {
     display: grid;
@@ -290,7 +291,7 @@ a[href]:focus-visible {
   }
 }
 @media (min-width: 1280px) {
-  .team-member-row { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, .8fr) 280px; }
+  .team-member-row { grid-template-columns: minmax(0, 1.5fr) minmax(290px, 1fr) minmax(0, .8fr) 280px; }
   .team-member-actions { grid-column: auto; }
 }
 .internal-app .page-heading h1 { color: var(--structure); }

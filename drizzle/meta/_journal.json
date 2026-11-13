@@ -743,6 +743,13 @@
       "when": 1794543510662,
       "tag": "0105_execution_commissions",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1794547916073,
+      "tag": "0106_commission_sale_assessment",
+      "breakpoints": true
     }
   ]
 }

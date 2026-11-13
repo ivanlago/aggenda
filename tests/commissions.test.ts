@@ -28,7 +28,7 @@ test("actual commission actions reject users without financial management before
   }}]});
   const exported={exports:{} as Record<string,(data:FormData)=>Promise<unknown>>};
   new Function("require","module","exports",output.outputFiles[0].text)(createRequire(import.meta.url),exported,exported.exports);
-  for(const name of ["saveCollaboratorCommissions","saveCommissionRule","deactivateCommissionRule","calculateCommissions","payCommissions","reverseCommissionPayment","assignSaleCommissionBeneficiary"]) await assert.rejects(exported.exports[name](new FormData()),error=>error instanceof Error&&!error.message.includes("Database must"));
+  for(const name of ["applySaleCommissionAssessment","saveCollaboratorCommissions","saveCommissionRule","deactivateCommissionRule","calculateCommissions","payCommissions","reverseCommissionPayment","assignSaleCommissionBeneficiary"]) await assert.rejects(exported.exports[name](new FormData()),error=>error instanceof Error&&!error.message.includes("Database must"));
 });
 
 test("commission migration, unified ledger, settlement, replay, refund adjustments and reversal against PostgreSQL",async()=>{

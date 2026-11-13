@@ -1,4 +1,5 @@
 "use server";
+import { parseCommissionFee } from "@/lib/commission-assessment";
 import { resolveOrganizationPayment } from "@/lib/payment-methods";
 
 import { and, eq, sql } from "drizzle-orm";
@@ -73,4 +74,26 @@ export async function assignSaleCommissionBeneficiary(data: FormData) {
     return organizationDate(sale.soldAt,organization.timezone).slice(0,7);
   });
   try { await new CommissionRepository(db).refresh(organization.id,organization.timezone,session.user.id,competence); } catch(error) { if(error instanceof CommissionError) return { error: error.message }; throw error; } refreshPages();
+}
+
+export async function applySaleCommissionAssessment(data: FormData) {
+  const { organization, session } = await context();
+  const id=z.uuid().parse(text(data,"saleId"));
+  const deductDiscount=data.get("deductDiscount")==="on", deductFees=data.get("deductFees")==="on";
+  let fee: number | null = null;
+  try { if(deductFees) fee=parseCommissionFee(text(data,"fee")); } catch(error) { return {error:(error as Error).message}; }
+  try {
+    await db.transaction(async tx => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`commission-ledger:${organization.id}`},0))`);
+      const [sale]=await tx.select().from(retailSales).where(and(eq(retailSales.id,id),eq(retailSales.organizationId,organization.id))).for("update");
+      if(!sale || !sale.commissionBilledAt || ["cancelled","refunded"].includes(sale.status)) throw new CommissionError("Venda indisponível para apuração.");
+      if(fee!==null && fee>sale.totalInCents) throw new CommissionError("A taxa não pode superar o total da venda.");
+      const paid=await tx.select({id:commissionEntries.id}).from(commissionEntries).where(and(eq(commissionEntries.saleId,id),eq(commissionEntries.organizationId,organization.id),eq(commissionEntries.status,"paid"))).limit(1);
+      if(paid.length) throw new CommissionError("Esta venda possui comissão paga. Estorne a quitação antes de alterar a apuração.");
+      await tx.update(retailSales).set({commissionDeductDiscount:deductDiscount,commissionDeductFees:deductFees,commissionFeeInCents:fee}).where(and(eq(retailSales.id,id),eq(retailSales.organizationId,organization.id)));
+      const result=await tx.select({entryId:commissionEntries.id,base:commissionEntries.baseAmountInCents,commission:commissionEntries.amountInCents,status:commissionEntries.status}).from(commissionEntries).where(and(eq(commissionEntries.organizationId,organization.id),eq(commissionEntries.saleId,id)));
+      await tx.insert(auditLogs).values({organizationId:organization.id,userId:session.user.id,action:"assess",entityType:"sale_commission",entityId:id,details:{before:{deductDiscount:sale.commissionDeductDiscount,deductFees:sale.commissionDeductFees,fee:sale.commissionFeeInCents},after:{deductDiscount,deductFees,fee},feeSource:deductFees?"manual":null,result}});
+    });
+  } catch(error) { if(error instanceof CommissionError) return {error:error.message}; throw error; }
+  refreshPages();
 }

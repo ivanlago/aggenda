@@ -367,8 +367,30 @@ test("both real agent routes share navigation; Chat only links, Core books after
     assert.equal(namedCancellation.output.raw_payload.pendingAction?.appointmentId, aestheticAppointment, "the longer service name selects only the intended appointment");
     assert.equal((await pg.query<{status:string}>("SELECT status FROM appointments WHERE id=$1", [aestheticAppointment])).rows[0].status, "scheduled", "a choice is still only a proposal");
     await call(hybrid, "NÃO", "core_ai");
+    await call(hybrid,"menu","core_ai");
+    await pg.query("UPDATE professionals SET name='Dra. Marina Costa' WHERE id=$1",[professional]);
+    state.availableSlots=[state.slot];
+    state.aiResult={model:"pilot-mocked",data:{action:"availability",reply:"Vou consultar.",goal:"book",intent:"schedule",confidence:1,serviceId:service,professionalId:null,date,time:null,period:"morning"}};
+    // Two eligible professionals force the same selection question as the real conversation.
+    const secondProfessional=randomUUID();
+    await pg.query("INSERT INTO professionals(id,organization_id,name,is_active,is_bookable) VALUES($1,$2,'Sandra de Sá',true,true)",[secondProfessional,organization]);
+    await pg.query("INSERT INTO services_to_professionals(service_id,professional_id,organization_id) VALUES($1,$2,$3)",[service,secondProfessional,organization]);
+    await call(hybrid,"Quero agendar uma avaliação amanhã pela manhã","core_ai");
+    const callsBeforeTypo=state.aiCalls.length;
+    state.aiResult=undefined;
+    const typo=await call(hybrid,"Dra. Maria Costa","core_ai");
+    assert.match(typo.output.body,/Você quis dizer Dra. Marina Costa/);
+    assert.equal(typo.output.raw_payload.pendingAction,undefined);
+    assert.equal(state.aiCalls.length,callsBeforeTypo,"a likely name choice does not depend on the model");
+    const denied=await call(hybrid,"não","core_ai");
+    assert.match(denied.output.body,/Com qual profissional/);
+    await call(hybrid,"Dra. Maria Costa","core_ai");
+    const accepted=await call(hybrid,"sim","core_ai");
+    assert.match(accepted.output.body,/Horários disponíveis.*Dra. Marina Costa/);
+    assert.equal(state.aiCalls.length,callsBeforeTypo);
+    assert.equal(accepted.output.raw_payload.pendingAction,undefined,"confirming a name never confirms a reservation");
     await call(hybrid, "Quero falar com uma pessoa", "core_ai");
-    assert.equal(state.aiCalls.length, beforeCancelCalls + 1, "only the price question uses the model; selection, declining and handoff do not");
+    assert.equal(state.aiCalls.length, callsBeforeTypo, "name clarification, declining and handoff need no model call");
     assert.equal((await pg.query<{automation_paused:boolean}>("SELECT automation_paused FROM chat_conversations WHERE id=$1", [hybrid])).rows[0].automation_paused, true);
   } finally {
     if (pilot === undefined) delete process.env.AGGENDA_SECRETARY_HYBRID_CONTACTS; else process.env.AGGENDA_SECRETARY_HYBRID_CONTACTS = pilot;

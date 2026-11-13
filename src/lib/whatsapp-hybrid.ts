@@ -22,6 +22,7 @@ export const hybridBookingContextSchema = z.object({
 });
 export type HybridBookingContext = z.infer<typeof hybridBookingContextSchema>;
 export const hybridRequestSchema = z.object({
+  suggestedProfessionalId: z.uuid().optional(),
   serviceId: z.uuid(), professionalId: z.uuid().nullable(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   period: z.enum(["morning", "afternoon", "evening"]).nullable(), expiresAt: z.string().datetime(),
 });

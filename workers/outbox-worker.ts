@@ -42,6 +42,7 @@ const triggerSecret = process.env.OUTBOX_TRIGGER_SECRET ?? process.env.AGGENDA_I
 
 let stopping = false;
 let activeRun: Promise<RunSummary> | undefined;
+let queuedRun: boolean | undefined;
 
 type RunSummary = {
   processed: number;
@@ -518,6 +519,15 @@ async function drain(includeScheduled: boolean): Promise<RunSummary> {
   const summary: RunSummary = { processed: 0, reminders: 0, paymentReminders: 0, nextEventAt: null };
   await connection.connect();
   try {
+    const overdue = await connection.query<{due:boolean}>("SELECT EXISTS (SELECT 1 FROM appointments WHERE status IN ('scheduled','confirmed') AND deposit_status IN ('pending','direct_pending') AND reservation_expires_at <= now()) AS due");
+    if (overdue.rows[0]?.due) {
+      try {
+        const baseUrl = process.env.AGGENDA_INTERNAL_API_URL?.replace(/\/$/, ""), apiKey = process.env.AGGENDA_INTERNAL_API_KEY;
+        if (!baseUrl || !apiKey) throw new Error("API interna necessária para expirar reservas não configurada");
+        const response = await fetch(baseUrl + "/api/cron/booking-reservations",{headers:{authorization:"Bearer "+apiKey},signal:AbortSignal.timeout(30000)});
+        if (!response.ok) throw new Error("Falha ao expirar reservas: HTTP " + response.status);
+      } catch(error) { console.error("[outbox] Expiração de reservas pendente; haverá nova tentativa",error); }
+    }
     if (includeScheduled) {
       summary.reminders = await enqueueDueReminders(connection);
       summary.paymentReminders = await enqueuePaymentReminders(connection);
@@ -538,9 +548,7 @@ async function drain(includeScheduled: boolean): Promise<RunSummary> {
       }
     }
     const next = await connection.query<{ available_at: Date | null }>(
-      `select min(available_at) as available_at
-       from outbox_events
-       where status = 'pending' and available_at > now()`
+      `select min(deadline) as available_at from (select available_at as deadline from outbox_events where status='pending' and available_at > now() union all select case when reservation_expires_at <= now() then now()+interval '1 minute' else reservation_expires_at end as deadline from appointments where status in ('scheduled','confirmed') and deposit_status in ('pending','direct_pending') and reservation_expires_at is not null) deadlines`
     );
     summary.nextEventAt = next.rows[0]?.available_at?.toISOString() ?? null;
     return summary;
@@ -550,7 +558,7 @@ async function drain(includeScheduled: boolean): Promise<RunSummary> {
 }
 
 function runOnDemand(includeScheduled: boolean) {
-  if (activeRun) return activeRun;
+  if (activeRun) { queuedRun = Boolean(queuedRun) || includeScheduled; return activeRun; }
   activeRun = drain(includeScheduled)
     .then((summary) => {
       console.log(`[outbox] execução concluída: ${JSON.stringify(summary)}`);
@@ -559,6 +567,7 @@ function runOnDemand(includeScheduled: boolean) {
     })
     .finally(() => {
       activeRun = undefined;
+      if (queuedRun !== undefined && !stopping) { const scheduled = queuedRun; queuedRun = undefined; void runOnDemand(scheduled).catch(error => console.error("[outbox] Reexecução pendente falhou",error)); }
     });
   return activeRun;
 }
@@ -570,7 +579,7 @@ function armNextEvent(nextEventAt: string | null) {
   nextEventTimer = undefined;
   if (!nextEventAt || stopping) return;
   const delay = new Date(nextEventAt).getTime() - Date.now();
-  if (delay <= 0 || delay > recoveryInterval) return;
+  if (delay > recoveryInterval) return;
   nextEventTimer = setTimeout(() => {
     if (!stopping) void runOnDemand(false).catch((error) => console.error("[outbox] evento agendado falhou", error));
   }, Math.max(1_000, delay));

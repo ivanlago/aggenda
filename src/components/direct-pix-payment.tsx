@@ -12,9 +12,9 @@ export function DirectPixPayment({ token, payload, qrCode, receiverName, pixKey,
   const [expired, setExpired] = useState(() => !expiresAt || new Date(expiresAt) <= new Date());
   useEffect(() => {
     if (!expiresAt) return;
-    const timer = setTimeout(() => setExpired(true), Math.max(0, new Date(expiresAt).getTime() - Date.now()));
+    const timer = setTimeout(() => { setExpired(true); router.refresh(); }, Math.max(0, new Date(expiresAt).getTime() - Date.now()));
     return () => clearTimeout(timer);
-  }, [expiresAt]);
+  }, [expiresAt, router]);
   async function report() {
     setBusy(true); setMessage("");
     try {
@@ -31,13 +31,14 @@ export function DirectPixPayment({ token, payload, qrCode, receiverName, pixKey,
   return <section className="mt-4 grid gap-3 rounded-xl border p-4">
     <h2 className="font-extrabold">Pagar sinal por Pix</h2>
     <p className="text-xl font-extrabold text-brand">{(amountInCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+    <p className="text-sm font-bold text-brand">Pague até {new Date(expiresAt!).toLocaleString("pt-BR", { timeZone: timezone, dateStyle: "short", timeStyle: "short" })} para confirmar o horário.</p>
     {/* Generated locally from this reservation; no external QR service receives the Pix key. */}
     {/* eslint-disable-next-line @next/next/no-img-element */}
     <img src={qrCode} width={240} height={240} alt="QR Code Pix do sinal deste agendamento" className="mx-auto" />
     <p className="break-words text-sm">Titular: <strong>{receiverName}</strong><br />Chave Pix: {pixKey}</p>
     <label className="grid gap-2 text-sm font-bold">Pix Copia e Cola<textarea className="field min-h-24 break-all text-xs" readOnly value={payload} onFocus={event => event.target.select()} /></label>
     <button type="button" className="secondary-button" onClick={async () => { try { await navigator.clipboard.writeText(payload); setMessage("Código Pix copiado."); } catch { setMessage("Selecione e copie o código Pix acima."); } }}>Copiar código Pix</button>
-    <p className="text-sm text-muted">Pague até {new Date(expiresAt!).toLocaleString("pt-BR", { timeZone: timezone, dateStyle: "short", timeStyle: "short" })} e clique em “Já fiz o Pix”. Confira o titular no aplicativo do banco. A equipe confirmará o agendamento após conferir o crédito.</p>
+    <p className="text-sm text-muted">Após pagar, clique em “Já fiz o Pix”. Confira o titular no aplicativo do banco. A equipe confirmará o agendamento após conferir o crédito.</p>
     <button type="button" className="primary-button" disabled={busy} onClick={report}>{busy ? "Informando…" : "Já fiz o Pix"}</button>
     {message && <p role="status" className="text-sm">{message}</p>}
   </section>;

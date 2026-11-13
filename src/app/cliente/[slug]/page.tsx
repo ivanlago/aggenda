@@ -1,3 +1,5 @@
+import { bookingReservationLabel } from "@/lib/booking-reservation-status";
+import { expireBookingReservations } from "@/lib/booking-reservation-expiry";
 import { BookingPixPanel } from "@/components/booking-pix-panel";
 import { bookingDepositAmount } from "@/lib/booking-deposit-guidance";
 import { PaginatedCollection } from "@/components/paginated-collection";
@@ -50,6 +52,7 @@ export default async function ClientPortalPage({ params, searchParams }: { param
   if (!patient) notFound();
   const identity = { ...patient, clientId: patient.id, sessionId: account.sessionId };
   await db.update(clientPortalSessions).set({ lastUsedAt: new Date() }).where(eq(clientPortalSessions.id, identity.sessionId));
+  await expireBookingReservations({organizationId:organization.id});
   const items = await db.select({ id: appointments.id, startsAt: appointments.startsAt, status: appointments.status, endsAt: appointments.endsAt, serviceId: appointments.serviceId, depositStatus: appointments.depositStatus, metadata: appointments.metadata, depositAmount: appointments.depositAmountInCents, reservationExpiresAt: appointments.reservationExpiresAt, token: appointments.publicManageToken, service: services.name, professional: professionals.name })
     .from(appointments).innerJoin(services, eq(services.id, appointments.serviceId)).leftJoin(professionals, eq(professionals.id, appointments.professionalId))
     .where(and(eq(appointments.organizationId, organization.id), eq(appointments.clientId, identity.clientId))).orderBy(desc(appointments.startsAt));
@@ -91,5 +94,5 @@ function CompanyFooter({ organization }: { organization: typeof organizations.$i
 }
 
 async function AppointmentCard({ item, organization }: { item: { id: string; startsAt: Date; status: keyof typeof statusLabels; depositStatus: string; metadata: Record<string, unknown> | null; depositAmount: number; reservationExpiresAt: Date | null; token: string | null; service: string; professional: string | null }; organization: typeof organizations.$inferSelect }) {
-  return <article id={`reserva-${item.id}`} className="scroll-mt-6 rounded-2xl border p-4 sm:p-5"><div className="flex flex-wrap justify-between gap-3"><div><p className="text-lg font-extrabold">{item.service}</p><p className="mt-1 text-sm text-muted">{formatOrganizationDateTime(item.startsAt, organization.timezone)} · {item.professional || "Profissional a definir"}</p></div><span className="status-pill">{statusLabels[item.status]}</span></div>{item.token && <BookingPixPanel token={item.token} metadata={item.metadata} status={item.status} depositStatus={item.depositStatus} amountInCents={item.depositAmount} expiresAt={item.reservationExpiresAt} timezone={organization.timezone} />}{item.token && <AppointmentSelfService token={item.token} status={item.status} depositPending={["pending", "direct_pending", "direct_review"].includes(item.depositStatus)} timezone={organization.timezone} bookingHorizonDays={organization.bookingHorizonDays} bookingUrl={`/agendar/${organization.slug}`} />}</article>;
+  return <article id={`reserva-${item.id}`} className="scroll-mt-6 rounded-2xl border p-4 sm:p-5"><div className="flex flex-wrap justify-between gap-3"><div><p className="text-lg font-extrabold">{item.service}</p><p className="mt-1 text-sm text-muted">{formatOrganizationDateTime(item.startsAt, organization.timezone)} · {item.professional || "Profissional a definir"}</p></div><span className="status-pill">{bookingReservationLabel({status:item.status,depositStatus:item.depositStatus,expiresAt:item.reservationExpiresAt})}</span></div>{item.token && <BookingPixPanel token={item.token} metadata={item.metadata} status={item.status} depositStatus={item.depositStatus} amountInCents={item.depositAmount} expiresAt={item.reservationExpiresAt} timezone={organization.timezone} />}{item.token && <AppointmentSelfService token={item.token} status={item.status} depositPending={["pending", "direct_pending", "direct_review"].includes(item.depositStatus)} timezone={organization.timezone} bookingHorizonDays={organization.bookingHorizonDays} bookingUrl={`/agendar/${organization.slug}`} />}</article>;
 }

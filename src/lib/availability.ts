@@ -1,3 +1,4 @@
+import { expireBookingReservations } from "@/lib/booking-reservation-expiry";
 import { zonedDate, zonedParts } from "@/lib/organization-time";
 import { equipmentAvailability } from "@/lib/equipment-availability";
 export { zonedDate } from "@/lib/organization-time";
@@ -32,6 +33,7 @@ function timeToMinutes(value: string) {
 }
 
 export async function getAvailableTimes(input: AvailabilityInput): Promise<string[] | null> {
+  await expireBookingReservations({organizationId:input.organizationId});
   const [service] = await db
     .select({ duration: services.durationMinutes })
     .from(services)

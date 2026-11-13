@@ -10,7 +10,7 @@ export async function BookingPixPanel({ token, metadata, status, depositStatus, 
     const online = metadata?.onlinePayment as { chargeId?: unknown } | undefined;
     if (typeof online?.chargeId !== "string") return null;
     const { BookingOnlinePanel } = await import("./booking-online-panel");
-    return <BookingOnlinePanel chargeId={online.chargeId} status={status} expiresAt={expiresAt} />;
+    return <BookingOnlinePanel chargeId={online.chargeId} status={status} expiresAt={expiresAt} timezone={timezone} />;
   }
   const state = ["cancelled", "completed", "no_show"].includes(status) && depositStatus !== "paid" ? "cancelled" : depositStatus;
   const qrCode = state === "direct_pending" && expiresAt && expiresAt > new Date() ? await QRCode.toDataURL(pix.payload, { width: 240, margin: 2, errorCorrectionLevel: "M" }) : "";

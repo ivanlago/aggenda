@@ -21,7 +21,11 @@ A conta financeira organiza o extrato. O dinheiro é enviado à conta bancária 
 
 ## Prazos, cancelamento e histórico
 
-O endpoint existente `/api/cron/booking-reservations` expira reservas não pagas, inclusive Pix direto. Precisa continuar sendo executado pelo agendador externo com `CRON_SECRET`. Reservas cujo cliente já informou pagamento ficam aguardando a equipe e não são canceladas automaticamente. Não foi criada uma nova automação externa nesta alteração.
+O endpoint `/api/cron/booking-reservations` expira reservas não pagas, inclusive Pix direto. Aceita `CRON_SECRET` ou a credencial interna do Aggenda, com comparação em tempo constante. O worker de outbox verifica reservas vencidas e inclui a próxima expiração no temporizador local, sem depender de uma varredura apenas a cada seis horas. A criação da reserva acorda o worker; acionamentos recebidos durante uma execução provocam nova consulta ao final, sem perder o novo prazo. Falhas na expiração não interrompem os eventos de WhatsApp e são tentadas novamente.
+
+É necessário publicar **aplicação e worker**. O worker precisa das configurações existentes `AGGENDA_INTERNAL_API_URL` e `AGGENDA_INTERNAL_API_KEY`; a aplicação usa `OUTBOX_WORKER_TRIGGER_URL` e `OUTBOX_TRIGGER_SECRET` (ou a mesma chave interna). O agendador externo pode continuar acionando o endpoint como redundância. As variáveis locais não permitem concluir se essas configurações já estão ativas em produção.
+
+Há recuperação adicional ao abrir a Agenda, portal/link do cliente, consultar disponibilidade e criar reserva. A expiração cancela atomicamente a reserva e os lançamentos pendentes do sinal e do saldo, com auditoria. Reservas em processamento por outra transação são ignoradas nessa rodada; sinais recebidos ou informados (`direct_review`) não são cancelados.
 
 Cancelar uma reserva sem pagamento cancela o lançamento pendente do sinal. Cancelar uma reserva já paga **não estorna o dinheiro no banco** e preserva o recebimento. A equipe deve tratar devolução e seu registro financeiro conforme a política da empresa.
 
@@ -53,3 +57,5 @@ Validação isolada: `node node_modules/tsx/dist/cli.mjs --test tests/booking-on
 - Ainda é necessário publicar o código da aplicação para disponibilizar as novas telas em produção.
 - Testes isolados: `node node_modules/tsx/dist/cli.mjs --test tests/booking-direct-pix.test.ts tests/public-booking.test.ts`. Cobrem reserva sem Asaas, replay, conferência, isolamento por empresa, baixa única, lançamento no extrato, saldo, cancelamento e expiração.
 - Nenhum pagamento real foi realizado nos testes.
+
+O status visual é “Aguardando sinal”, com prazo “Pague até”, enquanto o pagamento está pendente; Pix informado usa “Pix em conferência”. Não foi criado novo valor de enum nem confundida a confirmação de pagamento com a ausência de pagamento. A página de pagamento integrado atualiza no vencimento para esconder o link.

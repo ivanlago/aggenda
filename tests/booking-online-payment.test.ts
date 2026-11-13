@@ -39,6 +39,8 @@ test("booking providers: configured default, durable issuance, duplicate prevent
     `;
     const clientId = randomUUID();
     const routeMocks: Record<string, string> = {
+      "next/navigation": "export function useRouter(){return {refresh(){}}}",
+      "@/lib/outbox-trigger": "export async function triggerOutboxWorker(){return false}",
       "@/lib/portal-request": `export async function portalRequestClient(){return {id:'${clientId}',name:'Fictício',phone:'71999999999',email:null}}`,
       "@/lib/availability": "export async function isTimeAvailable(){return true}",
       "@/lib/finance": "export async function syncAppointmentFinancialEntry(){}",
@@ -48,7 +50,7 @@ test("booking providers: configured default, durable issuance, duplicate prevent
     async function bundle(path: string) {
       const output = await build({ entryPoints: [path], bundle: true, write: false, platform: "node", format: "cjs", packages: "external", plugins: [{ name: "online-isolation", setup(builder) {
         builder.onResolve({ filter: /./ }, args => routeMocks[args.path] ? { path: args.path, namespace: "mock" } : args.path === "@/db" ? { path: "db", namespace: "mock" } : /(?:^|\/)(?:organization-asaas|asaas|mercado-pago|pagbank|efi)$/.test(args.path) ? { path: "provider", namespace: "mock" } : /(?:whatsapp-notifications|google-calendar)$/.test(args.path) ? { path: "notify", namespace: "mock" } : undefined);
-        builder.onLoad({ filter: /./, namespace: "mock" }, args => ({ contents: routeMocks[args.path] ?? (args.path === "db" ? "export const db=globalThis.onlineDb" : args.path === "provider" ? mock : "export async function enqueueAppointmentNotification(){globalThis.onlineNotified++} export async function syncAppointmentToGoogleCalendar(){}"), loader: "js" }));
+        builder.onLoad({ filter: /./, namespace: "mock" }, args => ({ contents: routeMocks[args.path] ?? (args.path === "db" ? "export const db=globalThis.onlineDb" : args.path === "provider" ? mock : "export async function enqueueAppointmentNotification(){globalThis.onlineNotified++} export async function syncAppointmentToGoogleCalendar(){} export async function deleteAppointmentFromGoogleCalendar(){}"), loader: "js" }));
       } }] });
       const exported = { exports: {} as Record<string, (...args: unknown[]) => Promise<unknown>> };
       new Function("require", "module", "exports", output.outputFiles[0].text)(createRequire(import.meta.url), exported, exported.exports);
@@ -83,9 +85,9 @@ test("booking providers: configured default, durable issuance, duplicate prevent
     const mpBody = scope.onlineCalls.find(call => call.path === "/checkout/preferences")!.options.body!;
     assert.equal(mpBody.payment_methods, undefined, "checkout offers the account's enabled methods");
     const panel = await bundle("src/components/booking-online-panel.tsx");
-    const html = renderToStaticMarkup(await panel.BookingOnlinePanel({ chargeId: exampleId, status: "scheduled", expiresAt: new Date(Date.now() + 600000) }) as ReactElement);
+    const html = renderToStaticMarkup(await panel.BookingOnlinePanel({ chargeId: exampleId, status: "scheduled", timezone:"America/Bahia", expiresAt: new Date(Date.now() + 600000) }) as ReactElement);
     assert.match(html, /Mercado Pago/); assert.match(html, /Pagar sinal/); assert.match(html, /sandbox.mercadopago.com.br/);
-    const expired = renderToStaticMarkup(await panel.BookingOnlinePanel({ chargeId: exampleId, status: "cancelled", expiresAt: null }) as ReactElement);
+    const expired = renderToStaticMarkup(await panel.BookingOnlinePanel({ chargeId: exampleId, status: "cancelled", timezone:"America/Bahia", expiresAt: null }) as ReactElement);
     assert.ok(!expired.includes("href="));
     const charge = (await (scope.onlineDb as ReturnType<typeof drizzle>).select().from(schema.paymentCharges).where((await import("drizzle-orm")).eq(schema.paymentCharges.id, exampleId)))[0];
     const input = { eventId: "synthetic-paid", status: "paid", amountInCents: 2500, paymentId: "verified", method: "credit_card" };

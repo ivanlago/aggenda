@@ -1,3 +1,5 @@
+import { expireBookingReservations } from "@/lib/booking-reservation-expiry";
+import { triggerOutboxWorker } from "@/lib/outbox-trigger";
 import { roomBookingError } from "@/lib/room-errors";
 import { bookingPaymentSettings, createDirectPixPayload, directPixReservation } from "@/lib/booking-payment";
 import { and, eq } from "drizzle-orm";
@@ -106,6 +108,7 @@ export async function POST(
       try { selectedProvider = await bookingOnlineProvider(organization.id); }
       catch (error) { providerError = error; }
     }
+    await expireBookingReservations({organizationId:organization.id});
     const manageToken = randomUUID();
     const appointment = await withAppointmentLock(organization.id, professionalId, async (tx) => {
       await lockBookingPatient(tx, organization.id, portalClient.id);
@@ -188,6 +191,7 @@ export async function POST(
       return { ...created, finalPrice, depositAmount, replay: false as const };
 
     });
+    if (appointment.replay ? appointment.depositAmountInCents > 0 : appointment.depositAmount > 0) await triggerOutboxWorker();
     if (appointment.replay) {
       const [charge] = await db.select({ url: paymentCharges.invoiceUrl }).from(paymentCharges)
         .where(and(eq(paymentCharges.organizationId, organization.id), eq(paymentCharges.originId, appointment.id), eq(paymentCharges.originType, "appointment"))).limit(1);

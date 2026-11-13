@@ -88,16 +88,16 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       { href: "/documentos/assinatura-profissional", label: "Assinatura profissional", icon: FileSignature, permission: "documents.sign" },
     ] },
     { label: "Cadastros", items: [
+      { href: "/financeiro/cadastros", label: "Cadastros financeiros", icon: Landmark, permission: "finance.manage" },
       { href: "/estoque/compras", label: "Compras e fornecedores", icon: Boxes, permission: "inventory.manage" },
       { href: "/equipamentos", label: "Equipamentos", icon: Wrench, permission: "organization.settings.manage" },
+      { href: "/financeiro/formas-de-pagamento", label: "Formas de pagamento", icon: WalletCards, permission: "finance.manage" },
       { href: "/produtos-servicos", label: "Produtos e Serviços", icon: Boxes, permission: hasOrganizationPermission(organization.role, "services.read", organization.teamPermissionOverrides) ? "services.read" : "inventory.read" },
       { href: "/salas", label: "Salas", icon: DoorOpen, permission: "organization.settings.manage" },
     ] },
     { label: "Financeiro", items: [
       { href: "/financeiro/lancamentos", label: "Lançamentos", icon: BanknoteArrowDown, permission: "finance.read" },
       { href: "/financeiro/meus-caixas", label: "Meus Caixas", icon: CircleDollarSign, permission: "finance.read" },
-      { href: "/financeiro/cadastros", label: "Cadastros financeiros", icon: Landmark, permission: "finance.manage" },
-      { href: "/financeiro/formas-de-pagamento", label: "Formas de pagamento", icon: WalletCards, permission: "finance.manage" },
       { href: "/financeiro/conciliacao-ofx", label: "Conciliação OFX", icon: Landmark, permission: "finance.read" },
       { href: "/financeiro/relatorios", label: "DRE e indicadores", icon: ChartNoAxesCombined, permission: "finance.read" },
       { href: "/financeiro/comissoes", label: "Comissões", icon: HandCoins, permission: "finance.read" },

@@ -30,8 +30,8 @@ export type TeamMemberCardData = {
   googleCalendarEmail?: string | null;
 };
 
-export function TeamMemberCard({ member, professions, specialties, canEdit, canDelete, commissionPanel, visualPanel, signaturePanel, own = false }: {
-  member: TeamMemberCardData; professions: Profession[]; specialties: Specialty[]; canEdit: boolean; canDelete: boolean; own?: boolean; commissionPanel: ReactNode; visualPanel: ReactNode; signaturePanel: ReactNode;
+export function TeamMemberCard({ member, professions, specialties, canEdit, canDelete, commissionPanel, partnershipPanel, visualPanel, signaturePanel, own = false }: {
+  member: TeamMemberCardData; professions: Profession[]; specialties: Specialty[]; canEdit: boolean; canDelete: boolean; own?: boolean; commissionPanel: ReactNode; partnershipPanel: ReactNode; visualPanel: ReactNode; signaturePanel: ReactNode;
 }) {
   const [receivesAppointments,setReceivesAppointments]=useState(member.receivesAppointments);
   const [professionId, setProfessionId] = useState(member.professionId ?? "");
@@ -70,7 +70,7 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
       )}
       {(canEdit || own) && (
         <ModalShell title={`Editar membro: ${member.shortName}`} variant="edit" wide closeOnSuccess onOpen={()=>{setReceivesAppointments(member.receivesAppointments);setProfessionId(member.professionId??"")}}>
-        <MemberSettingsTabs commission={commissionPanel} visual={visualPanel} professional={signaturePanel} profile={canEdit ? <ActionForm action={updateUnifiedTeamMember} successMessage="Dados e acesso atualizados." className="grid min-w-0 items-start gap-4 sm:grid-cols-2">
+        <MemberSettingsTabs commission={commissionPanel} partnership={partnershipPanel} visual={visualPanel} professional={signaturePanel} profile={canEdit ? <ActionForm action={updateUnifiedTeamMember} successMessage="Dados e acesso atualizados." className="grid min-w-0 items-start gap-4 sm:grid-cols-2">
           <input type="hidden" name="userId" value={member.userId} /><input type="hidden" name="professionalId" value={member.professionalId ?? ""} />
           <>
           <label className="grid gap-1 text-sm font-bold">Nome completo<input className="field" name="fullName" defaultValue={member.fullName} required /></label>

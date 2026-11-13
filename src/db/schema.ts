@@ -1,3 +1,4 @@
+import type { PartnershipContract } from "@/lib/partnership-compliance";
 import type { BookingPaymentSettings } from "@/lib/booking-payment";
 import {
   check,
@@ -2379,6 +2380,7 @@ export const clinicalConsultationRecords = pgTable("clinical_consultation_record
 ]);
 
 export const professionalFiscalPartnerships = pgTable("professional_fiscal_partnerships", {
+  contract: jsonb("contract").$type<PartnershipContract>().notNull().default({} as PartnershipContract),
   professionalId: uuid("professional_id").primaryKey().references(() => professionals.id, { onDelete: "cascade" }),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
   cpf: text("cpf"),
@@ -2414,6 +2416,33 @@ export const inventorySuppliers = pgTable("inventory_suppliers", {
   phone: text("phone"),
   isActive: boolean("is_active").notNull().default(true),
 });
+
+// Documentary allocation of received amounts. Not a second income/expense entry.
+export const professionalFiscalAllocations = pgTable("professional_fiscal_allocations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  professionalId: uuid("professional_id").notNull().references(() => professionalFiscalPartnerships.professionalId, { onDelete: "restrict" }),
+  financialEntryId: uuid("financial_entry_id").notNull().references(() => financialEntries.id, { onDelete: "restrict" }),
+  serviceId: uuid("service_id").notNull().references(() => services.id, { onDelete: "restrict" }),
+  receivedOn: date("received_on", { mode: "string" }).notNull(),
+  grossInCents: integer("gross_in_cents").notNull(),
+  percentageBasisPoints: integer("percentage_basis_points").notNull(),
+  partnerInCents: integer("partner_in_cents").notNull(),
+  salonInCents: integer("salon_in_cents").notNull(),
+  withheldInCents: integer("withheld_in_cents").notNull().default(0),
+  withholdingDescription: text("withholding_description").notNull().default(""),
+  consumerInvoice: text("consumer_invoice").notNull().default(""),
+  partnerInvoice: text("partner_invoice").notNull().default(""),
+  snapshot: jsonb("snapshot").$type<{ cnpj: string; contract: PartnershipContract; serviceName: string }>().notNull(),
+  voidReason: text("void_reason"),
+  voidedAt: timestamp("voided_at"),
+  createdByUserId: text("created_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, table => [
+  index("fiscal_allocations_org_period_idx").on(table.organizationId, table.receivedOn),
+  uniqueIndex("fiscal_allocation_source_unique").on(table.financialEntryId, table.professionalId, table.serviceId).where(sql`${table.voidedAt} IS NULL`),
+  check("fiscal_allocation_balanced", sql`${table.grossInCents} > 0 AND ${table.partnerInCents} >= 0 AND ${table.salonInCents} >= 0 AND ${table.grossInCents} = ${table.partnerInCents} + ${table.salonInCents} AND ${table.withheldInCents} >= 0 AND ${table.withheldInCents} <= ${table.partnerInCents} AND ${table.percentageBasisPoints} BETWEEN 0 AND 10000`),
+]);
 
 export const inventoryPurchases = pgTable("inventory_purchases", {
   id: uuid("id").primaryKey(),

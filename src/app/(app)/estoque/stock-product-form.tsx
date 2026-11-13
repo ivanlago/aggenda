@@ -40,15 +40,17 @@ function ProductFields({ categories, subcategories, product }: Props & { product
       <ReferenceSelect kind="product_category" name="categoryId" label="Categoria" records={categoryOptions} onCreated={(record) => setCreatedCategories((items) => [...items, record])} value={categoryId} onChange={setCategoryId} emptyLabel="Sem categoria" />
       <ReferenceSelect key={categoryId} kind="product_subcategory" name="subcategoryId" label="Subcategoria" records={subcategories} parents={categoryOptions} parentId={categoryId} defaultValue={categoryId === product?.categoryId ? product?.subcategoryId ?? "" : ""} disabled={!categoryId} emptyLabel="Sem subcategoria" />
     </div>
-    <div className="col-span-full grid min-w-0 gap-4 sm:grid-cols-2">
+    <div className={`col-span-full grid min-w-0 items-start gap-4 sm:grid-cols-2 ${product ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
       <label className="grid gap-2 text-sm font-bold">Custo unitário (R$)<input className="field" name="cost" inputMode="decimal" placeholder="0,00" defaultValue={product?.costValue} /></label>
       <label className="grid gap-2 text-sm font-bold">Preço de venda unitário (R$)<input className="field" name="salePrice" inputMode="decimal" placeholder="0,00" defaultValue={product?.saleValue} /></label>
+      <ItemCommissionField name="commissionRate" value={product?.commissionRateBasisPoints} />
+      {product && <label className="grid gap-2 text-sm font-bold">Quantidade mínima *<input className="field" name="minimumQuantity" inputMode="decimal" required defaultValue={product.minimumValue} /></label>}
     </div>
-    <ItemCommissionField name="commissionRate" value={product?.commissionRateBasisPoints} />
-    <div className={`col-span-full grid min-w-0 gap-4 ${product ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
-      {!product && <><label className="grid gap-2 text-sm font-bold">Unidade do saldo<select className="field" name="unit" defaultValue="unit"><option value="unit">Unidade</option><option value="mL">mL</option><option value="mg">mg</option><option value="g">g</option><option value="UI">UI</option></select></label><label className="grid gap-2 text-sm font-bold">Quantidade inicial *<input className="field" name="initialQuantity" inputMode="decimal" required defaultValue="0" /></label></>}
-      <label className="grid gap-2 text-sm font-bold">Quantidade mínima *<input className="field" name="minimumQuantity" inputMode="decimal" required defaultValue={product?.minimumValue ?? "0"} /></label>
-    </div>
+    {!product && <div className="col-span-full grid min-w-0 gap-4 sm:grid-cols-3">
+      <label className="grid gap-2 text-sm font-bold">Unidade do saldo<select className="field" name="unit" defaultValue="unit"><option value="unit">Unidade</option><option value="mL">mL</option><option value="mg">mg</option><option value="g">g</option><option value="UI">UI</option></select></label>
+      <label className="grid gap-2 text-sm font-bold">Quantidade inicial *<input className="field" name="initialQuantity" inputMode="decimal" required defaultValue="0" /></label>
+      <label className="grid gap-2 text-sm font-bold">Quantidade mínima *<input className="field" name="minimumQuantity" inputMode="decimal" required defaultValue="0" /></label>
+    </div>}
     {!product && <label className="col-span-full flex items-center gap-3 text-sm font-bold"><input type="checkbox" name="isForConsumption" />Produto destinado ao consumo (por padrão, será cadastrado para venda)</label>}
     <button type="button" className="secondary-button col-span-full w-fit" aria-expanded={descriptionOpen} aria-controls={descriptionId} onClick={() => setDescriptionOpen(open => !open)}>
       Descrição<ChevronDown aria-hidden="true" className={`size-4 transition-transform ${descriptionOpen ? "rotate-180" : ""}`} />

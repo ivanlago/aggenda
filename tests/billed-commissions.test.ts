@@ -21,7 +21,7 @@ test("billed commissions: unpaid sale, item override, snapshot, package once, re
   const pg=new PGlite();
   try {
     const tables={audit_logs:schema.auditLogs,users:schema.users,organizations:schema.organizations,professionals:schema.professionals,services:schema.services,service_packages:schema.servicePackages,catalog_kits:schema.catalogKits,retail_product_variants:schema.retailProductVariants,retail_sales:schema.retailSales,retail_sale_items:schema.retailSaleItems,retail_sale_payments:schema.retailSalePayments,commission_entries:schema.commissionEntries};
-    const added:Record<string,string[]>={organizations:["commission_policy_version"],services:["commission_rate_basis_points"],service_packages:["commission_rate_basis_points"],catalog_kits:["commission_rate_basis_points"],retail_sales:["commission_billed_at","commission_deduct_discount","commission_deduct_fees","commission_fee_in_cents"],retail_sale_items:["kit_id","commission_rate_basis_points"]};
+    const added:Record<string,string[]>={organizations:["commission_policy_version"],services:["commission_rate_basis_points"],service_packages:["commission_rate_basis_points"],catalog_kits:["commission_rate_basis_points"],retail_sales:["commission_billed_at","commission_deduct_discount","commission_deduct_fees","commission_fee_in_cents","commission_deduct_cost","commission_cost_in_cents"],retail_sale_items:["kit_id","commission_rate_basis_points"]};
     for(const [name,table] of Object.entries(tables)){
       const columns=Object.values(getTableColumns(table)).filter(c=>!added[name]?.includes(c.name)).map(c=>{
         const type=c.enumValues?"text":c.getSQLType();
@@ -37,6 +37,7 @@ test("billed commissions: unpaid sale, item override, snapshot, package once, re
     await pg.query("INSERT INTO retail_sales(id,organization_id,status,total_in_cents) VALUES($1,$2,'completed',10000)",[oldSale,org]);
     await pg.exec(await readFile("drizzle/0102_billed_item_commissions.sql","utf8"));
     await pg.exec(await readFile("drizzle/0106_commission_sale_assessment.sql","utf8"));
+    await pg.exec(await readFile("drizzle/0107_commission_cost_assessment.sql","utf8"));
     assert.equal((await pg.query<{commission_billed_at:unknown}>("SELECT commission_billed_at FROM retail_sales WHERE id=$1",[oldSale])).rows[0].commission_billed_at,null);
     await pg.query("INSERT INTO services(id,organization_id,name,commission_rate_basis_points) VALUES($1,$2,'Serviço',1000)",[service,org]);
     await pg.query("INSERT INTO service_packages(id,organization_id,name,commission_rate_basis_points) VALUES($1,$2,'Pacote',2000)",[pack,org]);
@@ -86,6 +87,12 @@ test("billed commissions: unpaid sale, item override, snapshot, package once, re
     await pg.query("UPDATE retail_sales SET commission_deduct_discount=false,commission_fee_in_cents=300 WHERE id=$1",[mixed]);
     mixedRows=(await pg.query<{sale_item_id:string;base_amount_in_cents:number;amount_in_cents:number}>("SELECT sale_item_id,base_amount_in_cents,amount_in_cents FROM commission_entries WHERE sale_id=$1 ORDER BY sale_item_id",[mixed])).rows;
     assert.deepEqual(mixedRows.map(x=>[x.base_amount_in_cents,x.amount_in_cents]),[[6800,1360],[2900,145]]);
+    await pg.query("UPDATE retail_sales SET commission_deduct_cost=true,commission_cost_in_cents=900 WHERE id=$1",[mixed]);
+    assert.deepEqual((await pg.query<{base_amount_in_cents:number;amount_in_cents:number}>("SELECT base_amount_in_cents,amount_in_cents FROM commission_entries WHERE sale_id=$1 ORDER BY sale_item_id",[mixed])).rows.map(x=>[x.base_amount_in_cents,x.amount_in_cents]),[[6200,1240],[2600,130]]);
+    await pg.query("SELECT aggenda_sync_sale_commissions($1)",[mixed]);
+    assert.equal((await pg.query<{amount:number}>("SELECT sum(amount_in_cents)::int AS amount FROM commission_entries WHERE sale_id=$1",[mixed])).rows[0].amount,1370,"cost is not deducted twice");
+    await assert.rejects(pg.query("UPDATE retail_sales SET commission_cost_in_cents=-1 WHERE id=$1",[mixed]));
+    await pg.query("UPDATE retail_sales SET commission_deduct_cost=false,commission_cost_in_cents=null WHERE id=$1",[mixed]);
     const state=globalThis as unknown as {assessmentTestDb:unknown;assessmentTestOrg:string};
     state.assessmentTestDb=drizzle(pg,{schema});state.assessmentTestOrg=org;
     const bundle=await build({entryPoints:["src/actions/commissions.ts"],bundle:true,write:false,format:"cjs",platform:"node",packages:"external",plugins:[{name:"assessment-action",setup(builder){
@@ -98,6 +105,9 @@ test("billed commissions: unpaid sale, item override, snapshot, package once, re
     const form=new FormData();form.set("saleId",mixed);form.set("deductFees","on");
     assert.ok((await actionModule.exports.applySaleCommissionAssessment(form))?.error,"unknown fee cannot be applied as zero");
     form.set("fee","3,00");form.set("deductDiscount","on");
+    form.set("deductCost","on");
+    assert.ok((await actionModule.exports.applySaleCommissionAssessment(form))?.error,"cost requires an explicit value");
+    form.set("cost","0,00");
     state.assessmentTestOrg=other;
     assert.ok((await actionModule.exports.applySaleCommissionAssessment(form))?.error,"foreign sale is rejected");
     state.assessmentTestOrg=org;
@@ -106,6 +116,7 @@ test("billed commissions: unpaid sale, item override, snapshot, package once, re
     assert.equal(audit.length,1);assert.equal(audit[0].details.after.fee,300);assert.equal(audit[0].details.result.length,2);
     await pg.query("UPDATE commission_entries SET status='paid' WHERE sale_id=$1",[mixed]);
     assert.ok((await actionModule.exports.applySaleCommissionAssessment(form))?.error,"paid commissions are frozen in action as well as database");
+    await assert.rejects(pg.query("UPDATE retail_sales SET commission_cost_in_cents=1 WHERE id=$1",[mixed]),/comissão paga/);
     await pg.query("INSERT INTO retail_sale_payments(organization_id,sale_id,refunded_in_cents) VALUES($1,$2,4500)",[org,mixed]);
     assert.deepEqual((await pg.query<{amount_in_cents:number}>("SELECT amount_in_cents FROM commission_entries WHERE sale_id=$1 AND original_entry_id IS NOT NULL ORDER BY sale_item_id",[mixed])).rows.map(x=>x.amount_in_cents),[-580,-72],"refund adjustments use the assessed net commission and preserve paid rows");
     const outside=randomUUID();await pg.query("INSERT INTO retail_sales(id,organization_id,status,total_in_cents,commission_user_id) VALUES($1,$2,'completed',10000,'seller')",[outside,other]);
@@ -124,6 +135,7 @@ test("assessment preview: discounts, mixed rates, exact fee allocation, refunds 
   assert.deepEqual(commissionAssessment(rows,true,300,4500).map(x=>x.commission),[290,290]);
   assert.equal(commissionAssessment(rows,true,1).reduce((sum,x)=>sum+x.fee,0),1);
   assert.equal(commissionAssessment([...rows].reverse(),true,1)[0].id,"a");
+  assert.deepEqual(commissionAssessment(rows,true,300,0,900).map(x=>[x.cost,x.base,x.commission]),[[600,5200,520],[300,2600,520]]);
   assert.equal(parseCommissionFee("3,45"),345);
   assert.equal(parseCommissionFee("0"),0);
   for(const value of ["", "-1", "1.234", "1e2", "Infinity"]) assert.throws(()=>parseCommissionFee(value));

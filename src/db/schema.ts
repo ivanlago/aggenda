@@ -1414,6 +1414,8 @@ export const retailSales = pgTable("retail_sales", {
   commissionDeductDiscount: boolean("commission_deduct_discount").default(true).notNull(),
   commissionDeductFees: boolean("commission_deduct_fees").default(false).notNull(),
   commissionFeeInCents: integer("commission_fee_in_cents"),
+  commissionDeductCost: boolean("commission_deduct_cost").default(false).notNull(),
+  commissionCostInCents: integer("commission_cost_in_cents"),
   commissionProfessionalId: uuid("commission_professional_id").references(() => professionals.id, { onDelete: "restrict" }),
   commissionUserId: text("commission_user_id").references(() => users.id, { onDelete: "restrict" }),
   status: text("status").default("completed").notNull(),

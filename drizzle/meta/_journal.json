@@ -750,6 +750,13 @@
       "when": 1794547916073,
       "tag": "0106_commission_sale_assessment",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1794551631680,
+      "tag": "0107_commission_cost_assessment",
+      "breakpoints": true
     }
   ]
 }

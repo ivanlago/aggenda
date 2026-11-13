@@ -35,7 +35,9 @@ try {
     assert.equal((await tx.query("SELECT amount_in_cents FROM commission_entries WHERE sale_id=$1",[sale])).rows[0].amount_in_cents,970);
     await tx.query("SELECT aggenda_sync_sale_commissions($1)",[sale]);
     assert.equal((await tx.query("SELECT amount_in_cents FROM commission_entries WHERE sale_id=$1",[sale])).rows[0].amount_in_cents,970);
-    await tx.query("UPDATE retail_sales SET commission_deduct_fees=false,commission_fee_in_cents=null WHERE id=$1",[sale]);
+    await tx.query("UPDATE retail_sales SET commission_deduct_cost=true,commission_cost_in_cents=1000 WHERE id=$1",[sale]);
+    assert.equal((await tx.query("SELECT amount_in_cents FROM commission_entries WHERE sale_id=$1",[sale])).rows[0].amount_in_cents,870);
+    await tx.query("UPDATE retail_sales SET commission_deduct_fees=false,commission_fee_in_cents=null,commission_deduct_cost=false,commission_cost_in_cents=null WHERE id=$1",[sale]);
     const rows=await tx.query("SELECT source_type,amount_in_cents FROM commission_entries WHERE organization_id=$1 ORDER BY source_type",[org]);
     assert.deepEqual(rows.rows,[{source_type:"execution_assistant",amount_in_cents:500},{source_type:"execution_executor",amount_in_cents:1500},{source_type:"service",amount_in_cents:1000}]);
     await tx.query("UPDATE appointments SET status='scheduled' WHERE id=$1",[visit]);

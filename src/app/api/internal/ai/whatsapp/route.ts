@@ -467,13 +467,15 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
   }
   const storedBooking = hybridBookingContextSchema.safeParse(latest?.rawPayload?.hybridBooking);
   const storedRequest = hybridRequestSchema.safeParse(latest?.rawPayload?.hybridRequest);
-  const rememberedRequest = hybrid && storedRequest.success && Date.parse(storedRequest.data.expiresAt) > Date.now() ? storedRequest.data : undefined;
+  const rememberedRequest = storedRequest.success && Date.parse(storedRequest.data.expiresAt) > Date.now() ? storedRequest.data : undefined;
   let localProfessionalId: string | undefined;
   if (rememberedRequest && !asksToCancel(input.text) && !asksToReschedule(input.text) && !requestsHuman(input.text)) {
     const eligible = professionalRows.filter(person => person.serviceId === rememberedRequest.serviceId);
     const suggestion = eligible.find(person => person.id === rememberedRequest.suggestedProfessionalId);
     const choice = professionalNameChoice(eligible,input.text);
-    if (suggestion && isAffirmativeWhatsAppCommand(input.text)) localProfessionalId = suggestion.id;
+    const numbered = !hybrid && /^\d+$/.test(input.text.trim()) ? rememberedRequest.offeredProfessionalIds?.[Number(input.text.trim())-1] : undefined;
+    if (numbered && eligible.some(person=>person.id===numbered)) localProfessionalId=numbered;
+    else if (suggestion && isAffirmativeWhatsAppCommand(input.text)) localProfessionalId = suggestion.id;
     else if (suggestion && isNegativeWhatsAppCommand(input.text)) {
       await send(input,conversation,{reply:`Tudo bem. Com qual profissional deseja agendar? ${Array.from(new Set(eligible.map(person=>person.name))).join(" ou ")}`,model:"aggenda-hybrid-selection-v1",intent:"select_professional",confidence:1,hybridRequest:{...rememberedRequest,professionalId:null,suggestedProfessionalId:undefined}});
       return NextResponse.json({accepted:true,action:"reply"});
@@ -524,8 +526,10 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
     });
     return NextResponse.json({ accepted: true, action: selected ? "prepare_cancel" : "reply" });
   }
-  const bookingContext = hybrid && storedBooking.success && Date.parse(storedBooking.data.expiresAt) > Date.now() ? storedBooking.data : undefined;
-  const chosenTime = hybrid ? hybridTimeChoice(input.text) : null;
+  if (!hybrid && rememberedRequest?.professionalId && !asksToCancel(input.text) && !asksToReschedule(input.text) && (parseBrazilianDate(input.text) || hybridRelativeDate(input.text,organizationDate(new Date(),organization.timezone)))) localProfessionalId = professionalRows.some(person=>person.id===rememberedRequest.professionalId && person.serviceId===rememberedRequest.serviceId) ? rememberedRequest.professionalId : undefined;
+  const bookingContext = storedBooking.success && Date.parse(storedBooking.data.expiresAt) > Date.now() ? storedBooking.data : undefined;
+  const numberedSlot = !hybrid && bookingContext && /^\d+$/.test(input.text.trim()) ? bookingContext.offeredSlots[Number(input.text.trim())-1] : undefined;
+  const chosenTime = numberedSlot ? localTime(new Date(numberedSlot),organization.timezone) : hybridTimeChoice(input.text);
   if (bookingContext && chosenTime) {
     const service = catalog.find(row => row.id === bookingContext.serviceId);
     const professional = professionalRows.find(row => row.id === bookingContext.professionalId && row.serviceId === service?.id);
@@ -544,7 +548,7 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
   // Menu selections and explicit confirmations keep the existing transaction path.
   // Free text in the pilot reaches the conversational interpreter before heuristics.
   const hybridNatural = hybrid && aiAllowed && !navigation && !/^\d+$/.test(input.text.trim());
-  if (!hybridNatural) {
+  if (!hybridNatural && !localProfessionalId) {
   if (flowState?.kind === "select_confirm" || /\bconfirmar (presenca|meu agendamento|o agendamento)/.test(normalizedText(input.text))) {
     const candidates = flowState?.kind === "select_confirm" ? future.filter(item => flowState.appointmentIds.includes(item.id)) : future;
     const matches = filterMentionedAppointments(candidates, input.text, organization.timezone);
@@ -658,8 +662,8 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
       ? `No momento não há profissionais habilitados para ${contextualService.name}. Deseja escolher outro atendimento?`
       : eligibleProfessionals.length === 1
         ? `${contextualService.name} é realizado por ${eligibleProfessionals[0].name}. Para qual data deseja agendar?`
-        : `${contextualService.name} é realizado por ${eligibleProfessionals.map((professional) => professional.name).join(" ou ")}. Você prefere algum deles ou deseja o primeiro horário disponível?`;
-    await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "select_professional", confidence: 1 });
+        : `${contextualService.name} é realizado por:\n${eligibleProfessionals.map((professional,index) => `${index+1} - ${professional.name}`).join("\n")}\nEscolha pelo número ou nome, ou peça o primeiro horário disponível.`;
+    await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: "select_professional", confidence: 1, hybridRequest: {serviceId:contextualService.id,professionalId:eligibleProfessionals.length===1 ? eligibleProfessionals[0].id : null,offeredProfessionalIds:eligibleProfessionals.map(person=>person.id),date:hybridRelativeDate(input.text,organizationDate(new Date(),organization.timezone)),period:/\btarde\b/.test(normalizedText(input.text)) ? "afternoon" : /\bmanha\b/.test(normalizedText(input.text)) ? "morning" : null,expiresAt:new Date(Date.now()+15*60000).toISOString()} });
     return NextResponse.json({ accepted: true, action: "reply" });
   }
   if (asksToBook(input.text) && !contextualService) {
@@ -730,13 +734,13 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
     return NextResponse.json({ accepted: true, action: "availability" });
   }
   }
-  if (!aiAllowed) {
+  if (!aiAllowed && !localProfessionalId) {
     await send(input, conversation, { reply: "A interpretação por IA está indisponível neste período. Digite MENU para usar as opções ou EQUIPE para solicitar atendimento.", model: "aggenda-navigation-v1", intent: "ai_limit", confidence: 1 });
     return NextResponse.json({ accepted: true, action: "reply" });
   }
   let result: { data: z.infer<typeof coreAnswerSchema> & { period?: "morning" | "afternoon" | "evening" | null; goal?: "book" | "reschedule" | "cancel" | "list" | "information" | "handoff" | "other" }; model: string };
   try {
-    result = localProfessionalId && rememberedRequest ? {model:"aggenda-hybrid-selection-v1",data:{action:"availability",reply:"Vou consultar os horários.",intent:"schedule",confidence:1,goal:"book",serviceId:rememberedRequest.serviceId,professionalId:localProfessionalId,appointmentId:null,date:rememberedRequest.date,time:null,cancellationReason:null,period:rememberedRequest.period}} : await generateAiJson({ organizationId: input.organizationId, schema: hybrid ? hybridAnswerSchema : coreAnswerSchema, structuredOutput: hybrid, messages: [{ role: "system", content: hybrid ? hybridSecretaryInstructions + " " + bookingDepositAgentInstructions : bookingDepositAgentInstructions + " Você é o agente de agendamentos do Aggenda. Nunca invente IDs ou dados. Use availability para horários, prepare_booking para agendar, prepare_reschedule para reagendar, prepare_cancel para cancelar e confirm_appointment para confirmar. A aplicação fará validações e pedirá confirmação antes de alterações. Se faltar dado, use reply e pergunte somente o próximo. Use handoff em ambiguidade relevante ou confiança abaixo de 0,65. Datas YYYY-MM-DD, horas HH:mm. Responda somente JSON." }, { role: "user", content: JSON.stringify({ today: organizationDate(new Date(), organization.timezone), timezone: organization.timezone, organization, catalog, professionals: professionalRows, upcomingAppointments: future.map(x => ({ id: x.id, startsAt: x.startsAt, status: x.status, serviceId: x.serviceId, serviceName: x.serviceName, professionalId: x.professionalId, professionalName: x.professionalName, depositStatus: x.depositStatus, depositAmount: x.depositAmount, paymentStatusLabel: depositStatusLabel(x.depositStatus), startsAtLocal: formatOrganizationDateTime(x.startsAt, organization.timezone) })), bookingRequest: rememberedRequest, recentMessages: history.reverse(), currentMessage: input.text }) }] });
+    result = localProfessionalId && rememberedRequest ? {model:"aggenda-hybrid-selection-v1",data:{action:"availability",reply:"Vou consultar os horários.",intent:"schedule",confidence:1,goal:"book",serviceId:rememberedRequest.serviceId,professionalId:localProfessionalId,appointmentId:null,date:parseBrazilianDate(input.text) ?? hybridRelativeDate(input.text,organizationDate(new Date(),organization.timezone)) ?? rememberedRequest.date,time:null,cancellationReason:null,period:/\bmanha\b/.test(normalizedText(input.text)) ? "morning" : /\btarde\b/.test(normalizedText(input.text)) ? "afternoon" : rememberedRequest.period}} : await generateAiJson({ organizationId: input.organizationId, schema: hybrid ? hybridAnswerSchema : coreAnswerSchema, structuredOutput: hybrid, messages: [{ role: "system", content: hybrid ? hybridSecretaryInstructions + " " + bookingDepositAgentInstructions : bookingDepositAgentInstructions + " Você é o agente de agendamentos do Aggenda. Nunca invente IDs ou dados. Use availability para horários, prepare_booking para agendar, prepare_reschedule para reagendar, prepare_cancel para cancelar e confirm_appointment para confirmar. A aplicação fará validações e pedirá confirmação antes de alterações. Se faltar dado, use reply e pergunte somente o próximo. Use handoff em ambiguidade relevante ou confiança abaixo de 0,65. Datas YYYY-MM-DD, horas HH:mm. Responda somente JSON." }, { role: "user", content: JSON.stringify({ today: organizationDate(new Date(), organization.timezone), timezone: organization.timezone, organization, catalog, professionals: professionalRows, upcomingAppointments: future.map(x => ({ id: x.id, startsAt: x.startsAt, status: x.status, serviceId: x.serviceId, serviceName: x.serviceName, professionalId: x.professionalId, professionalName: x.professionalName, depositStatus: x.depositStatus, depositAmount: x.depositAmount, paymentStatusLabel: depositStatusLabel(x.depositStatus), startsAtLocal: formatOrganizationDateTime(x.startsAt, organization.timezone) })), bookingRequest: rememberedRequest, recentMessages: history.reverse(), currentMessage: input.text }) }] });
   } catch (error) {
     console.error("[whatsapp-agent] falha ao interpretar mensagem", { conversationId: input.conversationId, messageId: input.messageId, error: error instanceof Error ? error.message : String(error) });
     const capped = error instanceof Error && error.message.includes("Limite interno");
@@ -792,14 +796,14 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
   }
   if (answer.action === "availability" || answer.action === "prepare_booking") {
     if (!service || !professional || !answer.date) reply = !service ? `Qual serviço você deseja? ${catalog.map(x => x.name).join(", ")}` : !professional ? eligibleServiceProfessionals.length ? `Com qual profissional? ${eligibleServiceProfessionals.map(person => person.name).join(", ")}` : `No momento não há atendentes habilitados para ${service.name}. Deseja escolher outro serviço?` : hybrid ? `${service.name} com ${professional.name}. Para qual data deseja consultar os horários?` : "Para qual data deseja consultar?";
-    else { const available = await getAvailableTimes({ organizationId: input.organizationId, timezone: organization.timezone, date: answer.date, serviceId: service.id, professionalId: professional.id, slotIntervalMinutes: organization.slotIntervalMinutes }); const slots = available?.filter(slot => { if (!hybrid || !answer.period) return true; const hour = Number(localTime(new Date(slot), organization.timezone).slice(0, 2)); return answer.period === "morning" ? hour < 12 : answer.period === "afternoon" ? hour >= 12 && hour < 18 : hour >= 18; }); const selected = answer.time ? slots?.find(x => localTime(new Date(x), organization.timezone) === answer.time) : undefined;
+    else { const available = await getAvailableTimes({ organizationId: input.organizationId, timezone: organization.timezone, date: answer.date, serviceId: service.id, professionalId: professional.id, slotIntervalMinutes: organization.slotIntervalMinutes }); const slots = available?.filter(slot => { if (!answer.period) return true; const hour = Number(localTime(new Date(slot), organization.timezone).slice(0, 2)); return answer.period === "morning" ? hour < 12 : answer.period === "afternoon" ? hour >= 12 && hour < 18 : hour >= 18; }); const selected = answer.time ? slots?.find(x => localTime(new Date(x), organization.timezone) === answer.time) : undefined;
       if (answer.action === "prepare_booking" && selected) { nextPending = { kind: "book", serviceId: service.id, professionalId: professional.id, startsAt: selected }; reply = `Confirma ${service.name} com ${professional.name} em ${formatOrganizationDateTime(new Date(selected), organization.timezone)}? Responda CONFIRMAR.`; }
       else {
         const offeredSlots = slots?.slice(0, 10) ?? [];
-        if (hybrid && offeredSlots.length) nextHybridBooking = { serviceId: service.id, professionalId: professional.id, date: answer.date, offeredSlots, expiresAt: new Date(Date.now() + 15 * 60_000).toISOString() };
+        if (offeredSlots.length) nextHybridBooking = { serviceId: service.id, professionalId: professional.id, date: answer.date, offeredSlots, expiresAt: new Date(Date.now() + 15 * 60_000).toISOString() };
         const label = hybrid ? ` para ${service.name} com ${professional.name}, em ${new Intl.DateTimeFormat("pt-BR", { timeZone: organization.timezone }).format(new Date(offeredSlots[0] ?? `${answer.date}T12:00:00Z`))}` : "";
         const price = hybrid && !asksAboutBookingPayment(input.text) && /\b(quanto|preco|valor|custa)\b/.test(normalizedText(input.text)) ? `${service.name}: ${service.priceInCents == null ? "preço sob consulta" : (service.priceInCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.\n` : "";
-        reply = price + (offeredSlots.length ? `Horários disponíveis${label}: ${offeredSlots.map(x => localTime(new Date(x), organization.timezone)).join(", ")}. Qual prefere?` : "Não há horários disponíveis nessa data. Deseja outro dia?");
+        reply = price + (offeredSlots.length ? `Horários disponíveis${label}: ${offeredSlots.map((x,index) => `${hybrid ? "" : `${index+1} - `}${localTime(new Date(x), organization.timezone)}`).join(hybrid ? ", " : "\n")}. Qual prefere?` : "Não há horários disponíveis nessa data. Deseja outro dia?");
       }
     }
   } else if (answer.action === "prepare_reschedule") {
@@ -816,6 +820,6 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
     const price = service.priceInCents == null ? "Preço sob consulta." : `${service.name} custa ${(service.priceInCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`;
     reply = price + " " + notice + "\n" + reply;
   }
-  const nextRequest: HybridRequest | undefined = hybrid && service && (answer.action === "availability" || answer.action === "prepare_booking") && !nextPending ? {serviceId: service.id, professionalId: professional?.id ?? null, date: answer.date, period: answer.period ?? null, expiresAt: new Date(Date.now() + 15 * 60_000).toISOString()} : undefined;
+  const nextRequest: HybridRequest | undefined = service && (answer.action === "availability" || answer.action === "prepare_booking") && !nextPending ? {serviceId: service.id, professionalId: professional?.id ?? null, offeredProfessionalIds:eligibleServiceProfessionals.map(person=>person.id), date: answer.date, period: answer.period ?? null, expiresAt: new Date(Date.now() + 15 * 60_000).toISOString()} : undefined;
   await send(input, conversation, { reply, model: result.model, intent: answer.intent, confidence: answer.confidence, pending: nextPending, hybridBooking: nextHybridBooking, hybridRequest: nextRequest, handoff: answer.action === "handoff", ai: !localProfessionalId }); return NextResponse.json({ accepted: true, action: answer.action });
 }

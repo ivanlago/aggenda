@@ -69,7 +69,7 @@ export function navigateWhatsApp(context: NavigationContext, text: string, state
   if (/^(equipe|humano|atendente|falar com (a |nossa )?equipe|nao sei( qual escolher)?)$/.test(normalized)) action = "nav:human";
   if (/^(produtos|catalogo( de produtos)?)$/.test(normalized)) action = "nav:products";
   if (/^(unidades?|endereco|localizacao|informacoes( da empresa)?)$/.test(normalized)) action = "nav:location";
-  if (/^(procedimentos?|servicos?|(quero |gostaria de )?(agendar|marcar)( um atendimento)?)$/.test(normalized)) action = "nav:services:0";
+  if (/^(procedimentos?|servicos?|(quero |gostaria de )?(agendar|marcar)( um atendimento)?)$/.test(normalized)) action = /^(quero |gostaria de )?(agendar|marcar)/.test(normalized) ? state?.options.find(option=>option.id.startsWith("nav:book:"))?.id ?? "nav:services:0" : "nav:services:0";
   if (/^(meus agendamentos|minhas consultas)$/.test(normalized)) action = "nav:appointments";
   if (!action && !context.core && /\b(agendar|marcar|reservar|reagendar|remarcar|cancelar|confirmar|meus agendamentos)\b/.test(normalized)) {
     const selected = context.services.filter(service => [service.name, service.shortName].some(name => name && normalized.includes(normalizeNavigationText(name)))).sort((left, right) => right.name.length - left.name.length)[0];

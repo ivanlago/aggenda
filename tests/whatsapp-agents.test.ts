@@ -406,6 +406,31 @@ test("both real agent routes share navigation; Chat only links, Core books after
     await call(hybrid, "Quero falar com uma pessoa", "core_ai");
     assert.equal(state.aiCalls.length, callsBeforeTypo, "name clarification, declining and handoff need no model call");
     assert.equal((await pg.query<{automation_paused:boolean}>("SELECT automation_paused FROM chat_conversations WHERE id=$1", [hybrid])).rows[0].automation_paused, true);
+
+    process.env.AGGENDA_SECRETARY_HYBRID_CONTACTS="";
+    const guided=randomUUID();
+    await pg.query("INSERT INTO chat_conversations(id,organization_id,channel_id,external_contact_id,client_id) VALUES($1,$2,$3,'5571999999999',$4)",[guided,organization,randomUUID(),client]);
+    const guidedCalls=state.aiCalls.length;
+    await call(guided,"menu","core_ai");
+    await call(guided,"1","core_ai");
+    await call(guided,"1","core_ai");
+    const proceed=await call(guided,"quero agendar","core_ai");
+    assert.match(proceed.output.body,/realizado por/);
+    assert.doesNotMatch(proceed.output.body,/Selecione a categoria/);
+    const guidedTypo=await call(guided,"Dra. Maria Costa","core_ai");
+    assert.match(guidedTypo.output.body,/Você quis dizer Dra. Marina Costa/);
+    await call(guided,"sim","core_ai");
+    state.availableSlots=[date+"T18:00:00.000Z"];
+    const guidedSlots=await call(guided,"amanhã à tarde","core_ai");
+    assert.match(guidedSlots.output.body,/15:00/);
+    const guidedChoice=await call(guided,"1","core_ai");
+    assert.ok(guidedChoice.output.raw_payload.pendingAction);
+    assert.match(guidedChoice.output.body,/Sinal: R\$/);
+    const guidedBooked=await call(guided,"CONFIRMAR","core_ai");
+    assert.match(guidedBooked.output.body,/Horário reservado/);
+    assert.match(guidedBooked.output.body,/Pix Copia e Cola/);
+    assert.equal((await pg.query("SELECT id FROM chat_messages WHERE external_message_id=$1",[`aggenda-ai-qr:${guidedBooked.messageId}`])).rows.length,1);
+    assert.equal(state.aiCalls.length,guidedCalls,"guided name, date, time and payment steps do not need model interpretation");
   } finally {
     if (pilot === undefined) delete process.env.AGGENDA_SECRETARY_HYBRID_CONTACTS; else process.env.AGGENDA_SECRETARY_HYBRID_CONTACTS = pilot;
     if (previous === undefined) delete process.env.AGGENDA_INTERNAL_API_KEY; else process.env.AGGENDA_INTERNAL_API_KEY = previous;

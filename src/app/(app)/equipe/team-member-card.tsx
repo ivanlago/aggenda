@@ -76,11 +76,11 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
           <label className="grid gap-1 text-sm font-bold">Nome completo<input className="field" name="fullName" defaultValue={member.fullName} required /></label>
           <label className="grid gap-1 text-sm font-bold">Nome curto<input className="field" name="shortName" defaultValue={member.shortName} required /></label>
           </>
-          <label className="flex items-center gap-2 text-sm font-bold sm:col-span-2"><input type="hidden" name="attendanceOptionSubmitted" value="1"/><input type="checkbox" name="receivesAppointments" checked={receivesAppointments} onChange={event=>setReceivesAppointments(event.target.checked)}/>Recebe agendamentos</label>
-          <div className="grid gap-4 sm:col-span-2 sm:grid-cols-3">
+          <div className={`grid items-start gap-4 sm:col-span-2 ${receivesAppointments ? "sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,.7fr)_minmax(0,1fr)]" : "sm:grid-cols-[minmax(0,1fr)_auto]"}`}>
           <>
           <label className="grid gap-1 text-sm font-bold">Perfil de acesso<select className="field" name="role" defaultValue={["owner", "admin", "professional", "receptionist"].includes(member.role) ? member.role : ""} required disabled={member.role === "owner"}>{!["owner", "admin", "professional", "receptionist"].includes(member.role) && <option value="" disabled>Selecione o novo perfil</option>}{member.role === "owner" && <option value="owner">Administrador</option>}<option value="admin">Administrador</option><option value="professional">Atendente</option><option value="receptionist">Secretária</option></select>{member.role === "owner" && <input type="hidden" name="role" value="owner" />}</label>
           </>
+          <label className="flex min-h-12 items-center gap-2 self-start whitespace-nowrap text-sm font-bold sm:mt-6"><input type="hidden" name="attendanceOptionSubmitted" value="1"/><input type="checkbox" name="receivesAppointments" checked={receivesAppointments} onChange={event=>setReceivesAppointments(event.target.checked)}/>Recebe agendamento</label>
           {receivesAppointments && <>
             <label className="grid gap-1 text-sm font-bold">Ordem na agenda<input className="field" name="agendaOrder" type="number" min={0} max={9999} step={1} defaultValue={member.agendaOrder ?? 0} /><span className="text-xs font-normal text-muted">Números menores aparecem primeiro. Empates seguem a ordem alfabética.</span></label>
           </>}

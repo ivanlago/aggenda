@@ -17,12 +17,19 @@ Implementado:
 
 Limites operacionais ainda existentes (não anunciar conformidade fiscal automática):
 - O demonstrativo não efetua repasse bancário, recolhimento tributário ou lançamento financeiro duplicado.
-- O DRE atual não é ajustado pela apuração auxiliar; a segregação tributária deve ser conferida pela contabilidade.
+- O DRE gerencial usa recebimento/pagamento (vencimento apenas para legados sem data), exclui a cota bruta dos parceiros da receita e não trata repasses/recolhimentos vinculados como despesa operacional. A segregação gerencial não determina a base tributária municipal.
+- Para evitar dupla contagem, vincule à apuração pagamentos manuais já realizados, de valor igual ao líquido/tributo. Desvinculação preserva o lançamento financeiro e registra motivo em auditoria.
+- Apurações cujo recebimento foi alterado e vínculos cujo pagamento mudou de valor são sinalizados no DRE; ajustes inconsistentes não são aplicados silenciosamente.
 - A emissão de NFS-e em produção já era bloqueada no projeto, aguardando homologação fiscal dos conectores. Não se removeu esse bloqueio.
-- Para emissão integrada do regime: homologar a discriminação das cotas e CNPJ em cada conector municipal/nacional, revisar base tributável com assessoria, implementar a vinculação fiscal com estornos e só então habilitar produção.
+- Os rascunhos nacional e Salvador recebem automaticamente a discriminação dos serviços, cotas-partes e CNPJ a partir das apurações. A memória é criptografada no rascunho. Mudança/estorno de apuração exige nova preparação antes do envio.
+- Esta preparação em sandbox mantém o valor integral no cálculo do conector e não aplica dedução tributária automática da parceria. A interface avisa expressamente. É preciso homologar o tratamento da base tributável e das retenções no canal específico antes de habilitar produção.
 - Emissão em nome do profissional requer seu próprio cadastro/autorização fiscal. O certificado da clínica não representa automaticamente o parceiro.
 - Contrato e homologação são providenciados pelas partes/órgãos competentes; o Aggenda registra dados declarados e não faz homologação jurídica.
 
 Migração: 0109_partner_contracts_and_allocations.sql. Cadastros anteriores ficam com contrato vazio; não recebem declarações ou homologação presumidas. Script apply-partnership-migration.mjs valida preservação dos registros antes/depois.
 
 Validação: tests/partnership-compliance.test.ts executa a migração e as ações reais em PGlite com dados fictícios, autenticação simulada e nenhum envio externo. Cobre vigência, permissões, isolamento, duplicidade, limites de alocação, retenções, referências, estorno e auditoria.
+
+Atualização 0110: professional_fiscal_outflows registra referências aos pagamentos existentes, com unicidade, validação de valor/tipo/empresa e auditoria. Não gera transferências bancárias. A apuração não pode ser estornada com repasse vinculado.
+
+Validação adicional: partnership-accounting.test.ts cobre receita própria, retenções, dupla contagem, estornos, alteração de fonte e memória fiscal. nfse.test.ts verifica a discriminação dentro do XML preparado e a recusa de envio após mudança da apuração; as suítes nacional/Salvador continuam validando os XMLs contra os XSDs oficiais.

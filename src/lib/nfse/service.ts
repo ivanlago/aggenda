@@ -1,3 +1,4 @@
+import { assertNfsePartnership, describeNfsePartnership, loadNfsePartnership } from "./partnership";
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import type { db } from "../../db";
@@ -21,11 +22,13 @@ export class NfseService {
   }
 
   async draft(organizationId: string, entryId: string, profile: NfseFiscalProfile, environment: FiscalEnvironment, input: FiscalDraft) {
-    const draft = normalizeFiscalDraft(profile, input);
+    const initial = normalizeFiscalDraft(profile, input);
     if (environment !== "sandbox") throw new Error("Emissão em produção aguarda homologação fiscal do Aggenda.");
     return this.database.transaction(async (tx) => {
       const [entry] = await tx.select({ id: financialEntries.id, type: financialEntries.type, status: financialEntries.status, amountInCents: financialEntries.amountInCents }).from(financialEntries).where(and(eq(financialEntries.id, entryId), eq(financialEntries.organizationId, organizationId))).for("update");
-      if (!entry || entry.type !== "receivable" || entry.status !== "received" || entry.amountInCents !== draft.amountInCents) throw new Error("Selecione um recebimento confirmado da clínica e confira o valor.");
+      if (!entry || entry.type !== "receivable" || entry.status !== "received" || entry.amountInCents !== initial.amountInCents) throw new Error("Selecione um recebimento confirmado da clínica e confira o valor.");
+      const partnership = await loadNfsePartnership(tx,organizationId,entryId,initial.amountInCents);
+      const draft = normalizeFiscalDraft(profile,{...initial,partnership,description:describeNfsePartnership(initial.description,partnership,2000)});
       const [external] = await tx.select({ id: fiscalDocuments.id }).from(fiscalDocuments).where(and(eq(fiscalDocuments.organizationId, organizationId), eq(fiscalDocuments.financialEntryId, entryId), eq(fiscalDocuments.status, "issued"))).limit(1);
       if (external) throw new Error("Já existe uma nota externa vinculada a este recebimento.");
       const [existing] = await tx.select().from(nfseRequests).where(and(eq(nfseRequests.organizationId, organizationId), eq(nfseRequests.financialEntryId, entryId), eq(nfseRequests.environment, environment), sql`${nfseRequests.status} <> 'rejected'`));
@@ -67,6 +70,7 @@ export class NfseService {
       if (!entry || entry.type !== "receivable" || entry.status !== "received" || entry.amountInCents !== row.amountInCents) throw new Error("O recebimento mudou. Revise o rascunho antes de emitir.");
       const [external] = await tx.select({ id: fiscalDocuments.id }).from(fiscalDocuments).where(and(eq(fiscalDocuments.organizationId, organizationId), eq(fiscalDocuments.financialEntryId, row.financialEntryId), eq(fiscalDocuments.status, "issued"))).limit(1);
       if (external) throw new Error("Já existe uma nota externa vinculada a este recebimento.");
+      assertNfsePartnership(await loadNfsePartnership(tx,organizationId,row.financialEntryId,row.amountInCents),draft.partnership);
       const [claim] = await tx.update(nfseRequests).set({ status: "processing", encryptedDps: this.vault.encrypt(organizationId, `${id}/dps`, signed), message: "Envio iniciado. Consulte o resultado antes de qualquer nova tentativa.", updatedAt: new Date() }).where(and(eq(nfseRequests.id, id), eq(nfseRequests.organizationId, organizationId), eq(nfseRequests.status, "draft"), eq(nfseRequests.encryptedDraft, row.encryptedDraft))).returning();
       if (claim) await this.event(tx, claim, "submission_started");
       return claim;

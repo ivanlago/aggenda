@@ -109,7 +109,7 @@ test("Postgres stores regime snapshots for all four regimes and refuses profile 
   process.env.NFSE_STORAGE_KEYS = JSON.stringify(keys); process.env.NFSE_STORAGE_ACTIVE_KEY = "test";
   const client = new PGlite(), vault = new NfseVault(keys, "test");
   try {
-    await client.exec(`CREATE TABLE organizations(id uuid PRIMARY KEY); CREATE TABLE financial_entries(id uuid PRIMARY KEY, organization_id uuid NOT NULL, type text NOT NULL, status text NOT NULL, amount_in_cents integer NOT NULL); CREATE TABLE fiscal_documents(id uuid PRIMARY KEY, organization_id uuid NOT NULL, financial_entry_id uuid, status text);`);
+    await client.exec(`CREATE TABLE organizations(id uuid PRIMARY KEY); CREATE TABLE financial_entries(id uuid PRIMARY KEY, organization_id uuid NOT NULL, type text NOT NULL, status text NOT NULL, amount_in_cents integer NOT NULL); CREATE TABLE fiscal_documents(id uuid PRIMARY KEY, organization_id uuid NOT NULL, financial_entry_id uuid, status text); CREATE TABLE professional_fiscal_allocations(id uuid PRIMARY KEY, organization_id uuid NOT NULL, financial_entry_id uuid NOT NULL, gross_in_cents integer, partner_in_cents integer, salon_in_cents integer, snapshot jsonb, voided_at timestamp);`);
     for (const migration of ["0068_nfse_requests", "0069_nfse_custody_events", "0070_nfse_rejected_attempts"]) await client.exec(await readFile(new URL(`../drizzle/${migration}.sql`, import.meta.url), "utf8"));
     const database = drizzle(client) as unknown as typeof db, organizationId = randomUUID();
     await client.query("INSERT INTO organizations VALUES ($1)", [organizationId]);

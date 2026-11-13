@@ -771,6 +771,13 @@
       "when": 1794569430474,
       "tag": "0109_partner_contracts_and_allocations",
       "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1794570992778,
+      "tag": "0110_partner_outflows",
+      "breakpoints": true
     }
   ]
 }

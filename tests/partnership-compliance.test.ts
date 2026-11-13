@@ -43,6 +43,7 @@ test("migration and real actions preserve fiscal history, scope tenants and prev
     await pg.exec("CREATE UNIQUE INDEX fiscal_rate_unique ON professional_fiscal_shares(professional_id,service_id)");
     await pg.query("INSERT INTO professional_fiscal_partnerships(professional_id,organization_id,cnpj,is_active) VALUES($1,$2,'12345678000195',true)",[professionalId,org]);
     await pg.exec(readFileSync("drizzle/0109_partner_contracts_and_allocations.sql","utf8"));
+    await pg.exec(readFileSync("drizzle/0110_partner_outflows.sql","utf8"));
     assert.deepEqual((await pg.query("SELECT contract FROM professional_fiscal_partnerships")).rows,[{contract:{}}],"legacy partnership remains an incomplete declaration");
     for(const id of [org,otherOrg]) await pg.query("INSERT INTO organizations(id,name,slug) VALUES($1,'Fictício',$2)",[id,`test-${id}`]);
     await pg.exec("INSERT INTO users(id,name,email) VALUES('owner','Fictício','owner@example.invalid')");
@@ -83,6 +84,17 @@ test("migration and real actions preserve fiscal history, scope tenants and prev
     assert.equal((await pg.query("SELECT * FROM professional_fiscal_allocations WHERE voided_at IS NOT NULL")).rows.length,1);
     assert.equal((await pg.query("SELECT * FROM financial_entries")).rows.length,2,"allocation does not duplicate income or create expenses");
     assert.ok((await pg.query("SELECT * FROM audit_logs")).rows.length>=4);
+    const current=(await pg.query<{id:string}>("SELECT id FROM professional_fiscal_allocations WHERE voided_at IS NULL")).rows[0];
+    const payment=randomUUID(),tax=randomUUID();
+    for(const [id,amount] of [[payment,3800],[tax,200]]) await pg.query("INSERT INTO financial_entries(id,organization_id,type,status,source,amount_in_cents,realized_date,due_date,description) VALUES($1,$2,'payable','paid','manual',$3,'2026-11-13','2026-11-13','Repasse fictício')",[id,org,amount]);
+    await assert.rejects(actionModule.exports.linkPartnershipOutflow(form({allocationId:current.id,financialEntryId:tax,kind:"net_transfer"})),/exatamente igual/);
+    await actionModule.exports.linkPartnershipOutflow(form({allocationId:current.id,financialEntryId:payment,kind:"net_transfer"}));
+    await actionModule.exports.linkPartnershipOutflow(form({allocationId:current.id,financialEntryId:tax,kind:"tax_remittance"}));
+    await assert.rejects(actionModule.exports.voidPartnershipAllocation(form({id:current.id,reason:"Tentativa com repasse vinculado"})),/Desvincule/);
+    const links=(await pg.query<{id:string}>("SELECT id FROM professional_fiscal_outflows")).rows;
+    state.org=otherOrg;await assert.rejects(actionModule.exports.unlinkPartnershipOutflow(form({id:links[0].id,reason:"Tentativa em outra empresa"})),/não encontrado/);state.org=org;
+    for(const link of links) await actionModule.exports.unlinkPartnershipOutflow(form({id:link.id,reason:"Correção do vínculo do pagamento"}));
+    assert.equal((await pg.query("SELECT * FROM financial_entries WHERE type='payable'")).rows.length,2,"unlinking never deletes the original payments");
     const bad=await actionModule.exports.saveFiscalPartnership(form({professionalId,active:"on",cnpj:"12345678000195",contractSubmitted:"1",startsOn:"2026-99-01"}));assert.ok(bad?.error);
   } finally {Reflect.deleteProperty(globalThis,key);await pg.close();}
 });

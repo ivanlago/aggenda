@@ -26,5 +26,6 @@ try{
  assert.deepEqual(await capture(),before,'Existing financial or partnership records changed');
  assert.equal((await pool.query("SELECT count(*)::int AS count FROM information_schema.columns WHERE table_name='professional_fiscal_partnerships' AND column_name='contract'")).rows[0].count,1);
  assert.equal((await pool.query("SELECT to_regclass('professional_fiscal_allocations') IS NOT NULL AS ready")).rows[0].ready,true);
- console.log(JSON.stringify({mode,migration:'0109',preserved:true,partners:before.partners.length,shares:before.shares.length,financialEntries:before.finance[0].count,commissionEntries:before.commissions[0].count}));
+ assert.equal((await pool.query("SELECT to_regclass('professional_fiscal_outflows') IS NOT NULL AS ready")).rows[0].ready,true);
+ console.log(JSON.stringify({mode,migration:'0110',preserved:true,partners:before.partners.length,shares:before.shares.length,financialEntries:before.finance[0].count,commissionEntries:before.commissions[0].count}));
 }finally{await pool.end();}

@@ -1,3 +1,4 @@
+import { assertNfsePartnership, describeNfsePartnership, loadNfsePartnership } from "../partnership";
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -38,12 +39,14 @@ export class SalvadorNfseService {
   async draft(organizationId: string, entryId: string, issuer: SalvadorIssuer, environment: string, input: SalvadorDraft) {
     if (environment !== "sandbox") throw new Error("Produção municipal bloqueada até homologação.");
     assertSalvadorIssuer(issuer);
-    const draft = salvadorDraftSchema.parse(input);
-    const stored = salvadorStoredDraftSchema.parse({ channel: "salvador", issuer: { cnpj: issuer.cnpj, municipalRegistration: issuer.municipalRegistration, municipalityCode: issuer.municipalityCode, taxRegime: issuer.taxRegime }, input: draft });
-    const rpsId = salvadorRpsId(issuer, draft);
+    const initial = salvadorDraftSchema.parse(input);
     return this.database.transaction(async (tx) => {
       const [entry] = await tx.select({ id: financialEntries.id, type: financialEntries.type, status: financialEntries.status, amount: financialEntries.amountInCents }).from(financialEntries).where(and(eq(financialEntries.id, entryId), eq(financialEntries.organizationId, organizationId))).for("update");
-      if (!entry || entry.type !== "receivable" || entry.status !== "received" || entry.amount !== draft.amountInCents) throw new Error("Confira o recebimento confirmado e o valor desta clínica.");
+      if (!entry || entry.type !== "receivable" || entry.status !== "received" || entry.amount !== initial.amountInCents) throw new Error("Confira o recebimento confirmado e o valor desta clínica.");
+      const partnership = await loadNfsePartnership(tx,organizationId,entryId,initial.amountInCents);
+      const draft = salvadorDraftSchema.parse({...initial,partnership,description:describeNfsePartnership(initial.description,partnership,1200)});
+      const stored = salvadorStoredDraftSchema.parse({channel:"salvador",issuer:{cnpj:issuer.cnpj,municipalRegistration:issuer.municipalRegistration,municipalityCode:issuer.municipalityCode,taxRegime:issuer.taxRegime},input:draft});
+      const rpsId = salvadorRpsId(issuer,draft);
       const [external] = await tx.select({ id: fiscalDocuments.id }).from(fiscalDocuments).where(and(eq(fiscalDocuments.organizationId, organizationId), eq(fiscalDocuments.financialEntryId, entryId), eq(fiscalDocuments.status, "issued"))).limit(1);
       if (external) throw new Error("O recebimento já possui uma nota externa.");
       const [existing] = await tx.select().from(nfseRequests).where(and(eq(nfseRequests.organizationId, organizationId), eq(nfseRequests.financialEntryId, entryId), eq(nfseRequests.environment, environment), sql`${nfseRequests.status} <> 'rejected'`)).limit(1);
@@ -74,6 +77,7 @@ export class SalvadorNfseService {
       const [entry] = await tx.select({ type: financialEntries.type, status: financialEntries.status, amount: financialEntries.amountInCents }).from(financialEntries).where(and(eq(financialEntries.organizationId, organizationId), eq(financialEntries.id, row.financialEntryId))).for("update");
       const [external] = await tx.select({ id: fiscalDocuments.id }).from(fiscalDocuments).where(and(eq(fiscalDocuments.organizationId, organizationId), eq(fiscalDocuments.financialEntryId, row.financialEntryId), eq(fiscalDocuments.status, "issued"))).limit(1);
       if (!entry || entry.type !== "receivable" || entry.status !== "received" || entry.amount !== row.amountInCents || external) throw new Error("O recebimento mudou ou já possui nota externa. Revise antes de emitir.");
+      assertNfsePartnership(await loadNfsePartnership(tx,organizationId,row.financialEntryId,row.amountInCents),stored.input.partnership);
       const [claim] = await tx.update(nfseRequests).set({ status: "processing", encryptedDps: this.vault.encrypt(organizationId, `${id}/dps`, signed), message: "Lote municipal enviado para homologação; aguardando confirmação.", updatedAt: new Date() }).where(and(eq(nfseRequests.id, id), eq(nfseRequests.organizationId, organizationId), eq(nfseRequests.status, "draft"), eq(nfseRequests.encryptedDraft, row.encryptedDraft))).returning();
       if (claim) await this.event(tx, claim, "submission_started", { channel: "salvador" });
       return claim;

@@ -70,7 +70,7 @@ test("Postgres: tenant isolation, duplicate clicks, timeout recovery and product
   process.env.NFSE_STORAGE_ACTIVE_KEY = "test";
   const client = new PGlite();
   try {
-    await client.exec(`CREATE TABLE organizations(id uuid PRIMARY KEY); CREATE TABLE financial_entries(id uuid PRIMARY KEY, organization_id uuid NOT NULL, type text NOT NULL, status text NOT NULL, amount_in_cents integer NOT NULL); CREATE TABLE fiscal_documents(id uuid PRIMARY KEY, organization_id uuid NOT NULL, financial_entry_id uuid, status text);`);
+    await client.exec(`CREATE TABLE organizations(id uuid PRIMARY KEY); CREATE TABLE financial_entries(id uuid PRIMARY KEY, organization_id uuid NOT NULL, type text NOT NULL, status text NOT NULL, amount_in_cents integer NOT NULL); CREATE TABLE fiscal_documents(id uuid PRIMARY KEY, organization_id uuid NOT NULL, financial_entry_id uuid, status text); CREATE TABLE professional_fiscal_allocations(id uuid PRIMARY KEY, organization_id uuid NOT NULL, financial_entry_id uuid NOT NULL, gross_in_cents integer, partner_in_cents integer, salon_in_cents integer, snapshot jsonb, voided_at timestamp);`);
     await client.exec(await readFile(new URL("../drizzle/0068_nfse_requests.sql", import.meta.url), "utf8"));
     await client.exec(await readFile(new URL("../drizzle/0069_nfse_custody_events.sql", import.meta.url), "utf8"));
     await client.exec(await readFile(new URL("../drizzle/0070_nfse_rejected_attempts.sql", import.meta.url), "utf8"));
@@ -98,6 +98,18 @@ test("Postgres: tenant isolation, duplicate clicks, timeout recovery and product
       assert.equal(a.id, b.id);
       await assert.rejects(service.draft(organizationId, entry, profile, "production", input), /produção/);
       await assert.rejects(service.draft(organizationId, await makeEntry(), profile, "sandbox", { ...input, amountInCents: 1 }), /valor/);
+    });
+    await t.test("partnership disclosure is stored in the signed draft and changes block submission before network", async () => {
+      const entry = await makeEntry(), allocation = randomUUID();
+      await client.query("INSERT INTO professional_fiscal_allocations(id,organization_id,financial_entry_id,gross_in_cents,partner_in_cents,salon_in_cents,snapshot) VALUES($1,$2,$3,25000,10000,15000,$4)",[allocation,organizationId,entry,JSON.stringify({cnpj:"12345678000195",serviceName:"Estética & teste"})]);
+      const row = await service.draft(organizationId,entry,profile,"sandbox",input);
+      const {readStoredNfseValue} = await import("../src/lib/nfse/vault");
+      const saved = JSON.parse(readStoredNfseValue(organizationId, row.id + "/draft", row.encryptedDraft));
+      assert.match(saved.description,/12345678000195/); assert.equal(saved.partnership.shares[0].partner,10000);
+      const xml = buildDps(profile,"sandbox","1",String(row.sequence),saved).xml;
+      assert.match(xml,/Salão Parceiro/);assert.match(xml,/12345678000195/);assert.match(xml,/<vServ>250.00<\/vServ>/);
+      await client.query("UPDATE professional_fiscal_allocations SET voided_at=now() WHERE id=$1",[allocation]);
+      const before=posts;await assert.rejects(service.submit(organizationId,row.id,profile,xml=>xml),/apuração da parceria mudou/);assert.equal(posts,before);
     });
     await t.test("concurrent submissions issue once and recover accepted timeout through GET", async () => {
       const row = await service.draft(organizationId, await makeEntry(), profile, "sandbox", input); pendingId = row.dpsId;

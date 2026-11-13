@@ -1,3 +1,4 @@
+import { nfsePartnershipSchema } from "../partnership";
 import { DOMParser, XMLSerializer, type Element } from "@xmldom/xmldom";
 import { SignedXml } from "xml-crypto";
 import { z } from "zod";
@@ -9,6 +10,7 @@ export const salvadorNamespace = "http://www.abrasf.org.br/ABRASF/arquivos/nfse.
 const digits = (length: number) => z.string().regex(new RegExp(`^\\d{${length}}$`));
 const text = (max: number) => z.string().trim().min(1).max(max).refine((v) => !/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(v));
 export const salvadorDraftSchema = z.object({
+  partnership: nfsePartnershipSchema.optional(),
   channel: z.literal("salvador"),
   rpsNumber: z.string().regex(/^[1-9]\d{0,14}$/),
   rpsSeries: z.string().regex(/^[A-Za-z0-9]{1,5}$/),

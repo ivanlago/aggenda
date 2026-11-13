@@ -2444,6 +2444,21 @@ export const professionalFiscalAllocations = pgTable("professional_fiscal_alloca
   check("fiscal_allocation_balanced", sql`${table.grossInCents} > 0 AND ${table.partnerInCents} >= 0 AND ${table.salonInCents} >= 0 AND ${table.grossInCents} = ${table.partnerInCents} + ${table.salonInCents} AND ${table.withheldInCents} >= 0 AND ${table.withheldInCents} <= ${table.partnerInCents} AND ${table.percentageBasisPoints} BETWEEN 0 AND 10000`),
 ]);
 
+export const professionalFiscalOutflows = pgTable("professional_fiscal_outflows", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  allocationId: uuid("allocation_id").notNull().references(() => professionalFiscalAllocations.id, { onDelete: "restrict" }),
+  financialEntryId: uuid("financial_entry_id").notNull().references(() => financialEntries.id, { onDelete: "restrict" }),
+  kind: text("kind").notNull(),
+  amountInCents: integer("amount_in_cents").notNull(),
+  createdByUserId: text("created_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => [
+  uniqueIndex("fiscal_outflow_entry_unique").on(table.financialEntryId),
+  uniqueIndex("fiscal_outflow_allocation_kind_unique").on(table.allocationId, table.kind),
+  check("fiscal_outflow_kind_check", sql`${table.kind} IN ('net_transfer', 'tax_remittance') AND ${table.amountInCents} > 0`),
+]);
+
 export const inventoryPurchases = pgTable("inventory_purchases", {
   id: uuid("id").primaryKey(),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),

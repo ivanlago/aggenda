@@ -1,3 +1,4 @@
+import { nfsePartnershipSchema } from "./partnership";
 import { DOMParser } from "@xmldom/xmldom";
 import { SignedXml } from "xml-crypto";
 import { z } from "zod";
@@ -9,6 +10,7 @@ export const fiscalIssuerSchema = z.object({ cnpj: z.string().regex(/^\d{14}$/),
 export const payerAddressSchema = z.object({ street: z.string().trim().min(1).max(125), number: z.string().trim().min(1).max(10), district: z.string().trim().min(1).max(60), municipalityCode: z.string().regex(/^\d{7}$/), zip: z.string().regex(/^\d{8}$/) }).strict();
 
 export const fiscalDraftSchema = z.object({
+  partnership: nfsePartnershipSchema.optional(),
   payerDocument: z.string().regex(/^(\d{11}|\d{14})$/),
   payerName: z.string().trim().min(2).max(150),
   description: z.string().trim().min(3).max(2000),

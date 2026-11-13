@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, type ReactNode, type KeyboardEvent } from "react";
-import { CalendarClock, ChartNoAxesCombined, KanbanSquare, MessageCircleMore, TicketPercent, UserRoundSearch } from "lucide-react";
+import { Bell, CalendarClock, ChartNoAxesCombined, KanbanSquare, MessageCircleMore, TicketPercent, UserRoundSearch } from "lucide-react";
 
 const tabs = [
+  { id: "lembretes", label: "Lembretes", icon: Bell },
   { id: "retornos", label: "Retornos por serviço", icon: CalendarClock },
   { id: "recuperacao", label: "Recuperação de pacientes", icon: UserRoundSearch },
   { id: "voucher", label: "Voucher", icon: TicketPercent },

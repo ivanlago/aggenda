@@ -1,3 +1,4 @@
+import { ReminderSettings } from "@/components/reminder-settings";
 import { MetricCard } from "@/components/metric-card";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { and, desc, eq, gte, lt } from "drizzle-orm";
@@ -31,7 +32,7 @@ export const metadata = { title: "CRM" };
 export default async function GrowthPage({ searchParams }: { searchParams: Promise<ConversationFilters & { returnState?: string; returnSearch?: string; tab?: string }> }) {
   const { session, organization } = await requireOrganization();
   const query = await searchParams;
-  const initialTab = query.tab === "voucher" || query.tab === "recuperacao" || query.tab === "conversas" || query.tab === "funil" || query.tab === "relatorios" ? query.tab : "retornos";
+  const initialTab = query.tab === "lembretes" || query.tab === "voucher" || query.tab === "recuperacao" || query.tab === "conversas" || query.tab === "funil" || query.tab === "relatorios" ? query.tab : "retornos";
   const now = new Date(); const monthStart = new Date(now.getFullYear(), now.getMonth(), 1); const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const recoveryLimit = new Date(now.getTime() - organization.patientRecoveryDays * 86_400_000);
   const [monthAppointments, pastAppointments, clientRows] = await Promise.all([
@@ -53,10 +54,11 @@ export default async function GrowthPage({ searchParams }: { searchParams: Promi
     ].map(([Icon, value, label]) => <MetricCard key={String(label)} label={<>{String(label)}</>} value={<>{String(value)}</>} icon={<Icon />} />)}</section>
 
     <GrowthTabs key={JSON.stringify(query)} initialTab={initialTab} panels={{
+      lembretes: hasOrganizationPermission(organization.role, "crm.read") ? <ReminderSettings /> : null,
       retornos: hasOrganizationPermission(organization.role, "crm.read") ? <ProcedureReturnsPanel organizationId={organization.id} timezone={organization.timezone} canManage={hasOrganizationPermission(organization.role, "crm.manage", organization.teamPermissionOverrides)} filter={query.returnState} search={query.returnSearch} /> : null,
       recuperacao: (
     <section className="mt-5 grid gap-5">
-      <article className="panel"><div className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-extrabold">Recuperação de pacientes</h2><p className="mt-1 text-sm text-muted">Sem atendimento há {organization.patientRecoveryDays} dias ou nunca atendidos.</p></div><Link className="secondary-button" href="/configuracoes?aba=reminders">Configurar prazo</Link></div><PaginatedCollection label="Registros" className="mt-4 divide-y">{inactive.map((client) => <div className="flex items-center justify-between gap-3 py-3" key={client.id}><div><p className="font-bold">{client.name}</p><p className="text-xs text-muted">Último atendimento: {latest.get(client.id)?.toLocaleDateString("pt-BR") ?? "nenhum"}</p></div><ActionForm action={sendRecoveryMessage} successMessage="Convite de retorno enfileirado."><input type="hidden" name="clientId" value={client.id} /><button className="secondary-button"><MessageCircleMore className="mr-2 size-4" />Convidar</button></ActionForm></div>)}{!inactive.length && <p className="empty-state">Nenhum paciente elegível no prazo atual.</p>}</PaginatedCollection></article>
+      <article className="panel"><div className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-extrabold">Recuperação de pacientes</h2><p className="mt-1 text-sm text-muted">Sem atendimento há {organization.patientRecoveryDays} dias ou nunca atendidos.</p></div><Link className="secondary-button" href="/crescimento?tab=lembretes">Configurar prazo</Link></div><PaginatedCollection label="Registros" className="mt-4 divide-y">{inactive.map((client) => <div className="flex items-center justify-between gap-3 py-3" key={client.id}><div><p className="font-bold">{client.name}</p><p className="text-xs text-muted">Último atendimento: {latest.get(client.id)?.toLocaleDateString("pt-BR") ?? "nenhum"}</p></div><ActionForm action={sendRecoveryMessage} successMessage="Convite de retorno enfileirado."><input type="hidden" name="clientId" value={client.id} /><button className="secondary-button"><MessageCircleMore className="mr-2 size-4" />Convidar</button></ActionForm></div>)}{!inactive.length && <p className="empty-state">Nenhum paciente elegível no prazo atual.</p>}</PaginatedCollection></article>
 
     </section>
       ),

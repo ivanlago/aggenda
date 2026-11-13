@@ -31,5 +31,5 @@ export async function undoDataImport(formData: FormData) {
     await tx.update(dataImports).set({ status: "undone", undoneAt: new Date() }).where(eq(dataImports.id, id));
   });
   await writeAuditLog({ organizationId: organization.id, userId: session.user.id, action: "undo", entityType: "data_import", entityId: id, details: { importedEntityType: item.entityType } });
-  revalidatePath("/dados"); revalidatePath("/clientes"); revalidatePath("/servicos");
+  revalidatePath("/dados"); revalidatePath("/configuracoes"); revalidatePath("/clientes"); revalidatePath("/servicos");
 }

@@ -7,16 +7,15 @@ import { Search, Trash2, X } from "lucide-react";
 import Link from "next/link";
 
 import { deleteClient } from "@/actions/app";
-import { ClientOptionalFields } from "@/components/client-optional-fields";
+import { ClientFormFields } from "@/components/client-form-fields";
 import { NewClientForm } from "@/components/new-client-form";
 import { PageHeader } from "@/components/page-header";
-import { PhoneInput } from "@/components/phone-input";
 import { db } from "@/db";
 import { appointments, clients } from "@/db/schema";
 import { requireOrganization, requireProfessionalScope } from "@/lib/session";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { formatPhone } from "@/lib/phone";
-import { EntityImageField, EntityThumbnail } from "@/components/entity-image-field";
+import { EntityThumbnail } from "@/components/entity-image-field";
 
 export const metadata = { title: "Clientes" };
 
@@ -51,22 +50,7 @@ export default async function ClientsPage({
         description={`Mantenha ${organization.clientLabelPlural.toLowerCase()} e observações importantes organizados.`}
         actions={canManage && <NewClientForm clientLabel={organization.clientLabel}>
 
-          <label className="grid min-w-0 gap-2 text-sm font-bold">Nome completo<input className="field" name="name" required placeholder="Nome completo" autoComplete="name" /></label>
-          <label className="grid min-w-0 gap-2 text-sm font-bold">Telefone<PhoneInput name="phone" placeholder="(71) 99999-9999" /></label>
-          <label className="grid min-w-0 gap-2 text-sm font-bold">E-mail<input className="field" name="email" type="email" placeholder="E-mail" /></label>
-          <details className="min-w-0 col-span-full"><summary className="cursor-pointer font-bold text-brand">Informações complementares (opcional)</summary><div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2">
-          <label className="grid gap-2 text-sm font-bold">Data de nascimento<input className="field" name="birthDate" type="date" /></label>
-          <label className="grid min-w-0 gap-2 text-sm font-bold">Sexo<select className="field" name="gender" defaultValue="">
-            <option value="">Sexo não informado</option>
-            <option value="female">Feminino</option>
-            <option value="male">Masculino</option>
-            <option value="other">Outro</option>
-            <option value="not_informed">Prefere não informar</option>
-          </select></label>
-          <div className="sm:col-span-2"><ClientOptionalFields /></div>
-          <label className="grid min-w-0 gap-2 text-sm font-bold sm:col-span-2">Observações<textarea className="field min-h-24" name="notes" placeholder="Observações" /></label>
-          <div className="min-w-0 sm:col-span-2"><EntityImageField label={`Foto do ${organization.clientLabel.toLowerCase()}`} /></div>
-          </div></details>
+          <ClientFormFields clientLabel={organization.clientLabel} />
           <FormActions />
         </NewClientForm>}
       />

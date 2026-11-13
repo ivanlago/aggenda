@@ -7,9 +7,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { consumedPackageQuantity } from "@/lib/package-remaining";
 import Link from "next/link";
 import Image from "next/image";
-import { ClientOptionalFields } from "@/components/client-optional-fields";
-import { EntityImageField } from "@/components/entity-image-field";
-import { PhoneInput } from "@/components/phone-input";
+import { ClientFormFields } from "@/components/client-form-fields";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
@@ -221,19 +219,9 @@ export default async function ClientHistoryPage({
           </dl>
         </div>
                   {canManage && <div className="mt-5 border-t pt-4"><ModalShell title="Editar dados do cliente" triggerLabel="Editar dados" variant="edit" wide closeOnSuccess>
-                    <ActionForm action={updateClient} successMessage="Cliente atualizado com sucesso." className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2">
+                    <ActionForm action={updateClient} successMessage="Cliente atualizado com sucesso." className="mt-4 grid min-w-0 gap-4">
                       <input type="hidden" name="id" value={client.id} />
-                      <label className="grid min-w-0 gap-2 text-sm font-bold">Nome<input className="field py-2" aria-label="Nome completo" name="name" defaultValue={client.name} required /></label>
-                      <label className="grid min-w-0 gap-2 text-sm font-bold">WhatsApp<PhoneInput className="field py-2" aria-label="Telefone" name="phone" defaultValue={client.phone} placeholder="Telefone: (71) 99999-9999" /></label>
-                      <label className="grid min-w-0 gap-2 text-sm font-bold">E-mail<input className="field py-2" aria-label="E-mail" name="email" type="email" defaultValue={client.email ?? ""} placeholder="E-mail" /></label>
-                      <label className="grid min-w-0 gap-2 text-sm font-bold">Data de nascimento<input className="field py-2" name="birthDate" type="date" defaultValue={client.birthDate ?? ""} aria-label="Data de nascimento" /></label>
-                      <label className="grid min-w-0 gap-2 text-sm font-bold">Sexo<select className="field py-2" name="gender" defaultValue={client.gender ?? ""} aria-label="Sexo">
-                        <option value="">Sexo não informado</option>
-                        <option value="female">Feminino</option><option value="male">Masculino</option><option value="other">Outro</option><option value="not_informed">Prefere não informar</option>
-                      </select></label>
-                      <div className="min-w-0 sm:col-span-2"><ClientOptionalFields client={client} /></div>
-                      <label className="grid min-w-0 gap-2 text-sm font-bold">Observações<textarea className="field min-h-20 py-2" aria-label="Observações" name="notes" defaultValue={client.notes ?? ""} placeholder="Observações" /></label>
-                      <EntityImageField currentUrl={client.imageUrl} label={`Foto do ${organization.clientLabel.toLowerCase()}`} />
+                      <ClientFormFields client={client} clientLabel={organization.clientLabel} />
                       <FormActions editing />
                     </ActionForm>
                   </ModalShell></div>}

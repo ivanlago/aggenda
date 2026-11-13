@@ -82,7 +82,7 @@ export async function ServicesCatalog({ searchParams }: { searchParams: Promise<
                     {item.durationMinutes} min
                     {item.priceInCents != null ? ` · ${(item.priceInCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}
                   </p>
-                  {!professionalLinks.some(link => link.serviceId === item.id && attendants.some(person => person.id === link.professionalId && person.isActive && person.isBookable)) && <p className="mt-1 text-xs text-amber-800">Sem atendentes habilitados para agendamento</p>}
+                  {!professionalLinks.some(link => link.serviceId === item.id && attendants.some(person => person.id === link.professionalId && person.isActive && person.isBookable)) && <p className="mt-1 text-xs text-amber-800">Sem colaboradores habilitados para agendamento</p>}
                 </div>
                 {canManage && <ModalShell title={`Editar ${organization.serviceLabel.toLowerCase()}: ${item.name}`} variant="edit" wide closeOnSuccess>
                   <ServiceForm item={item} label={organization.serviceLabel} categories={categories} professionals={attendants} selectedProfessionalIds={professionalLinks.filter(link => link.serviceId === item.id).map(link => link.professionalId)} />

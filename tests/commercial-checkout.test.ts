@@ -31,8 +31,8 @@ test("real migration, payment deduplication, pilot quotas and prepaid extras in 
   const client = new PGlite();
   try {
     await client.exec(`CREATE TABLE organizations (id uuid PRIMARY KEY); CREATE TABLE users (id text PRIMARY KEY);
-      CREATE TABLE professionals (id uuid PRIMARY KEY, organization_id uuid, is_active boolean, user_id text);
-      CREATE TABLE organization_members (organization_id uuid, user_id text, role text, created_at timestamp DEFAULT now(), PRIMARY KEY (organization_id,user_id));
+      CREATE TABLE professionals (id uuid PRIMARY KEY, organization_id uuid, is_active boolean, user_id text, is_bookable boolean DEFAULT true);
+      CREATE TABLE organization_members (organization_id uuid, user_id text, signature_image text, role text, created_at timestamp DEFAULT now(), PRIMARY KEY (organization_id,user_id));
       CREATE TABLE organization_subscriptions (organization_id uuid PRIMARY KEY, plan text NOT NULL DEFAULT 'trial', status text NOT NULL DEFAULT 'trialing',
         stripe_customer_id text, stripe_subscription_id text, stripe_price_id text, billing_provider text, billing_customer_id text, billing_subscription_id text,
         billing_checkout_id text, last_payment_id text, billing_plan_code text, billing_interval_months integer, billing_payment_method text, pending_period_months integer,
@@ -148,6 +148,11 @@ test("real migration, payment deduplication, pilot quotas and prepaid extras in 
     await client.query("INSERT INTO organization_members (organization_id,user_id,role) VALUES ($1,'attendant','professional')", [org2]);
     await client.query("INSERT INTO professionals VALUES ($1,$2,true,'attendant')", [randomUUID(), org2]);
     assert.equal(await commercialTeamSlots(database, org2), 1);
+    const ownerProfile=randomUUID();
+    await client.query("INSERT INTO professionals(id,organization_id,is_active,user_id,is_bookable) VALUES($1,$2,true,'owner',false)",[ownerProfile,org2]);
+    assert.equal(await commercialTeamSlots(database,org2),1,"an administrator with bookings disabled keeps the included admin login");
+    await assert.rejects(database.transaction(async tx=>{const check=await checkTeamCapacityAfterChange(tx,org2);await tx.update(schema.professionals).set({isBookable:true}).where(eq(schema.professionals.id,ownerProfile));await check();}),/vaga adicional/);
+
     await assert.rejects(addSecretary(), /vaga adicional/);
     await database.update(schema.commercialContracts).set({ professionalLimit: 2 }).where(eq(schema.commercialContracts.organizationId, org2));
     await addSecretary();

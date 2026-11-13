@@ -58,7 +58,8 @@ export async function createUnifiedTeamMember(formData: FormData) {
   const shortName = field(formData, "shortName");
   const email = field(formData, "email").toLowerCase();
   const role = parsedTeamRole(formData);
-  const isAttendant = field(formData, "isAttendant") === "yes";
+  const isAttendant = formData.get("attendanceOptionSubmitted") === "1"
+    ? formData.get("receivesAppointments") === "on" : field(formData, "isAttendant") === "yes";
   const professionId = field(formData, "professionId");
   const agendaOrder = Number(field(formData, "agendaOrder") || "0");
   if (!Number.isInteger(agendaOrder) || agendaOrder < 0 || agendaOrder > 9999) throw new Error("Informe uma ordem de agenda entre 0 e 9999.");
@@ -68,9 +69,6 @@ export async function createUnifiedTeamMember(formData: FormData) {
 
   if (fullName.length < 2 || shortName.length < 2 || !email.includes("@")) {
     throw new Error("Preencha nome completo, nome curto e um e-mail válido.");
-  }
-  if (!isAttendant && role === "professional") {
-    throw new Error("O perfil Atendente precisa estar marcado como atendente.");
   }
   if ((council && !registrationNumber) || (!council && registrationNumber)) {
     throw new Error("Informe o conselho e o número do conselho.");
@@ -96,7 +94,8 @@ export async function createUnifiedTeamMember(formData: FormData) {
       updatedAt: new Date(),
     }).where(eq(users.id, provisionedUser.id));
     await tx.insert(organizationMembers).values({ organizationId: organization.id, userId: provisionedUser.id, role });
-    if (!isAttendant) return checkCapacity();
+    // Restricted access profiles still need an identity for their own historical records.
+    if (!isAttendant && role !== "professional") return checkCapacity();
     const [professional] = await tx.insert(professionals).values({
       organizationId: organization.id,
       userId: provisionedUser.id,
@@ -107,7 +106,7 @@ export async function createUnifiedTeamMember(formData: FormData) {
       agendaOrder,
       bio: field(formData, "bio") || null,
       ...image,
-      isBookable: true,
+      isBookable: isAttendant,
     }).returning({ id: professionals.id });
     await checkCapacity();
     if (specialtyIds.length) await tx.insert(professionalSpecialties).values(specialtyIds.map((specialtyId) => ({
@@ -129,59 +128,53 @@ export async function createUnifiedTeamMember(formData: FormData) {
   await auth.api.requestPasswordReset({
     body: { email, redirectTo: `/redefinir-senha?primeiroAcesso=1&email=${encodeURIComponent(email)}` },
   });
-  revalidatePath("/equipe");
+  for(const path of ["/equipe","/agenda","/agendamentos","/servicos","/produtos-servicos"]) revalidatePath(path);
 }
 
 export async function updateUnifiedTeamMember(formData: FormData) {
   const { organization } = await requireOrganization();
   assertOrganizationPermission(organization.role, "team.manage");
-  const userId = field(formData, "userId");
-  const fullName = field(formData, "fullName");
-  const shortName = field(formData, "shortName");
-  const professionalId = field(formData, "professionalId");
-  const professionId = field(formData, "professionId");
-  const agendaOrder = Number(field(formData, "agendaOrder") || "0");
-  if (!Number.isInteger(agendaOrder) || agendaOrder < 0 || agendaOrder > 9999) throw new Error("Informe uma ordem de agenda entre 0 e 9999.");
-  const specialtyIds = professionalId ? await validatedSpecialtyIds(formData, professionId) : [];
-  if (!userId || fullName.length < 2 || shortName.length < 2) throw new Error("Informe os nomes completo e curto.");
-  const [currentMember] = await db.select({ role: organizationMembers.role }).from(organizationMembers).where(and(
-    eq(organizationMembers.organizationId, organization.id), eq(organizationMembers.userId, userId),
-  )).limit(1);
-  if (!currentMember) throw new Error("Membro não encontrado nesta empresa.");
-  const role = currentMember.role === "owner" ? "owner" : parsedTeamRole(formData);
-  if (role === "professional" && !professionalId) throw new Error("O perfil Atendente precisa ser atendente.");
-  const [currentProfessional] = professionalId ? await db.select({ imagePublicId: professionals.imagePublicId }).from(professionals).where(and(eq(professionals.id, professionalId), eq(professionals.organizationId, organization.id), eq(professionals.userId, userId))).limit(1) : [];
-  if (professionalId && !currentProfessional) throw new Error("Profissional não vinculado a este membro.");
-  const result = await persistWithCatalogImage({ formData, organizationId: organization.id, entityType: "professionals", currentPublicId: currentProfessional?.imagePublicId, persist: (image) => db.transaction(async (tx) => {
-    const checkCapacity = await checkTeamCapacityAfterChange(tx, organization.id);
-    await tx.update(users).set({ name: fullName, shortName, updatedAt: new Date() }).where(eq(users.id, userId));
-    await tx.update(organizationMembers).set({ role }).where(and(eq(organizationMembers.organizationId, organization.id), eq(organizationMembers.userId, userId)));
+  const userId=field(formData,"userId"), fullName=field(formData,"fullName"), shortName=field(formData,"shortName");
+  if(!userId||fullName.length<2||shortName.length<2) throw new Error("Informe os nomes completo e curto.");
+  const [member]=await db.select({role:organizationMembers.role,email:users.email}).from(organizationMembers).innerJoin(users,eq(users.id,organizationMembers.userId)).where(and(eq(organizationMembers.organizationId,organization.id),eq(organizationMembers.userId,userId))).limit(1);
+  if(!member) throw new Error("Membro não encontrado nesta empresa.");
+  const role=member.role==="owner"?"owner":parsedTeamRole(formData);
+  const [currentProfessional]=await db.select().from(professionals).where(and(eq(professionals.organizationId,organization.id),eq(professionals.userId,userId))).limit(1);
+  const submittedId=field(formData,"professionalId");
+  if(submittedId&&submittedId!==currentProfessional?.id) throw new Error("Profissional não vinculado a este membro.");
+  const receivesAppointments=formData.get("attendanceOptionSubmitted")==="1"
+    ? formData.get("receivesAppointments")==="on" : Boolean(currentProfessional?.isActive&&currentProfessional?.isBookable);
+  const professionId=field(formData,"professionId");
+  const specialtyIds=receivesAppointments?await validatedSpecialtyIds(formData,professionId):[];
+  const agendaOrder=Number(field(formData,"agendaOrder")||"0");
+  if(receivesAppointments&&(!Number.isInteger(agendaOrder)||agendaOrder<0||agendaOrder>9999)) throw new Error("Informe uma ordem de agenda entre 0 e 9999.");
+  const council=field(formData,"council").toUpperCase(), registrationNumber=field(formData,"registrationNumber");
+  if(receivesAppointments&&Boolean(council)!==Boolean(registrationNumber)) throw new Error("Informe o conselho e o número do conselho.");
+  const result=await persistWithCatalogImage({formData,organizationId:organization.id,entityType:"professionals",currentPublicId:currentProfessional?.imagePublicId,persist:image=>db.transaction(async tx=>{
+    const checkCapacity=await checkTeamCapacityAfterChange(tx,organization.id);
+    const [lockedMember]=await tx.select({role:organizationMembers.role}).from(organizationMembers).where(and(eq(organizationMembers.organizationId,organization.id),eq(organizationMembers.userId,userId))).for("update");
+    if(!lockedMember) throw new Error("Membro não encontrado nesta empresa.");
+    await tx.update(users).set({name:fullName,shortName,updatedAt:new Date()}).where(eq(users.id,userId));
+    await tx.update(organizationMembers).set({role:lockedMember.role==="owner"?"owner":role}).where(and(eq(organizationMembers.organizationId,organization.id),eq(organizationMembers.userId,userId)));
+    const [linked]=await tx.select({id:professionals.id}).from(professionals).where(and(eq(professionals.organizationId,organization.id),eq(professionals.userId,userId))).for("update");
+    let professionalId=linked?.id;
+    if(!receivesAppointments) {
+      if(professionalId) await tx.update(professionals).set({name:shortName,isBookable:false,updatedAt:new Date()}).where(and(eq(professionals.id,professionalId),eq(professionals.organizationId,organization.id)));
+      else if(role==="professional") await tx.insert(professionals).values({organizationId:organization.id,userId,name:shortName,email:member.email,isBookable:false});
+      await checkCapacity();
+      return;
+    }
+    const profile={name:shortName,phone:field(formData,"phone")||null,professionId:professionId||null,agendaOrder,bio:field(formData,"bio")||null,...image,isBookable:true,isActive:true,updatedAt:new Date()};
+    if(professionalId) await tx.update(professionals).set(profile).where(and(eq(professionals.id,professionalId),eq(professionals.organizationId,organization.id)));
+    else { const [created]=await tx.insert(professionals).values({...profile,organizationId:organization.id,userId,email:member.email}).returning({id:professionals.id}); professionalId=created.id; }
     await checkCapacity();
-    if (!professionalId) return;
-    await tx.update(professionals).set({
-      name: shortName,
-      phone: field(formData, "phone") || null,
-      professionId: professionId || null,
-      agendaOrder,
-      bio: field(formData, "bio") || null,
-      ...image,
-      updatedAt: new Date(),
-    }).where(and(eq(professionals.id, professionalId), eq(professionals.organizationId, organization.id)));
-    await tx.delete(professionalSpecialties).where(and(eq(professionalSpecialties.professionalId, professionalId), eq(professionalSpecialties.organizationId, organization.id)));
-    if (specialtyIds.length) await tx.insert(professionalSpecialties).values(specialtyIds.map((specialtyId) => ({ organizationId: organization.id, professionalId, specialtyId })));
-    const council = field(formData, "council").toUpperCase();
-    const registrationNumber = field(formData, "registrationNumber");
-    await tx.delete(professionalRegistrations).where(and(eq(professionalRegistrations.professionalId, professionalId), eq(professionalRegistrations.organizationId, organization.id)));
-    if (council && registrationNumber) await tx.insert(professionalRegistrations).values({
-      organizationId: organization.id, professionalId, council, registrationNumber,
-      state: field(formData, "registrationState").toUpperCase() || null,
-    });
-  }) }).catch((error: unknown) => {
-    if (error instanceof CommercialTeamCapacityError) return { error: error.message };
-    throw error;
-  });
-  if (result?.error) return result;
-  revalidatePath("/equipe");
+    await tx.delete(professionalSpecialties).where(and(eq(professionalSpecialties.professionalId,professionalId),eq(professionalSpecialties.organizationId,organization.id)));
+    if(specialtyIds.length) await tx.insert(professionalSpecialties).values(specialtyIds.map(specialtyId=>({organizationId:organization.id,professionalId,specialtyId})));
+    await tx.delete(professionalRegistrations).where(and(eq(professionalRegistrations.professionalId,professionalId),eq(professionalRegistrations.organizationId,organization.id)));
+    if(council&&registrationNumber) await tx.insert(professionalRegistrations).values({organizationId:organization.id,professionalId,council,registrationNumber,state:field(formData,"registrationState").toUpperCase()||null});
+  })}).catch((error:unknown)=>{if(error instanceof CommercialTeamCapacityError) return {error:error.message};throw error;});
+  if(result?.error) return result;
+  for(const path of ["/equipe","/agenda","/agendamentos","/servicos","/produtos-servicos","/configuracoes"]) revalidatePath(path);
 }
 
 export async function replaceTeamMemberAvailability(formData: FormData) {

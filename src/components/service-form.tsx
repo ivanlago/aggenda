@@ -59,7 +59,7 @@ export function ServiceForm({ item, label, categories, professionals, selectedPr
           <input type="checkbox" name="professionalIds" value={person.id} defaultChecked={selectedProfessionalIds.includes(person.id)} />
           <span>{person.name}{(!person.isActive || !person.isBookable) && <span className="block text-xs text-muted">Indisponível para novos agendamentos</span>}</span>
         </label>)}
-        {!professionals.some(person => (person.isActive && person.isBookable) || selectedProfessionalIds.includes(person.id)) && <p className="text-sm text-muted sm:col-span-2">Nenhum atendente habilitado. Cadastre ou habilite um atendente em Equipe.</p>}
+        {!professionals.some(person => (person.isActive && person.isBookable) || selectedProfessionalIds.includes(person.id)) && <p className="text-sm text-muted sm:col-span-2">Nenhum colaborador habilitado. Marque “Recebe agendamentos” no cadastro da Equipe.</p>}
       </div>
       <p className="mt-2 text-xs text-muted">Selecione quem pode realizar este serviço. Sem atendentes selecionados, o serviço não terá horários para agendamento.</p>
     </fieldset>

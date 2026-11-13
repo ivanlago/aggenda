@@ -21,7 +21,7 @@ const days = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quint
 
 export type TeamMemberCardData = {
   userId: string; fullName: string; shortName: string; email: string; role: string;
-  professionalId: string | null; professionId: string | null; professionName: string | null;
+  receivesAppointments: boolean; professionalId: string | null; professionId: string | null; professionName: string | null;
   phone: string | null; bio: string | null; council: string | null; registrationNumber: string | null;
   registrationState: string | null; specialtyIds: string[]; availability: Availability[];
   imageUrl: string | null;
@@ -33,6 +33,7 @@ export type TeamMemberCardData = {
 export function TeamMemberCard({ member, professions, specialties, canEdit, canDelete, commissionPanel, visualPanel, signaturePanel, own = false }: {
   member: TeamMemberCardData; professions: Profession[]; specialties: Specialty[]; canEdit: boolean; canDelete: boolean; own?: boolean; commissionPanel: ReactNode; visualPanel: ReactNode; signaturePanel: ReactNode;
 }) {
+  const [receivesAppointments,setReceivesAppointments]=useState(member.receivesAppointments);
   const [professionId, setProfessionId] = useState(member.professionId ?? "");
   const availableSpecialties = useMemo(() => specialties.filter((item) => item.professionId === professionId), [professionId, specialties]);
   const availabilityByDay = new Map(member.availability.map((item) => [item.dayOfWeek, item]));
@@ -48,13 +49,14 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
       </div>
           <div className="flex flex-wrap gap-2">
             <span className="status-pill">{roleLabels[member.role] ?? member.role}</span>
+            {member.receivesAppointments && <span className="status-pill">Recebe agendamentos</span>}
             {member.professionName && <span className="status-pill">{member.professionName}</span>}
             {member.googleCalendarEmail && <span className="status-pill inline-flex items-center gap-1" title={member.googleCalendarEmail}><CalendarCheck className="size-4" aria-hidden="true" />Google conectado</span>}
 
           </div>
       <div className="min-w-0">{canEdit && <p className="text-xs text-muted"><span className="block font-bold">Última entrada</span>{member.lastSignedIn ?? "Sem registro"}</p>}</div>
       <div className="team-member-actions flex items-center gap-2 lg:justify-end [&>button]:shrink-0 [&>form]:shrink-0">
-      {canEdit && member.professionalId && (
+      {canEdit && member.professionalId && member.receivesAppointments && (
         <ModalShell title={`Disponibilidade de ${member.shortName}`} triggerLabel="Disponibilidade" triggerIcon={member.availability.length ? <CircleCheck className="size-4" role="img" aria-label="Horários cadastrados" /> : <CalendarDays className="size-4" aria-hidden="true" />} variant="edit" wide closeOnSuccess>
             <ActionForm action={replaceTeamMemberAvailability} successMessage="Disponibilidade atualizada." className="mt-5 grid gap-3">
               <input type="hidden" name="professionalId" value={member.professionalId} />
@@ -64,30 +66,31 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
         </ModalShell>
       )}
       {(canEdit || own) && (
-        <ModalShell title={`Editar membro: ${member.shortName}`} variant="edit" wide closeOnSuccess>
+        <ModalShell title={`Editar membro: ${member.shortName}`} variant="edit" wide closeOnSuccess onOpen={()=>{setReceivesAppointments(member.receivesAppointments);setProfessionId(member.professionId??"")}}>
         <MemberSettingsTabs commission={commissionPanel} visual={visualPanel} professional={signaturePanel} profile={canEdit ? <ActionForm action={updateUnifiedTeamMember} successMessage="Dados e acesso atualizados." className="grid min-w-0 items-start gap-4 sm:grid-cols-2">
           <input type="hidden" name="userId" value={member.userId} /><input type="hidden" name="professionalId" value={member.professionalId ?? ""} />
           <>
           <label className="grid gap-1 text-sm font-bold">Nome completo<input className="field" name="fullName" defaultValue={member.fullName} required /></label>
           <label className="grid gap-1 text-sm font-bold">Nome curto<input className="field" name="shortName" defaultValue={member.shortName} required /></label>
           </>
+          <label className="flex items-center gap-2 text-sm font-bold sm:col-span-2"><input type="hidden" name="attendanceOptionSubmitted" value="1"/><input type="checkbox" name="receivesAppointments" checked={receivesAppointments} onChange={event=>setReceivesAppointments(event.target.checked)}/>Recebe agendamentos</label>
           <div className="grid gap-4 sm:col-span-2 sm:grid-cols-3">
           <>
           <label className="grid gap-1 text-sm font-bold">Perfil de acesso<select className="field" name="role" defaultValue={["owner", "admin", "professional", "receptionist"].includes(member.role) ? member.role : ""} required disabled={member.role === "owner"}>{!["owner", "admin", "professional", "receptionist"].includes(member.role) && <option value="" disabled>Selecione o novo perfil</option>}{member.role === "owner" && <option value="owner">Administrador</option>}<option value="admin">Administrador</option><option value="professional">Atendente</option><option value="receptionist">Secretária</option></select>{member.role === "owner" && <input type="hidden" name="role" value="owner" />}</label>
           </>
-          {member.professionalId && <>
+          {receivesAppointments && <>
             <label className="grid gap-1 text-sm font-bold">Ordem na agenda<input className="field" name="agendaOrder" type="number" min={0} max={9999} step={1} defaultValue={member.agendaOrder ?? 0} /><span className="text-xs font-normal text-muted">Números menores aparecem primeiro. Empates seguem a ordem alfabética.</span></label>
           </>}
-            {member.professionalId && <label className="grid gap-1 text-sm font-bold">Telefone<PhoneInput name="phone" defaultValue={member.phone} /></label>}
+            {receivesAppointments && <label className="grid gap-1 text-sm font-bold">Telefone<PhoneInput name="phone" defaultValue={member.phone} /></label>}
           </div>
-          {member.professionalId && <>
+          {receivesAppointments && <>
             <div className="grid min-w-0 items-start gap-4 sm:col-span-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(140px,.7fr)]"><label className="grid gap-1 text-sm font-bold">Profissão<select className="field" name="professionId" value={professionId} onChange={(event) => setProfessionId(event.target.value)}><option value="">Selecione</option>{professions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="grid gap-1 text-sm font-bold">Conselho<select className="field" name="council" defaultValue={member.council ?? ""}><option value="">Selecione</option>{["CRM", "CRO", "CRP", "COREN", "CREFITO", "OAB", "CREA", "CREF", "OUTRO"].map((item) => <option key={item}>{item}</option>)}</select></label><label className="grid gap-1 text-sm font-bold">Número do conselho<input className="field" name="registrationNumber" defaultValue={member.registrationNumber ?? ""} /></label><label className="grid gap-1 text-sm font-bold"><span className="whitespace-nowrap">UF do conselho</span><input className="field" name="registrationState" maxLength={2} defaultValue={member.registrationState ?? ""} /></label></div>
             <div className="grid min-w-0 items-start gap-4 sm:col-span-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]"><label className="grid gap-1 text-sm font-bold">Especialidade<select className="field h-24 min-h-24" name="specialtyIds" multiple defaultValue={member.specialtyIds}>{availableSpecialties.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="grid min-w-0 gap-1 text-sm font-bold">Apresentação breve (opcional)<textarea className="field h-24 min-h-24" name="bio" defaultValue={member.bio ?? ""} /></label></div>
             <div className="grid min-w-0 items-start gap-4 sm:col-span-2 sm:grid-cols-2"><div className="min-w-0"><EntityImageField currentUrl={member.imageUrl} label="Foto do profissional" /></div><div className="grid min-w-0 content-start gap-2">
               <p className="flex flex-wrap items-center gap-2 font-bold">Google Agenda{member.googleCalendarEmail && <span className="status-pill inline-flex items-center gap-1"><CalendarCheck className="size-4" aria-hidden="true" />Conectado</span>}</p>
               {member.googleCalendarEmail && <p className="break-words text-sm text-brand">{member.googleCalendarEmail}</p>}
-              <p className="text-sm text-muted">Conecte a conta Google do atendente para sincronizar seus agendamentos.</p>
-              <div><Link className="secondary-button" href={`/api/google-calendar/connect?professionalId=${encodeURIComponent(member.professionalId)}`} prefetch={false}>{member.googleCalendarEmail ? "Reconectar Google Agenda" : "Conectar Google Agenda"}</Link></div>
+              <p className="text-sm text-muted">Conecte a conta Google do colaborador para sincronizar seus agendamentos.</p>
+              <div>{member.professionalId ? <Link className="secondary-button" href={`/api/google-calendar/connect?professionalId=${encodeURIComponent(member.professionalId)}`} prefetch={false}>{member.googleCalendarEmail ? "Reconectar Google Agenda" : "Conectar Google Agenda"}</Link> : <p className="text-sm text-muted">Salve o cadastro para conectar o Google Agenda e definir a disponibilidade.</p>}</div>
             </div></div>
           </>}
           <FormActions editing />

@@ -36,7 +36,7 @@ export async function reserveCommercialUsage(tx: Tx, organizationId: string, met
 export async function commercialTeamSlots(database: Pick<typeof db, "select">, organizationId: string) {
   const [activeProfessionals, members] = await Promise.all([
     database.select({ userId: professionals.userId }).from(professionals)
-      .where(and(eq(professionals.organizationId, organizationId), eq(professionals.isActive, true))),
+      .where(and(eq(professionals.organizationId, organizationId), eq(professionals.isActive, true), eq(professionals.isBookable, true))),
     database.select({ userId: organizationMembers.userId, role: organizationMembers.role }).from(organizationMembers)
       .where(eq(organizationMembers.organizationId, organizationId)),
   ]);

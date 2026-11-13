@@ -1,4 +1,4 @@
-/* eslint-disable @next/next/no-img-element */
+import { SignatureImageForm } from "@/components/signature-image-form";
 import Link from "next/link";
 import { saveOwnSignatureImage } from "@/actions/signature-image";
 import { registerOwnSigningIdentity } from "@/actions/professional-signatures";
@@ -6,7 +6,7 @@ import { ActionForm } from "./action-form";
 
 export function MemberVisualSignature({own,image}:{own:boolean;image:string|null}) {
   if(!own) return <p className="text-sm text-muted">A assinatura visual deve ser cadastrada pelo próprio usuário, acessando esta aba com seu login.</p>;
-  return <div className="grid gap-3"><p className="text-sm text-muted">Use @AssinaturaProfissional nos modelos para inserir sua imagem ao emitir documentos. A imagem não substitui a assinatura com certificado digital.</p>{image&&<img src={image} alt="Sua assinatura visual" className="max-h-28 max-w-xs object-contain"/>}<ActionForm action={saveOwnSignatureImage} successMessage="Assinatura visual salva." className="grid gap-3"><label className="grid gap-1 text-sm font-bold">Imagem PNG (até 250 KB e 1600 × 800 pixels)<input className="field" type="file" name="signature" accept="image/png" required/></label><div className="flex justify-end"><button className="primary-button">Salvar assinatura visual</button></div></ActionForm>{image&&<ActionForm action={saveOwnSignatureImage} successMessage="Imagem removida."><input type="hidden" name="operation" value="remove"/><button className="secondary-button">Remover imagem</button></ActionForm>}</div>;
+  return <div className="grid gap-3"><p className="text-sm text-muted">Use @AssinaturaProfissional nos modelos para inserir sua imagem ao emitir documentos. A imagem não substitui a assinatura com certificado digital.</p><SignatureImageForm image={image}/>{image&&<ActionForm action={saveOwnSignatureImage} successMessage="Imagem removida."><input type="hidden" name="operation" value="remove"/><button className="secondary-button">Remover imagem</button></ActionForm>}</div>;
 }
 
 export function MemberProfessionalSignature({own,enabled,configured}:{own:boolean;enabled:boolean;configured:boolean}) {

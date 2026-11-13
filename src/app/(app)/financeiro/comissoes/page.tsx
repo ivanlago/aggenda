@@ -1,7 +1,6 @@
 import { CommissionAssessmentForm } from "@/components/commission-assessment-form";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { and, desc, eq, isNull, isNotNull, sql } from "drizzle-orm";
-import Link from "next/link";
 import { assignSaleCommissionBeneficiary, calculateCommissions, reverseCommissionPayment } from "@/actions/commissions";
 import { ActionForm } from "@/components/action-form";
 import { CommissionBeneficiarySelect, CommissionPaymentForm, commissionMoney as money } from "@/components/commission-forms";
@@ -38,7 +37,6 @@ export default async function CommissionsPage({searchParams}:{searchParams:Promi
   const visible=period.filter(item=>!query.status||item.status===query.status);
   return <div className="page-wrap">
     <PageHeader eyebrow="Financeiro" title="Comissões" description="Serviços e produtos, saldo acumulado e histórico de quitações." actions={<>
-      <Link className="secondary-button" href="/financeiro">Voltar ao financeiro</Link>
       {canManage&&<ActionForm action={calculateCommissions} successMessage="Comissões atualizadas."><input type="hidden" name="competence" value={month}/><button className="primary-button">Atualizar saldos</button></ActionForm>}
     </>}/>
     <form method="get" className="panel mb-3 grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">

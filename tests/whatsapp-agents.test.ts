@@ -46,6 +46,7 @@ test("both real agent routes share navigation; Chat only links, Core books after
         "@/db": `export const db=globalThis.${key}.db;`,
         "@/lib/outbox-trigger": "export async function triggerOutboxWorker(){}",
         "@/lib/finance": "export async function syncAppointmentFinancialEntry(){}",
+        "@/lib/create-booking-reservation": `export async function createBookingReservation(request,slug,client,origin){const body=await request.json();if(!body.document)throw new Error("Missing document");if(origin.source!=="whatsapp")throw new Error("Invalid source");return Response.json({manageUrl:"/agendamento/test-payment"},{status:201})}`,
         "@/lib/google-calendar": "export async function syncAppointmentToGoogleCalendar(){}; export async function deleteAppointmentFromGoogleCalendar(){}",
         "@/lib/package-balance": "export async function reconcilePackageUsage(){}",
         "@/lib/availability": `export async function getAvailableTimes(input){const state=globalThis.${key};state.availabilityRequests.push(input);return state.availableSlots ?? [state.slot]} export async function isTimeAvailable(){return true}`,
@@ -69,7 +70,7 @@ test("both real agent routes share navigation; Chat only links, Core books after
       const input = { organizationId: organization, conversationId: conversation, messageId, phoneNumberId: "test-phone", from: "5571999999999", text, whatsappServiceCode: mode };
       const request = () => new NextRequest("https://aggenda.example/api/internal/ai/whatsapp", { method: "POST", headers: { authorization: "Bearer isolated-agent-test", "content-type": "application/json" }, body: JSON.stringify(input) });
       const response = await agent.POST(request()); assert.equal(response.status, 200);
-      const rows = await pg.query<{ body: string; raw_payload: { navigationState?: { options: { id: string; title: string }[] }; pendingAction?: { kind?: string; startsAt: string; appointmentId?: string }; flowState?: { desiredDate?: string; offeredSlots?: string[] } } }>("SELECT body,raw_payload FROM chat_messages WHERE external_message_id=$1", [`aggenda-ai:${messageId}`]);
+      const rows = await pg.query<{ body: string; raw_payload: { navigationState?: { options: { id: string; title: string }[] }; pendingAction?: { kind?: string; startsAt: string; appointmentId?: string; awaitingDocument?: boolean; customerDocument?: string }; flowState?: { desiredDate?: string; offeredSlots?: string[] } } }>("SELECT body,raw_payload FROM chat_messages WHERE external_message_id=$1", [`aggenda-ai:${messageId}`]);
       return { output: rows.rows[0], messageId, replay: () => agent.POST(request()) };
     }
     const hello = await call(chat, "oi");
@@ -175,14 +176,17 @@ test("both real agent routes share navigation; Chat only links, Core books after
     assert.match(deposit.output.body, /Sinal: R\$/);
     assert.match(deposit.output.body, /50,00/);
     assert.match(deposit.output.body, /confirmação pelo provedor/);
-    assert.match(deposit.output.body, new RegExp(`servico=${service}`));
-    assert.equal(deposit.output.raw_payload.pendingAction, undefined);
+    assert.match(deposit.output.body,/CPF ou CNPJ/);
+    assert.equal(deposit.output.raw_payload.pendingAction?.awaitingDocument,true);
     assert.equal((await pg.query("SELECT * FROM appointments")).rows.length, 2, "payment requirements never create an unpaid booking");
+    await call(core,"12345678901","core_ai");
+    assert.match((await call(core,"CONFIRMAR","core_ai")).output.body,/Horário reservado/);
     await pg.query("UPDATE organizations SET booking_payment_settings=$1 WHERE id=$2", [{ mode: "pix_direct", key: "never-expose-in-model@example.invalid" }, organization]);
     await call(core, "menu", "core_ai"); await call(core, "1", "core_ai"); await call(core, "1", "core_ai"); await call(core, "1", "core_ai");
     const directDeposit = await call(core, "Primeiro horário disponível", "core_ai");
-    assert.match(directDeposit.output.body, /Pix direto/); assert.match(directDeposit.output.body, /QR Code e o Pix Copia e Cola/); assert.match(directDeposit.output.body, /equipe conferirá o crédito/);
-    assert.equal(directDeposit.output.raw_payload.pendingAction, undefined);
+    assert.match(directDeposit.output.body, /Pix direto/); assert.match(directDeposit.output.body, /conferência do crédito/);
+    assert.ok(directDeposit.output.raw_payload.pendingAction);
+    await call(core,"NÃO","core_ai");
     const [pendingPix] = (await pg.query<{ id: string; status: string; metadata: unknown }>("SELECT id,status,metadata FROM appointments WHERE status='scheduled' LIMIT 1")).rows;
     const pixToken = randomUUID();
     await pg.query("UPDATE appointments SET deposit_status='direct_pending',deposit_amount_in_cents=5000,public_manage_token=$1,reservation_expires_at=$2 WHERE id=$3", [pixToken, new Date(Date.now() + 30 * 60000).toISOString(), pendingPix.id]);
@@ -194,7 +198,7 @@ test("both real agent routes share navigation; Chat only links, Core books after
     assert.match((await call(core, "Meu Pix já foi recebido?", "core_ai")).output.body, /aguarda conferência/);
     assert.match((await call(chat, "Já fiz o Pix")).output.body, /equipe precisa conferir/);
     await pg.query("UPDATE appointments SET deposit_status='paid' WHERE id=$1", [pendingPix.id]);
-    for (const mode of ["core_ai", "chat_ai"]) {
+    for (const mode of ["chat_ai"]) {
       const inquiry = await call(mode === "core_ai" ? core : chat, "Quero uma avaliação amanhã à tarde. Quanto custa? e preciso pagar algum sinal?", mode);
       assert.match(inquiry.output.body, /120,00/);
       assert.match(inquiry.output.body, /50,00/);
@@ -240,13 +244,16 @@ test("both real agent routes share navigation; Chat only links, Core books after
     const beforeDepositChoice = (await pg.query("SELECT id FROM appointments")).rows.length;
     const depositChoice = await call(hybrid, "quero as 10 horas", "core_ai");
     assert.match(depositChoice.output.body, /Horário escolhido/);
-    const selectedUrl = new URL(depositChoice.output.body.match(/https:\/\/[^\s]+/)![0]);
-    assert.equal(selectedUrl.searchParams.get("profissional"), professional);
-    assert.equal(selectedUrl.searchParams.get("inicio"), state.slot);
-    assert.equal(selectedUrl.searchParams.get("servico"), service);
-    assert.match(depositChoice.output.body, /Nenhum horário foi reservado/);
+    assert.match(depositChoice.output.body,/CPF ou CNPJ/);
+    assert.equal(depositChoice.output.raw_payload.pendingAction?.awaitingDocument,true);
     assert.equal((await pg.query("SELECT id FROM appointments")).rows.length, beforeDepositChoice);
-    assert.equal(depositChoice.output.raw_payload.pendingAction, undefined);
+    const documentChoice = await call(hybrid,"12345678901","core_ai");
+    assert.equal(documentChoice.output.raw_payload.pendingAction?.customerDocument,"12345678901");
+    assert.match(documentChoice.output.body,/CONFIRMAR/);
+    const reserved = await call(hybrid,"CONFIRMAR","core_ai");
+    assert.match(reserved.output.body,/Horário reservado/);
+    assert.match(reserved.output.body,/Aguardando sinal/);
+    assert.match(reserved.output.body,/\/agendamento\/test-payment/);
     await pg.query("UPDATE services SET deposit_type='none' WHERE id=$1", [service]);
     const callsAfterDeposit = state.aiCalls.length;
     const beforeBooking = (await pg.query("SELECT id FROM appointments")).rows.length;

@@ -121,5 +121,20 @@ test("direct Pix: reserve, replay, report, staff confirmation, tenant isolation 
       assert.equal((await result.json()).expired, 1);
       assert.equal((await pg.query<{ status: string }>("SELECT status FROM financial_entries WHERE attendance_id=$1", [second.id])).rows[0].status, "cancelled");
     } finally { if (previousCron === undefined) delete process.env.CRON_SECRET; else process.env.CRON_SECRET = previousCron; }
+    const shared = (await bundle("src/lib/create-booking-reservation.ts")).createBookingReservation;
+    const whatsappBody = {...body,startsAt:new Date(start.getTime()+3*86400000).toISOString()};
+    const whatsappOrigin = {source:"whatsapp",messageId:randomUUID(),conversationId:randomUUID()};
+    const customer = {id:client,name:"Cliente fictício",phone:"71999999999",email:null};
+    const whatsappResponse = await shared(request(whatsappBody),"pix-test",customer,whatsappOrigin) as Response;
+    assert.equal(whatsappResponse.status,201);
+    const whatsappResult = await whatsappResponse.json();
+    const whatsappItem = (await pg.query<{source:string;deposit_status:string;reservation_expires_at:string;metadata:{whatsappCommandMessageId:string}}>("SELECT * FROM appointments WHERE id=$1",[whatsappResult.id])).rows[0];
+    assert.equal(whatsappItem.source,"whatsapp");
+    assert.equal(whatsappItem.deposit_status,"direct_pending");
+    assert.ok(whatsappItem.reservation_expires_at);
+    assert.equal(whatsappItem.metadata.whatsappCommandMessageId,whatsappOrigin.messageId);
+    const repeatedWhatsapp = await shared(request(whatsappBody),"pix-test",customer,whatsappOrigin) as Response;
+    assert.equal((await repeatedWhatsapp.json()).id,whatsappResult.id);
+    assert.equal((await pg.query("SELECT * FROM financial_entries WHERE attendance_id=$1",[whatsappResult.id])).rows.length,1,"a retry cannot duplicate the deposit");
   } finally { delete scope.pixTestDb; delete scope.pixOrg; delete scope.pixNotifications; await pg.close(); }
 });

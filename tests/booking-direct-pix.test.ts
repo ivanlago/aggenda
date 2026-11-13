@@ -136,5 +136,18 @@ test("direct Pix: reserve, replay, report, staff confirmation, tenant isolation 
     const repeatedWhatsapp = await shared(request(whatsappBody),"pix-test",customer,whatsappOrigin) as Response;
     assert.equal((await repeatedWhatsapp.json()).id,whatsappResult.id);
     assert.equal((await pg.query("SELECT * FROM financial_entries WHERE attendance_id=$1",[whatsappResult.id])).rows.length,1,"a retry cannot duplicate the deposit");
+    const qrRoute=(await bundle("src/app/api/public/appointments/[token]/pix/qr/route.ts")).GET;
+    const qrParams={params:Promise.resolve({token:whatsappResult.manageToken})};
+    const png=await qrRoute(request({}),qrParams) as Response;
+    assert.equal(png.status,200);
+    assert.equal(png.headers.get("Content-Type"),"image/png");
+    assert.match(png.headers.get("Cache-Control")!,/no-store/);
+    assert.deepEqual(Array.from(new Uint8Array(await png.arrayBuffer()).slice(0,8)),[137,80,78,71,13,10,26,10]);
+    await pg.query("UPDATE appointments SET reservation_expires_at=now()-interval '1 minute' WHERE id=$1",[whatsappResult.id]);
+    assert.equal((await qrRoute(request({}),qrParams) as Response).status,410);
+    await pg.query("UPDATE appointments SET reservation_expires_at=now()+interval '30 minutes',deposit_status='paid' WHERE id=$1",[whatsappResult.id]);
+    assert.equal((await qrRoute(request({}),qrParams) as Response).status,410);
+    await pg.query("UPDATE appointments SET deposit_status='direct_pending' WHERE id=$1",[whatsappResult.id]);
+
   } finally { delete scope.pixTestDb; delete scope.pixOrg; delete scope.pixNotifications; await pg.close(); }
 });

@@ -2,7 +2,7 @@ import { createBookingReservation } from "@/lib/create-booking-reservation";
 import { professionalNameChoice } from "@/lib/professional-name-choice";
 import { navigateWhatsApp, parseNavigationState, type NavigationState } from "@/lib/whatsapp-navigation";
 import { asksAboutBookingPayment, asksAboutNewBookingPayment, bookingDepositAgentInstructions, bookingDepositAmount, depositServiceNotice, depositStatusLabel } from "@/lib/booking-deposit-guidance";
-import { pendingDeposit } from "@/lib/booking-payment";
+import { directPixReservation, pendingDeposit } from "@/lib/booking-payment";
 import { catalogDocumentUrl, getWhatsAppProducts } from "@/lib/whatsapp-catalog";
 import { roomBookingError } from "@/lib/room-errors";
 import { and, asc, desc, eq, gt, gte, inArray, sql } from "drizzle-orm";
@@ -167,7 +167,7 @@ async function getClient(input: Input, conversation: Conversation) {
   return id;
 }
 
-async function send(input: Input, conversation: Conversation, data: { reply: string; model: string; intent: string; confidence: number; pending?: Pending; flowState?: FlowState; handoff?: boolean; ai?: boolean; navigationState?: NavigationState; hybridBooking?: HybridBookingContext; hybridRequest?: HybridRequest; document?: { link: string; filename: string } }) {
+async function send(input: Input, conversation: Conversation, data: { reply: string; model: string; intent: string; confidence: number; pending?: Pending; flowState?: FlowState; handoff?: boolean; ai?: boolean; navigationState?: NavigationState; hybridBooking?: HybridBookingContext; hybridRequest?: HybridRequest; document?: { link: string; filename: string }; image?: {link:string;caption:string} }) {
   if (data.pending?.kind === "book") {
     const [service] = await db.select({ price: services.priceInCents, deposit: services.depositType, depositValue: services.depositValue, expiration: services.depositExpirationMinutes }).from(services).where(and(eq(services.id, data.pending.serviceId), eq(services.organizationId, input.organizationId))).limit(1);
     const [company] = await db.select({ address: organizations.publicAddress, timezone: organizations.timezone, slug: organizations.slug, bookingEnabled: organizations.bookingEnabled, paymentMode: sql<string>`coalesce(${organizations.bookingPaymentSettings}->>'mode', 'integrated')` }).from(organizations).where(eq(organizations.id, input.organizationId)).limit(1);
@@ -195,6 +195,10 @@ async function send(input: Input, conversation: Conversation, data: { reply: str
       .onConflictDoNothing({ target: chatMessages.externalMessageId }).returning({ id: chatMessages.id });
     if (!message) return; inserted = true;
     await tx.insert(outboxEvents).values({ organizationId: input.organizationId, eventKey: `whatsapp:ai-reply:${input.messageId}`, eventType: "whatsapp.message.send", aggregateType: "chat_message", aggregateId: message.id, payload: { organizationId: input.organizationId, channelId: conversation.channelId, conversationId: input.conversationId, messageId: message.id, phoneNumberId: input.phoneNumberId, to: input.from, text: data.reply, ...(data.navigationState ? { options: data.navigationState.options } : {}), ...(data.document ? { document: data.document } : {}) } }).onConflictDoNothing({ target: outboxEvents.eventKey });
+    if (data.image) {
+      const [qrMessage]=await tx.insert(chatMessages).values({organizationId:input.organizationId,conversationId:input.conversationId,externalMessageId:`aggenda-ai-qr:${input.messageId}`,direction:"outbound",status:"queued",messageType:"image",body:data.image.caption,rawPayload:{source:"aggenda_ai",image:{link:data.image.link}},occurredAt:now}).onConflictDoNothing({target:chatMessages.externalMessageId}).returning({id:chatMessages.id});
+      if (qrMessage) await tx.insert(outboxEvents).values({organizationId:input.organizationId,eventKey:`whatsapp:ai-qr:${input.messageId}`,eventType:"whatsapp.message.send",aggregateType:"chat_message",aggregateId:qrMessage.id,payload:{organizationId:input.organizationId,channelId:conversation.channelId,conversationId:input.conversationId,messageId:qrMessage.id,phoneNumberId:input.phoneNumberId,to:input.from,text:data.image.caption,image:{link:data.image.link}}}).onConflictDoNothing({target:outboxEvents.eventKey});
+    }
     await tx.update(chatConversations).set({ handoffStatus: data.handoff ? "requested" : current.handoffStatus, needsHumanAttention: Boolean(data.handoff), handoffReason: data.handoff ? `IA: ${data.intent}` : current.handoffReason, automationPaused: Boolean(data.handoff), handoffRequestedAt: data.handoff ? now : current.handoffRequestedAt, updatedAt: now }).where(eq(chatConversations.id, input.conversationId));
     if (data.ai) { const periodStart = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`; await tx.insert(organizationUsageCounters).values({ organizationId: input.organizationId, periodStart, metric: "ai.calls", quantity: 1 }).onConflictDoUpdate({ target: [organizationUsageCounters.organizationId, organizationUsageCounters.periodStart, organizationUsageCounters.metric], set: { quantity: sql`${organizationUsageCounters.quantity} + 1`, updatedAt: now } }); }
   });
@@ -290,7 +294,17 @@ async function execute(input: Input, pending: Pending, clientId: string, timezon
       if (!result.manageUrl) throw new Error("A reserva foi criada, mas o link está em processamento. Consulte seus agendamentos; não reserve novamente.");
       if (result.existing && (!result.depositPending || result.depositStatus === "direct_review")) return `Esta reserva já existe. ${result.depositStatus === "direct_review" ? "Seu Pix aguarda conferência da equipe. Não pague novamente." : "Não há sinal pendente para esta reserva."}\n${new URL(result.manageUrl,baseUrl).toString()}`;
       const deadline = result.reservationExpiresAt ? ` Pague até ${formatOrganizationDateTime(new Date(result.reservationExpiresAt),timezone)}.` : "";
-      return `Horário reservado para ${service.name} com ${professional.name}, em ${formatOrganizationDateTime(startsAt,timezone)}. Aguardando sinal.${deadline}\nAbra o link apenas para pagar e consultar o prazo da reserva:\n${new URL(result.manageUrl,baseUrl).toString()}\nSem pagamento dentro do prazo, o horário será liberado.`;
+      const reply = `Horário reservado para ${service.name} com ${professional.name}, em ${formatOrganizationDateTime(startsAt,timezone)}. Aguardando sinal.${deadline}\nAbra o link apenas para pagar e consultar o prazo da reserva:\n${new URL(result.manageUrl,baseUrl).toString()}\nSem pagamento dentro do prazo, o horário será liberado.`;
+      if (result.directPix) {
+        const [reservation]=await db.select({metadata:appointments.metadata,token:appointments.publicManageToken,amount:appointments.depositAmountInCents,status:appointments.depositStatus,expiresAt:appointments.reservationExpiresAt}).from(appointments).where(and(eq(appointments.id,result.id),eq(appointments.organizationId,input.organizationId),eq(appointments.clientId,clientId))).limit(1);
+        const pix=directPixReservation(reservation?.metadata);
+        if (pix && reservation.token && reservation.status==="direct_pending" && reservation.expiresAt && reservation.expiresAt>new Date()) {
+          const amount=(reservation.amount/100).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+          return {reply:reply+`\nPix Copia e Cola:\n${pix.payload}\nApós pagar, abra o link e clique em Já fiz o Pix. A equipe conferirá o crédito.`,image:{link:new URL(`/api/public/appointments/${reservation.token}/pix/qr`,baseUrl).toString(),caption:`Sinal por Pix: ${amount}. Pague até ${formatOrganizationDateTime(reservation.expiresAt,timezone)}.\nApós pagar, informe na página da reserva. A confirmação depende da conferência da equipe.\n${new URL(result.manageUrl,baseUrl).toString()}`}};
+        }
+      }
+      return reply;
+
     }
     const item = await withAppointmentLock(input.organizationId, pending.professionalId, async (tx) => {
       const [repeat] = await tx.select().from(appointments).where(and(eq(appointments.organizationId, input.organizationId), sql`${appointments.metadata}->>'whatsappCommandMessageId' = ${input.messageId}`)).limit(1); if (repeat) return repeat;
@@ -435,7 +449,7 @@ async function processWhatsAppRequest(request: NextRequest, claim: { organizatio
   }
   if (input.whatsappServiceCode === "core_ai" && pending && (isAffirmativeWhatsAppCommand(input.text) || isNegativeWhatsAppCommand(input.text))) {
     if (isNegativeWhatsAppCommand(input.text)) { await send(input, conversation, { reply: "Tudo bem. A operação não foi realizada. Como mais posso ajudar?", model: "aggenda-transactional-v1", intent: "operation_declined", confidence: 1 }); return NextResponse.json({ accepted: true, action: "declined" }); }
-    try { const reply = await execute(input, pending, clientId, organization.timezone); await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: pending.kind, confidence: 1 }); return NextResponse.json({ accepted: true, action: pending.kind }); }
+    try { const result = await execute(input, pending, clientId, organization.timezone); await send(input, conversation, { ...(typeof result === "string" ? {reply:result} : result), model: "aggenda-transactional-v1", intent: pending.kind, confidence: 1 }); return NextResponse.json({ accepted: true, action: pending.kind }); }
     catch (error) { const reply = roomBookingError(error) || (error instanceof Error ? error.message : "Não foi possível concluir a operação."); await send(input, conversation, { reply, model: "aggenda-transactional-v1", intent: `${pending.kind}_failed`, confidence: 1 }); return NextResponse.json({ accepted: true, action: `${pending.kind}_failed` }); }
   }
   const [catalog, professionalRows, future, history] = await Promise.all([

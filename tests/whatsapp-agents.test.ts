@@ -16,7 +16,7 @@ test("both real agent routes share navigation; Chat only links, Core books after
   const origin = process.env.NEXT_PUBLIC_APP_URL;
   const pilot = process.env.AGGENDA_SECRETARY_HYBRID_CONTACTS;
   const tomorrow = new Date(); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1); tomorrow.setUTCHours(13, 0, 0, 0);
-  const state = { db: drizzle(pg), aiCalls: [] as {messages: {content: string}[]}[], aiResult: undefined as unknown, slot: tomorrow.toISOString(), availableSlots: undefined as string[] | undefined, availabilityRequests: [] as { date: string; serviceId: string; professionalId: string; excludeAppointmentId?: string; timezone: string }[] };
+  const state = { db: drizzle(pg), aiCalls: [] as {messages: {content: string}[]}[], aiResult: undefined as unknown, directReservationId: undefined as string | undefined, slot: tomorrow.toISOString(), availableSlots: undefined as string[] | undefined, availabilityRequests: [] as { date: string; serviceId: string; professionalId: string; excludeAppointmentId?: string; timezone: string }[] };
   Object.assign(globalThis, { [key]: state });
   process.env.AGGENDA_INTERNAL_API_KEY = "isolated-agent-test";
   process.env.NEXT_PUBLIC_APP_URL = "https://aggenda.example";
@@ -46,7 +46,7 @@ test("both real agent routes share navigation; Chat only links, Core books after
         "@/db": `export const db=globalThis.${key}.db;`,
         "@/lib/outbox-trigger": "export async function triggerOutboxWorker(){}",
         "@/lib/finance": "export async function syncAppointmentFinancialEntry(){}",
-        "@/lib/create-booking-reservation": `export async function createBookingReservation(request,slug,client,origin){const body=await request.json();if(!body.document)throw new Error("Missing document");if(origin.source!=="whatsapp")throw new Error("Invalid source");return Response.json({manageUrl:"/agendamento/test-payment"},{status:201})}`,
+        "@/lib/create-booking-reservation": `export async function createBookingReservation(request,slug,client,origin){const body=await request.json();if(!body.document && !globalThis.${key}.directReservationId)throw new Error("Missing document");if(origin.source!=="whatsapp")throw new Error("Invalid source");return Response.json({id:globalThis.${key}.directReservationId,directPix:Boolean(globalThis.${key}.directReservationId),manageUrl:"/agendamento/test-payment"},{status:201})}`,
         "@/lib/google-calendar": "export async function syncAppointmentToGoogleCalendar(){}; export async function deleteAppointmentFromGoogleCalendar(){}",
         "@/lib/package-balance": "export async function reconcilePackageUsage(){}",
         "@/lib/availability": `export async function getAvailableTimes(input){const state=globalThis.${key};state.availabilityRequests.push(input);return state.availableSlots ?? [state.slot]} export async function isTimeAvailable(){return true}`,
@@ -389,6 +389,20 @@ test("both real agent routes share navigation; Chat only links, Core books after
     assert.match(accepted.output.body,/Horários disponíveis.*Dra. Marina Costa/);
     assert.equal(state.aiCalls.length,callsBeforeTypo);
     assert.equal(accepted.output.raw_payload.pendingAction,undefined,"confirming a name never confirms a reservation");
+    await pg.query("UPDATE services SET deposit_type='fixed',deposit_value=100 WHERE id=$1",[service]);
+    await pg.query("UPDATE organizations SET booking_payment_settings=$1 WHERE id=$2",[{mode:"pix_direct"},organization]);
+    state.directReservationId=pendingPix.id;
+    const qrToken=randomUUID();
+    await pg.query("UPDATE appointments SET client_id=$1,deposit_status='direct_pending',deposit_amount_in_cents=100,public_manage_token=$2,reservation_expires_at=$3,metadata=$4 WHERE id=$5",[client,qrToken,new Date(Date.now()+1800000).toISOString(),{directPix:{key:"synthetic@example.invalid",payload:"synthetic-pix-payload",entryId:randomUUID(),accountId:randomUUID()}},pendingPix.id]);
+    await call(hybrid,"quero as 10 horas","core_ai");
+    const directQr=await call(hybrid,"CONFIRMAR","core_ai");
+    assert.match(directQr.output.body,/Pix Copia e Cola:\nsynthetic-pix-payload/);
+    const imageRows=await pg.query<{message_type:string;body:string;raw_payload:{image:{link:string}}}>("SELECT * FROM chat_messages WHERE external_message_id=$1",[`aggenda-ai-qr:${directQr.messageId}`]);
+    assert.equal(imageRows.rows[0].message_type,"image");
+    assert.match(imageRows.rows[0].body,/1,00/);
+    assert.match(imageRows.rows[0].raw_payload.image.link,new RegExp(`/agendamento|/appointments/${qrToken}/pix/qr`));
+    await directQr.replay();
+    assert.equal((await pg.query("SELECT id FROM outbox_events WHERE event_key=$1",[`whatsapp:ai-qr:${directQr.messageId}`])).rows.length,1,"retry does not duplicate the QR image");
     await call(hybrid, "Quero falar com uma pessoa", "core_ai");
     assert.equal(state.aiCalls.length, callsBeforeTypo, "name clarification, declining and handoff need no model call");
     assert.equal((await pg.query<{automation_paused:boolean}>("SELECT automation_paused FROM chat_conversations WHERE id=$1", [hybrid])).rows[0].automation_paused, true);

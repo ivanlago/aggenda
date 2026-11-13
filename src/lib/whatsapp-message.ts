@@ -4,8 +4,11 @@ export function usesInternalWhatsAppAgent(product: string | null | undefined) {
   return product === "CORE_AI" || product === "CHAT_AI";
 }
 
-export function whatsappMessageContent(payload: { text?: unknown; options?: unknown; document?: unknown }) {
+export function whatsappMessageContent(payload: { text?: unknown; options?: unknown; document?: unknown; image?: unknown }) {
   const text = String(payload.text ?? "");
+  if (payload.image && typeof payload.image === "object" && "link" in payload.image && typeof payload.image.link === "string") {
+    return {type:"image",image:{link:payload.image.link,caption:text.slice(0,1024)}};
+  }
   if (payload.document && typeof payload.document === "object" && "link" in payload.document && typeof payload.document.link === "string") {
     return { type: "document", document: { link: payload.document.link, filename: "catalogo-produtos.pdf", caption: text.slice(0, 1024) } };
   }

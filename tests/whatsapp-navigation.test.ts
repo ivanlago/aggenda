@@ -22,6 +22,11 @@ const context: NavigationContext = {
   products: [{ id: "product-a", label: "Produto de teste · 50 ml", priceInCents: 5900 }],
 };
 
+test("WhatsApp sends the QR as an image with caption, preserving plain text messages", () => {
+  assert.deepEqual(whatsappMessageContent({text:"Sinal: R$ 1,00",image:{link:"https://aggenda.example/api/public/appointments/token/pix/qr"}}),{type:"image",image:{link:"https://aggenda.example/api/public/appointments/token/pix/qr",caption:"Sinal: R$ 1,00"}});
+  assert.equal(whatsappMessageContent({text:"Pix Copia e Cola: codigo"}).type,"text");
+});
+
 test("advance-payment guidance uses the saved service rules and distinguishes direct Pix from integrated", () => {
   const service = { ...context.services[0], depositType: "percentage", depositValue: 25 };
   assert.equal(bookingDepositAmount(12000, "percentage", 25), 3000);

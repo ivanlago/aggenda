@@ -93,6 +93,8 @@ test("billed commissions: unpaid sale, item override, snapshot, package once, re
     assert.equal((await pg.query<{amount:number}>("SELECT sum(amount_in_cents)::int AS amount FROM commission_entries WHERE sale_id=$1",[mixed])).rows[0].amount,1370,"cost is not deducted twice");
     await assert.rejects(pg.query("UPDATE retail_sales SET commission_cost_in_cents=-1 WHERE id=$1",[mixed]));
     await pg.query("UPDATE retail_sales SET commission_deduct_cost=false,commission_cost_in_cents=null WHERE id=$1",[mixed]);
+    await pg.exec(await readFile("drizzle/0108_disable_commission_cost.sql","utf8"));
+    await assert.rejects(pg.query("UPDATE retail_sales SET commission_deduct_cost=true,commission_cost_in_cents=0 WHERE id=$1",[mixed]),/commission_cost_disabled/);
     const state=globalThis as unknown as {assessmentTestDb:unknown;assessmentTestOrg:string};
     state.assessmentTestDb=drizzle(pg,{schema});state.assessmentTestOrg=org;
     const bundle=await build({entryPoints:["src/actions/commissions.ts"],bundle:true,write:false,format:"cjs",platform:"node",packages:"external",plugins:[{name:"assessment-action",setup(builder){
@@ -108,6 +110,8 @@ test("billed commissions: unpaid sale, item override, snapshot, package once, re
     form.set("deductCost","on");
     assert.ok((await actionModule.exports.applySaleCommissionAssessment(form))?.error,"cost requires an explicit value");
     form.set("cost","0,00");
+    assert.ok((await actionModule.exports.applySaleCommissionAssessment(form))?.error,"cost deduction remains disabled even when a value is supplied");
+    form.delete("deductCost");form.delete("cost");
     state.assessmentTestOrg=other;
     assert.ok((await actionModule.exports.applySaleCommissionAssessment(form))?.error,"foreign sale is rejected");
     state.assessmentTestOrg=org;
@@ -135,7 +139,6 @@ test("assessment preview: discounts, mixed rates, exact fee allocation, refunds 
   assert.deepEqual(commissionAssessment(rows,true,300,4500).map(x=>x.commission),[290,290]);
   assert.equal(commissionAssessment(rows,true,1).reduce((sum,x)=>sum+x.fee,0),1);
   assert.equal(commissionAssessment([...rows].reverse(),true,1)[0].id,"a");
-  assert.deepEqual(commissionAssessment(rows,true,300,0,900).map(x=>[x.cost,x.base,x.commission]),[[600,5200,520],[300,2600,520]]);
   assert.equal(parseCommissionFee("3,45"),345);
   assert.equal(parseCommissionFee("0"),0);
   for(const value of ["", "-1", "1.234", "1e2", "Infinity"]) assert.throws(()=>parseCommissionFee(value));

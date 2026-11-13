@@ -11,7 +11,7 @@ test("commission period defaults to complete current month and supports arbitrar
 test("unchecked deductions survive GET submission and all statuses are supported",()=>{
   assert.equal(commissionListFilters({},"2026-11-13").deductDiscount,true);
   const filters=commissionListFilters({consulta:"1",custo:"1",taxa:"1",status:"paid",beneficiario:"user:a"},"2026-11-13");
-  assert.equal(filters.deductDiscount,false);assert.equal(filters.deductCost,true);assert.equal(filters.deductFees,true);assert.equal(filters.beneficiary,"user:a");
+  assert.equal(filters.deductDiscount,false);assert.ok(!("deductCost" in filters),"old cost query parameters are ignored");assert.equal(filters.deductFees,true);assert.equal(filters.beneficiary,"user:a");
   for(const status of ["pending","paid","cancelled"]) assert.equal(commissionListFilters({status},"2026-11-13").status,status);
   assert.equal(commissionListFilters({status:"invalid"},"2026-11-13").status,"");
 });

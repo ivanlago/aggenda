@@ -7,5 +7,5 @@ export function commissionListFilters(query:CommissionListQuery,today:string) {
   const [year,number]=month.split("-").map(Number);
   const start=query.inicio||month+"-01", end=query.fim||new Date(Date.UTC(year,number,0)).toISOString().slice(0,10);
   const error=!validCommissionDate(start)||!validCommissionDate(end)?"Informe datas válidas para o período.":start>end?"A data inicial deve ser anterior ou igual à data final.":"";
-  return {start,end,error,beneficiary:query.beneficiario??"",status:["pending","paid","cancelled"].includes(query.status??"")?query.status!:"",deductCost:query.custo==="1",deductFees:query.taxa==="1",deductDiscount:query.consulta==="1"?query.desconto==="1":true};
+  return {start,end,error,beneficiary:query.beneficiario??"",status:["pending","paid","cancelled"].includes(query.status??"")?query.status!:"",deductFees:query.taxa==="1",deductDiscount:query.consulta==="1"?query.desconto==="1":true};
 }

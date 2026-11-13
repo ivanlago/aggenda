@@ -757,6 +757,13 @@
       "when": 1794551631680,
       "tag": "0107_commission_cost_assessment",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1794553344848,
+      "tag": "0108_disable_commission_cost",
+      "breakpoints": true
     }
   ]
 }

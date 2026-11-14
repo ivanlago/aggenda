@@ -54,12 +54,12 @@ export function ServiceForm({ item, label, categories, professionals, selectedPr
     <fieldset className="col-span-full min-w-0">
       <legend className="mb-2 text-sm font-bold">Atendentes habilitados</legend>
       <input type="hidden" name="professionalLinksSubmitted" value="1" />
-      <div className="grid max-h-48 gap-3 overflow-y-auto rounded-xl border p-3 sm:grid-cols-2">
-        {professionals.filter(person => (person.isActive && person.isBookable) || selectedProfessionalIds.includes(person.id)).map(person => <label key={person.id} className="flex items-start gap-2 text-sm">
-          <input type="checkbox" name="professionalIds" value={person.id} defaultChecked={selectedProfessionalIds.includes(person.id)} />
-          <span>{person.name}{(!person.isActive || !person.isBookable) && <span className="block text-xs text-muted">Indisponível para novos agendamentos</span>}</span>
+      <div className="grid max-h-32 grid-cols-1 gap-x-4 gap-y-1 overflow-y-auto overscroll-contain rounded-xl border p-2 sm:grid-cols-2 lg:grid-cols-3 [scrollbar-gutter:stable]">
+        {professionals.filter(person => (person.isActive && person.isBookable) || selectedProfessionalIds.includes(person.id)).map(person => <label key={person.id} className="flex min-w-0 cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-sm hover:bg-brand/5 focus-within:bg-brand/5">
+          <input className="mt-1 shrink-0" type="checkbox" name="professionalIds" value={person.id} defaultChecked={selectedProfessionalIds.includes(person.id)} />
+          <span className="min-w-0 break-words">{person.name}{(!person.isActive || !person.isBookable) && <span className="block text-xs text-muted">Indisponível para novos agendamentos</span>}</span>
         </label>)}
-        {!professionals.some(person => (person.isActive && person.isBookable) || selectedProfessionalIds.includes(person.id)) && <p className="text-sm text-muted sm:col-span-2">Nenhum colaborador habilitado. Marque “Recebe agendamentos” no cadastro da Equipe.</p>}
+        {!professionals.some(person => (person.isActive && person.isBookable) || selectedProfessionalIds.includes(person.id)) && <p className="col-span-full p-1 text-sm text-muted">Nenhum colaborador habilitado. Marque “Recebe agendamentos” no cadastro da Equipe.</p>}
       </div>
       <p className="mt-2 text-xs text-muted">Selecione quem pode realizar este serviço. Sem atendentes selecionados, o serviço não terá horários para agendamento.</p>
     </fieldset>

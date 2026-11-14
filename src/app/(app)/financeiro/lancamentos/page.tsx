@@ -127,8 +127,8 @@ async function AccountsView({ organization, query, today, month, nextMonth, tab 
     </div>
     <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_16rem]">
       <section className="panel min-w-0" aria-label={incoming ? "Contas a receber do período" : "Contas a pagar do período"}>
-        <h2 className="text-lg font-extrabold">{incoming ? "Contas a receber" : "Contas a pagar"}</h2>
-        <p className="mt-1 text-sm text-muted">Contas com vencimento ou baixa no período.</p>
+        <h2 className="text-xl font-extrabold">{incoming ? "Contas a receber" : "Contas a pagar"}</h2>
+        <p className="mt-1 text-xs leading-5 text-slate-500">Contas com vencimento ou baixa no período.</p>
       <PaginatedCollection key={JSON.stringify(query)} label="Registros" className="mt-4 divide-y">{entries.map((entry) => {
         const account = accounts.find((item) => item.id === entry.accountId)?.name;
         const linkedCharges = charges.filter((item) => item.financialEntryId === entry.id);
@@ -139,8 +139,14 @@ async function AccountsView({ organization, query, today, month, nextMonth, tab 
         const isOverdue = entry.status === "pending" && entry.dueDate < today;
         const isRealized = entry.status === "paid" || entry.status === "received";
         return <article id={`lancamento-${entry.id}`} key={entry.id} className={`grid scroll-mt-6 gap-3 py-4 xl:grid-cols-[1fr_auto] xl:items-center ${query.lancamento === entry.id ? "rounded-xl bg-teal-50 p-4" : ""}`}>
-          <div><div className="flex flex-wrap items-center gap-2"><p className="font-extrabold">{entry.description}</p>{isOverdue && <span className="status-pill text-red-700">Vencido</span>}{managed && <span className="status-pill">Cobrança online vinculada</span>}</div>
-            <p className="mt-1 text-xs text-muted">{entry.category || "Sem categoria"}{account ? ` · ${account}` : ""} · {sourceLabels[entry.source] ?? entry.source}{paymentName ? ` · ${paymentName}` : ""} · vencimento {new Date(`${entry.dueDate}T12:00:00Z`).toLocaleDateString("pt-BR")}{entry.realizedDate ? ` · baixa ${new Date(`${entry.realizedDate}T12:00:00Z`).toLocaleDateString("pt-BR")}` : ""}</p>
+          <div><div className="flex flex-wrap items-center gap-2"><p className="text-base font-bold leading-6">{entry.description}</p>{isOverdue && <span className="status-pill text-red-700">Vencido</span>}{managed && <span className="status-pill">Cobrança online vinculada</span>}</div>
+            <p className="mt-1 text-xs leading-5 text-slate-500">{entry.category || "Sem categoria"} · {sourceLabels[entry.source] ?? entry.source}</p>
+            <dl className="mt-1 flex flex-wrap gap-x-5 gap-y-1 text-xs leading-5">
+              <div className="flex gap-1"><dt className="text-slate-500">Vencimento:</dt><dd className={`font-semibold tabular-nums ${isOverdue ? "text-red-700" : "text-slate-700"}`}>{new Date(`${entry.dueDate}T12:00:00Z`).toLocaleDateString("pt-BR")}</dd></div>
+              {entry.realizedDate && <div className="flex gap-1"><dt className="text-slate-500">Baixa:</dt><dd className="font-semibold tabular-nums text-slate-700">{new Date(`${entry.realizedDate}T12:00:00Z`).toLocaleDateString("pt-BR")}</dd></div>}
+              {account && <div className="flex gap-1"><dt className="text-slate-500">Conta:</dt><dd className="font-medium text-slate-700">{account}</dd></div>}
+              {paymentName && <div className="flex gap-1"><dt className="text-slate-500">Forma:</dt><dd className="font-medium text-slate-700">{paymentName}</dd></div>}
+            </dl>
             <div className="mt-3 flex flex-wrap gap-2">
               {charge && <Link className="secondary-button" href={`${chargesPath}&cobranca=${charge.id}#cobranca-${charge.id}`}>Ver cobrança vinculada</Link>}
               {charge && entry.recurrenceGroupId && <Link className="secondary-button" href={`${chargesPath}&serie=${entry.recurrenceGroupId}`}>Ver cobranças da série</Link>}

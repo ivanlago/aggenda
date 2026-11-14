@@ -6,7 +6,7 @@ import { Bell, CalendarClock, ChartNoAxesCombined, KanbanSquare, MessageCircleMo
 const tabs = [
   { id: "lembretes", label: "Lembretes", icon: Bell },
   { id: "retornos", label: "Retornos por serviço", icon: CalendarClock },
-  { id: "recuperacao", label: "Recuperação de pacientes", icon: UserRoundSearch },
+  { id: "recuperacao", label: "Recuperação de clientes", icon: UserRoundSearch },
   { id: "voucher", label: "Voucher", icon: TicketPercent },
   { id: "conversas", label: "Conversas comerciais", icon: MessageCircleMore },
   { id: "funil", label: "Funil e oportunidades", icon: KanbanSquare },

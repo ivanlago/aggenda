@@ -160,7 +160,7 @@ export async function issueProfessionalDocument(data: FormData) {
   const appointmentId = text(data, "appointmentId");
   if (appointmentId) {
     const { appointment } = await requireAttendance(appointmentId);
-    if (appointment.clientId !== clientId || appointment.professionalId !== professionalId) return { error: "Cliente ou profissional não corresponde ao atendimento." };
+    if (appointment.clientId !== clientId || (appointment.professionalId !== professionalId && !["owner", "admin"].includes(organization.role))) return { error: "Cliente ou profissional não corresponde ao atendimento." };
   }
   const deliveryMethod = ["print", "email", "whatsapp"].includes(text(data, "deliveryMethod")) ? text(data, "deliveryMethod") : "print";
   const [client] = await db.select().from(clients).where(and(eq(clients.id, clientId), eq(clients.organizationId, organization.id))).limit(1);

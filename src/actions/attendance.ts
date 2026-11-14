@@ -10,7 +10,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { issueProfessionalDocument } from "@/actions/electronic-documents";
 import { updateAppointmentStatus } from "@/actions/app";
 import { calculateAttendanceQuote } from "@/lib/attendance-quote";
-import { assertClinicalIssuer } from "@/lib/clinical-access";
+import { resolveAttendanceIssuer, assertClinicalIssuer } from "@/lib/clinical-access";
 
 export async function saveAttendanceNote(data: FormData) {
   const { appointment, organization, session } = await requireAttendance(String(data.get("appointmentId") ?? ""));
@@ -31,10 +31,11 @@ export async function saveAttendanceNote(data: FormData) {
 export async function issueAttendanceDocument(data: FormData) {
   const { appointment, organization, session } = await requireAttendance(String(data.get("appointmentId") ?? ""));
   assertOrganizationPermission(organization.role, "clinical.issue");
-  if (!appointment.professionalId) return { error: "Vincule um profissional ao agendamento antes de emitir documentos." };
-  await assertClinicalIssuer(organization.id, session.user.id, appointment.professionalId);
+  const issuer = await resolveAttendanceIssuer(organization.id, session.user.id, organization.role, appointment.professionalId);
+  if (!issuer) return { error: "Configure seu cadastro profissional ativo para emitir documentos neste atendimento." };
+  await assertClinicalIssuer(organization.id, session.user.id, issuer.id);
   data.set("clientId", appointment.clientId);
-  data.set("professionalId", appointment.professionalId);
+  data.set("professionalId", issuer.id);
   data.set("saveToRecord", "true");
   const kind = String(data.get("attendanceDocumentType") ?? "");
   if (["companion_declaration", "quote"].includes(kind)) {

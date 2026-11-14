@@ -30,6 +30,14 @@ export async function assertClinicalIssuer(organizationId: string, userId: strin
   if (!professional) throw new Error("A emissão clínica exige o profissional responsável vinculado ao usuário.");
 }
 
+export async function resolveAttendanceIssuer(organizationId: string, userId: string, role: string, assignedProfessionalId: string | null) {
+  const [issuer] = await db.select({ id: professionals.id, name: professionals.name }).from(professionals).where(and(
+    eq(professionals.organizationId, organizationId), eq(professionals.userId, userId), eq(professionals.isActive, true),
+    ["owner", "admin"].includes(role) ? undefined : assignedProfessionalId ? eq(professionals.id, assignedProfessionalId) : eq(professionals.id, "00000000-0000-0000-0000-000000000000"),
+  )).limit(1);
+  return issuer;
+}
+
 /** Initial product scope: medical forms require a CRM registered for the issuer.
  * This checks the clinic's registration data, not current licensure with a council. */
 export async function assertMedicalRegistration(organizationId: string, professionalId: string) {

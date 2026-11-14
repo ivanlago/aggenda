@@ -21,6 +21,7 @@ export function AttendanceTools({ forms, availableTools, restrictionMessage }: {
     <div className="flex items-center gap-2"><h3 id="attendance-tools-title" className="text-lg font-extrabold">Ferramentas de atendimento</h3>
       {restrictionMessage && <details className="relative shrink-0"><summary className="flex cursor-pointer list-none items-center rounded text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand [&::-webkit-details-marker]:hidden"><Info className="size-4" aria-hidden="true" /><span className="sr-only">Por que os documentos médicos não aparecem?</span></summary><p className="absolute right-0 top-full z-20 mt-2 w-72 max-w-[75vw] rounded-xl border bg-white p-3 text-xs font-normal text-muted shadow-lg">{restrictionMessage}</p></details>}
     </div>
+    {restrictionMessage && <p className="mt-2 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-600" role="status">{restrictionMessage}</p>}
     <div className="app-tabs mt-4" role="group" aria-label="Ferramentas de atendimento">
       {visibleTools.map(({ id, label, icon: Icon }) => <button
         key={id}

@@ -8,7 +8,7 @@ import { clinicalConsultationDrafts } from "@/db/schema";
 import { requireOrganization } from "@/lib/session";
 import { assertOrganizationPermission } from "@/lib/permissions";
 import { requireAttendance } from "@/lib/attendance";
-import { assertClinicalIssuer, assertMedicalRegistration } from "@/lib/clinical-access";
+import { resolveAttendanceIssuer, assertMedicalRegistration } from "@/lib/clinical-access";
 import { ClinicalDraftConflict, clinicalDraftSchema, clinicalFieldErrors } from "@/lib/clinical-draft";
 import { ClinicalDraftRepository } from "@/lib/clinical-draft-repository";
 
@@ -17,9 +17,9 @@ async function context(appointmentId: string) {
   const sessionContext = await requireOrganization();
   assertOrganizationPermission(sessionContext.organization.role, "clinical.manage");
   const ctx = await requireAttendance(appointmentId);
-  if (!ctx.appointment.professionalId) throw new Error("Vincule o profissional ao atendimento.");
-  await assertClinicalIssuer(ctx.organization.id, ctx.session.user.id, ctx.appointment.professionalId);
-  return ctx;
+  const issuer = await resolveAttendanceIssuer(ctx.organization.id, ctx.session.user.id, ctx.organization.role, ctx.appointment.professionalId);
+  if (!issuer) throw new Error("Use o usuário vinculado ao profissional responsável ou seu cadastro profissional de administrador.");
+  return { ...ctx, issuer };
 }
 type Failure = { ok: false; error: string; conflict?: boolean; fieldErrors?: Record<string, string> };
 export async function saveClinicalDraft(input: { appointmentId: string; id: string; version: number; data: unknown }): Promise<Failure | { ok: true; version: number; savedAt: string }> {
@@ -44,7 +44,7 @@ export async function finalizeClinicalDraft(input: { appointmentId: string; id: 
   const [draft] = await db.select().from(clinicalConsultationDrafts).where(and(eq(clinicalConsultationDrafts.id, input.id), eq(clinicalConsultationDrafts.organizationId, ctx.organization.id), eq(clinicalConsultationDrafts.appointmentId, ctx.appointment.id), eq(clinicalConsultationDrafts.userId, ctx.session.user.id))).limit(1);
   if (!draft) return { ok: false, error: "Salve o rascunho antes de finalizar." };
   if (draft.status === "active" && draft.data.mode === "medical") {
-    try { await assertMedicalRegistration(ctx.organization.id, ctx.appointment.professionalId!); }
+    try { await assertMedicalRegistration(ctx.organization.id, ctx.issuer.id); }
     catch { return { ok: false, error: "Cadastre o CRM e a UF do médico responsável antes de finalizar uma consulta médica." }; }
   }
   try {

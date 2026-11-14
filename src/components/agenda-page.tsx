@@ -5,12 +5,11 @@ import { directPixReservation } from "@/lib/booking-payment";
 import { PaginatedCollection } from "@/components/paginated-collection";
 import { ScheduleBlockForm } from "./schedule-block-form";
 import { ScheduleBlocks } from "./schedule-blocks";
-import { AppointmentRoomForm } from "./appointment-room-form";
+import { AppointmentEditForm } from "./appointment-edit-form";
 import Link from "next/link";
 import { and, eq, gte, ilike, inArray, lt, sql } from "drizzle-orm";
 
-import { createAppointment, updateAppointmentStatus } from "@/actions/app";
-import { rescheduleAppointment } from "@/actions/schedule";
+import { createAppointment } from "@/actions/app";
 import { db } from "@/db";
 import { appointments, clientPackageBalances, clientPackages, clients, financialEntries, packageUsages, rooms, professionals, servicePackages, services, servicesToProfessionals } from "@/db/schema";
 import { formatOrganizationDateTime } from "@/lib/appointment-safety";
@@ -21,8 +20,6 @@ import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization, requireProfessionalScope } from "@/lib/session";
 
 import { AppointmentCreateForm } from "./appointment-create-form";
-import { AppointmentRescheduleForm } from "./appointment-reschedule-form";
-import { AppointmentStatusForm } from "./appointment-status-form";
 import { ModalShell } from "./modal-shell";
 import { AppointmentPaymentForm } from "@/app/dashboard/appointment-payment-form";
 
@@ -142,7 +139,7 @@ export async function AgendaPage({ openNewAppointment = false, filters = {} }: {
               )}
             </td>
             {canManageFinance && <td className="p-3"><ModalShell title="Registrar pagamento" variant="payment" completed={item.paymentStatus === "received" || Boolean(item.clientPackageId)}><AppointmentPaymentForm appointmentId={item.id} client={item.client} description={item.service} defaultAmount={price} packages={availablePackages} /></ModalShell></td>}
-            {canManage && <td className="p-3"><ModalShell title="Editar agendamento" variant="edit" wide><div className="grid gap-4"><div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3"><p className="font-extrabold">{item.client}</p><p className="text-sm text-muted">{item.service} · {item.professional ?? "Sem profissional"}</p><p className="mt-1 text-sm font-bold text-brand">{dateTime}</p>{item.packageName && <p className="mt-1 text-xs text-brand">Pacote: {item.packageName} · {item.packageStatus}</p>}</div>{directPix && ["direct_pending", "direct_review"].includes(item.depositStatus) && ["scheduled", "confirmed"].includes(item.status) && <BookingDirectPixReview id={item.id} status={item.depositStatus} amountInCents={item.depositAmount} receiverName={directPix.receiverName} canConfirm={canManageFinance} />}<AppointmentStatusForm action={updateAppointmentStatus} appointmentId={item.id} initialStatus={item.status} initialCancellationReason={item.cancellationReason} statuses={statuses} /><div className="grid gap-4 border-t pt-4"><section className="grid gap-3"><h3 className="font-bold text-brand">Trocar sala sem reagendar</h3><AppointmentRoomForm appointmentId={item.id} roomId={item.roomId} rooms={roomItems} /></section>{item.professionalId && <section className="grid gap-3"><h3 className="font-bold text-brand">Reagendar data, horário e sala</h3><AppointmentRescheduleForm rooms={roomItems} initialRoomId={item.roomId} action={rescheduleAppointment} appointmentId={item.id} serviceId={item.serviceId} professionalId={item.professionalId} timezone={organization.timezone} /></section>}</div>{canSendWhatsApp && whatsapp && <a className="secondary-button sm:w-fit" href={whatsapp} target="_blank" rel="noreferrer">Enviar pelo WhatsApp</a>}</div></ModalShell></td>}
+            {canManage && <td className="p-3"><ModalShell title="Editar agendamento" variant="edit" wide><div className="grid gap-4"><div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3"><p className="font-extrabold">{item.client}</p><p className="text-sm text-muted">{item.service} · {item.professional ?? "Sem profissional"}</p><p className="mt-1 text-sm font-bold text-brand">{dateTime}</p>{item.packageName && <p className="mt-1 text-xs text-brand">Pacote: {item.packageName} · {item.packageStatus}</p>}</div>{directPix && ["direct_pending", "direct_review"].includes(item.depositStatus) && ["scheduled", "confirmed"].includes(item.status) && <BookingDirectPixReview id={item.id} status={item.depositStatus} amountInCents={item.depositAmount} receiverName={directPix.receiverName} canConfirm={canManageFinance} />}<AppointmentEditForm key={`${item.id}:${item.startsAt.toISOString()}:${item.professionalId}:${item.roomId}:${item.status}`} appointmentId={item.id} serviceId={item.serviceId} professionalId={item.professionalId} professionalName={item.professional} startsAt={item.startsAt.toISOString()} status={item.status} cancellationReason={item.cancellationReason} roomId={item.roomId} timezone={organization.timezone} canTransfer={["owner", "admin"].includes(organization.role)} professionals={professionalItems.filter(person => links.some(link => link.professionalId === person.id && link.serviceId === item.serviceId))} rooms={roomItems} />{canSendWhatsApp && whatsapp && <a className="secondary-button sm:w-fit" href={whatsapp} target="_blank" rel="noreferrer">Enviar pelo WhatsApp</a>}</div></ModalShell></td>}
           <td className="p-3"><Link className="primary-button whitespace-nowrap py-2" href={`/atendimento/${item.id}`}>Atender</Link></td></tr>;
         })}</PaginatedCollection>
       </table>{!items.length && <p className="empty-state">Nenhum atendimento no período selecionado.</p>}</div>

@@ -24,7 +24,7 @@ export default async function PaymentConnectionGuidePage({ params }: Props) {
   return <div className="page-wrap max-w-4xl">
     <Link className="mb-4 inline-flex text-sm font-bold text-brand" href={backUrl}>← Voltar para {guide.name} nas configurações de pagamento</Link>
     <PageHeader eyebrow="Guia de pagamentos" title={`${guide.name}: passo a passo`} description={guide.intro} />
-    <p className="mb-5 text-xs text-muted">Atualizado em 22/10/2026 · Os nomes dos menus da instituição podem mudar.</p>
+    <p className="mb-5 text-xs text-slate-500 leading-5">Atualizado em 22/10/2026 · Os nomes dos menus da instituição podem mudar.</p>
     <section className="panel mb-5">
       <h2 className="text-lg font-extrabold">Antes de começar</h2>
       <p className="mt-2 text-sm leading-6">{guide.mode === "connection" ? "Use a conta que receberá o dinheiro dos seus clientes. Produção movimenta dinheiro real; Testes / Homologação exige credenciais próprias desse ambiente. Guarde as chaves e preencha somente os campos de conexão do Aggenda; não as envie por WhatsApp, e-mail ou conversa de suporte." : "Tenha acesso ao extrato do banco que recebe os depósitos e aos lançamentos financeiros da empresa. Você não precisa fornecer senha bancária nem credenciais da maquininha ao Aggenda."}</p>
@@ -36,7 +36,7 @@ export default async function PaymentConnectionGuidePage({ params }: Props) {
         <p className="mt-2 text-sm leading-7">{step.text}</p>
         {step.webhook && <div className="mt-4 rounded-xl border bg-slate-50 p-4">
           <p className="text-sm font-bold">URL de notificação da sua empresa</p>
-          <p className="mt-1 text-xs text-muted">Copie o endereço inteiro, incluindo organizationId. Ele identifica a empresa em que você está conectado.</p>
+          <p className="mt-1 text-xs text-slate-500 leading-5">Copie o endereço inteiro, incluindo organizationId. Ele identifica a empresa em que você está conectado.</p>
           <code className="my-3 block break-all text-sm">{webhookUrl}</code>
           <CopyButton value={webhookUrl} label="Copiar URL do webhook" />
         </div>}

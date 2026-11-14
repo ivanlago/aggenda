@@ -66,7 +66,7 @@ export default async function InventoryPurchasesPage({ searchParams }: { searchP
         {suppliers.map(supplier => <article key={supplier.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
           <div>
             <p className="font-bold">{supplier.name}</p>
-            <p className="text-sm text-muted">{[supplier.document, supplier.email, supplier.phone].filter(Boolean).join(" · ")}</p>
+            <p className="text-xs text-slate-600 leading-5 font-medium">{[supplier.document, supplier.email, supplier.phone].filter(Boolean).join(" · ")}</p>
           </div>
           <div className="flex items-center gap-3">
             <span className="status-pill">{supplier.isActive ? "Ativo" : "Inativo"}</span>
@@ -74,7 +74,7 @@ export default async function InventoryPurchasesPage({ searchParams }: { searchP
           </div>
         </article>)}
       </PaginatedCollection>
-      {!suppliers.length && <p className="text-sm text-muted">Nenhum fornecedor cadastrado.</p>}
+      {!suppliers.length && <p className="text-xs text-slate-500 leading-5">Nenhum fornecedor cadastrado.</p>}
     </section>
     <section id="compras" className="panel grid gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -85,8 +85,8 @@ export default async function InventoryPurchasesPage({ searchParams }: { searchP
           </ModalShell>
         : null}
       </div>
-      {(!activeSuppliers.length || !products.length) && <p className="text-sm text-muted">Cadastre um fornecedor ativo e um produto no estoque para registrar a compra.</p>}
-      <p className="text-sm text-muted">Até 100 compras recentes.</p>
+      {(!activeSuppliers.length || !products.length) && <p className="text-xs text-slate-500 leading-5">Cadastre um fornecedor ativo e um produto no estoque para registrar a compra.</p>}
+      <p className="text-xs text-slate-500 leading-5">Até 100 compras recentes.</p>
       <div className="grid gap-3 max-h-[40rem] overflow-y-auto">
         {purchases.map(purchase => <details key={purchase.id} className="rounded-xl border p-3">
           <summary className="cursor-pointer font-bold">{purchase.purchasedOn.split("-").reverse().join("/")} · {purchase.supplierName} · {money.format(purchase.totalInCents / 100)}</summary>
@@ -100,7 +100,7 @@ export default async function InventoryPurchasesPage({ searchParams }: { searchP
         </details>)}
       </div>
       <ListPagination path="/estoque/compras" query={{}} page={page} pageSize={pageSize} total={total} label="Compras registradas" />
-      {!purchases.length && <p className="text-sm text-muted">Nenhuma compra registrada.</p>}
+      {!purchases.length && <p className="text-xs text-slate-500 leading-5">Nenhuma compra registrada.</p>}
     </section>
   </div>;
 }

@@ -44,7 +44,7 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
         <EntityThumbnail src={member.imageUrl} alt={member.shortName} fallback={member.shortName[0]} />
         <div className="min-w-0 flex-1">
           <p className="text-lg font-extrabold">{member.shortName}</p>
-          <p className="truncate text-sm text-muted">{member.email}</p>
+          <p className="truncate text-xs text-slate-600 leading-5 font-medium">{member.email}</p>
         </div>
       </div>
       <div className="team-member-attributes grid min-w-0 gap-1.5">
@@ -57,7 +57,7 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
           {member.googleCalendarEmail && <span className="status-pill inline-flex shrink-0 items-center gap-1 whitespace-nowrap" title={member.googleCalendarEmail}><CalendarCheck className="size-3.5" aria-hidden="true" />Google conectado</span>}
         </div>}
       </div>
-      <div className="min-w-0">{canEdit && <p className="text-xs text-muted"><span className="block font-bold">Última entrada</span>{member.lastSignedIn ?? "Sem registro"}</p>}</div>
+      <div className="min-w-0">{canEdit && <p className="text-xs text-slate-600 leading-5 font-medium"><span className="block font-bold">Última entrada</span>{member.lastSignedIn ?? "Sem registro"}</p>}</div>
       <div className="team-member-actions flex items-center gap-2 lg:justify-end [&>button]:shrink-0 [&>form]:shrink-0">
       {canEdit && member.professionalId && member.receivesAppointments && (
         <ModalShell title={`Disponibilidade de ${member.shortName}`} triggerLabel="Disponibilidade" triggerIcon={member.availability.length ? <CircleCheck className="size-4" role="img" aria-label="Horários cadastrados" /> : <CalendarDays className="size-4" aria-hidden="true" />} variant="edit" wide closeOnSuccess>
@@ -92,8 +92,8 @@ export function TeamMemberCard({ member, professions, specialties, canEdit, canD
             <div className="grid min-w-0 items-start gap-4 sm:col-span-2 sm:grid-cols-2"><div className="min-w-0"><EntityImageField currentUrl={member.imageUrl} label="Foto do profissional" /></div><div className="grid min-w-0 content-start gap-2">
               <p className="flex flex-wrap items-center gap-2 font-bold">Google Agenda{member.googleCalendarEmail && <span className="status-pill inline-flex items-center gap-1"><CalendarCheck className="size-4" aria-hidden="true" />Conectado</span>}</p>
               {member.googleCalendarEmail && <p className="break-words text-sm text-brand">{member.googleCalendarEmail}</p>}
-              <p className="text-sm text-muted">Conecte a conta Google do colaborador para sincronizar seus agendamentos.</p>
-              <div>{member.professionalId ? <Link className="secondary-button" href={`/api/google-calendar/connect?professionalId=${encodeURIComponent(member.professionalId)}`} prefetch={false}>{member.googleCalendarEmail ? "Reconectar Google Agenda" : "Conectar Google Agenda"}</Link> : <p className="text-sm text-muted">Salve o cadastro para conectar o Google Agenda e definir a disponibilidade.</p>}</div>
+              <p className="text-xs text-slate-500 leading-5">Conecte a conta Google do colaborador para sincronizar seus agendamentos.</p>
+              <div>{member.professionalId ? <Link className="secondary-button" href={`/api/google-calendar/connect?professionalId=${encodeURIComponent(member.professionalId)}`} prefetch={false}>{member.googleCalendarEmail ? "Reconectar Google Agenda" : "Conectar Google Agenda"}</Link> : <p className="text-xs text-slate-500 leading-5">Salve o cadastro para conectar o Google Agenda e definir a disponibilidade.</p>}</div>
             </div></div>
           </>}
           <FormActions editing />

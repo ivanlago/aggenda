@@ -229,7 +229,7 @@ export default async function ClientHistoryPage({
       {canManage && <PortalDependents organizationId={organization.id} guardianId={client.id} />}
       {canReadClinical && <ClinicalWorkspace clientId={client.id} />}
       {canReadClinical && <CollapsiblePanel title="Fotografias clínicas" id="fotografias-clinicas" open={section === "photos"}>
-        <p className="text-sm text-muted">Organize fotos por tratamento, data da visita e vista. Compare a evolução entre visitas do mesmo tratamento.</p>
+        <p className="text-xs text-slate-500 leading-5">Organize fotos por tratamento, data da visita e vista. Compare a evolução entre visitas do mesmo tratamento.</p>
         {canManageClinicalMedia && <ActionForm action={createClientClinicalMedia} resetOnSuccess={false} successMessage="Fotografia salva. Você pode continuar com a próxima vista." className="mt-5">
           <div className="space-y-5">
           <input type="hidden" name="clientId" value={client.id} />
@@ -247,7 +247,7 @@ export default async function ClientHistoryPage({
             <legend className="px-2 text-sm font-extrabold">2. Região e fotografia</legend>
             <div className="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3"><ClinicalPhotoClassificationFields /></div>
             <div className="mt-5 border-t border-slate-100 pt-4"><GuidedClinicalPhotoInput references={clinicalMedia.filter((item) => item.mediaType === "photo" && item.phase === "before").map((item) => ({ id: item.id, src: item.storageProvider === "cloudinary" ? `/api/clinical-media/${item.id}?width=1200` : item.url, label: [item.captureSession, item.bodyRegion, item.viewCode].filter(Boolean).join(" · ") || item.title || "Fotografia Antes" }))} /></div>
-            <p className="mt-3 text-xs leading-relaxed text-muted">Repita a distância, a iluminação e a posição da foto de referência. Após salvar, a próxima vista será selecionada.</p>
+            <p className="mt-3 text-xs leading-relaxed text-slate-500">Repita a distância, a iluminação e a posição da foto de referência. Após salvar, a próxima vista será selecionada.</p>
           </fieldset>
           <fieldset className="min-w-0 rounded-2xl border border-slate-200 p-4 sm:p-5">
             <legend className="px-2 text-sm font-extrabold">3. Uso da imagem e consentimento</legend>
@@ -264,7 +264,7 @@ export default async function ClientHistoryPage({
               <label className="grid gap-1.5 text-sm font-bold">Título ou observação<input className="field h-12 font-normal" name="title" placeholder="Ex.: avaliação facial inicial" /></label>
             </div>
           </details>
-          <div className="flex flex-col items-start gap-2 border-t border-slate-200 pt-4"><button className="primary-button w-full sm:w-auto">Salvar e continuar</button><p className="text-xs text-muted">Os dados do tratamento e da visita serão mantidos para a próxima foto.</p></div>
+          <div className="flex flex-col items-start gap-2 border-t border-slate-200 pt-4"><button className="primary-button w-full sm:w-auto">Salvar e continuar</button><p className="text-xs text-slate-500 leading-5">Os dados do tratamento e da visita serão mantidos para a próxima foto.</p></div>
           </div>
         </ActionForm>}
         <ClinicalMediaGallery clientId={client.id} canManage={canManageClinicalMedia} media={clinicalMedia.map((item) => ({
@@ -285,7 +285,7 @@ export default async function ClientHistoryPage({
         }))} />
       </CollapsiblePanel>}
       {canReadDocuments && <CollapsiblePanel title={`Documentos emitidos (${documents.length})`} id="documentos-emitidos">
-        <p className="text-sm text-muted">Consulte os documentos do cliente ou use uma receita anterior como base para uma nova emissão.</p>
+        <p className="text-xs text-slate-500 leading-5">Consulte os documentos do cliente ou use uma receita anterior como base para uma nova emissão.</p>
                   <ClientDocumentList documents={documents} timezone={organization.timezone} canIssue={canIssueDocuments} />
       </CollapsiblePanel>}
       <CollapsiblePanel title="Pacotes e saldos">
@@ -296,7 +296,7 @@ export default async function ClientHistoryPage({
           {[...packages.entries()].map(([packageId, item]) => (
             <article key={packageId} className="rounded-2xl border p-4">
               <p className="font-extrabold">{item.name}</p>
-              <p className="mt-1 text-xs text-muted">Adquirido em {item.purchasedAt.toLocaleDateString("pt-BR")}{item.expiresAt ? ` · válido até ${item.expiresAt.toLocaleDateString("pt-BR")}` : ""}</p>
+              <p className="mt-1 text-xs text-slate-600 leading-5 font-medium">Adquirido em {item.purchasedAt.toLocaleDateString("pt-BR")}{item.expiresAt ? ` · válido até ${item.expiresAt.toLocaleDateString("pt-BR")}` : ""}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {item.balances.map((balance) => <span key={balance.serviceName} className="status-pill">{balance.serviceName}: {balance.total - balance.used} de {balance.total}</span>)}
               </div>
@@ -306,7 +306,7 @@ export default async function ClientHistoryPage({
         </PaginatedCollection>
       </CollapsiblePanel>
       {canReadClinical && <CollapsiblePanel title={recordLabel}>
-        <p className="text-sm text-muted">Registre evoluções e informações relevantes com autoria e data. Documentos emitidos estão reunidos na seção Documentos emitidos.</p>
+        <p className="text-xs text-slate-500 leading-5">Registre evoluções e informações relevantes com autoria e data. Documentos emitidos estão reunidos na seção Documentos emitidos.</p>
         {canManageClinical && <ActionForm action={createClientHistoryEntry} successMessage={`${recordLabel} atualizado com sucesso.`} className="mt-5 grid gap-3">
           <input type="hidden" name="clientId" value={client.id} />
           <div className="grid gap-3 sm:grid-cols-2">
@@ -335,7 +335,7 @@ export default async function ClientHistoryPage({
             </div>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{entry.content}</p>
             {entry.retailQuoteId && <div className="mt-3 flex flex-wrap gap-2"><Link className="secondary-button" href={`/api/quotes/${entry.retailQuoteId}/pdf`} target="_blank">Abrir orçamento em PDF</Link><Link className="secondary-button" href={`/vendas?quote=${entry.retailQuoteId}#orcamentos`}>Recuperar orçamento</Link></div>}
-            <p className="mt-2 text-xs text-muted">Registrado por {entry.author} em {formatOrganizationDateTime(entry.createdAt, organization.timezone)}</p>
+            <p className="mt-2 text-xs text-slate-600 leading-5 font-medium">Registrado por {entry.author} em {formatOrganizationDateTime(entry.createdAt, organization.timezone)}</p>
           </article>)}
           {!visibleEntries.length && <p className="empty-state">Nenhum registro adicionado.</p>}
         </PaginatedCollection>
@@ -355,11 +355,11 @@ export default async function ClientHistoryPage({
               </p>
               <div>
                 <p className="font-bold">{item.service}</p>
-                <p className="text-sm text-muted">
+                <p className="text-xs text-slate-600 leading-5 font-medium">
                   {item.professional || `Sem ${organization.professionalLabel.toLowerCase()}`}
                 </p>
                 {(item.notes || item.cancellationReason) && (
-                  <p className="mt-1 text-xs text-muted">
+                  <p className="mt-1 text-xs text-slate-600 leading-5 font-medium">
                     {item.cancellationReason || item.notes}
                   </p>
                 )}
@@ -371,7 +371,7 @@ export default async function ClientHistoryPage({
         </PaginatedCollection>
       </CollapsiblePanel>
       <CollapsiblePanel title="Linha do tempo de agendamentos" className="mb-0">
-        <p className="text-sm text-muted">Acompanhe criação, reagendamentos e mudanças de status em ordem cronológica.</p>
+        <p className="text-xs text-slate-500 leading-5">Acompanhe criação, reagendamentos e mudanças de status em ordem cronológica.</p>
         <PaginatedCollection label="Registros" className="mt-5 divide-y">
           {timeline.map((event) => {
             const appointment = event.appointmentId ? appointmentById.get(event.appointmentId) : undefined;
@@ -407,7 +407,7 @@ export default async function ClientHistoryPage({
               {event.action === "reschedule" && (!from || !to) && appointment && <p className="mt-2 text-sm">Novo horário: <strong>{formatOrganizationDateTime(appointment.startsAt, organization.timezone)}</strong>.</p>}
               {previousStatus && nextStatus && <p className="mt-2 text-sm">De <strong>{statusLabels[previousStatus as keyof typeof statusLabels] ?? previousStatus}</strong> para <strong>{statusLabels[nextStatus as keyof typeof statusLabels] ?? nextStatus}</strong>.</p>}
               {typeof details.cancellationReason === "string" && <p className="mt-2 text-sm">Motivo: {details.cancellationReason}</p>}
-              <p className="mt-2 text-xs text-muted">{event.author ? `Registrado por ${event.author}` : details.recoveredFromAppointment ? "Registro inicial recuperado do agendamento" : "Registro automático do sistema"}</p>
+              <p className="mt-2 text-xs text-slate-600 leading-5 font-medium">{event.author ? `Registrado por ${event.author}` : details.recoveredFromAppointment ? "Registro inicial recuperado do agendamento" : "Registro automático do sistema"}</p>
             </article>;
           })}
           {!timeline.length && <p className="empty-state">Nenhum evento automático registrado.</p>}

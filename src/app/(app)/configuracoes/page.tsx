@@ -49,7 +49,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const saveButton = (label: string) => canManage && <button className="primary-button sm:col-span-3 sm:w-fit">{label}</button>;
 
   const terminology = <section className="panel max-w-4xl">
-    <h2 className="text-xl font-extrabold">Terminologia da organização</h2><p className="mt-2 text-sm text-muted">Adapte os nomes utilizados pelo Aggenda à atividade da empresa.</p>
+    <h2 className="text-xl font-extrabold">Terminologia da organização</h2><p className="mt-2 text-xs text-slate-500 leading-5">Adapte os nomes utilizados pelo Aggenda à atividade da empresa.</p>
     <ActionForm action={updateOrganizationTerminology} successMessage="Terminologia salva com sucesso." className="mt-6 grid gap-4 sm:grid-cols-2">
       <label className="grid gap-2 text-sm font-bold">Cliente, no singular<input className="field" name="clientLabel" defaultValue={organization.clientLabel} disabled={!canManage} required /></label>
       <label className="grid gap-2 text-sm font-bold">Cliente, no plural<input className="field" name="clientLabelPlural" defaultValue={organization.clientLabelPlural} disabled={!canManage} required /></label>
@@ -83,7 +83,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   </section>;
 
   const identity = <section className="panel max-w-4xl">
-    <h2 className="text-xl font-extrabold">Identidade e dados institucionais</h2><p className="mt-2 text-sm text-muted">Informações usadas na página pública, nos documentos e PDFs. O endereço e os contatos compõem automaticamente o rodapé dos documentos.</p>
+    <h2 className="text-xl font-extrabold">Identidade e dados institucionais</h2><p className="mt-2 text-xs text-slate-500 leading-5">Informações usadas na página pública, nos documentos e PDFs. O endereço e os contatos compõem automaticamente o rodapé dos documentos.</p>
     <ActionForm action={updateBookingSettings} successMessage="Identidade institucional salva." className="mt-6 grid items-start gap-4 sm:grid-cols-3">
       <input type="hidden" name="settingsSection" value="identity" />
       <label className="grid gap-2 text-sm font-bold sm:col-span-3">Apresentação pública<textarea className="field min-h-20" name="publicDescription" defaultValue={organization.publicDescription ?? ""} disabled={!canManage} placeholder="Conte a especialidade e os diferenciais do negócio" /></label>
@@ -96,14 +96,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       <label className="grid gap-2 text-sm font-bold">Cor da marca<input className="field h-12" name="brandColor" type="color" defaultValue={organization.brandColor} disabled={!canManage} /></label>
       <label className="grid gap-2 text-sm font-bold sm:col-span-3">Endereço público<input className="field" name="publicAddress" defaultValue={organization.publicAddress ?? ""} disabled={!canManage} /></label>
       <OrganizationLogoField currentUrl={organization.publicLogoUrl} disabled={!canManage} />
-      <fieldset className="grid gap-4 sm:col-span-3 sm:grid-cols-2"><legend className="mb-2 text-base font-extrabold">Redes sociais</legend><p className="text-sm text-muted sm:col-span-2">Informe o link completo do perfil da empresa. As redes preenchidas aparecem na página pública de agendamento. Deixe em branco para remover um atalho.</p>{socialPlatforms.map(platform => <label className="grid gap-2 text-sm font-bold" key={platform.id}>{platform.label}<input className="field" type="url" name={`social_${platform.id}`} defaultValue={organization.publicSocialLinks?.[platform.id] ?? ""} placeholder={platform.placeholder} maxLength={2048} disabled={!canManage} /></label>)}</fieldset>
+      <fieldset className="grid gap-4 sm:col-span-3 sm:grid-cols-2"><legend className="mb-2 text-base font-extrabold">Redes sociais</legend><p className="text-xs text-slate-500 sm:col-span-2 leading-5">Informe o link completo do perfil da empresa. As redes preenchidas aparecem na página pública de agendamento. Deixe em branco para remover um atalho.</p>{socialPlatforms.map(platform => <label className="grid gap-2 text-sm font-bold" key={platform.id}>{platform.label}<input className="field" type="url" name={`social_${platform.id}`} defaultValue={organization.publicSocialLinks?.[platform.id] ?? ""} placeholder={platform.placeholder} maxLength={2048} disabled={!canManage} /></label>)}</fieldset>
       <label className="grid content-start gap-2 text-sm font-bold">Capa (URL)<input className="field" name="publicCoverUrl" type="url" defaultValue={organization.publicCoverUrl ?? ""} disabled={!canManage} /></label>
       {saveButton("Salvar identidade institucional")}
     </ActionForm>
   </section>;
 
   const policies = <section className="panel max-w-4xl">
-    <h2 className="text-xl font-extrabold">Políticas exibidas ao cliente</h2><p className="mt-2 text-sm text-muted">Textos apresentados durante o relacionamento e o agendamento.</p>
+    <h2 className="text-xl font-extrabold">Políticas exibidas ao cliente</h2><p className="mt-2 text-xs text-slate-500 leading-5">Textos apresentados durante o relacionamento e o agendamento.</p>
     <ActionForm action={updateBookingSettings} successMessage="Políticas salvas." className="mt-6 grid gap-4">
       <input type="hidden" name="settingsSection" value="policies" />
       <label className="grid gap-2 text-sm font-bold">Cancelamento e reagendamento<textarea className="field min-h-24" name="cancellationPolicy" defaultValue={organization.cancellationPolicy ?? ""} disabled={!canManage} /></label>

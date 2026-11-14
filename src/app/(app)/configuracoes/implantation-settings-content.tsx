@@ -47,7 +47,7 @@ export async function ImplantationSettingsContent() {
         <div className="h-full rounded-full bg-brand" style={{ width: `${percentage}%` }} />
       </div>
       <p className="mt-3 text-sm text-muted">{next ? `Próximo passo: ${next.title.toLowerCase()}.` : "Os passos iniciais estão concluídos. Você já pode preparar seu link de agendamento online."}</p>
-      <p className="mt-2 text-xs text-muted">O progresso considera os dados cadastrados. Revise os serviços e os horários antes de começar a atender.</p>
+      <p className="mt-2 text-xs text-slate-500 leading-5">O progresso considera os dados cadastrados. Revise os serviços e os horários antes de começar a atender.</p>
     </section>
 
     <section className="mt-5 grid gap-3" aria-label="Passos iniciais">
@@ -66,7 +66,7 @@ export async function ImplantationSettingsContent() {
 
     <section className="panel mt-5" aria-labelledby="booking-setup-title">
       <h2 id="booking-setup-title" className="text-xl font-extrabold">Receba agendamentos online</h2>
-      <p className="mt-2 text-sm text-muted">Se quiser receber reservas pela internet, habilite a página pública e teste a escolha de serviço, profissional e horário pelo celular antes de divulgar o link.</p>
+      <p className="mt-2 text-xs text-slate-500 leading-5">Se quiser receber reservas pela internet, habilite a página pública e teste a escolha de serviço, profissional e horário pelo celular antes de divulgar o link.</p>
       <div className="mt-4 flex flex-wrap gap-3">
         <Link className="secondary-button" href="/configuracoes?aba=booking&guia=publicar#agendamento-publico">{organization.bookingEnabled ? "Revisar agendamento online" : "Habilitar agendamento online"}</Link>
         {organization.bookingEnabled && <Link className="secondary-button" href={`/agendar/${encodeURIComponent(organization.slug)}`} target="_blank" rel="noopener noreferrer">Ver página pública</Link>}
@@ -78,14 +78,14 @@ export async function ImplantationSettingsContent() {
       <h2 id="whatsapp-setup-title" className="flex items-center gap-2 text-xl font-extrabold"><MessageCircleMore className="size-5 text-brand" aria-hidden="true" />Prepare o WhatsApp do seu plano</h2>
       <p className="mt-2 text-sm text-muted">{plan.whatsappServiceCode === "core_ai" ? "O Completo inclui o Aggenda Secretária para atendimento e operações de agenda pelo WhatsApp." : "O Profissional inclui o Aggenda Atendimento para informar sobre os serviços e encaminhar ao agendamento."} Revise as descrições dos serviços, conecte o canal e faça um teste antes de divulgar.</p>
       <p className="mt-3 text-sm font-bold">{channelConnected ? "Canal conectado. Confira as configurações e teste o atendimento." : "Canal ainda não conectado. A equipe pode orientar essa configuração."}</p>
-      <p className="mt-2 text-xs text-muted">A conexão do canal não confirma a ativação do agente. O uso segue a configuração, as franquias do plano e as tarifas externas aplicáveis.</p>
+      <p className="mt-2 text-xs text-slate-500 leading-5">A conexão do canal não confirma a ativação do agente. O uso segue a configuração, as franquias do plano e as tarifas externas aplicáveis.</p>
       <Link className="mt-4 inline-flex text-sm font-bold text-brand" href="/configuracoes?aba=whatsapp">Configurar WhatsApp →</Link>
     </section>}
 
     <section className="panel mt-5" aria-labelledby="setup-help-title">
       <h2 id="setup-help-title" className="text-xl font-extrabold">Conte com a equipe para começar</h2>
-      <p className="mt-2 text-sm text-muted">A orientação de implantação é gratuita nos planos Essential, Profissional e Completo. Você pode seguir este roteiro ou pedir ajuda à equipe.</p>
-      <p className="mt-3 text-sm text-muted">A primeira importação de clientes e serviços também é gratuita. Prepare os arquivos em Excel ou CSV; a equipe confere os campos e a compatibilidade. Prontuários, fotos, documentos e histórico financeiro precisam de avaliação separada.</p>
+      <p className="mt-2 text-xs text-slate-500 leading-5">A orientação de implantação é gratuita nos planos Essential, Profissional e Completo. Você pode seguir este roteiro ou pedir ajuda à equipe.</p>
+      <p className="mt-3 text-xs text-slate-500 leading-5">A primeira importação de clientes e serviços também é gratuita. Prepare os arquivos em Excel ou CSV; a equipe confere os campos e a compatibilidade. Prontuários, fotos, documentos e histórico financeiro precisam de avaliação separada.</p>
       <div className="mt-4 flex flex-wrap gap-3">
         <a className="secondary-button" href={`mailto:${landingOffer.contactEmail}?subject=${encodeURIComponent("Ajuda com a implantação do Aggenda")}`}>Pedir orientação à equipe</a>
         {canManageBilling && <Link className="secondary-button" href="/assinatura">Gerenciar assinatura</Link>}

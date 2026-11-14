@@ -102,7 +102,7 @@ export default async function ClientsPage({
                   <Link className="font-bold hover:text-brand" href={`/clientes/${item.id}`}>
                     {item.name}
                   </Link>
-                  <p className="truncate text-sm text-muted">{formatPhone(item.phone) || item.email || "Sem contato informado"}</p>
+                  <p className="truncate text-xs text-slate-600 leading-5 font-medium">{formatPhone(item.phone) || item.email || "Sem contato informado"}</p>
 
                 </div>
                 {canManage && <form action={deleteClient}>

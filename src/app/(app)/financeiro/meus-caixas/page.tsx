@@ -95,7 +95,7 @@ export default async function CashClosingPage({ searchParams }: { searchParams: 
         {history.map((cash) => <article className="flex flex-wrap items-center justify-between gap-2 py-4" key={cash.id}>
           <div>
             <div className="flex flex-wrap items-center gap-2"><h3 className="font-bold">{cashName(cash)}</h3><span className="status-pill">{cash.closedAt ? "Fechado" : "Aberto"}</span></div>
-            <p className="mt-1 text-sm text-muted">{date(cash.openedAt)}{cash.closedAt && " · fechado em " + date(cash.closedAt)}{cash.operator && " · " + cash.operator}</p>
+            <p className="mt-1 text-xs text-slate-600 leading-5 font-medium">{date(cash.openedAt)}{cash.closedAt && " · fechado em " + date(cash.closedAt)}{cash.operator && " · " + cash.operator}</p>
             {cash.closedAt && <p className="text-sm">Conferido {money(cash.counted ?? 0)} · diferença {money(cash.difference ?? 0)}</p>}
           </div>
           <Link className="secondary-button" href={path + "?" + new URLSearchParams([...query].filter(([key]) => key !== "caixa").concat([["caixa", cash.id]]))}>Ver resumo</Link>
@@ -113,7 +113,7 @@ async function CashDetails({ cash, organizationId, date, canManage }: { cash: Ca
         isNull(cashMovements.cashClosingId), gte(cashMovements.occurredAt, cash.openedAt))) : [];
     return <section className="panel grid gap-3">
       <h2 className="text-lg font-extrabold">{cashName(cash)}</h2>
-      <p className="text-sm text-muted">Abertura em {date(cash.openedAt)} · {cash.operator}</p>
+      <p className="text-xs text-slate-600 leading-5 font-medium">Abertura em {date(cash.openedAt)} · {cash.operator}</p>
       <p className="font-bold">Saldo esperado {money(cash.expected ?? cash.opening + (total?.amount ?? 0))}</p>
       {cash.closedAt ? <ClosedSummary cash={cash} /> : canManage && <CloseForm cashId={cash.id} countedLabel="Saldo conferido (R$)" />}
     </section>;
@@ -152,20 +152,20 @@ async function CashDetails({ cash, organizationId, date, canManage }: { cash: Ca
     <div className="panel grid min-w-0 gap-4">
       <div>
         <div className="flex flex-wrap items-center gap-2"><h2 className="text-lg font-extrabold">{cashName(cash)}</h2><span className="status-pill">{cash.closedAt ? "Fechado" : "Aberto"}</span></div>
-        <p className="mt-1 text-sm text-muted">Abertura em {date(cash.openedAt)} · {cash.operator}</p>
+        <p className="mt-1 text-xs text-slate-600 leading-5 font-medium">Abertura em {date(cash.openedAt)} · {cash.operator}</p>
       </div>
       <div>
         <h3 className="mb-2 font-extrabold">Pagamentos por forma</h3>
         {totals.size ? <dl className="divide-y">{[...totals].map(([key, total]) => <div className="flex flex-wrap justify-between gap-2 py-2" key={key}>
-          <dt className="font-bold">{total.name}</dt><dd className="text-right"><strong>{money(total.sales - total.reversals)}</strong><p className="text-xs text-muted">Recebido {money(total.sales)} · estornado {money(total.reversals)}</p></dd>
+          <dt className="font-bold">{total.name}</dt><dd className="text-right"><strong>{money(total.sales - total.reversals)}</strong><p className="text-xs text-slate-600 leading-5 font-medium">Recebido {money(total.sales)} · estornado {money(total.reversals)}</p></dd>
         </div>)}</dl> : <p className="empty-state">Nenhum pagamento registrado.</p>}
-        {lateCount > 0 && <p className="mt-2 text-sm text-muted">Movimentos após o fechamento ({lateCount}) · saldo líquido {money(afterClosing)}</p>}
+        {lateCount > 0 && <p className="mt-2 text-xs text-slate-600 leading-5 font-medium">Movimentos após o fechamento ({lateCount}) · saldo líquido {money(afterClosing)}</p>}
       </div>
       <div>
         <h3 className="mb-2 font-extrabold">Movimentações</h3>
         <PaginatedCollection key={cash.id} label="Movimentações" className="divide-y">
           {movements.map(item => <article key={item.id} className="flex flex-wrap justify-between gap-2 py-2">
-            <div className="min-w-0 break-words"><p className="font-bold">{item.label} · {item.description}</p><p className="text-xs text-muted">{date(item.at)}{cash.closedAt && item.at > cash.closedAt && " · após o fechamento"}</p></div>
+            <div className="min-w-0 break-words"><p className="font-bold">{item.label} · {item.description}</p><p className="text-xs text-slate-600 leading-5 font-medium">{date(item.at)}{cash.closedAt && item.at > cash.closedAt && " · após o fechamento"}</p></div>
             <p className={item.amount < 0 ? "font-bold text-red-700" : "font-bold text-emerald-700"}>{money(item.amount)}</p>
           </article>)}
           {!movements.length && <p className="empty-state">Nenhuma movimentação registrada.</p>}
@@ -191,7 +191,7 @@ function ClosedSummary({ cash }: { cash: Cash }) {
   return <div className="grid gap-2 text-sm">
     <p>Valor contado {money(cash.counted ?? 0)}</p>
     <p className={cash.difference ? "font-bold text-amber-800" : "font-bold text-brand"}>Diferença {money(cash.difference ?? 0)}</p>
-    {cash.notes && <p className="break-words text-muted">{cash.notes}</p>}
+    {cash.notes && <p className="break-words text-slate-600 text-xs leading-5 font-medium">{cash.notes}</p>}
   </div>;
 }
 

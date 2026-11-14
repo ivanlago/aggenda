@@ -108,7 +108,7 @@ export default async function AutomationsPage() {
           <h2 className="mt-5 text-xl font-extrabold">Canal conectado</h2>
           {channels.length === 0 ? (
             <>
-              <p className="mt-3 text-sm leading-6 text-muted">Nenhum número oficial conectado. Entre na Meta, informe ou escolha o número empresarial e confirme o código recebido.</p>
+              <p className="mt-3 text-xs leading-6 text-slate-500">Nenhum número oficial conectado. Entre na Meta, informe ou escolha o número empresarial e confirme o código recebido.</p>
               {current.usesCloudApi ? <WhatsAppConnectButton
                   appId={process.env.NEXT_PUBLIC_META_APP_ID}
                   configurationId={process.env.NEXT_PUBLIC_META_WHATSAPP_CONFIGURATION_ID}
@@ -125,7 +125,7 @@ export default async function AutomationsPage() {
         </aside>
       </section>
 
-      <section className="panel mt-5"><h2 className="text-xl font-extrabold">Planos e serviços complementares</h2><p className="mt-2 text-sm text-muted">Consulte a contratação, as franquias e os requisitos em Administração → Assinaturas. Esta página acompanha apenas a operação do canal.</p></section>
+      <section className="panel mt-5"><h2 className="text-xl font-extrabold">Planos e serviços complementares</h2><p className="mt-2 text-xs text-slate-500 leading-5">Consulte a contratação, as franquias e os requisitos em Administração → Assinaturas. Esta página acompanha apenas a operação do canal.</p></section>
     </div>
   );
 }

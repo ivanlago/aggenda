@@ -46,7 +46,7 @@ export function StockMovementList({ movements }: { movements: StockMovementRow[]
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
         <h2 className="text-lg font-extrabold">Entradas/Saídas</h2>
-        <p className="text-sm text-muted">Histórico de entradas, saídas, transferências para consumo, retiradas para uso, vendas e estornos.</p>
+        <p className="text-xs text-slate-500 leading-5">Histórico de entradas, saídas, transferências para consumo, retiradas para uso, vendas e estornos.</p>
       </div>
       <label className="relative w-full sm:max-w-sm"><span className="sr-only">Buscar produto ou motivo</span>
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
@@ -86,14 +86,14 @@ export function StockMovementList({ movements }: { movements: StockMovementRow[]
         </tr></thead>
         <PaginatedCollection as="tbody" pageSize={20} label="Registros" className="divide-y">{filtered.map((item) => <tr key={item.id}>
           <td className="whitespace-nowrap p-3">{item.occurredAtLabel}</td>
-          <td className="p-3"><strong>{item.productName}</strong>{item.presentation !== "—" && <p className="text-xs text-muted">{item.presentation}</p>}</td>
+          <td className="p-3"><strong>{item.productName}</strong>{item.presentation !== "—" && <p className="text-xs text-slate-600 leading-5 font-medium">{item.presentation}</p>}</td>
           <td className="p-3"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${item.direction === "entry" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{item.typeLabel}</span></td>
           <td className={`p-3 text-right font-bold ${item.direction === "entry" ? "text-brand" : "text-amber-800"}`}>{item.direction === "entry" ? "+" : "−"}{item.quantity}</td>
           <td className="p-3 text-right">{item.balance}</td>
           <td className="p-3 text-muted">{item.notes || "—"}</td>
         </tr>)}</PaginatedCollection>
       </table>
-      {!filtered.length && <p className="py-8 text-center text-sm text-muted">Nenhuma entrada/saída encontrada para os filtros selecionados.</p>}
+      {!filtered.length && <p className="py-8 text-center text-xs text-slate-500 leading-5">Nenhuma entrada/saída encontrada para os filtros selecionados.</p>}
     </div>
   </section>;
 }

@@ -58,7 +58,7 @@ function ProductFields({ categories, subcategories, product }: Props & { product
     <div id={descriptionId} className="col-span-full" hidden={!descriptionOpen}>
       <label className="grid gap-2 text-sm font-bold">Descrição<textarea className="field min-h-24" name="description" defaultValue={product?.description} /></label>
     </div>
-    <p className="col-span-full text-sm text-muted">Campos com * são obrigatórios.</p>
+    <p className="col-span-full text-xs text-slate-500 leading-5">Campos com * são obrigatórios.</p>
     <FormActions editing={Boolean(product)} />
   </ActionForm>;
 }

@@ -68,6 +68,6 @@ export default async function GrowthPage({ searchParams }: { searchParams: Promi
       relatorios: hasOrganizationPermission(organization.role, "crm.read") ? <CrmReportsPanel organizationId={organization.id} /> : null,
     }} />
     {hasOrganizationPermission(organization.role, "crm.read") && <div id="propostas" className="scroll-mt-5"><CrmProposalsPanel organizationId={organization.id} /></div>}
-    <section className="panel mt-5"><h2 className="text-lg font-extrabold">Aquisição pública</h2><p className="mt-1 text-sm text-muted">Compartilhe a página personalizada da empresa para receber agendamentos.</p><div className="mt-4 flex flex-wrap gap-3"><Link className="secondary-button" href={`/agendar/${organization.slug}`} target="_blank">Ver página pública</Link></div></section>
+    <section className="panel mt-5"><h2 className="text-lg font-extrabold">Aquisição pública</h2><p className="mt-1 text-xs text-slate-500 leading-5">Compartilhe a página personalizada da empresa para receber agendamentos.</p><div className="mt-4 flex flex-wrap gap-3"><Link className="secondary-button" href={`/agendar/${organization.slug}`} target="_blank">Ver página pública</Link></div></section>
   </div>;
 }

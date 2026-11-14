@@ -28,19 +28,19 @@ export async function FinancialStatement({ organizationId, timezone, month, next
     <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_16rem]">
       <section className="panel min-w-0">
         <h2 className="text-lg font-extrabold">Movimentações</h2>
-        <p className="mt-1 text-sm text-muted">Entradas, saídas e estornos registrados nas contas de destino.</p>
+        <p className="mt-1 text-xs text-slate-500 leading-5">Entradas, saídas e estornos registrados nas contas de destino.</p>
         <PaginatedCollection key={month + ":" + selectedAccount} label="Movimentações" className="mt-4 divide-y">
           {rows.map((row) => <article key={row.id} className="grid gap-2 py-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
             <time dateTime={row.occurredAt.toISOString()} className="text-sm text-muted">{date.format(row.occurredAt)}</time>
-            <div className="min-w-0 break-words"><p className="font-bold">{row.description}</p><p className="text-xs text-muted">{accountNames.get(row.accountId)}{row.paymentMethodName && " · " + row.paymentMethodName}</p></div>
-            <div className="sm:text-right"><p className={row.amountInCents < 0 ? "font-bold text-red-700" : "font-bold text-emerald-700"}>{money(row.amountInCents)}</p><p className="text-xs text-muted">Saldo {money(row.balance)}</p></div>
+            <div className="min-w-0 break-words"><p className="font-bold">{row.description}</p><p className="text-xs text-slate-600 leading-5 font-medium">{accountNames.get(row.accountId)}{row.paymentMethodName && " · " + row.paymentMethodName}</p></div>
+            <div className="sm:text-right"><p className={row.amountInCents < 0 ? "font-bold text-red-700" : "font-bold text-emerald-700"}>{money(row.amountInCents)}</p><p className="text-xs text-slate-600 leading-5 font-medium">Saldo {money(row.balance)}</p></div>
           </article>)}
           {!rows.length && <p className="empty-state">Nenhuma movimentação encontrada no período.</p>}
         </PaginatedCollection>
       </section>
       <aside className="grid gap-3" aria-label="Saldos do extrato">
-        <article className="panel"><p className="text-sm text-muted">Saldo anterior</p><p className="text-xl font-extrabold">{money(initialBalance)}</p></article>
-        <article className="panel"><p className="text-sm text-muted">Saldo ao fim do período</p><p className="text-xl font-extrabold">{money(balance)}</p></article>
+        <article className="panel"><p className="text-xs text-slate-500 leading-5">Saldo anterior</p><p className="text-xl font-extrabold">{money(initialBalance)}</p></article>
+        <article className="panel"><p className="text-xs text-slate-500 leading-5">Saldo ao fim do período</p><p className="text-xl font-extrabold">{money(balance)}</p></article>
       </aside>
     </div>
   </>;

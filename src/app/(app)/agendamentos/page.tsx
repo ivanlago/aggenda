@@ -129,7 +129,7 @@ export default async function AppointmentsPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="font-extrabold">{item.client}</p>
-                    <p className="text-sm text-muted">{item.service}{item.professional ? ` · ${item.professional}` : ""}</p>
+                    <p className="text-xs text-slate-600 leading-5 font-medium">{item.service}{item.professional ? ` · ${item.professional}` : ""}</p>
                     {item.packageName && <p className="mt-1 text-xs font-bold text-brand">Pacote: {item.packageName} · {item.packageUsageStatus === "consumed" ? "sessão utilizada" : item.packageUsageStatus === "reversed" ? "sessão devolvida" : "sessão reservada"}</p>}
                     <p className="mt-1 text-sm font-bold text-brand">{formatOrganizationDateTime(item.startsAt, organization.timezone)}</p>
                     {item.status === "cancelled" && item.cancellationReason && (

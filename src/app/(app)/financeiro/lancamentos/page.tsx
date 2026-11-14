@@ -169,7 +169,7 @@ async function AccountsView({ organization, query, today, month, nextMonth, tab 
       </section>
       <aside className="grid gap-3" aria-label="Totais do período">
         {totals.map(({ label, amount, color }) => <article key={label} className="panel"><p className="text-sm text-muted">{label}</p><p className={"text-xl font-extrabold " + (color ?? "")}>{money(amount)}</p></article>)}
-        <p className="text-xs text-muted">Os valores baixados seguem a data da baixa. As pendências seguem o vencimento e incluem as contas vencidas.</p>
+        <p className="text-xs text-slate-500 leading-5">Os valores baixados seguem a data da baixa. As pendências seguem o vencimento e incluem as contas vencidas.</p>
       </aside>
     </div>
     <details className="panel mt-5">

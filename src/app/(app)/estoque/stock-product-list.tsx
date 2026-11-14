@@ -101,7 +101,7 @@ export function StockProductList({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-extrabold">{isConsumption ? "Estoque consumo" : "Estoque Venda"}</h2>
-          <p className="text-sm text-muted">
+          <p className="text-xs text-slate-500 leading-5">
             Consulte saldos, custos e valores de venda.
           </p>
         </div>
@@ -178,7 +178,7 @@ export function StockProductList({
             {filtered.map((item) => (
               <tr key={item.id}>
                 <td className="p-3">
-                  <div className="flex items-center gap-3"><EntityThumbnail src={item.imageUrl} alt={item.name} fallback={item.name[0]} /><div><strong>{item.name}</strong><p className="text-xs text-muted">{[item.category, item.subcategory].filter(Boolean).join(" · ") || "Sem categoria"}</p></div></div>
+                  <div className="flex items-center gap-3"><EntityThumbnail src={item.imageUrl} alt={item.name} fallback={item.name[0]} /><div><strong>{item.name}</strong><p className="text-xs text-slate-600 leading-5 font-medium">{[item.category, item.subcategory].filter(Boolean).join(" · ") || "Sem categoria"}</p></div></div>
                 </td>
                 <td className="p-3">{item.presentation}</td>
                 <td className="p-3">{item.brand}</td>
@@ -208,7 +208,7 @@ export function StockProductList({
           </PaginatedCollection>
         </table>
         {!filtered.length && (
-          <p className="py-8 text-center text-sm text-muted">
+          <p className="py-8 text-center text-xs text-slate-500 leading-5">
             Nenhum produto encontrado para os filtros selecionados.
           </p>
         )}

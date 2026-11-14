@@ -38,7 +38,7 @@ function SearchGroup({ kind, onSelect }: Props & { kind: "expired" | "code" }) {
         <div className="grid grid-cols-[minmax(0,1fr)_5rem_6rem] gap-2 border-b pb-2 text-xs font-bold"><span>Produto</span><span>Qtd.</span><span>Data entrada</span></div>
         {result.rows.map(lot => <article key={lot.id} className="border-b py-3 text-sm">
           <div className="grid grid-cols-[minmax(0,1fr)_5rem_6rem] items-start gap-2"><span className="truncate font-bold" title={lot.name}>{lot.name}</span><span className="break-words">{qty(lot.sale + lot.consumption)} {lot.unit === "unit" ? "un." : lot.unit}</span><span>{lot.enteredOn}</span></div>
-          <p className="mt-1 break-words text-xs text-muted">Lote: {lot.code} · Validade: {lot.expiresOn?.split("-").reverse().join("/") ?? "Não informada"} · {lot.status === "recalled" ? "Recolhido / bloqueado" : lot.status === "quarantine" ? "Quarentena" : "Ativo"}</p>
+          <p className="mt-1 break-words text-xs text-slate-600 leading-5 font-medium">Lote: {lot.code} · Validade: {lot.expiresOn?.split("-").reverse().join("/") ?? "Não informada"} · {lot.status === "recalled" ? "Recolhido / bloqueado" : lot.status === "quarantine" ? "Quarentena" : "Ativo"}</p>
           <p className="mt-1 text-xs text-muted">Venda: {qty(lot.sale)} · Consumo: {qty(lot.consumption)}</p>
           <div className="mt-2 flex flex-wrap gap-2"><button className="secondary-button" type="button" onClick={() => onSelect(lot, kind === "expired" ? "expired" : "recall")}>Registrar saída</button><Link className="secondary-button" href={`/estoque/lotes/${lot.id}`}>Detalhes e histórico</Link></div>
         </article>)}
@@ -49,5 +49,5 @@ function SearchGroup({ kind, onSelect }: Props & { kind: "expired" | "code" }) {
 }
 
 export function StockLotSearch(props: Props) {
-  return <div className="grid min-w-0 gap-4"><SearchGroup kind="expired" {...props} /><SearchGroup kind="code" {...props} /><p className="text-xs text-muted">Quantidade soma venda e consumo. Data de entrada corresponde ao primeiro cadastro do lote; reposições ficam no histórico. A consulta não retira nem bloqueia produtos: registre a saída para isso. Validades ausentes não aparecem entre os vencidos.</p></div>;
+  return <div className="grid min-w-0 gap-4"><SearchGroup kind="expired" {...props} /><SearchGroup kind="code" {...props} /><p className="text-xs text-slate-500 leading-5">Quantidade soma venda e consumo. Data de entrada corresponde ao primeiro cadastro do lote; reposições ficam no histórico. A consulta não retira nem bloqueia produtos: registre a saída para isso. Validades ausentes não aparecem entre os vencidos.</p></div>;
 }

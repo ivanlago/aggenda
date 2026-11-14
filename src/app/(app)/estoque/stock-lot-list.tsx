@@ -29,7 +29,7 @@ export function StockLotList({ lots, today }: { lots: StockLotRow[]; today: stri
 
   return <section className="panel">
     <h2 className="text-lg font-extrabold">Lotes</h2>
-    <p className="text-sm text-muted">Ordenados pelo vencimento mais próximo. Quantidade total dos estoques de venda e consumo.</p>
+    <p className="text-xs text-slate-500 leading-5">Ordenados pelo vencimento mais próximo. Quantidade total dos estoques de venda e consumo.</p>
     <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <label className="grid gap-1 text-sm font-bold">Número do lote<input className="field" type="search" value={code} onChange={event => setCode(event.target.value)} placeholder="Buscar lote" /></label>
       <label className="grid gap-1 text-sm font-bold">Produto<input className="field" type="search" value={product} onChange={event => setProduct(event.target.value)} placeholder="Produto, apresentação ou marca" /></label>
@@ -49,7 +49,7 @@ export function StockLotList({ lots, today }: { lots: StockLotRow[]; today: stri
           const status = statusOf(lot, today);
           return <tr key={lot.id}>
             <td className="p-3 font-bold">{lot.code}</td>
-            <td className="p-3"><strong>{lot.productName ?? lot.fallbackName}</strong>{lot.presentation && lot.presentation !== "Padrão" && <p className="text-xs text-muted">{lot.presentation}</p>}</td>
+            <td className="p-3"><strong>{lot.productName ?? lot.fallbackName}</strong>{lot.presentation && lot.presentation !== "Padrão" && <p className="text-xs text-slate-600 leading-5 font-medium">{lot.presentation}</p>}</td>
             <td className="p-3">{lot.brand || "—"}</td>
             <td className="p-3 text-right"><strong>{quantity(lot.sale + lot.consumption)} {lot.unit === "unit" ? "un." : lot.unit}</strong><p className="whitespace-nowrap text-xs text-muted">Venda: {quantity(lot.sale)} · Consumo: {quantity(lot.consumption)}</p></td>
             <td className="whitespace-nowrap p-3">{lot.expiresOn?.split("-").reverse().join("/") ?? "Não informado"}</td>
@@ -59,7 +59,7 @@ export function StockLotList({ lots, today }: { lots: StockLotRow[]; today: stri
           </tr>;
         })}</PaginatedCollection>
       </table>
-      {!filtered.length && <p className="py-8 text-center text-sm text-muted">Nenhum lote encontrado para os filtros selecionados.</p>}
+      {!filtered.length && <p className="py-8 text-center text-xs text-slate-500 leading-5">Nenhum lote encontrado para os filtros selecionados.</p>}
     </div>
   </section>;
 }

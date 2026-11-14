@@ -43,9 +43,9 @@ export function TeamCreateForm({ professions, specialties }: { professions: Prof
             </select>
             <span className="text-xs font-normal text-muted">Use Ctrl para selecionar mais de uma.</span>
           </label><label className="grid min-w-0 gap-1 text-sm font-bold">Apresentação breve (opcional)<textarea className="field h-24 min-h-24" name="bio" /></label></div>
-        <div className="grid min-w-0 items-start gap-4 sm:col-span-2 sm:grid-cols-2"><div className="min-w-0"><EntityImageField label="Foto do profissional" /></div><div className="grid min-w-0 content-start gap-2"><p className="font-bold">Google Agenda</p><p className="text-sm text-muted">Após cadastrar o membro, abra a edição para conectar sua conta Google.</p></div></div>
+        <div className="grid min-w-0 items-start gap-4 sm:col-span-2 sm:grid-cols-2"><div className="min-w-0"><EntityImageField label="Foto do profissional" /></div><div className="grid min-w-0 content-start gap-2"><p className="font-bold">Google Agenda</p><p className="text-xs text-slate-500 leading-5">Após cadastrar o membro, abra a edição para conectar sua conta Google.</p></div></div>
       </>}
-      <p className="text-xs text-muted sm:col-span-2">Após o cadastro, o Aggenda enviará um link de criação de senha válido por 24 horas.</p>
+      <p className="text-xs text-slate-500 sm:col-span-2 leading-5">Após o cadastro, o Aggenda enviará um link de criação de senha válido por 24 horas.</p>
       <FormActions submitLabel="Cadastrar e enviar convite" />
     </ActionForm>
   );

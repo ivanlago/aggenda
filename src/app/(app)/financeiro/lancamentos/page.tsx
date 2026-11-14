@@ -138,31 +138,32 @@ async function AccountsView({ organization, query, today, month, nextMonth, tab 
         const paymentName = entry.paymentMethodName || (entry.paymentMethodId ? paymentNames.get(entry.paymentMethodId) : null);
         const isOverdue = entry.status === "pending" && entry.dueDate < today;
         const isRealized = entry.status === "paid" || entry.status === "received";
-        return <article id={`lancamento-${entry.id}`} key={entry.id} className={`grid scroll-mt-6 gap-3 py-4 xl:grid-cols-[1fr_auto] xl:items-center ${query.lancamento === entry.id ? "rounded-xl bg-teal-50 p-4" : ""}`}>
-          <div><div className="flex flex-wrap items-center gap-2"><p className="text-base font-bold leading-6">{entry.description}</p>{isOverdue && <span className="status-pill text-red-700">Vencido</span>}{managed && <span className="status-pill">Cobrança online vinculada</span>}</div>
+        return <article id={`lancamento-${entry.id}`} key={entry.id} className={`grid min-w-0 scroll-mt-6 gap-x-6 gap-y-2 py-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] md:items-center ${query.lancamento === entry.id ? "rounded-xl bg-teal-50 p-4" : ""}`}>
+          <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="break-words text-base font-bold leading-6">{entry.description}</p>{isOverdue && <span className="status-pill text-red-700">Vencido</span>}{managed && <span className="status-pill">Cobrança online vinculada</span>}</div>
             <p className="mt-1 text-xs leading-5 text-slate-500">{entry.category || "Sem categoria"} · {sourceLabels[entry.source] ?? entry.source}</p>
-            <dl className="mt-1 flex flex-wrap gap-x-5 gap-y-1 text-xs leading-5">
+          </div>
+            <dl className="flex min-w-0 flex-wrap gap-x-5 gap-y-1 text-xs leading-5">
               <div className="flex gap-1"><dt className="text-slate-500">Vencimento:</dt><dd className={`font-semibold tabular-nums ${isOverdue ? "text-red-700" : "text-slate-700"}`}>{new Date(`${entry.dueDate}T12:00:00Z`).toLocaleDateString("pt-BR")}</dd></div>
               {entry.realizedDate && <div className="flex gap-1"><dt className="text-slate-500">Baixa:</dt><dd className="font-semibold tabular-nums text-slate-700">{new Date(`${entry.realizedDate}T12:00:00Z`).toLocaleDateString("pt-BR")}</dd></div>}
               {account && <div className="flex gap-1"><dt className="text-slate-500">Conta:</dt><dd className="font-medium text-slate-700">{account}</dd></div>}
               {paymentName && <div className="flex gap-1"><dt className="text-slate-500">Forma:</dt><dd className="font-medium text-slate-700">{paymentName}</dd></div>}
             </dl>
-            <div className="mt-3 flex flex-wrap gap-2">
+          <div className="md:text-right"><p className={`font-extrabold ${entry.type === "receivable" ? "text-emerald-700" : "text-red-700"}`}>{entry.type === "receivable" ? "+" : "−"} {money(entry.amountInCents)}</p><span className="status-pill">{entry.status === "pending" ? "Pendente" : entry.status === "cancelled" ? "Cancelado" : entry.type === "payable" ? "Pago" : "Recebido"}</span></div>
+          <div className="col-span-full flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+
               {charge && <Link className="secondary-button" href={`${chargesPath}&cobranca=${charge.id}#cobranca-${charge.id}`}>Ver cobrança vinculada</Link>}
               {charge && entry.recurrenceGroupId && <Link className="secondary-button" href={`${chargesPath}&serie=${entry.recurrenceGroupId}`}>Ver cobranças da série</Link>}
               {canManage && entry.type === "receivable" && entry.status === "pending" && !managed && entry.source !== "retail_sale" && entry.source !== "appointment_deposit_direct" && !sale && <Link className="secondary-button" href={`${chargesPath}&lancamento=${entry.id}#nova-cobranca`}>Gerar cobrança</Link>}
               {sale && <Link className="secondary-button" href={`/vendas/pagamento/${sale.id}`}>Gerenciar no PDV</Link>}
               {entry.source === "appointment_deposit_direct" && <Link className="secondary-button" href="/agenda">Conferir sinal na Agenda</Link>}{canManage && entry.source === "commission_payment" && <Link className="secondary-button" href="/financeiro/comissoes">Gerenciar quitação</Link>}
-            </div>
-            {(managed || sale || entry.source === "retail_sale") && <p className="mt-2 text-xs text-muted">{sale || entry.source === "retail_sale" ? "Gerencie o recebimento pela venda no PDV." : "A baixa desta conta é controlada pela confirmação do provedor. Para alterações, consulte a cobrança vinculada."}</p>}
-          </div>
-          <div className="xl:text-right"><p className={`font-extrabold ${entry.type === "receivable" ? "text-emerald-700" : "text-red-700"}`}>{entry.type === "receivable" ? "+" : "−"} {money(entry.amountInCents)}</p><span className="status-pill">{entry.status === "pending" ? "Pendente" : entry.status === "cancelled" ? "Cancelado" : entry.type === "payable" ? "Pago" : "Recebido"}</span></div>
-          {canManage && entry.source !== "commission_payment" && entry.source !== "retail_sale" && entry.source !== "appointment_deposit_direct" && !sale && !managed && <details className="xl:col-span-2"><summary className="cursor-pointer text-sm font-bold text-brand">Registrar ou corrigir {entry.type === "payable" ? "pagamento" : "recebimento"} manual</summary>
+          {canManage && entry.source !== "commission_payment" && entry.source !== "retail_sale" && entry.source !== "appointment_deposit_direct" && !sale && !managed && <details className="min-w-0 open:order-last open:basis-full"><summary className="cursor-pointer text-sm font-bold text-brand">Registrar ou corrigir {entry.type === "payable" ? "pagamento" : "recebimento"} manual</summary>
             <div className="mt-3 flex flex-wrap items-end gap-3"><ActionForm action={updateFinancialEntryStatus} successMessage="Lançamento atualizado." className="flex flex-wrap items-end gap-3"><input type="hidden" name="id" value={entry.id} />
               <label className="grid gap-1 text-sm font-bold">Situação<select className="field" name="status" defaultValue={isRealized ? "realized" : entry.status}><option value="pending">Pendente</option><option value="realized">{entry.type === "payable" ? "Pago" : "Recebido"}</option><option value="cancelled">Cancelado</option></select></label>
               <PaymentMethodFields required={false} initialMethodId={entry.paymentMethodId ?? ""} initialAccountId={entry.accountId ?? ""} /><label className="grid gap-1 text-sm font-bold">Data da baixa<input className="field" name="realizedDate" type="date" defaultValue={entry.realizedDate ?? today} /></label><button className="secondary-button">Salvar baixa manual</button>
             </ActionForm>{["manual", "installment", "recurring"].includes(entry.source) && <ActionForm action={deleteFinancialEntry} successMessage="Lançamento excluído."><input type="hidden" name="id" value={entry.id} /><button className="icon-button" aria-label={`Excluir lançamento: ${entry.description}`}><Trash2 className="size-4" /></button></ActionForm>}</div>
           </details>}
+          </div>
+            {(managed || sale || entry.source === "retail_sale") && <p className="col-span-full text-xs text-slate-500">{sale || entry.source === "retail_sale" ? "Gerencie o recebimento pela venda no PDV." : "A baixa desta conta é controlada pela confirmação do provedor. Para alterações, consulte a cobrança vinculada."}</p>}
         </article>;
       })}{!entries.length && <p className="empty-state">Nenhum lançamento encontrado para os filtros.</p>}</PaginatedCollection>
       </section>

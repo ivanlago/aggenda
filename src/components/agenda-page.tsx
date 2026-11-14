@@ -1,3 +1,4 @@
+import { attendanceCheckoutSummary } from "@/lib/attendance-payment";
 import { bookingReservationLabel } from "@/lib/booking-reservation-status";
 import { expireBookingReservations } from "@/lib/booking-reservation-expiry";
 import { BookingDirectPixReview } from "@/components/booking-direct-pix-review";
@@ -15,13 +16,12 @@ import { appointments, clientPackageBalances, clientPackages, clients, financial
 import { formatOrganizationDateTime } from "@/lib/appointment-safety";
 import { agendaRange, shiftAgendaDate } from "@/lib/agenda-range";
 import { organizationDate } from "@/lib/organization-time";
-import { ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
+import { BadgeCheck, CircleDollarSign, ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
 import { hasOrganizationPermission } from "@/lib/permissions";
 import { requireOrganization, requireProfessionalScope } from "@/lib/session";
 
 import { AppointmentCreateForm } from "./appointment-create-form";
 import { ModalShell } from "./modal-shell";
-import { AppointmentPaymentForm } from "@/app/dashboard/appointment-payment-form";
 
 const statuses = [["scheduled", "Agendado"], ["confirmed", "Confirmado"], ["completed", "Concluído"], ["cancelled", "Cancelado"], ["no_show", "Não compareceu"]] as const;
 const statusClasses: Record<string, string> = {
@@ -123,7 +123,6 @@ export async function AgendaPage({ openNewAppointment = false, filters = {} }: {
           const [date, time] = dateTime.split(", ");
           const message = `Olá, ${item.client}! Seu ${organization.appointmentLabel.toLowerCase()} de ${item.service} está marcado para ${dateTime}.${item.professional ? ` Profissional: ${item.professional}.` : ""}`;
           const whatsapp = item.clientPhone ? whatsappLink(item.clientPhone, message) : null;
-          const price = (Math.max(0, (item.appointmentPrice ?? item.servicePrice ?? 0) - item.depositAmount) / 100).toFixed(2).replace(".", ",");
           const availablePackages = packageRows.filter((bundle) => bundle.clientId === item.clientId && bundle.serviceId === item.serviceId && ((!bundle.expiresAt || bundle.expiresAt > new Date()) && (bundle.used < bundle.total || bundle.clientPackageId === item.clientPackageId))).map((bundle) => ({ id: bundle.clientPackageId, name: bundle.packageName, remaining: bundle.total - bundle.used, current: bundle.clientPackageId === item.clientPackageId }));
           return <tr key={item.id} className={item.blocked && ["scheduled", "confirmed"].includes(item.status) ? "bg-amber-50/60" : undefined}>
             <td className="whitespace-nowrap p-3"><strong>{time ?? dateTime}</strong><p className="text-xs text-muted">{time ? date : ""}</p></td>
@@ -138,7 +137,7 @@ export async function AgendaPage({ openNewAppointment = false, filters = {} }: {
                 </ul>
               )}
             </td>
-            {canManageFinance && <td className="p-3"><ModalShell title="Registrar pagamento" variant="payment" completed={item.paymentStatus === "received" || Boolean(item.clientPackageId)}><AppointmentPaymentForm appointmentId={item.id} client={item.client} description={item.service} defaultAmount={price} packages={availablePackages} /></ModalShell></td>}
+            {canManageFinance && <td className="p-3"><Link className={`icon-button relative bg-emerald-50 text-emerald-700 ${["paid", "package"].includes(attendanceCheckoutSummary({ paymentStatus: item.paymentStatus, packageStatus: item.packageStatus, appointmentStatus: item.status, serviceAmount: item.appointmentPrice ?? item.servicePrice ?? 0, depositAmount: item.depositAmount, depositStatus: item.depositStatus, managedCharge: false }).state) ? "ring-2 ring-emerald-500" : ""}`} href={`/atendimento/${item.id}?tab=finance#pdv`} aria-label={`Abrir PDV do atendimento de ${item.client}`} title="Abrir recebimento no PDV"><CircleDollarSign className="size-5" aria-hidden="true" />{["paid", "package"].includes(attendanceCheckoutSummary({ paymentStatus: item.paymentStatus, packageStatus: item.packageStatus, appointmentStatus: item.status, serviceAmount: item.appointmentPrice ?? item.servicePrice ?? 0, depositAmount: item.depositAmount, depositStatus: item.depositStatus, managedCharge: false }).state) && <BadgeCheck className="absolute -right-1 -top-1 size-4 fill-emerald-600 text-white" aria-hidden="true" />}</Link></td>}
             {canManage && <td className="p-3"><ModalShell title="Editar agendamento" variant="edit" wide><div className="grid gap-4"><div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3"><p className="font-extrabold">{item.client}</p><p className="text-sm text-muted">{item.service} · {item.professional ?? "Sem profissional"}</p><p className="mt-1 text-sm font-bold text-brand">{dateTime}</p>{item.packageName && <p className="mt-1 text-xs text-brand">Pacote: {item.packageName} · {item.packageStatus}</p>}</div>{directPix && ["direct_pending", "direct_review"].includes(item.depositStatus) && ["scheduled", "confirmed"].includes(item.status) && <BookingDirectPixReview id={item.id} status={item.depositStatus} amountInCents={item.depositAmount} receiverName={directPix.receiverName} canConfirm={canManageFinance} />}<AppointmentEditForm key={`${item.id}:${item.startsAt.toISOString()}:${item.professionalId}:${item.roomId}:${item.status}`} appointmentId={item.id} serviceId={item.serviceId} professionalId={item.professionalId} professionalName={item.professional} startsAt={item.startsAt.toISOString()} status={item.status} cancellationReason={item.cancellationReason} roomId={item.roomId} timezone={organization.timezone} canTransfer={["owner", "admin"].includes(organization.role)} professionals={professionalItems.filter(person => links.some(link => link.professionalId === person.id && link.serviceId === item.serviceId))} rooms={roomItems} />{canSendWhatsApp && whatsapp && <a className="secondary-button sm:w-fit" href={whatsapp} target="_blank" rel="noreferrer">Enviar pelo WhatsApp</a>}</div></ModalShell></td>}
           <td className="p-3"><Link className="primary-button whitespace-nowrap py-2" href={`/atendimento/${item.id}`}>Atender</Link></td></tr>;
         })}</PaginatedCollection>

@@ -1,4 +1,5 @@
 "use server";
+import { managedChargeStatuses } from "@/lib/finance-view";
 import { boletoSchedule, boletoAvailableFrom } from "@/lib/pos-boleto";
 import { organizationPaymentCatalog } from "@/lib/payment-methods";
 import { choosePayment, onlineInstallmentTerms, hostedPaymentTypes, onlineInstallmentRules, pagBankSaleRules, type OnlineInstallmentRules } from "@/lib/payment-catalog-policy";
@@ -394,10 +395,14 @@ export async function registerRetailSale(data: FormData) {
     if (appointmentKeys.length && attendance) {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`attendance-payment:${attendanceId}`}, 0))`);
       const [current] = await tx.select().from(appointments).where(and(eq(appointments.id, attendance.appointment.id), eq(appointments.organizationId, organization.id))).for("update");
-      const [existing] = await tx.select().from(financialEntries).where(and(eq(financialEntries.appointmentId, current.id), eq(financialEntries.organizationId, organization.id)));
+      const [existing] = await tx.select().from(financialEntries).where(and(eq(financialEntries.appointmentId, current.id), eq(financialEntries.organizationId, organization.id))).for("update");
       const [usage] = await tx.select().from(packageUsages).where(and(eq(packageUsages.appointmentId, current.id), eq(packageUsages.organizationId, organization.id), inArray(packageUsages.status, ["reserved", "consumed"])));
       if (existing?.status === "received" || usage) throw new Error("Este serviço já foi pago ou está coberto por pacote. Atualize o carrinho.");
-      if (["direct_pending", "direct_review"].includes(current.depositStatus)) throw new Error("Confira e confirme o sinal Pix na edição do agendamento antes de receber o saldo.");
+      if (existing) {
+        const [charge] = await tx.select({id:paymentCharges.id}).from(paymentCharges).where(and(eq(paymentCharges.organizationId, organization.id), eq(paymentCharges.financialEntryId, existing.id), inArray(paymentCharges.status, managedChargeStatuses))).limit(1);
+        if (charge) throw new Error("Este serviço possui cobrança online vinculada. Gerencie a cobrança antes de receber por outro meio.");
+      }
+      if (["pending", "direct_pending", "direct_review"].includes(current.depositStatus)) throw new Error("Confira e confirme o sinal Pix na edição do agendamento antes de receber o saldo.");
       if (current.metadata?.directPix && current.depositStatus === "paid" && (current.priceInCents ?? 0) <= current.depositAmountInCents) throw new Error("Este serviço já foi pago integralmente por Pix direto.");
       if (["cancelled", "no_show"].includes(current.status)) throw new Error("Revise a situação do atendimento antes de receber.");
       const [service] = await tx.select().from(services).where(and(eq(services.id, current.serviceId), eq(services.organizationId, organization.id)));

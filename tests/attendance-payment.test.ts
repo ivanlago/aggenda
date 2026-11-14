@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { attendancePaymentState, shouldPrefillAttendanceCart } from "../src/lib/attendance-payment";
+import { attendanceCheckoutSummary, attendancePaymentState, shouldPrefillAttendanceCart } from "../src/lib/attendance-payment";
 
 test("não oferece nova cobrança para procedimento recebido ou coberto por pacote", () => {
   assert.equal(attendancePaymentState({ paymentStatus: "received", appointmentStatus: "completed" }), "paid");
@@ -26,3 +26,17 @@ test("não inclui automaticamente procedimento com saldo válido, mesmo antes de
   assert.equal(shouldPrefillAttendanceCart("pending", "service-a", [{ ...balance, expired: true }]), true);
   assert.equal(shouldPrefillAttendanceCart("pending", "service-a", [{ ...balance, remaining: 0 }]), true);
 });
+
+ test("PDV desconta o sinal sem oferecer nova cobrança para saldo quitado, pacote ou cobrança gerenciada", () => {
+  const base = {appointmentStatus:"confirmed",serviceAmount:500,depositAmount:100,depositStatus:"paid",managedCharge:false};
+  assert.deepEqual(attendanceCheckoutSummary(base),{state:"pending",balance:400,awaitingDeposit:false,canReceiveService:true});
+  assert.equal(attendanceCheckoutSummary({...base,entryAmount:400}).balance,400);
+  for(const depositStatus of ["pending","direct_pending","direct_review"]) assert.equal(attendanceCheckoutSummary({...base,depositStatus}).canReceiveService,false);
+  assert.equal(attendanceCheckoutSummary({...base,managedCharge:true}).canReceiveService,false);
+  assert.equal(attendanceCheckoutSummary({...base,paymentStatus:"received"}).balance,0);
+  assert.equal(attendanceCheckoutSummary({...base,depositAmount:500}).state,"paid");
+  assert.equal(attendanceCheckoutSummary({...base,depositAmount:500}).canReceiveService,false);
+  for(const packageStatus of ["reserved","consumed"]) assert.equal(attendanceCheckoutSummary({...base,packageStatus}).balance,0);
+  assert.equal(attendanceCheckoutSummary({...base,packageStatus:"reversed"}).canReceiveService,true);
+  assert.equal(attendanceCheckoutSummary({...base,appointmentStatus:"cancelled"}).canReceiveService,false);
+ });

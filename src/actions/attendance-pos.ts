@@ -1,11 +1,12 @@
 "use server";
 
+import { managedChargeStatuses } from "@/lib/finance-view";
 import { resolveOrganizationPayment } from "@/lib/payment-methods";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
-import { appointments, financialEntries, packageUsages } from "@/db/schema";
+import { appointments, financialEntries, packageUsages, paymentCharges } from "@/db/schema";
 import { reservePackageSession } from "@/lib/package-balance";
 import { requireAttendance } from "@/lib/attendance";
 import { assertOrganizationPermission } from "@/lib/permissions";
@@ -25,6 +26,11 @@ export async function selectAttendancePackage(data: FormData) {
       if (!current || current.metadata?.primaryProcedureRemoved === true || !["scheduled", "confirmed"].includes(current.status)) throw new Error("Vincule o pacote antes de concluir o atendimento.");
       const [payment] = await tx.select().from(financialEntries).where(and(eq(financialEntries.appointmentId, appointment.id), eq(financialEntries.organizationId, organization.id))).limit(1).for("update");
       if (payment?.status === "received") throw new Error("O procedimento já foi pago e não pode ser abatido de um pacote.");
+      if (current.depositAmountInCents > 0) throw new Error("Este atendimento possui sinal. Confira o recebimento antes de substituir o serviço por pacote.");
+      if (payment) {
+        const [charge] = await tx.select({id:paymentCharges.id}).from(paymentCharges).where(and(eq(paymentCharges.organizationId, organization.id), eq(paymentCharges.financialEntryId, payment.id), inArray(paymentCharges.status, managedChargeStatuses))).limit(1);
+        if (charge) throw new Error("Este serviço possui cobrança online vinculada. Gerencie a cobrança antes de usar o pacote.");
+      }
       const [usage] = await tx.select().from(packageUsages).where(eq(packageUsages.appointmentId, appointment.id));
       if (usage) throw new Error("Este atendimento já possui um vínculo com pacote. Atualize a página.");
       await reservePackageSession({ appointmentId: appointment.id, organizationId: organization.id, clientId: current.clientId, serviceId: current.serviceId, clientPackageId: clientPackageId.data }, tx as unknown as typeof db);
